@@ -198,7 +198,7 @@ class TTSEngine {
 ## Code Style & Naming
 
 ### Dart Conventions
-- Follow `flutter_lints` rules (see `analysis_options.yaml`)
+- Follow `flutter_lints` rules (see `analysis_options.yaml`). The project has been cleaned to literal 0 warnings on the active rule set. New contributions must not introduce any new warnings (CI now analyzes only changed Dart files on PRs).
 - Use camelCase for variables/methods, PascalCase for classes
 - Prefix private members with `_`
 - Use meaningful, descriptive names
@@ -211,18 +211,58 @@ class TTSEngine {
 - Import order: Dart SDK, packages, local imports
 
 ### Import Style
+Use barrel files to reduce repetitive intra-package imports.
+
 ```dart
-// Good: Organized imports
+// Good: Modern barrel-aware imports (preferred for new/refactored code)
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/character.dart';
-import '../services/chat_service.dart';
-import 'message_bubble.dart';
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart'; // single-use dialog, direct import is fine
 ```
+
+Direct imports of individual files (`import 'package:front_porch_ai/services/storage_service.dart';`) remain fully supported and are the right choice for one-off or internal-only modules.
+
+Barrels currently exist for:
+- `lib/models/models.dart`
+- `lib/utils/utils.dart`
+- `lib/services/services.dart` (curated high-frequency surface only)
+- `lib/ui/widgets/widgets.dart`
+
+When adding a new public service or model used from 3+ locations, add it to the appropriate barrel as part of the same change.
+
+See CLAUDE.md for the long-term opportunistic migration policy (convert files when you touch them for other reasons; no heroic cleanup PRs).
+
+### User-Facing Changelogs for the Update Dialog
+
+The Update Available dialog shows a friendly, non-technical "What's New" section pulled from the GitHub release body. Users who do not read GitHub or Discord depend on this text.
+
+**AI Agent Rule (strict):**
+- Maintain the changelog in a file named **exactly** after the current git branch (case-sensitive): `docs/<BranchName>.md`
+  - On branch `Rawhide` → edit `docs/Rawhide.md`
+  - On branch `0.9.8-Beta` → edit `docs/0.9.8-Beta.md`
+  - On branch `main` → edit `docs/main.md`
+- This prevents AI hallucination of filenames.
+- Write in approachable, benefit-oriented language with emojis (same tone as the top of `docs/release-notes.md` but shorter and dialog-optimized).
+- Update this file as part of completing any user-visible work, just like appending to internal changelogs.
+- These files (one per active branch) are the source that feeds the release body for each channel.
+
+Never mix notes across branches in a single file.
+
+## Git Safety Rules (Critical — Data Loss Prevention)
+
+- **Destructive file reversion is forbidden** without explicit, current human approval.
+  - Never run `git checkout -- <file>`, `git restore <file>`, `git checkout HEAD -- <file>`, `git checkout <sha> -- <file>`, or equivalent commands that discard uncommitted changes.
+  - The human (and other agents) frequently edit files without committing immediately. These commands cause **permanent, silent data loss**.
+  - Such operations are only permitted when the human has said something like "yes, run `git checkout -- lib/ui/pages/home_page.dart` right now" in the active conversation.
+  - Safer patterns: `git diff`, `git diff -- <file> > /tmp/backup.patch`, asking the human, or finding a non-destructive workaround.
+  - If you think a file is corrupted and the only fix appears to require a destructive checkout, **stop and ask the human** instead of acting.
 
 ## Files/Areas Requiring Discussion
 

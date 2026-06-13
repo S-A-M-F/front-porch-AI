@@ -62,7 +62,9 @@ class _KokoroWorker {
     final job = _WorkerJob(chunk, completer, requestId);
     queue.add(job);
 
-    kDebugPrint('[Worker] Enqueued chunk #${chunk.originalIndex} (requestId=$requestId). Queue length: ${queue.length}');
+    kDebugPrint(
+      '[Worker] Enqueued chunk #${chunk.originalIndex} (requestId=$requestId). Queue length: ${queue.length}',
+    );
 
     // Wake the loop if it's waiting
     if (_workSignal != null && !_workSignal!.isCompleted) {
@@ -84,7 +86,9 @@ class _KokoroWorker {
       isProcessing = true;
       _currentJob = job;
 
-      kDebugPrint('[Worker] Dequeued and sending chunk #${job.chunk.originalIndex} (requestId=${job.requestId})');
+      kDebugPrint(
+        '[Worker] Dequeued and sending chunk #${job.chunk.originalIndex} (requestId=${job.requestId})',
+      );
 
       try {
         final request = {
@@ -102,7 +106,9 @@ class _KokoroWorker {
         process.stdin.writeln(jsonEncode(request));
         await process.stdin.flush();
 
-        kDebugPrint('[Worker] Sent chunk #${job.chunk.originalIndex} to Python (waiting for response)');
+        kDebugPrint(
+          '[Worker] Sent chunk #${job.chunk.originalIndex} to Python (waiting for response)',
+        );
 
         // Wait here for the response to arrive and complete this job.
         // This ensures we only have one in-flight request per worker at a time,
@@ -113,9 +119,10 @@ class _KokoroWorker {
 
         // At this point completeCurrentJob has already run and cleaned up the state.
         // The loop will now pick up the next job in the queue (if any).
-
       } catch (e) {
-        kDebugPrint('[Worker] Write error for chunk #${job.chunk.originalIndex}: $e');
+        kDebugPrint(
+          '[Worker] Write error for chunk #${job.chunk.originalIndex}: $e',
+        );
         consecutiveErrors++;
         _currentJob = null;
         isProcessing = false;
@@ -130,7 +137,9 @@ class _KokoroWorker {
   void completeCurrentJob(_GenerationResult result) {
     final job = _currentJob;
     if (job != null) {
-      kDebugPrint('[Worker] Completing job for chunk #${job.chunk.originalIndex}');
+      kDebugPrint(
+        '[Worker] Completing job for chunk #${job.chunk.originalIndex}',
+      );
       job.completer.complete(result);
       _currentJob = null;
       isProcessing = false;
@@ -181,7 +190,7 @@ class KokoroWorkerPool {
   KokoroWorkerPool(this._storage, this._spawnWorker);
 
   /// Current desired max workers (comes from the user slider, now capped at 8).
-  int get _maxWorkers => _storage.ttsConcurrency.clamp(1, 8);
+  int get _maxWorkers => _storage.ttsSettings.ttsConcurrency.clamp(1, 8);
 
   /// Main entry point. Takes raw text, chunks it safely, and submits to the pool.
   Future<File?> generateAudio({
@@ -196,9 +205,13 @@ class KokoroWorkerPool {
   }) async {
     if (_isShuttingDown) return null;
 
-    kDebugPrint('[KokoroPool] generateAudio called with text len=${text.length}');
+    kDebugPrint(
+      '[KokoroPool] generateAudio called with text len=${text.length}',
+    );
 
-    final bool readEverythingMode = !_storage.ttsIgnoreAsterisks && !_storage.ttsNarrateQuotedOnly;
+    final bool readEverythingMode =
+        !_storage.ttsSettings.ttsIgnoreAsterisks &&
+        !_storage.ttsSettings.ttsNarrateQuotedOnly;
 
     final List<KokoroChunk> chunks;
 
@@ -228,7 +241,9 @@ class KokoroWorkerPool {
 
     if (chunks.isEmpty) return null;
 
-    kDebugPrint('[KokoroPool] Submitting ${chunks.length} chunks for this generateAudio call');
+    kDebugPrint(
+      '[KokoroPool] Submitting ${chunks.length} chunks for this generateAudio call',
+    );
 
     // Parallel submission across the worker pool.
     // Each _submitSingleChunk waits for a free worker + enqueues; excess work queues naturally.
@@ -238,16 +253,23 @@ class KokoroWorkerPool {
     final futures = <Future>[];
     for (final chunk in chunks) {
       futures.add(() async {
-        kDebugPrint('[KokoroPool] Submitting chunk #${chunk.originalIndex} (len=${chunk.text.length}) to worker pool');
+        kDebugPrint(
+          '[KokoroPool] Submitting chunk #${chunk.originalIndex} (len=${chunk.text.length}) to worker pool',
+        );
         final result = await _submitSingleChunk(chunk, modelPath, voicesPath);
         if (result != null) {
           resultsByIndex[chunk.originalIndex] = result;
           if (onProgress != null) {
-            final progress = (resultsByIndex.length / chunks.length).clamp(0.0, 0.99);
+            final progress = (resultsByIndex.length / chunks.length).clamp(
+              0.0,
+              0.99,
+            );
             onProgress(progress);
           }
         } else {
-          kDebugPrint('[KokoroPool] Chunk #${chunk.originalIndex} ultimately failed after retries (will be missing from final audio)');
+          kDebugPrint(
+            '[KokoroPool] Chunk #${chunk.originalIndex} ultimately failed after retries (will be missing from final audio)',
+          );
         }
       }());
     }
@@ -267,7 +289,9 @@ class KokoroWorkerPool {
       ..sort((a, b) => a.key.compareTo(b.key));
     final orderedResults = sortedEntries.map((e) => e.value).toList();
 
-    kDebugPrint('[KokoroPool] All sub-chunks complete. Collating ${orderedResults.length} pieces into one file for verbatim playback');
+    kDebugPrint(
+      '[KokoroPool] All sub-chunks complete. Collating ${orderedResults.length} pieces into one file for verbatim playback',
+    );
 
     if (orderedResults.length == 1) return orderedResults.first;
 
@@ -278,7 +302,9 @@ class KokoroWorkerPool {
 
   void _cleanupFiles(List<File> files) {
     for (final file in files) {
-      try { file.deleteSync(); } catch (_) {}
+      try {
+        file.deleteSync();
+      } catch (_) {}
     }
   }
 
@@ -291,34 +317,45 @@ class KokoroWorkerPool {
     const maxAttempts = 5;
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      kDebugPrint('[KokoroPool] Attempt $attempt for chunk #${chunk.originalIndex}');
+      kDebugPrint(
+        '[KokoroPool] Attempt $attempt for chunk #${chunk.originalIndex}',
+      );
 
       _KokoroWorker? worker;
 
       // Try to get a worker. If none is ready, wait a bit and retry instead of failing the chunk.
-      for (int waitAttempt = 0; waitAttempt < 12; waitAttempt++) { // up to ~2.4 seconds of waiting
+      for (int waitAttempt = 0; waitAttempt < 12; waitAttempt++) {
+        // up to ~2.4 seconds of waiting
         worker = await _getOrCreateFreeWorker();
         if (worker != null) break;
 
-        kDebugPrint('[KokoroPool] No worker ready for chunk #${chunk.originalIndex}, waiting... (wait $waitAttempt)');
+        kDebugPrint(
+          '[KokoroPool] No worker ready for chunk #${chunk.originalIndex}, waiting... (wait $waitAttempt)',
+        );
         await Future.delayed(const Duration(milliseconds: 200));
       }
 
       if (worker == null) {
-        kDebugPrint('[KokoroPool] Still no worker after waiting for chunk #${chunk.originalIndex}. Giving up on this attempt.');
+        kDebugPrint(
+          '[KokoroPool] Still no worker after waiting for chunk #${chunk.originalIndex}. Giving up on this attempt.',
+        );
         if (attempt == maxAttempts) return null;
         await Future.delayed(const Duration(milliseconds: 300));
         continue;
       }
 
-      kDebugPrint('[KokoroPool] Enqueuing chunk #${chunk.originalIndex} to a worker (attempt $attempt)');
+      kDebugPrint(
+        '[KokoroPool] Enqueuing chunk #${chunk.originalIndex} to a worker (attempt $attempt)',
+      );
       final completer = Completer<_GenerationResult>();
       worker.enqueue(chunk, completer);
 
       final result = await completer.future;
 
       if (result.error != null) {
-        kDebugPrint('[KokoroPool] Chunk #${chunk.originalIndex} failed (attempt $attempt): ${result.error}');
+        kDebugPrint(
+          '[KokoroPool] Chunk #${chunk.originalIndex} failed (attempt $attempt): ${result.error}',
+        );
         _handleWorkerDeath(worker);
         if (attempt == maxAttempts) return null;
         await Future.delayed(const Duration(milliseconds: 250));
@@ -373,21 +410,21 @@ class KokoroWorkerPool {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
-      _handleWorkerStdout(line);
-    });
+          _handleWorkerStdout(line);
+        });
 
     // Watch for unexpected death
-    unawaited(process.exitCode.then((code) {
-      if (!_isShuttingDown) {
-        kDebugPrint('[KokoroPool] Worker exited unexpectedly (code $code)');
-        _handleWorkerDeathByProcess(process);
-      }
-    }));
+    unawaited(
+      process.exitCode.then((code) {
+        if (!_isShuttingDown) {
+          kDebugPrint('[KokoroPool] Worker exited unexpectedly (code $code)');
+          _handleWorkerDeathByProcess(process);
+        }
+      }),
+    );
 
     // Also drain stderr so the process doesn't block
-    process.stderr
-        .transform(const SystemEncoding().decoder)
-        .listen((data) {
+    process.stderr.transform(const SystemEncoding().decoder).listen((data) {
       if (data.trim().isNotEmpty) {
         kDebugPrint('[KokoroWorker stderr] $data');
       }
@@ -399,7 +436,9 @@ class KokoroWorkerPool {
 
     // Only spam the first few "Started new worker" messages to reduce log noise
     if (_startupLogCount < 4) {
-      kDebugPrint('[KokoroPool] Started new worker (total: ${_workers.length})');
+      kDebugPrint(
+        '[KokoroPool] Started new worker (total: ${_workers.length})',
+      );
       _debugPrintWorkerStats();
       _startupLogCount++;
     }
@@ -421,10 +460,14 @@ class KokoroWorkerPool {
       for (final worker in _workers) {
         if (worker._currentJob?.requestId == id) {
           final isOk = json.containsKey('ok') && json['ok'] == true;
-          kDebugPrint('[Pool] Response for chunk #${worker._currentJob!.chunk.originalIndex} → ok=$isOk');
+          kDebugPrint(
+            '[Pool] Response for chunk #${worker._currentJob!.chunk.originalIndex} → ok=$isOk',
+          );
 
           final result = isOk
-              ? _GenerationResult(file: File(worker._currentJob!.chunk.outputPath))
+              ? _GenerationResult(
+                  file: File(worker._currentJob!.chunk.outputPath),
+                )
               : _GenerationResult(error: json['error'] as String?);
 
           worker.completeCurrentJob(result);
@@ -438,7 +481,9 @@ class KokoroWorkerPool {
         if (json.containsKey('ok') && json['ok'] == true) {
           completer.complete(_GenerationResult(file: File('')));
         } else if (json.containsKey('error')) {
-          completer.complete(_GenerationResult(error: json['error'] as String?));
+          completer.complete(
+            _GenerationResult(error: json['error'] as String?),
+          );
         }
       }
     } catch (e) {
@@ -449,7 +494,9 @@ class KokoroWorkerPool {
   void _handleWorkerDeath(_KokoroWorker worker) {
     _workers.remove(worker);
 
-    kDebugPrint('[KokoroPool] Worker died. Had ${worker.queue.length} jobs in queue + current job: ${worker._currentJob != null}');
+    kDebugPrint(
+      '[KokoroPool] Worker died. Had ${worker.queue.length} jobs in queue + current job: ${worker._currentJob != null}',
+    );
 
     // Kill the process and drain its queue (fail any pending work on this worker)
     worker.kill();
@@ -461,7 +508,9 @@ class KokoroWorkerPool {
     worker.queue.clear();
 
     if (worker._currentJob != null) {
-      worker._currentJob!.completer.complete(_GenerationResult(error: 'worker died'));
+      worker._currentJob!.completer.complete(
+        _GenerationResult(error: 'worker died'),
+      );
       worker._currentJob = null;
     }
 
@@ -493,7 +542,9 @@ class KokoroWorkerPool {
     final target = _maxWorkers;
     final toStart = target - (_workers.length + _spawningCount);
 
-    kDebugPrint('[KokoroPool] warmUp: wanting $target workers, need to start $toStart');
+    kDebugPrint(
+      '[KokoroPool] warmUp: wanting $target workers, need to start $toStart',
+    );
 
     for (int i = 0; i < toStart; i++) {
       if (_workers.length + _spawningCount >= target) break;

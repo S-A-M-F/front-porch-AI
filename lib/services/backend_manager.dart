@@ -58,9 +58,10 @@ class BackendManager extends ChangeNotifier {
     if (Platform.isMacOS) {
       try {
         final result = await Process.run('uname', ['-m']);
-         if (result.exitCode == 0 && result.stdout.toString().trim() == 'arm64') {
-           _arch = 'arm64';
-         }
+        if (result.exitCode == 0 &&
+            result.stdout.toString().trim() == 'arm64') {
+          _arch = 'arm64';
+        }
       } catch (_) {}
     }
     // Detect GPU acceleration availability on Linux
@@ -75,7 +76,7 @@ class BackendManager extends ChangeNotifier {
         print('AG_DEBUG: CUDA not found (nvidia-smi not available)');
       }
       // Check for AMD/ROCm — user preference overrides auto-detection
-      final userRocmPref = _storageService.useRocm;
+      final userRocmPref = _storageService.backendSettings.useRocm;
       if (userRocmPref != null) {
         _useRocm = userRocmPref;
         print('AG_DEBUG: ROCm set by user preference: $_useRocm');
@@ -103,7 +104,11 @@ class BackendManager extends ChangeNotifier {
     // Also check for other variants (user may have switched GPU acceleration)
     final altNames = <String>[];
     if (Platform.isLinux) {
-      for (final name in ['koboldcpp-linux-x64', 'koboldcpp-linux-x64-rocm', 'koboldcpp-linux-x64-nocuda']) {
+      for (final name in [
+        'koboldcpp-linux-x64',
+        'koboldcpp-linux-x64-rocm',
+        'koboldcpp-linux-x64-nocuda',
+      ]) {
         if (name != executableName) altNames.add(name);
       }
     }
@@ -146,7 +151,8 @@ class BackendManager extends ChangeNotifier {
 
     // Intel Macs cannot run KoboldCpp (no Metal GPU acceleration)
     if (isIntelMac) {
-      _error = 'Local inference is not supported on Intel Macs. Please use Remote API mode.';
+      _error =
+          'Local inference is not supported on Intel Macs. Please use Remote API mode.';
       _statusMessage = 'Unsupported';
       notifyListeners();
       return;
@@ -178,24 +184,26 @@ class BackendManager extends ChangeNotifier {
       // Use a fresh client
       final client = http.Client();
       final request = http.Request('GET', Uri.parse(downloadUrl));
-      
+
       print('AG_DEBUG: Sending request...');
       final response = await client.send(request);
       print('AG_DEBUG: Response received. Status: ${response.statusCode}');
 
       if (response.statusCode != 200) {
-         print('AG_DEBUG: Download failed with status ${response.statusCode}');
-         throw Exception('Failed to download backend: HTTP ${response.statusCode}');
+        print('AG_DEBUG: Download failed with status ${response.statusCode}');
+        throw Exception(
+          'Failed to download backend: HTTP ${response.statusCode}',
+        );
       }
 
       final contentLength = response.contentLength ?? 0;
       print('AG_DEBUG: Content length: $contentLength');
-      
+
       int received = 0;
       final file = File(savePath);
       final sink = file.openWrite();
-      
-      _statusMessage = 'Downloading...'; 
+
+      _statusMessage = 'Downloading...';
       notifyListeners();
 
       DateTime startTime = DateTime.now();
@@ -206,29 +214,33 @@ class BackendManager extends ChangeNotifier {
         await for (final chunk in response.stream) {
           sink.add(chunk);
           received += chunk.length;
-          
+
           final now = DateTime.now();
           if (now.difference(lastUpdateTime).inMilliseconds >= 500) {
-            final timeDiff = now.difference(lastUpdateTime).inMilliseconds / 1000.0;
+            final timeDiff =
+                now.difference(lastUpdateTime).inMilliseconds / 1000.0;
             final bytesDiff = received - lastWebBytes;
             final speed = bytesDiff / timeDiff; // bytes per second
-            
+
             String speedStr = _formatSpeed(speed);
             String etaStr = '';
-            
+
             if (contentLength > 0 && speed > 0) {
               final remainingBytes = contentLength - received;
               final remainingSeconds = remainingBytes / speed;
-              etaStr = ' - ETA: ${_formatDuration(Duration(seconds: remainingSeconds.round()))}';
+              etaStr =
+                  ' - ETA: ${_formatDuration(Duration(seconds: remainingSeconds.round()))}';
             }
 
             if (contentLength > 0) {
               _downloadProgress = received / contentLength;
-              _statusMessage = 'Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}% ($speedStr)$etaStr';
+              _statusMessage =
+                  'Downloading: ${(_downloadProgress * 100).toStringAsFixed(1)}% ($speedStr)$etaStr';
             } else {
-               _statusMessage = 'Downloading: ${(received / 1024 / 1024).toStringAsFixed(1)} MB ($speedStr)';
+              _statusMessage =
+                  'Downloading: ${(received / 1024 / 1024).toStringAsFixed(1)} MB ($speedStr)';
             }
-            
+
             notifyListeners();
             lastUpdateTime = now;
             lastWebBytes = received;
@@ -238,7 +250,9 @@ class BackendManager extends ChangeNotifier {
       } catch (e) {
         print('AG_DEBUG: Stream error: $e');
         // Clean up partial download on error
-        try { await file.delete(); } catch (_) {}
+        try {
+          await file.delete();
+        } catch (_) {}
         rethrow;
       } finally {
         print('AG_DEBUG: Closing file sink...');
@@ -250,31 +264,41 @@ class BackendManager extends ChangeNotifier {
 
       // Verify download integrity
       if (contentLength > 0 && received < contentLength) {
-        print('AG_DEBUG: Download incomplete! Expected $contentLength bytes but received $received bytes.');
-        try { await file.delete(); } catch (_) {}
-        throw Exception('Download incomplete: received $received of $contentLength bytes. Please try again.');
+        print(
+          'AG_DEBUG: Download incomplete! Expected $contentLength bytes but received $received bytes.',
+        );
+        try {
+          await file.delete();
+        } catch (_) {}
+        throw Exception(
+          'Download incomplete: received $received of $contentLength bytes. Please try again.',
+        );
       }
 
       // Verify the file actually exists and has content
       final downloadedFile = File(savePath);
       final fileSize = await downloadedFile.length();
       print('AG_DEBUG: Final file size on disk: $fileSize bytes');
-      if (fileSize < 1024 * 1024) { // Sanity check: backend should be > 1MB
+      if (fileSize < 1024 * 1024) {
+        // Sanity check: backend should be > 1MB
         print('AG_DEBUG: File suspiciously small ($fileSize bytes), deleting.');
-        try { await downloadedFile.delete(); } catch (_) {}
-        throw Exception('Downloaded file is too small ($fileSize bytes). The download may have failed.');
+        try {
+          await downloadedFile.delete();
+        } catch (_) {}
+        throw Exception(
+          'Downloaded file is too small ($fileSize bytes). The download may have failed.',
+        );
       }
 
       _isDownloading = false;
       _downloadProgress = 1.0;
       _statusMessage = 'Finalizing...';
       notifyListeners();
-      
+
       print('AG_DEBUG: Checking backend availability...');
       await Future.delayed(const Duration(milliseconds: 500)); // Brief pause
       await checkBackendAvailability();
       print('AG_DEBUG: Backend check complete. Status: $_statusMessage');
-
     } catch (e, stack) {
       _isDownloading = false;
       _error = 'Error: $e';
@@ -287,7 +311,9 @@ class BackendManager extends ChangeNotifier {
 
   String _formatSpeed(double bytesPerSec) {
     if (bytesPerSec < 1024) return '${bytesPerSec.toStringAsFixed(1)} B/s';
-    if (bytesPerSec < 1024 * 1024) return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    if (bytesPerSec < 1024 * 1024) {
+      return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    }
     return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
   }
 
@@ -300,8 +326,6 @@ class BackendManager extends ChangeNotifier {
     }
     return '${d.inSeconds}s';
   }
-
-
 
   String _getExecutableName() {
     if (Platform.isWindows) return 'koboldcpp.exe';
@@ -317,18 +341,21 @@ class BackendManager extends ChangeNotifier {
   }
 
   String _getDownloadUrl() {
-    if (Platform.isWindows) return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp.exe';
+    if (Platform.isWindows) {
+      return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp.exe';
+    }
     if (Platform.isLinux) {
       if (_useRocm) return 'https://koboldai.org/cpplinuxrocm';
-      if (_hasCuda) return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-linux-x64';
+      if (_hasCuda) {
+        return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-linux-x64';
+      }
       return 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-linux-x64-nocuda';
     }
     if (Platform.isMacOS) {
-       return _arch == 'arm64' 
-           ? 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-mac-arm64'
-           : 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-mac-x64';
+      return _arch == 'arm64'
+          ? 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-mac-arm64'
+          : 'https://github.com/LostRuins/koboldcpp/releases/latest/download/koboldcpp-mac-x64';
     }
     throw Exception('Unsupported platform');
   }
 }
-

@@ -59,9 +59,12 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
 
   String _genderLabel(String gender) {
     switch (gender) {
-      case 'Male': return '♂ Male';
-      case 'Female': return '♀ Female';
-      default: return '⚬ Unknown';
+      case 'Male':
+        return '♂ Male';
+      case 'Female':
+        return '♀ Female';
+      default:
+        return '⚬ Unknown';
     }
   }
 
@@ -70,7 +73,7 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
     return Dialog(
       backgroundColor: const Color(0xFF1F2937),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
+      child: SizedBox(
         width: 900,
         height: 700,
         child: Column(
@@ -95,8 +98,14 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
         children: [
           const Icon(Icons.record_voice_over, color: Colors.blueAccent),
           const SizedBox(width: 12),
-          const Text('Voice Model Browser',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+          const Text(
+            'Voice Model Browser',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white54),
@@ -139,9 +148,13 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
-                  onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                  onChanged: (val) =>
+                      setState(() => _searchQuery = val.toLowerCase()),
                 ),
               ),
               const SizedBox(width: 12),
@@ -154,17 +167,31 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'Language',
-                    labelStyle: const TextStyle(color: Colors.white54, fontSize: 12),
+                    labelStyle: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
                     filled: true,
                     fillColor: Colors.black26,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
-                  items: langList.map((l) => DropdownMenuItem(value: l, child: Text(l, overflow: TextOverflow.ellipsis))).toList(),
-                  onChanged: (val) => setState(() => _selectedLanguage = val ?? 'All'),
+                  items: langList
+                      .map(
+                        (l) => DropdownMenuItem(
+                          value: l,
+                          child: Text(l, overflow: TextOverflow.ellipsis),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) =>
+                      setState(() => _selectedLanguage = val ?? 'All'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -177,17 +204,26 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'Quality',
-                    labelStyle: const TextStyle(color: Colors.white54, fontSize: 12),
+                    labelStyle: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
                     filled: true,
                     fillColor: Colors.black26,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
-                  items: qualList.map((q) => DropdownMenuItem(value: q, child: Text(q))).toList(),
-                  onChanged: (val) => setState(() => _selectedQuality = val ?? 'All'),
+                  items: qualList
+                      .map((q) => DropdownMenuItem(value: q, child: Text(q)))
+                      .toList(),
+                  onChanged: (val) =>
+                      setState(() => _selectedQuality = val ?? 'All'),
                 ),
               ),
             ],
@@ -201,14 +237,19 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
     return Consumer<VoiceManager>(
       builder: (context, vm, _) {
         if (vm.isLoadingCatalog) {
-          return const Center(child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading voice catalog...', style: TextStyle(color: Colors.white54)),
-            ],
-          ));
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text(
+                  'Loading voice catalog...',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ],
+            ),
+          );
         }
 
         if (vm.catalog.isEmpty && _initialLoaded) {
@@ -218,8 +259,10 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
               children: [
                 const Icon(Icons.cloud_off, size: 48, color: Colors.white24),
                 const SizedBox(height: 12),
-                const Text('Could not load voice catalog',
-                    style: TextStyle(color: Colors.white54)),
+                const Text(
+                  'Could not load voice catalog',
+                  style: TextStyle(color: Colors.white54),
+                ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
                   onPressed: () => vm.fetchCatalog(),
@@ -233,10 +276,17 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
 
         // Filter catalog
         var filtered = vm.catalog.where((v) {
-          if (_selectedLanguage != 'All' && v.languageEnglish != _selectedLanguage) return false;
-          if (_selectedQuality != 'All' && v.quality != _selectedQuality) return false;
+          if (_selectedLanguage != 'All' &&
+              v.languageEnglish != _selectedLanguage) {
+            return false;
+          }
+          if (_selectedQuality != 'All' && v.quality != _selectedQuality) {
+            return false;
+          }
           if (_searchQuery.isNotEmpty) {
-            final searchable = '${v.name} ${v.languageEnglish} ${v.countryEnglish} ${v.key}'.toLowerCase();
+            final searchable =
+                '${v.name} ${v.languageEnglish} ${v.countryEnglish} ${v.key}'
+                    .toLowerCase();
             if (!searchable.contains(_searchQuery)) return false;
           }
           return true;
@@ -262,13 +312,22 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
             final progress = vm.getDownloadProgress(voice.key);
 
             return Card(
-              color: isInstalled ? const Color(0xFF1a3a2a) : const Color(0xFF374151),
+              color: isInstalled
+                  ? const Color(0xFF1a3a2a)
+                  : const Color(0xFF374151),
               margin: const EdgeInsets.only(bottom: 6),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 leading: CircleAvatar(
-                  backgroundColor: isInstalled ? Colors.green.withValues(alpha: 0.2) : Colors.blueAccent.withValues(alpha: 0.2),
+                  backgroundColor: isInstalled
+                      ? Colors.green.withValues(alpha: 0.2)
+                      : Colors.blueAccent.withValues(alpha: 0.2),
                   child: Icon(
                     isInstalled ? Icons.check_circle : Icons.record_voice_over,
                     color: isInstalled ? Colors.greenAccent : Colors.blueAccent,
@@ -277,13 +336,22 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
                 ),
                 title: Text(
                   voice.name,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 subtitle: Text(
                   '${voice.languageEnglish} (${voice.countryEnglish}) • ${_genderLabel(voice.gender)} • ${voice.quality} • ${voice.sizeLabel}',
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
-                trailing: _buildTrailingActions(voice, isInstalled, isDownloading, progress, vm),
+                trailing: _buildTrailingActions(
+                  voice,
+                  isInstalled,
+                  isDownloading,
+                  progress,
+                  vm,
+                ),
               ),
             );
           },
@@ -292,7 +360,13 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
     );
   }
 
-  Widget _buildTrailingActions(PiperVoice voice, bool isInstalled, bool isDownloading, double progress, VoiceManager vm) {
+  Widget _buildTrailingActions(
+    PiperVoice voice,
+    bool isInstalled,
+    bool isDownloading,
+    double progress,
+    VoiceManager vm,
+  ) {
     if (isDownloading) {
       return SizedBox(
         width: 140,
@@ -307,8 +381,10 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
               ),
             ),
             const SizedBox(width: 8),
-            Text('${(progress * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            Text(
+              '${(progress * 100).toStringAsFixed(0)}%',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ],
         ),
       );
@@ -320,25 +396,38 @@ class _VoiceBrowserDialogState extends State<VoiceBrowserDialog> {
         if (isInstalled) ...[
           // Preview button
           IconButton(
-            icon: const Icon(Icons.play_arrow, color: Colors.greenAccent, size: 20),
+            icon: const Icon(
+              Icons.play_arrow,
+              color: Colors.greenAccent,
+              size: 20,
+            ),
             tooltip: 'Preview',
             onPressed: () {
               final tts = Provider.of<TtsService>(context, listen: false);
-              final storage = Provider.of<StorageService>(context, listen: false);
+              final storage = Provider.of<StorageService>(
+                context,
+                listen: false,
+              );
               // Temporarily enable TTS for preview
               final wasEnabled = storage.ttsEnabled;
               if (!wasEnabled) storage.setTtsEnabled(true);
-              tts.speak(
-                'Hello! This is a preview of the ${voice.name} voice.',
-                voiceKey: voice.key,
-              ).then((_) {
-                if (!wasEnabled) storage.setTtsEnabled(false);
-              });
+              tts
+                  .speak(
+                    'Hello! This is a preview of the ${voice.name} voice.',
+                    voiceKey: voice.key,
+                  )
+                  .then((_) {
+                    if (!wasEnabled) storage.setTtsEnabled(false);
+                  });
             },
           ),
           // Delete button
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+            icon: const Icon(
+              Icons.delete_outline,
+              color: Colors.redAccent,
+              size: 20,
+            ),
             tooltip: 'Delete',
             onPressed: () async {
               await vm.deleteVoice(voice.key);

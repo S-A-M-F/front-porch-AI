@@ -41,7 +41,7 @@ class AvatarImage {
   /// The [avatarsDirPath] should be the path to the `avatars` subdirectory,
   /// e.g. `.../Characters/Carly/avatars/`.
   File file(String avatarsDirPath) {
-    return File('${avatarsDirPath}/${filename}');
+    return File('$avatarsDirPath/$filename');
   }
 
   AvatarImage copyWith({

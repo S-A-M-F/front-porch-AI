@@ -129,6 +129,9 @@ class Sessions extends Table {
       text().withDefault(const Constant('morning'))(); // dawn/morning/etc
   IntColumn get dayCount =>
       integer().withDefault(const Constant(1))(); // starts at Day 1
+  IntColumn get startDayOfWeek => integer().withDefault(
+    const Constant(0),
+  )(); // 1=Mon..7=Sun anchor for narrativeWeekday; 0=legacy/unset (compute on first load)
   BoolColumn get nsfwCooldownEnabled =>
       boolean().withDefault(const Constant(false))(); // sub-toggle
   BoolColumn get passageOfTimeEnabled => boolean().withDefault(
@@ -159,6 +162,12 @@ class Sessions extends Table {
     const Constant(0),
   )(); // 0-100 escalating trigger chance
 
+  // Sims/Needs Simulation (clean port on 0.9.8)
+  BoolColumn get needsSimEnabled =>
+      boolean().withDefault(const Constant(false))(); // per-session toggle
+  TextColumn get needsVector =>
+      text().nullable()(); // JSON map of current need levels
+
   // Per-session character evolution (v19)
   // 1:1 chats: plain evolved text
   TextColumn get evolvedPersonality => text().withDefault(const Constant(''))();
@@ -176,6 +185,13 @@ class Sessions extends Table {
 
   // User persona linked to this session (v25)
   TextColumn get userPersonaId => text().nullable()();
+
+  /// Live per-character realism/needs state for group sessions.
+  /// JSON map: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Replaces the old hidden __group_state__ checkpoint message system (clean break in v30).
+  /// Only populated for sessions where groupId is not null.
+  TextColumn get groupRealismState =>
+      text().withDefault(const Constant('{}'))();
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -220,6 +236,56 @@ class Groups extends Table {
   TextColumn get firstMessage => text().withDefault(const Constant(''))();
   TextColumn get scenario => text().withDefault(const Constant(''))();
   TextColumn get systemPrompt => text().withDefault(const Constant(''))();
+
+  /// Portable default realism/needs state for this group definition.
+  /// JSON: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Used for Group Card export/import and as seed when starting new group sessions
+  /// or splitting group members to solo characters.
+  /// Added in schema v30 as part of proper DB-backed group realism (clean break from
+  /// old hidden __group_state__ checkpoint messages).
+  TextColumn get defaultMemberRealismState =>
+      text().withDefault(const Constant('{}'))();
+
+  // v31: Group-level config columns stored as first-class typed Drift columns (Bool/Text)
+  // rather than inside JSON blobs or overloaded existing fields. This follows the v30
+  // precedent of surfacing hidden state (the old __group_state__ messages) into explicit,
+  // queryable, self-documenting columns. Explicit columns improve type safety, allow
+  // simpler direct SQL from external tools, and make Group Card round-tripping obvious.
+  // External direct-SQL writers (e.g. Character Card Forge) must supply values or rely
+  // on the NOT NULL DEFAULTs when INSERTing into groups.
+  BoolColumn get chaosModeEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get chaosNsfwEnabled =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get groupLorebook => text().withDefault(const Constant(''))();
+  TextColumn get worldIds => text().withDefault(
+    const Constant('[]'),
+  )(); // JSON array of world IDs for scoping
+  BoolColumn get inheritCharacterLorebooks =>
+      boolean().withDefault(const Constant(true))();
+
+  /// Immutable creation-time baseline realism/needs seed for this group definition.
+  /// JSON shape is identical to defaultMemberRealismState and sessions.group_realism_state.
+  /// This is the frozen seed captured at group creation / Group Card import time only.
+  /// Distinct from defaultMemberRealismState (which can be updated later for new sessions).
+  /// Clean column (not a blob) per v30 philosophy of explicit storage — makes the
+  /// immutable-seed contract visible to code and to external direct-SQL tools.
+  /// Added in schema v31.
+  TextColumn get baselineRealismState =>
+      text().withDefault(const Constant('{}'))();
+
+  /// Per-character system prompt overrides scoped to this group.
+  /// Stored as a first-class JSON column (Map&lt;String, String&gt; keyed by stable charId).
+  ///
+  /// This was previously the last remaining "Path B" transitional hack stored inside
+  /// the defaultMemberRealismState JSON blob. As of v32 it has its own proper column.
+  /// The old extraction/promotion logic inside the realism blob has been fully removed.
+  ///
+  /// Takes precedence over a character's normal system prompt when that character
+  /// speaks inside this specific group, but sits under the group-level systemPrompt.
+  TextColumn get characterSystemPrompts =>
+      text().withDefault(const Constant('{}'))();
+
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
@@ -283,6 +349,14 @@ class MessageEmbeddings extends Table {
   IntColumn get dimensions => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
+  /// 'message' for normal RAG windows (default), 'needs_event' for long-term
+  /// salient Needs simulation events (high-magnitude pleasure/embarrassment etc.).
+  TextColumn get memoryType => text().withDefault(const Constant('message'))();
+
+  /// Optional JSON blob for event details (e.g. {"category":"pleasure","magnitude":8,"..."}).
+  /// Null for ordinary message embeddings.
+  TextColumn get metadata => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -318,6 +392,8 @@ class Objectives extends Table {
   TextColumn get id => text()();
   TextColumn get characterId =>
       text()(); // which character this objective belongs to
+  TextColumn get chatId =>
+      text().nullable()(); // session ID this objective belongs to
   TextColumn get objective => text()(); // the main goal
   TextColumn get tasks => text().withDefault(
     const Constant('[]'),
@@ -352,6 +428,75 @@ class StoryProjects extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Group-owned characters (decoupled from the singular CharacterRepository / library).
+///
+/// Per the clean-break architecture (2026-05): group members are fully separate entities.
+/// They live only in this table + private files under StorageService.groupsDir/&lt;groupId&gt;/avatars/.
+/// There is NO reference to library characters, no shared stable IDs, no automatic population,
+/// and no JSON blob for the card definition itself — all fields are typed columns.
+///
+/// - Internal id: UUID (v4) generated at copy/add time. Used for all per-member keys
+///   (realism in defaultMemberRealismState, characterSystemPrompts, objectives, RAG, etc.).
+/// - Exactly one primary avatar PNG per member (avatarFilename); multi-avatar/expressions
+///   explicitly not supported for groups.
+/// - The only path from a group member into the user's singular library is the explicit
+///   user-initiated "Separate to my library" (extract) action.
+/// - On group delete, the row(s) and the entire groups/&lt;groupId&gt;/ tree are removed (best effort).
+///
+/// External companion tools writing groups must not assume members; they write to this
+/// table for group card fidelity. The human will notify such tools after this feature is
+/// 100% complete and stable.
+@DataClassName('GroupMemberRow')
+class GroupMembers extends Table {
+  TextColumn get id =>
+      text()(); // UUID PK — stable for this member *inside this group only*
+  TextColumn get groupId => text()(); // references Groups.id
+
+  // Full card definition as typed columns (no JSON blob for the member "character" itself).
+  TextColumn get name => text()();
+  TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get personality => text().withDefault(const Constant(''))();
+  TextColumn get scenario => text().withDefault(const Constant(''))();
+  TextColumn get firstMessage => text().withDefault(const Constant(''))();
+  TextColumn get mesExample => text().withDefault(const Constant(''))();
+  TextColumn get systemPrompt => text().withDefault(const Constant(''))();
+  TextColumn get postHistoryInstructions =>
+      text().withDefault(const Constant(''))();
+
+  TextColumn get alternateGreetings =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+  TextColumn get tags =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+
+  /// Basename of the single primary PNG stored in this group's private avatars dir.
+  /// Resolved at runtime via StorageService.groupsDir + groupId + 'avatars' + this filename.
+  /// Never a full path, never an expression list.
+  TextColumn get avatarFilename => text().nullable()();
+
+  TextColumn get ttsVoice => text().nullable()();
+
+  TextColumn get lorebook =>
+      text().nullable()(); // JSON (same shape as Characters.lorebook)
+  TextColumn get worldNames =>
+      text().withDefault(const Constant('[]'))(); // JSON array
+
+  /// JSON of FrontPorchExtensions (realism defaults etc.) + any raw third-party extensions.
+  TextColumn get frontPorchExtensions => text().nullable()();
+  TextColumn get rawExtensions => text().nullable()();
+
+  /// Small JSON for any *group-scoped* per-member state that travels with the group definition
+  /// (e.g. initial realism seed fragments specific to this membership, or future overrides).
+  /// The primary evolving per-char realism + needs lives in sessions.group_realism_state
+  /// (keyed by these member UUIDs) and groups.defaultMemberRealismState (for seeds/export).
+  /// This column keeps the member rows free of "the card" blobs while still self-contained.
+  TextColumn get memberState => text().withDefault(const Constant('{}'))();
+
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ── Database Definition ─────────────────────────────────────────────────
 
 @DriftDatabase(
@@ -369,6 +514,7 @@ class StoryProjects extends Table {
     StoryProjects,
     SyncMeta,
     AvatarImages,
+    GroupMembers, // group-owned characters (clean break from library; see class docs)
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -391,10 +537,12 @@ class AppDatabase extends _$AppDatabase {
     final rootPathKey = isPreRelease ? 'root_path_beta' : 'root_path';
     final rootPath = prefs.getString(rootPathKey);
     final defaultRootName = isPreRelease ? 'FrontPorchAI-Beta' : 'FrontPorchAI';
-    final basePath = rootPath ?? p.join(
-      (await getApplicationDocumentsDirectory()).path,
-      defaultRootName,
-    );
+    final basePath =
+        rootPath ??
+        p.join(
+          (await getApplicationDocumentsDirectory()).path,
+          defaultRootName,
+        );
     final dbDir = p.join(basePath, 'KoboldManager');
     _dbDir = dbDir;
 
@@ -417,14 +565,18 @@ class AppDatabase extends _$AppDatabase {
         if (!skipped) {
           final prodFile = File(p.join(dbDir, 'front_porch.db'));
           if (prodFile.existsSync()) {
-            debugPrint('[DB] Pre-release build — copying production DB to beta DB');
+            debugPrint(
+              '[DB] Pre-release build — copying production DB to beta DB',
+            );
             await prodFile.copy(file.path);
           }
         }
       } else {
         // Dialog not yet shown — defer to the import dialog which will
         // show after the first frame and trigger the copy manually.
-        debugPrint('[DB] Pre-release build — import dialog pending, skipping copy');
+        debugPrint(
+          '[DB] Pre-release build — import dialog pending, skipping copy',
+        );
       }
     }
 
@@ -451,6 +603,18 @@ class AppDatabase extends _$AppDatabase {
         },
       ),
     );
+
+    // Robust, always-on schema repair for long-lived user databases.
+    // Any previous schemaVersion onUpgrade block that used bare `try { ALTER } catch (_) {}`
+    // could leave the physical DB permanently behind the Dart Table definitions (e.g. the
+    // v29 `chat_id` on objectives, or v30-v32 group columns). This repair uses PRAGMA
+    // table_info introspection + conditional ADD COLUMN only. It creates a timestamped
+    // .db backup the first time it actually mutates schema, then guarantees the columns
+    // the rest of the app (group chat, per-character objectives, Realism/Needs, Chaos)
+    // now unconditionally reference. Never deletes or mutates user rows. Safe and cheap
+    // to run on every normal launch.
+    await _instance!._repairMissingSchemaColumns();
+
     return _instance!;
   }
 
@@ -485,6 +649,276 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Ensures all columns that the current Dart schema and application code expect
+  /// are physically present in the database. This is the robust, always-on safety
+  /// net for users whose databases predate recent features (group cards, per-character
+  /// objectives, expanded Realism/Needs/Chaos columns). It replaces the fragile
+  /// pattern of silent `try { ALTER ... } catch (_) {}` inside versioned migration blocks.
+  ///
+  /// Strategy:
+  /// - Uses PRAGMA table_info (fast, reliable even on ancient SQLite files).
+  /// - Only ever does ADD COLUMN with exact NOT NULL DEFAULTs that match the Table
+  ///   class definitions and the historical ALTER statements.
+  /// - On first actual mutation for a given launch, creates a timestamped backup of
+  ///   the .db file next to the original so users with years of chats have an
+  ///   immediate rollback artifact.
+  /// - Failures to add a single column are logged but do not prevent app launch.
+  /// - Idempotent and safe to call on every open (including after cloud sync restore).
+  ///
+  /// This must be kept in sync with any future columns added to Sessions, Groups,
+  /// Objectives, Characters, etc. Add the new "COL TYPE [NOT NULL DEFAULT x]" entry
+  /// here in the same change that adds it to the Table class.
+  Future<void> _repairMissingSchemaColumns() async {
+    final stopwatch = Stopwatch()..start();
+    bool anyRepairDone = false;
+
+    // Physical table -> list of "col_name TYPE [NOT NULL DEFAULT 'lit']" fragments.
+    // These are exactly the columns that were added (or re-added) via the old
+    // silent-catch ALTERs in onUpgrade for schema versions 9 through 32.
+    // The presence of these in the list is what guarantees 1:1 + group chat parity
+    // features will not produce "no such column" on real user databases.
+    const Map<String, List<String>> columnsToEnsure = {
+      'objectives': [
+        'chat_id TEXT', // v29 — the one that was actively crashing group objective loads
+        'is_primary INTEGER NOT NULL DEFAULT 1', // v20
+        'injection_depth INTEGER NOT NULL DEFAULT 4', // safety (was in v8 CREATE + v9 ALTER)
+      ],
+      'groups': [
+        // v30
+        'default_member_realism_state TEXT NOT NULL DEFAULT "{}"',
+        // v31 — the full set of explicit typed columns for Group Card roundtrip + Chaos + lore scoping
+        'chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+        'chaos_nsfw_enabled INTEGER NOT NULL DEFAULT 0',
+        "group_lorebook TEXT NOT NULL DEFAULT ''",
+        "world_ids TEXT NOT NULL DEFAULT '[]'",
+        'inherit_character_lorebooks INTEGER NOT NULL DEFAULT 1',
+        'baseline_realism_state TEXT NOT NULL DEFAULT "{}"',
+        // v32 — final deprecation of the last blob hack
+        'character_system_prompts TEXT NOT NULL DEFAULT "{}"',
+      ],
+      'sessions': [
+        // v30 — the live per-group-member realism state (clean replacement for hidden checkpoint msgs)
+        'group_realism_state TEXT NOT NULL DEFAULT "{}"',
+        // Additional columns added with the same fragile pattern that group/per-char
+        // Realism, Needs, Chaos, and evolution paths now depend on unconditionally.
+        'group_evolved_personalities TEXT NOT NULL DEFAULT "{}"',
+        'group_evolved_scenarios TEXT NOT NULL DEFAULT "{}"',
+        'needs_sim_enabled INTEGER NOT NULL DEFAULT 0',
+        'needs_vector TEXT',
+        'start_day_of_week INTEGER NOT NULL DEFAULT 0',
+        'chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+        'chaos_pressure INTEGER NOT NULL DEFAULT 0',
+        'generation_settings TEXT',
+        'user_persona_id TEXT',
+        'passage_of_time_enabled INTEGER NOT NULL DEFAULT 1',
+        'nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0',
+        'cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0',
+      ],
+      'group_members': [
+        // Per current GroupMembers Dart definition + created_at (to match the repair-path CREATE TABLE).
+        // This gives the PRAGMA+ALTER+backup guard for any future columns added to the table
+        // (addresses the previous limitation where only IF NOT EXISTS creation was used).
+        'group_id TEXT NOT NULL',
+        'name TEXT NOT NULL',
+        "description TEXT NOT NULL DEFAULT ''",
+        "personality TEXT NOT NULL DEFAULT ''",
+        "scenario TEXT NOT NULL DEFAULT ''",
+        "first_message TEXT NOT NULL DEFAULT ''",
+        "mes_example TEXT NOT NULL DEFAULT ''",
+        "system_prompt TEXT NOT NULL DEFAULT ''",
+        "post_history_instructions TEXT NOT NULL DEFAULT ''",
+        "alternate_greetings TEXT NOT NULL DEFAULT '[]'",
+        "tags TEXT NOT NULL DEFAULT '[]'",
+        'avatar_filename TEXT',
+        'tts_voice TEXT',
+        'lorebook TEXT',
+        "world_names TEXT NOT NULL DEFAULT '[]'",
+        'front_porch_extensions TEXT',
+        'raw_extensions TEXT',
+        "member_state TEXT NOT NULL DEFAULT '{}'",
+        'updated_at INTEGER NOT NULL DEFAULT 0',
+        'created_at INTEGER NOT NULL DEFAULT 0',
+      ],
+    };
+
+    for (final entry in columnsToEnsure.entries) {
+      final table = entry.key;
+      final expectedDefs = entry.value;
+
+      final existing = await _getExistingColumnNames(table);
+      if (existing.isEmpty) {
+        // Table does not exist in this DB yet. A future onCreate or onUpgrade CREATE
+        // TABLE will bring it in with the full modern definition. Nothing to repair.
+        continue;
+      }
+
+      final missingDefs = <String>[];
+      for (final def in expectedDefs) {
+        final colName = def.split(' ').first;
+        if (!existing.contains(colName)) {
+          missingDefs.add(def);
+        }
+      }
+
+      if (missingDefs.isNotEmpty) {
+        if (!anyRepairDone) {
+          await _createPreRepairBackup();
+          anyRepairDone = true;
+        }
+
+        for (final def in missingDefs) {
+          final colName = def.split(' ').first;
+          try {
+            final sql = 'ALTER TABLE $table ADD COLUMN $def';
+            await customStatement(sql);
+            debugPrint(
+              '[DB] Schema repair: added $table.$colName (recovered from incomplete past migration)',
+            );
+          } catch (e) {
+            debugPrint(
+              '[DB] Schema repair: FAILED to add $table.$colName — $e (app will continue; some features may be limited until manual intervention)',
+            );
+            // Intentionally not re-thrown. The user's irreplaceable chats must remain accessible.
+          }
+        }
+      }
+    }
+
+    stopwatch.stop();
+    if (anyRepairDone) {
+      debugPrint(
+        '[DB] Schema repair completed in ${stopwatch.elapsedMilliseconds}ms — your database is now consistent with app v32+ expectations',
+      );
+    }
+
+    // ── New table for decoupled group members (clean break, no legacy, no blobs) ──
+    // This table + private per-group avatar files (groups/<groupId>/avatars/*.png)
+    // replace all previous characterIds + library materialization for groups.
+    // Created with IF NOT EXISTS + the backup-on-mutation guard for users on old DBs.
+    // Matches the GroupMembers Dart definition (snake_case) + created_at (repair path).
+    // Multi-avatar never supported here; only primary avatarFilename per member.
+    try {
+      final hasMembersTable = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='group_members'",
+      ).get();
+      if (hasMembersTable.isEmpty) {
+        if (!anyRepairDone) {
+          await _createPreRepairBackup();
+          anyRepairDone = true;
+        }
+        // External direct-SQL writers (e.g. Character Card Forge): see GroupMembers
+        // Dart class docs above for v33+ contract. Do not assume legacy characterIds behavior here.
+        // TODO: After this stabilizes in a tagged release, notify maintainers of external direct-SQL tools (Character Card Forge) about the new group_members table and its private-avatar contract.
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS group_members (
+            -- v33+ table (GroupMembers Dart docs): strict UUID PKs + private-avatar semantics only. No legacy characterIds.
+            id TEXT NOT NULL PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            personality TEXT NOT NULL DEFAULT '',
+            scenario TEXT NOT NULL DEFAULT '',
+            first_message TEXT NOT NULL DEFAULT '',
+            mes_example TEXT NOT NULL DEFAULT '',
+            system_prompt TEXT NOT NULL DEFAULT '',
+            post_history_instructions TEXT NOT NULL DEFAULT '',
+            alternate_greetings TEXT NOT NULL DEFAULT '[]',
+            tags TEXT NOT NULL DEFAULT '[]',
+            avatar_filename TEXT,
+            tts_voice TEXT,
+            lorebook TEXT,
+            world_names TEXT NOT NULL DEFAULT '[]',
+            front_porch_extensions TEXT,
+            raw_extensions TEXT,
+            member_state TEXT NOT NULL DEFAULT '{}',
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )
+        ''');
+        debugPrint(
+          '[DB] Schema repair: created group_members table (decoupled group characters; v33+ contract)',
+        );
+      }
+    } catch (e) {
+      debugPrint(
+        '[DB] Schema repair: FAILED to ensure group_members table — $e (continuing; groups may be limited)',
+      );
+    }
+
+    // Post-creation lightweight orphan diagnostic (one query, non-fatal, launch-time only).
+    try {
+      final res = await customSelect(
+        'SELECT COUNT(*) as cnt FROM group_members gm LEFT JOIN groups g ON gm.group_id = g.id WHERE g.id IS NULL',
+      ).get();
+      final cnt = res.isNotEmpty ? (res.first.data['cnt'] as int? ?? 0) : 0;
+      if (cnt > 0) {
+        debugPrint(
+          '[DB] WARNING: $cnt orphaned group_members row(s) with no matching group (pre-v33 DB integrity issue)',
+        );
+      }
+    } catch (_) {}
+
+    if (anyRepairDone) {
+      // Re-log if we did table creation after the column phase
+      debugPrint(
+        '[DB] Schema repair (including new tables) completed in ${stopwatch.elapsedMilliseconds}ms total',
+      );
+    }
+  }
+
+  /// Introspects the live physical columns using the SQLite PRAGMA that works
+  /// even when Drift's internal schema snapshot is ahead of the on-disk reality.
+  Future<Set<String>> _getExistingColumnNames(String tableName) async {
+    try {
+      final result = await customSelect('PRAGMA table_info($tableName)').get();
+      return result
+          .map((row) => row.data['name'] as String?)
+          .where((name) => name != null && name.isNotEmpty)
+          .cast<String>()
+          .toSet();
+    } catch (e) {
+      debugPrint(
+        '[DB] Could not PRAGMA table_info for $tableName (table may be very old or locked): $e',
+      );
+      return <String>{};
+    }
+  }
+
+  /// Creates a byte-for-byte copy of the current .db file with a timestamped suffix
+  /// the first time this launch is about to perform any ALTER. This is the belt-and-
+  /// suspenders protection for users who have explicitly stated that DB deletion or
+  /// any risk of losing character chat history is unacceptable.
+  Future<void> _createPreRepairBackup() async {
+    try {
+      final path = dbFilePath;
+      if (path == null) return;
+      final dbFile = File(path);
+      if (!await dbFile.exists()) return;
+
+      final ts = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final backupPath = '$path.pre-schema-repair-$ts';
+      await dbFile.copy(backupPath);
+      debugPrint(
+        '[DB] SAFETY BACKUP created before schema repair: $backupPath',
+      );
+      debugPrint(
+        '[DB] If anything ever goes wrong, you can rename this file back to front_porch.db to restore your exact previous state (all chats, objectives, groups, etc.).',
+      );
+    } catch (e) {
+      debugPrint(
+        '[DB] Could not create pre-repair backup (non-fatal — repair will still attempt): $e',
+      );
+    }
+  }
+
+  /// Public helper so that direct-open paths (reunification, certain test or recovery
+  /// scenarios) can explicitly ensure the schema matches before using group or objective
+  /// features. The primary AppDatabase.instance() path calls the repair automatically.
+  Future<void> ensureSchemaIsRepaired() => _repairMissingSchemaColumns();
+
   /// Close the database and clear the singleton so the next call to
   /// [instance()] will open a fresh connection to the file on disk.
   /// Used after cloud sync downloads a new .db file.
@@ -495,11 +929,14 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  /// For testing: create an in-memory database.
+  /// For testing: create a temporary database backed by a real file.
+  /// Uses a system temp directory so the background isolate can access it.
   factory AppDatabase.forTesting() {
+    final tmpDir = Directory.systemTemp.createTempSync('fpai_test_');
+    final file = File('${tmpDir.path}/test.db');
     return AppDatabase._internal(
       NativeDatabase.createInBackground(
-        File(':memory:'),
+        file,
         setup: (db) => db.execute('PRAGMA synchronous = FULL'),
       ),
     );
@@ -516,7 +953,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -942,6 +1379,108 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('ALTER TABLE personas DROP COLUMN description');
         } catch (_) {}
       }
+      if (from < 27) {
+        // v26->v27: add per-session needs simulation (flag + vector)
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN needs_sim_enabled INTEGER NOT NULL DEFAULT 0',
+          );
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN needs_vector TEXT',
+          );
+        } catch (_) {}
+      }
+      if (from < 28) {
+        // v27->v28: persist narrative weekday anchor (startDayOfWeek) so Day N always maps to the same weekday across app restarts
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN start_day_of_week INTEGER NOT NULL DEFAULT 0',
+          );
+        } catch (_) {}
+      }
+      if (from < 29) {
+        // v28→v29: scope objectives to chat sessions (fix bleeding between chats)
+        try {
+          await customStatement(
+            'ALTER TABLE objectives ADD COLUMN chat_id TEXT',
+          );
+        } catch (_) {}
+      }
+      if (from < 30) {
+        // v29→v30: Proper DB-backed group realism/needs storage (clean break — no support
+        // for old hidden __group_state__ checkpoint messages). Added with explicit dev
+        // authorization. External direct-SQL tools will need to adapt.
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN default_member_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE sessions ADD COLUMN group_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+      }
+      if (from < 31) {
+        // v30→v31: Group configuration columns for Chaos Mode toggles (including NSFW
+        // variant), group-scoped lorebook + world selection/inheritance, and an immutable
+        // creation-time baseline realism seed (separate from the mutable default member
+        // state added in v30). Stored as clean dedicated columns (INTEGER for Bool, TEXT
+        // for JSON strings) rather than inside a single JSON blob or piggy-backing on
+        // character_ids / scenario etc. Follows v30 precedent of explicit columns over
+        // hidden/magic storage for group concerns — improves Drift queries, self-documents
+        // the schema for maintainers, and makes the contract obvious for external
+        // direct-SQL writers. Purpose: enable precise group-level Chaos + lore scoping +
+        // creation-seed baselines for Group Cards and new sessions. Added with explicit
+        // dev authorization. External direct-SQL tools will need to adapt (provide values
+        // or rely on the NOT NULL DEFAULTs documented here when writing to the groups table).
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN chaos_nsfw_enabled INTEGER NOT NULL DEFAULT 0',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            "ALTER TABLE groups ADD COLUMN group_lorebook TEXT NOT NULL DEFAULT ''",
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            "ALTER TABLE groups ADD COLUMN world_ids TEXT NOT NULL DEFAULT '[]'",
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN inherit_character_lorebooks INTEGER NOT NULL DEFAULT 1',
+          );
+        } catch (_) {}
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN baseline_realism_state TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+      }
+
+      if (from < 32) {
+        // v31→v32: Final cleanup of the last "Path B" transitional JSON blob hack.
+        // Per-character system prompts (group-scoped overrides) now have their own
+        // first-class TEXT column instead of being merged into defaultMemberRealismState.
+        // This completes the move to explicit columns for all group-level configuration
+        // (following the v30 and v31 philosophy). All extraction/promotion logic that
+        // previously read/wrote 'character_system_prompts' inside the realism blob has
+        // been fully removed. Old data in the blob is ignored on load going forward.
+        // External direct-SQL tools must now use the new column.
+        try {
+          await customStatement(
+            'ALTER TABLE groups ADD COLUMN character_system_prompts TEXT NOT NULL DEFAULT "{}"',
+          );
+        } catch (_) {}
+      }
     },
   );
 
@@ -1182,7 +1721,12 @@ class AppDatabase extends _$AppDatabase {
   /// Hard-delete all soft-deleted rows from every table and VACUUM the database
   /// to reclaim disk space. Without this, deleted messages accumulate and bloat
   /// the DB (e.g. 59k deleted messages = 300+ MB of wasted space).
-  Future<int> purgeDeletedRows() async {
+  ///
+  /// [skipTables] — optional set of table names (lowercase, e.g. {'characters','groups'})
+  ///                whose soft-deleted rows should be left behind. Used before cloud
+  ///                sync so that recent character/group deletion flags survive long
+  ///                enough for the DB file + merge to propagate them to other devices.
+  Future<int> purgeDeletedRows({Set<String> skipTables = const {}}) async {
     int total = 0;
     for (final table in [
       'messages',
@@ -1193,6 +1737,12 @@ class AppDatabase extends _$AppDatabase {
       'personas',
       'worlds',
     ]) {
+      if (skipTables.contains(table)) {
+        debugPrint(
+          '[DB] Skipping purge of soft-deleted rows in $table (deletion signal protection for cloud sync)',
+        );
+        continue;
+      }
       final count = await customUpdate(
         'DELETE FROM $table WHERE deleted_at IS NOT NULL',
         updates: {},
@@ -1282,6 +1832,37 @@ class AppDatabase extends _$AppDatabase {
     return count;
   }
 
+  /// Soft-delete a character (sets deletedAt + updatedAt on the row) while
+  /// performing the same hard cascade delete of its dependent sessions and
+  /// messages. The soft-deleted row remains in the table (with the flag) so
+  /// that cloud DB sync + DatabaseMergeService can propagate the deletion
+  /// to other devices and prevent resurrection.
+  ///
+  /// This is the method that should be called from user-facing delete paths
+  /// (repositories) when cloud sync is active. The hard `deleteCharacterById`
+  /// is retained for internal purge/migration use.
+  Future<int> softDeleteCharacterById(String id) async {
+    // Hard cascade the child data (sessions + messages). These are not
+    // independently surfaced in the UI and do not need soft-delete flags
+    // for the character deletion propagation use case.
+    final charSessions = await (select(
+      sessions,
+    )..where((s) => s.characterId.equals(id))).get();
+    for (final s in charSessions) {
+      await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
+    }
+    await (delete(sessions)..where((s) => s.characterId.equals(id))).go();
+
+    // Soft-delete the primary character row so the flag travels with the DB.
+    final now = DateTime.now();
+    final count = await (update(characters)..where((c) => c.id.equals(id)))
+        .write(
+          CharactersCompanion(deletedAt: Value(now), updatedAt: Value(now)),
+        );
+    await bumpSyncVersion();
+    return count;
+  }
+
   // ── Avatar Queries ──────────────────────────────────────────────────
 
   /// Get all avatar images for a character.
@@ -1296,14 +1877,16 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get a single avatar by ID.
   Future<AvatarImage?> getAvatarById(String id) async {
-    return (select(avatarImages)..where((a) => a.id.equals(id))).getSingleOrNull();
+    return (select(
+      avatarImages,
+    )..where((a) => a.id.equals(id))).getSingleOrNull();
   }
 
   /// Count avatars for a character (to determine next display order).
   Future<int> countAvatarsForCharacter(String characterId) async {
-    final result = await (select(avatarImages)
-          ..where((a) => a.characterId.equals(characterId)))
-        .get();
+    final result = await (select(
+      avatarImages,
+    )..where((a) => a.characterId.equals(characterId))).get();
     return result.length;
   }
 
@@ -1315,13 +1898,18 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete an avatar image record.
   Future<int> deleteAvatar(String id) async {
-    final count = await (delete(avatarImages)..where((a) => a.id.equals(id))).go();
+    final count = await (delete(
+      avatarImages,
+    )..where((a) => a.id.equals(id))).go();
     await bumpSyncVersion();
     return count;
   }
 
   /// Update the prime avatar index for a character.
-  Future<void> updatePrimeAvatarIndex(String characterId, int primeIndex) async {
+  Future<void> updatePrimeAvatarIndex(
+    String characterId,
+    int primeIndex,
+  ) async {
     await (update(characters)..where((c) => c.id.equals(characterId))).write(
       CharactersCompanion(primeAvatarIndex: Value(primeIndex)),
     );
@@ -1510,7 +2098,61 @@ class AppDatabase extends _$AppDatabase {
       await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
     }
     await (delete(sessions)..where((s) => s.groupId.equals(id))).go();
+
+    // Clean group-owned members (decoupled storage). Their private avatar files under
+    // groups/<id>/ are cleaned by the repository layer using StorageService.
+    await customStatement('DELETE FROM group_members WHERE group_id = ?', [id]);
+
     final count = await (delete(groups)..where((g) => g.id.equals(id))).go();
+    await bumpSyncVersion();
+    return count;
+  }
+
+  /// Soft-delete a group (sets deletedAt + updatedAt) while hard-cascading its
+  /// dependent sessions and messages. The soft-deleted row stays so cloud DB
+  /// sync can propagate the deletion flag and the merge layer can prevent
+  /// resurrection on other devices.
+  Future<int> softDeleteGroupById(String id) async {
+    final groupSessions = await (select(
+      sessions,
+    )..where((s) => s.groupId.equals(id))).get();
+    for (final s in groupSessions) {
+      await (delete(messages)..where((m) => m.sessionId.equals(s.id))).go();
+    }
+    await (delete(sessions)..where((s) => s.groupId.equals(id))).go();
+
+    // Clean group-owned members (decoupled storage). Avatar files cleaned by repo layer.
+    await customStatement('DELETE FROM group_members WHERE group_id = ?', [id]);
+
+    final now = DateTime.now();
+    final count = await (update(groups)..where((g) => g.id.equals(id))).write(
+      GroupsCompanion(deletedAt: Value(now), updatedAt: Value(now)),
+    );
+    await bumpSyncVersion();
+    return count;
+  }
+
+  // ── Group Member Queries (decoupled characters, UUID keys, no blobs) ──
+  // See GroupMembers table docs for contract. All per-member state keys use the UUID id.
+
+  Future<List<GroupMemberRow>> getGroupMembers(String groupId) =>
+      (select(groupMembers)..where((m) => m.groupId.equals(groupId))).get();
+
+  Future<int> insertGroupMember(GroupMembersCompanion member) async {
+    final result = await into(groupMembers).insert(member);
+    await bumpSyncVersion();
+    return result;
+  }
+
+  Future<void> updateGroupMember(GroupMembersCompanion member) async {
+    await (update(groupMembers)..where((m) => m.id.equals(member.id.value))).write(member);
+    await bumpSyncVersion();
+  }
+
+  Future<int> deleteGroupMembersForGroup(String groupId) async {
+    final count = await (delete(
+      groupMembers,
+    )..where((m) => m.groupId.equals(groupId))).go();
     await bumpSyncVersion();
     return count;
   }
@@ -1695,9 +2337,16 @@ class AppDatabase extends _$AppDatabase {
 
   // ── Objectives ─────────────────────────────────────────────────────
 
-  Future<List<Objective>> getObjectivesForCharacter(String characterId) =>
+  Future<List<Objective>> getObjectivesForCharacter(
+    String characterId, {
+    String? chatId,
+  }) =>
       (select(objectives)
             ..where((o) => o.characterId.equals(characterId))
+            ..where(
+              (o) =>
+                  chatId == null ? o.chatId.isNull() : o.chatId.equals(chatId),
+            )
             ..orderBy([
               (o) => OrderingTerm(
                 expression: o.createdAt,
@@ -1706,10 +2355,16 @@ class AppDatabase extends _$AppDatabase {
             ]))
           .get();
 
-  Future<List<Objective>> getActiveObjectives(String characterId) =>
+  Future<List<Objective>> getActiveObjectives(
+    String characterId, {
+    required String chatId,
+  }) =>
       (select(objectives)
             ..where(
-              (o) => o.characterId.equals(characterId) & o.active.equals(true),
+              (o) =>
+                  o.characterId.equals(characterId) &
+                  o.chatId.equals(chatId) &
+                  o.active.equals(true),
             )
             ..orderBy([
               (o) => OrderingTerm(
@@ -1736,6 +2391,9 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteObjectivesForCharacter(String characterId) => (delete(
     objectives,
   )..where((o) => o.characterId.equals(characterId))).go();
+
+  Future<int> deleteObjectivesForChat(String chatId) =>
+      (delete(objectives)..where((o) => o.chatId.equals(chatId))).go();
 
   // ── Story Project Queries ────────────────────────────────────────────
 

@@ -32,7 +32,8 @@ import 'package:front_porch_ai/database/database.dart' hide StoryProject;
 class StoryPipelineService extends ChangeNotifier {
   final StoryRepository _repository;
   final LLMService _llmService;
-  final MemoryService _memoryService;
+  final MemoryService
+  _memoryService; // ignore: unused_field - Reserved for future story RAG / memory injection
   final AppDatabase _db;
 
   bool _isRunning = false;
@@ -47,7 +48,12 @@ class StoryPipelineService extends ChangeNotifier {
   String get streamingText => _streamingText;
   int get tokenCount => _tokenCount;
 
-  StoryPipelineService(this._repository, this._llmService, this._memoryService, this._db);
+  StoryPipelineService(
+    this._repository,
+    this._llmService,
+    this._memoryService,
+    this._db,
+  );
 
   /// Public method for the UI to preview what chat history will be imported.
   /// Always pulls full messages from the DB (not RAG embeddings which are windowed summaries).
@@ -57,7 +63,9 @@ class StoryPipelineService extends ChangeNotifier {
     }
     final messages = <String>[];
     try {
-      final resolvedIds = await _resolveSessionCharacterIds(project.chatHistoryCharacterIds);
+      final resolvedIds = await _resolveSessionCharacterIds(
+        project.chatHistoryCharacterIds,
+      );
       for (final charId in resolvedIds) {
         final sessions = await _db.getSessionsForCharacter(charId);
         for (final session in sessions) {
@@ -65,7 +73,9 @@ class StoryPipelineService extends ChangeNotifier {
           for (final msg in msgs) {
             try {
               final swipes = jsonDecode(msg.swipes) as List;
-              final text = swipes.isNotEmpty ? swipes[msg.swipeIndex.clamp(0, swipes.length - 1)] : '';
+              final text = swipes.isNotEmpty
+                  ? swipes[msg.swipeIndex.clamp(0, swipes.length - 1)]
+                  : '';
               if (text.toString().trim().isNotEmpty) {
                 messages.add('${msg.sender}: $text');
               }
@@ -83,21 +93,23 @@ class StoryPipelineService extends ChangeNotifier {
   /// Resolve character IDs to actual session characterIds.
   /// The stored IDs might be embed-IDs, DB PKs, or filename-based IDs.
   /// This method cross-references by character name to find ALL session IDs.
-  Future<Set<String>> _resolveSessionCharacterIds(List<String> storedIds) async {
+  Future<Set<String>> _resolveSessionCharacterIds(
+    List<String> storedIds,
+  ) async {
     final resolved = <String>{};
     resolved.addAll(storedIds);
-    
+
     try {
       final allChars = await _db.select(_db.characters).get();
       final allSessions = await _db.select(_db.sessions).get();
-      
+
       for (final storedId in storedIds) {
         // Find this character in the Characters table
         final matchingChar = allChars.where((c) => c.id == storedId);
         if (matchingChar.isEmpty) continue;
-        
+
         final charName = matchingChar.first.name;
-        
+
         // Find ALL sessions whose characterId maps to a character with the same name
         for (final sess in allSessions) {
           if (sess.characterId == null) continue;
@@ -110,7 +122,7 @@ class StoryPipelineService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[StoryPipeline] ID resolution error: $e');
     }
-    
+
     // Remove the original stored IDs if they don't match any sessions
     // (only keep IDs that actually have sessions)
     return resolved;
@@ -124,13 +136,19 @@ class StoryPipelineService extends ChangeNotifier {
 
   // ── JSON UTILITIES ──────────────────────────────────────────────────
 
-  /// Strip <think>...</think> blocks from reasoning-model output.
+  /// Strip `<think>...</think>` blocks from reasoning-model output.
   static String _stripThinkTags(String text) {
     // Handle both complete and unclosed think tags
     // Complete: <think>...</think> (including multiple blocks)
-    var result = text.replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '');
+    var result = text.replaceAll(
+      RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+      '',
+    );
     // Also handle <reasoning>...</reasoning> blocks (some models use this)
-    result = result.replaceAll(RegExp(r'<reasoning>[\s\S]*?</reasoning>', caseSensitive: false), '');
+    result = result.replaceAll(
+      RegExp(r'<reasoning>[\s\S]*?</reasoning>', caseSensitive: false),
+      '',
+    );
     // Unclosed (model still reasoning): <think>... without closing tag
     final openTagIdx = result.indexOf(RegExp(r'<think>', caseSensitive: false));
     if (openTagIdx != -1) {
@@ -150,10 +168,14 @@ class StoryPipelineService extends ChangeNotifier {
 
     // Step 1: Strip <think>...</think> reasoning blocks
     var cleaned = _stripThinkTags(text);
-    debugPrint('[StoryPipeline] After stripping think tags: ${cleaned.length} chars (was ${text.length})');
+    debugPrint(
+      '[StoryPipeline] After stripping think tags: ${cleaned.length} chars (was ${text.length})',
+    );
 
     // Step 2: Try to extract from code block
-    final codeBlockMatch = RegExp(r'```(?:json)?\s*([\s\S]*?)\s*```').firstMatch(cleaned);
+    final codeBlockMatch = RegExp(
+      r'```(?:json)?\s*([\s\S]*?)\s*```',
+    ).firstMatch(cleaned);
     if (codeBlockMatch != null) return codeBlockMatch.group(1)!.trim();
 
     // Step 3: Strip any text before the first { (e.g. "Here is the JSON:")
@@ -175,9 +197,18 @@ class StoryPipelineService extends ChangeNotifier {
 
     for (int i = 0; i < json.length; i++) {
       final c = json[i];
-      if (escaped) { escaped = false; continue; }
-      if (c == '\\') { escaped = true; continue; }
-      if (c == '"') { inString = !inString; continue; }
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (c == '"') {
+        inString = !inString;
+        continue;
+      }
       if (inString) continue;
       if (c == '{') openBraces++;
       if (c == '}') openBraces--;
@@ -190,8 +221,12 @@ class StoryPipelineService extends ChangeNotifier {
     if (inString) repaired += '"';
 
     // Close open brackets and braces
-    for (int i = 0; i < openBrackets; i++) repaired += ']';
-    for (int i = 0; i < openBraces; i++) repaired += '}';
+    for (int i = 0; i < openBrackets; i++) {
+      repaired += ']';
+    }
+    for (int i = 0; i < openBraces; i++) {
+      repaired += '}';
+    }
 
     return repaired;
   }
@@ -213,7 +248,9 @@ class StoryPipelineService extends ChangeNotifier {
       return jsonDecode(repaired) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('[StoryPipeline] JSON parse error: $e');
-      debugPrint('[StoryPipeline] Cleaned text (first 500): ${cleaned.length > 500 ? cleaned.substring(0, 500) : cleaned}');
+      debugPrint(
+        '[StoryPipeline] Cleaned text (first 500): ${cleaned.length > 500 ? cleaned.substring(0, 500) : cleaned}',
+      );
       return null;
     }
   }
@@ -221,17 +258,41 @@ class StoryPipelineService extends ChangeNotifier {
   // ── STORY ARCHETYPES ────────────────────────────────────────────────
 
   static const _genres = [
-    "Space Opera", "Cyberpunk", "High Fantasy", "Urban Fantasy", "Post-Apocalyptic",
-    "Dystopian", "Gothic Horror", "Cosmic Horror", "Hard Boiled Noir", "Western",
-    "Steampunk", "Romantic Comedy", "Political Thriller", "Espionage", "Superhero",
-    "Slice of Life", "Historical Drama", "Military Sci-Fi", "Whodunit", "Survival Thriller",
+    "Space Opera",
+    "Cyberpunk",
+    "High Fantasy",
+    "Urban Fantasy",
+    "Post-Apocalyptic",
+    "Dystopian",
+    "Gothic Horror",
+    "Cosmic Horror",
+    "Hard Boiled Noir",
+    "Western",
+    "Steampunk",
+    "Romantic Comedy",
+    "Political Thriller",
+    "Espionage",
+    "Superhero",
+    "Slice of Life",
+    "Historical Drama",
+    "Military Sci-Fi",
+    "Whodunit",
+    "Survival Thriller",
   ];
 
   static const _styles = [
-    "Moody & Atmospheric", "Fast-paced & Kinetic", "Witty & Satirical", "Dark & Gritty",
-    "Optimistic & Whimsical", "Intellectual & Philosophical", "Minimalist & Stark",
-    "Lyrical & Poetic", "Suspenseful & Tense", "Melancholic & Reflective",
-    "Campy & Over-the-top", "Brutal & Unflinching",
+    "Moody & Atmospheric",
+    "Fast-paced & Kinetic",
+    "Witty & Satirical",
+    "Dark & Gritty",
+    "Optimistic & Whimsical",
+    "Intellectual & Philosophical",
+    "Minimalist & Stark",
+    "Lyrical & Poetic",
+    "Suspenseful & Tense",
+    "Melancholic & Reflective",
+    "Campy & Over-the-top",
+    "Brutal & Unflinching",
   ];
 
   static const _concepts = [
@@ -290,9 +351,15 @@ class StoryPipelineService extends ChangeNotifier {
   String _getUserPrefsBlock(StoryProject project) {
     final parts = <String>[];
     parts.add('POV: ${project.pov}');
-    if (project.selectedGenres.isNotEmpty) parts.add('Genre: ${project.selectedGenres.join(", ")}');
-    if (project.selectedMoods.isNotEmpty) parts.add('Mood: ${project.selectedMoods.join(", ")}');
-    if (project.writingStyle.isNotEmpty) parts.add('Writing Style: ${project.writingStyle}');
+    if (project.selectedGenres.isNotEmpty) {
+      parts.add('Genre: ${project.selectedGenres.join(", ")}');
+    }
+    if (project.selectedMoods.isNotEmpty) {
+      parts.add('Mood: ${project.selectedMoods.join(", ")}');
+    }
+    if (project.writingStyle.isNotEmpty) {
+      parts.add('Writing Style: ${project.writingStyle}');
+    }
     parts.add('Prose Length: ${project.proseLength}');
     parts.add('Narrative Pace: ${project.narrativePace}');
     parts.add('Dialogue Density: ${project.dialogueDensity}');
@@ -393,15 +460,20 @@ $actExamples
 
     String actGuidance;
     if (actCount == 1) {
-      actGuidance = 'Act 1: Complete arc -- setup, confrontation, and resolution in a single act.';
+      actGuidance =
+          'Act 1: Complete arc -- setup, confrontation, and resolution in a single act.';
     } else if (actCount == 2) {
-      actGuidance = 'Act 1 (Setup): Establish the world and characters, end with the inciting crisis.\nAct 2 (Resolution): Confrontation, climax, and resolution.';
+      actGuidance =
+          'Act 1 (Setup): Establish the world and characters, end with the inciting crisis.\nAct 2 (Resolution): Confrontation, climax, and resolution.';
     } else if (actCount == 3) {
-      actGuidance = 'Act I (The Thesis): The Status Quo. Must end with a one-way door decision.\nAct II (The Antithesis): The Crucible. Must have a midpoint shift and end at "All Hope Is Lost."\nAct III (The Synthesis): The protagonist proves they have changed. Climax where external and internal goals collide.';
+      actGuidance =
+          'Act I (The Thesis): The Status Quo. Must end with a one-way door decision.\nAct II (The Antithesis): The Crucible. Must have a midpoint shift and end at "All Hope Is Lost."\nAct III (The Synthesis): The protagonist proves they have changed. Climax where external and internal goals collide.';
     } else if (actCount == 4) {
-      actGuidance = 'Act 1 (Setup): Establish the world and characters.\nAct 2 (Rising Action): Complications mount, alliances shift.\nAct 3 (Crisis): Everything falls apart, darkest hour.\nAct 4 (Resolution): The protagonist transforms and resolves the conflict.';
+      actGuidance =
+          'Act 1 (Setup): Establish the world and characters.\nAct 2 (Rising Action): Complications mount, alliances shift.\nAct 3 (Crisis): Everything falls apart, darkest hour.\nAct 4 (Resolution): The protagonist transforms and resolves the conflict.';
     } else {
-      actGuidance = 'Act 1 (Setup): Establish the world and characters.\nAct 2 (Complication): Initial obstacles and discoveries.\nAct 3 (Midpoint Shift): Everything changes, new stakes.\nAct 4 (Crisis): Darkest hour, all seems lost.\nAct 5 (Resolution): Transformation, climax, and resolution.';
+      actGuidance =
+          'Act 1 (Setup): Establish the world and characters.\nAct 2 (Complication): Initial obstacles and discoveries.\nAct 3 (Midpoint Shift): Everything changes, new stakes.\nAct 4 (Crisis): Darkest hour, all seems lost.\nAct 5 (Resolution): Transformation, climax, and resolution.';
     }
 
     return '''You are an author developing story structure. Define exactly $actCount Acts.
@@ -421,7 +493,9 @@ $actExamples
   }
 
   String _getSceneWeaverPrompt(int actNumber, PromptTier tier) {
-    final sceneCount = actNumber == 2 ? '4-6' : (actNumber == 1 ? '3-5' : '3-4');
+    final sceneCount = actNumber == 2
+        ? '4-6'
+        : (actNumber == 1 ? '3-5' : '3-4');
 
     if (tier == PromptTier.smallLocal) {
       return '''Create $sceneCount scenes for Act $actNumber. Each scene needs: number, title, description, location, cast, and a valence score (-10 to +10).
@@ -503,7 +577,9 @@ Output JSON:
     final tier = project.promptTier;
     final pace = project.narrativePace;
     final dialogue = project.dialogueDensity;
-    final style = project.writingStyle.isNotEmpty ? '\n- Match the "${project.writingStyle}" writing style.' : '';
+    final style = project.writingStyle.isNotEmpty
+        ? '\n- Match the "${project.writingStyle}" writing style.'
+        : '';
     if (tier == PromptTier.smallLocal) {
       return '''Write 400-600 words of prose for the current beat. Use $pov POV consistently. Use short paragraphs (2-4 sentences each). Include dialogue where characters are present. Flow from the previous beat and end naturally before the next beat.''';
     }
@@ -512,8 +588,16 @@ Output JSON:
 CRITICAL RULES:
 - Use $pov point of view consistently. NEVER switch POV mid-scene.
 - Use SHORT PARAGRAPHS -- 2-4 sentences maximum per paragraph. Insert blank lines between paragraphs.
-- Dialogue density: $dialogue. ${dialogue == 'Dialogue-Heavy' ? 'Most of the prose should be character dialogue.' : dialogue == 'Sparse' ? 'Use dialogue sparingly; focus on internal narrative and description.' : 'Balance dialogue with narration.'}
-- Narrative pace: $pace. ${pace == 'Slow Burn' ? 'Linger on atmosphere and sensory details.' : pace == 'Fast-Paced' ? 'Keep sentences tight. Favor action verbs. No lingering.' : 'Mix reflection with forward momentum.'}$style
+- Dialogue density: $dialogue. ${dialogue == 'Dialogue-Heavy'
+        ? 'Most of the prose should be character dialogue.'
+        : dialogue == 'Sparse'
+        ? 'Use dialogue sparingly; focus on internal narrative and description.'
+        : 'Balance dialogue with narration.'}
+- Narrative pace: $pace. ${pace == 'Slow Burn'
+        ? 'Linger on atmosphere and sensory details.'
+        : pace == 'Fast-Paced'
+        ? 'Keep sentences tight. Favor action verbs. No lingering.'
+        : 'Mix reflection with forward momentum.'}$style
 - The text must flow smoothly from the previous beat
 - End just before the next beat begins
 - Show, don't tell -- use vivid sensory details
@@ -598,9 +682,14 @@ ${_jsonInstruction(tier)}''';
   // ── PIPELINE STAGES ─────────────────────────────────────────────────
 
   /// Call the LLM and get a text response. Streams tokens to _streamingText for UI.
-  Future<String> _callLLM(String prompt, {int maxLength = 4096, double temp = 0.8}) async {
+  Future<String> _callLLM(
+    String prompt, {
+    int maxLength = 4096,
+    double temp = 0.8,
+  }) async {
     // Prepend an anti-thinking instruction for reasoning models
-    final fullPrompt = 'Do NOT use <think> tags or chain-of-thought reasoning. Respond directly.\n\n$prompt';
+    final fullPrompt =
+        'Do NOT use <think> tags or chain-of-thought reasoning. Respond directly.\n\n$prompt';
 
     final params = GenerationParams(
       prompt: fullPrompt,
@@ -643,7 +732,9 @@ ${_jsonInstruction(tier)}''';
 
     // Prefer the distilled timeline (structured, compressed, LLM-friendly)
     if (project.distilledTimeline.isNotEmpty) {
-      debugPrint('[StoryPipeline] Using distilled timeline (${project.distilledTimeline.length} chars)');
+      debugPrint(
+        '[StoryPipeline] Using distilled timeline (${project.distilledTimeline.length} chars)',
+      );
       return '\n\n## CANON EVENT TIMELINE (distilled from character chat history)\n'
           'The following is a CHRONOLOGICAL TIMELINE of events extracted from actual conversations '
           'between the user and characters. These events are CANON -- they HAPPENED. The story MUST '
@@ -653,10 +744,14 @@ ${_jsonInstruction(tier)}''';
     }
 
     // Fallback: raw messages (slower, noisier, but works if distillation hasn't run)
-    debugPrint('[StoryPipeline] No distilled timeline, falling back to raw messages');
+    debugPrint(
+      '[StoryPipeline] No distilled timeline, falling back to raw messages',
+    );
     try {
       final allMessages = <String>[];
-      final resolvedIds = await _resolveSessionCharacterIds(project.chatHistoryCharacterIds);
+      final resolvedIds = await _resolveSessionCharacterIds(
+        project.chatHistoryCharacterIds,
+      );
       for (final charId in resolvedIds) {
         final sessions = await _db.getSessionsForCharacter(charId);
         if (sessions.isEmpty) continue;
@@ -665,7 +760,9 @@ ${_jsonInstruction(tier)}''';
           for (final msg in messages) {
             try {
               final swipes = jsonDecode(msg.swipes) as List;
-              final text = swipes.isNotEmpty ? swipes[msg.swipeIndex.clamp(0, swipes.length - 1)] : '';
+              final text = swipes.isNotEmpty
+                  ? swipes[msg.swipeIndex.clamp(0, swipes.length - 1)]
+                  : '';
               if (text.toString().trim().isNotEmpty) {
                 allMessages.add('${msg.sender}: $text');
               }
@@ -677,7 +774,9 @@ ${_jsonInstruction(tier)}''';
 
       if (allMessages.isEmpty) return '';
       final fullHistory = allMessages.join('\n');
-      debugPrint('[StoryPipeline] Loaded ${allMessages.length} raw messages as fallback');
+      debugPrint(
+        '[StoryPipeline] Loaded ${allMessages.length} raw messages as fallback',
+      );
       return '\n\n## CANON CHAT HISTORY (raw messages)\n'
           'These events are CANON. The story MUST follow them:\n$fullHistory\n';
     } catch (e) {
@@ -703,19 +802,29 @@ ${_jsonInstruction(tier)}''';
     try {
       // 1. Load all raw messages from DB
       final allMessages = <String>[];
-      final resolvedIds = await _resolveSessionCharacterIds(project.chatHistoryCharacterIds);
-      debugPrint('[StoryPipeline] Resolved ${project.chatHistoryCharacterIds} -> $resolvedIds');
-      
+      final resolvedIds = await _resolveSessionCharacterIds(
+        project.chatHistoryCharacterIds,
+      );
+      debugPrint(
+        '[StoryPipeline] Resolved ${project.chatHistoryCharacterIds} -> $resolvedIds',
+      );
+
       for (final charId in resolvedIds) {
         final sessions = await _db.getSessionsForCharacter(charId);
-        debugPrint('[StoryPipeline] Found ${sessions.length} sessions for "$charId"');
+        debugPrint(
+          '[StoryPipeline] Found ${sessions.length} sessions for "$charId"',
+        );
         for (final session in sessions) {
           final msgs = await _db.getMessagesForSession(session.id);
-          debugPrint('[StoryPipeline] Session ${session.id}: ${msgs.length} messages');
+          debugPrint(
+            '[StoryPipeline] Session ${session.id}: ${msgs.length} messages',
+          );
           for (final msg in msgs) {
             try {
               final swipes = jsonDecode(msg.swipes) as List;
-              final text = swipes.isNotEmpty ? swipes[msg.swipeIndex.clamp(0, swipes.length - 1)] : '';
+              final text = swipes.isNotEmpty
+                  ? swipes[msg.swipeIndex.clamp(0, swipes.length - 1)]
+                  : '';
               if (text.toString().trim().isNotEmpty) {
                 allMessages.add('${msg.sender}: $text');
               }
@@ -731,22 +840,30 @@ ${_jsonInstruction(tier)}''';
         return;
       }
 
-      debugPrint('[StoryPipeline] Distilling ${allMessages.length} messages...');
+      debugPrint(
+        '[StoryPipeline] Distilling ${allMessages.length} messages...',
+      );
 
       // 2. Chunk messages into groups of ~50
       const chunkSize = 50;
       final chunks = <List<String>>[];
       for (int i = 0; i < allMessages.length; i += chunkSize) {
-        chunks.add(allMessages.sublist(i, (i + chunkSize).clamp(0, allMessages.length)));
+        chunks.add(
+          allMessages.sublist(i, (i + chunkSize).clamp(0, allMessages.length)),
+        );
       }
 
       // 3. Distill each chunk
       final chunkTimelines = <String>[];
       for (int i = 0; i < chunks.length; i++) {
-        _setStatus('Chat Distiller', 'Distilling chunk ${i + 1}/${chunks.length} (${allMessages.length} messages total)...');
+        _setStatus(
+          'Chat Distiller',
+          'Distilling chunk ${i + 1}/${chunks.length} (${allMessages.length} messages total)...',
+        );
         final chunkText = chunks[i].join('\n');
 
-        final prompt = '''You are a story analyst. Read the following conversation between a user and an AI character and extract a CHRONOLOGICAL TIMELINE of plot-significant events.
+        final prompt =
+            '''You are a story analyst. Read the following conversation between a user and an AI character and extract a CHRONOLOGICAL TIMELINE of plot-significant events.
 
 For each event, write a single concise entry in this format:
 [EVENT N] Description of what happened, who was involved, the emotional tone, and any revelations or relationship changes.
@@ -774,8 +891,12 @@ Extract the timeline now. Output ONLY the timeline entries, nothing else.''';
       // 4. If multiple chunks, do a final merge pass
       String finalTimeline;
       if (chunkTimelines.length > 1) {
-        _setStatus('Chat Distiller', 'Merging ${chunkTimelines.length} timeline chunks...');
-        final mergePrompt = '''You are a story analyst. Below are timeline chunks extracted from different parts of a long conversation. Merge them into a SINGLE CHRONOLOGICAL TIMELINE.
+        _setStatus(
+          'Chat Distiller',
+          'Merging ${chunkTimelines.length} timeline chunks...',
+        );
+        final mergePrompt =
+            '''You are a story analyst. Below are timeline chunks extracted from different parts of a long conversation. Merge them into a SINGLE CHRONOLOGICAL TIMELINE.
 
 Remove any duplicate events. Maintain chronological order. Keep the [EVENT N] format and renumber sequentially.
 
@@ -783,7 +904,11 @@ ${chunkTimelines.asMap().entries.map((e) => '--- CHUNK ${e.key + 1} ---\n${e.val
 
 Output the merged, deduplicated, chronologically ordered timeline. Output ONLY the timeline entries.''';
 
-        final mergeResponse = await _callLLM(mergePrompt, maxLength: 8192, temp: 0.2);
+        final mergeResponse = await _callLLM(
+          mergePrompt,
+          maxLength: 8192,
+          temp: 0.2,
+        );
         finalTimeline = _stripThinkTags(mergeResponse).trim();
       } else {
         finalTimeline = chunkTimelines.isNotEmpty ? chunkTimelines.first : '';
@@ -793,10 +918,16 @@ Output the merged, deduplicated, chronologically ordered timeline. Output ONLY t
       project.distilledTimeline = finalTimeline;
       await _repository.saveProject(project);
 
-      final eventCount = RegExp(r'\[EVENT \d+\]').allMatches(finalTimeline).length;
-      debugPrint('[StoryPipeline] Distilled ${allMessages.length} messages into $eventCount events');
-      _setStatus('Chat Distiller', 'Distilled $eventCount events from ${allMessages.length} messages!');
-
+      final eventCount = RegExp(
+        r'\[EVENT \d+\]',
+      ).allMatches(finalTimeline).length;
+      debugPrint(
+        '[StoryPipeline] Distilled ${allMessages.length} messages into $eventCount events',
+      );
+      _setStatus(
+        'Chat Distiller',
+        'Distilled $eventCount events from ${allMessages.length} messages!',
+      );
     } catch (e) {
       _setStatus('Chat Distiller', 'Error: $e');
       rethrow;
@@ -811,10 +942,18 @@ Output the merged, deduplicated, chronologically ordered timeline. Output ONLY t
     if (project.characterCardSnapshots.isEmpty) return '';
 
     final buffer = StringBuffer();
-    buffer.writeln('\n\n## Character Definitions (from imported character cards)');
-    buffer.writeln('These are the CORE characters of the story. Use their names, personalities, ');
-    buffer.writeln('descriptions, and relationships faithfully. You MAY create additional supporting ');
-    buffer.writeln('NPCs, antagonists, and side characters to enrich the story, but the characters ');
+    buffer.writeln(
+      '\n\n## Character Definitions (from imported character cards)',
+    );
+    buffer.writeln(
+      'These are the CORE characters of the story. Use their names, personalities, ',
+    );
+    buffer.writeln(
+      'descriptions, and relationships faithfully. You MAY create additional supporting ',
+    );
+    buffer.writeln(
+      'NPCs, antagonists, and side characters to enrich the story, but the characters ',
+    );
     buffer.writeln('below should be the central figures.\n');
 
     for (int i = 0; i < project.characterCardSnapshots.length; i++) {
@@ -822,7 +961,9 @@ Output the merged, deduplicated, chronologically ordered timeline. Output ONLY t
       final role = snap['role'] ?? 'Supporting';
       final isSelfInsert = snap['self_insert'] == 'true';
       final roleLabel = isSelfInsert ? '$role — User Self-Insert' : role;
-      buffer.writeln('### Character ${i + 1}: ${snap['name'] ?? 'Unknown'} ($roleLabel)');
+      buffer.writeln(
+        '### Character ${i + 1}: ${snap['name'] ?? 'Unknown'} ($roleLabel)',
+      );
       if (snap['description']?.isNotEmpty == true) {
         buffer.writeln('Description: ${snap['description']}');
       }
@@ -854,7 +995,8 @@ Output the merged, deduplicated, chronologically ordered timeline. Output ONLY t
       final charContext = _getCharacterCardContext(project);
       final systemPrompt = _getStoryArchitectPrompt(project);
 
-      final prompt = '''$systemPrompt
+      final prompt =
+          '''$systemPrompt
 
 Input Concept: ${project.concept}
 $charContext
@@ -924,11 +1066,18 @@ ${chatContext.isNotEmpty ? '\nCRITICAL: Chat history is provided above. This is 
   /// Stage 2: Act Structurer — story bible → 3 acts.
   Future<void> runActStructurer(StoryProject project) async {
     _isRunning = true;
-    _setStatus('Act Structurer', 'Designing ${project.actCount}-act structure...');
+    _setStatus(
+      'Act Structurer',
+      'Designing ${project.actCount}-act structure...',
+    );
 
     try {
-      final systemPrompt = _getActStructurePrompt(project.actCount, project.promptTier);
-      final prompt = '''$systemPrompt
+      final systemPrompt = _getActStructurePrompt(
+        project.actCount,
+        project.promptTier,
+      );
+      final prompt =
+          '''$systemPrompt
 
 Story Concept: ${project.concept}
 Status Quo: ${project.statusQuo}
@@ -949,7 +1098,10 @@ Threads: ${jsonEncode(project.threads.map((t) => t.toJson()).toList())}''';
           .toList();
 
       await _repository.saveProject(project);
-      _setStatus('Act Structurer', '${project.actCount}-act structure created!');
+      _setStatus(
+        'Act Structurer',
+        '${project.actCount}-act structure created!',
+      );
     } catch (e) {
       _setStatus('Act Structurer', 'Error: $e');
       rethrow;
@@ -970,7 +1122,8 @@ Threads: ${jsonEncode(project.threads.map((t) => t.toJson()).toList())}''';
       final systemPrompt = _getSceneWeaverPrompt(actNum, project.promptTier);
       final previousContext = _getPreviousActsContext(project, actIndex);
       final chatContext = await _getChatHistoryContext(project);
-      final prompt = '''$systemPrompt
+      final prompt =
+          '''$systemPrompt
 
 Story Concept: ${project.concept}
 Themes: ${project.themes}
@@ -1007,7 +1160,10 @@ ${chatContext.isNotEmpty ? '\nCRITICAL: The chat history above is CANON. Scenes 
       }
 
       await _repository.saveProject(project);
-      _setStatus('Scene Weaver', 'Act $actNum scenes created! (${project.scenes[actIndex]?.length ?? 0} scenes)');
+      _setStatus(
+        'Scene Weaver',
+        'Act $actNum scenes created! (${project.scenes[actIndex]?.length ?? 0} scenes)',
+      );
     } catch (e) {
       _setStatus('Scene Weaver', 'Error: $e');
       rethrow;
@@ -1018,14 +1174,19 @@ ${chatContext.isNotEmpty ? '\nCRITICAL: The chat history above is CANON. Scenes 
   }
 
   /// Stage 4: Beat Director — scene → beats.
-  Future<void> runBeatDirector(StoryProject project, int actIndex, int sceneIndex) async {
+  Future<void> runBeatDirector(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+  ) async {
     _isRunning = true;
     final scene = project.scenes[actIndex]![sceneIndex];
     _setStatus('Beat Director', 'Breaking down "${scene.title}" into beats...');
 
     try {
       final systemPrompt = _getBeatDirectorPrompt(project.promptTier);
-      final prompt = '''$systemPrompt
+      final prompt =
+          '''$systemPrompt
 
 Scene: ${scene.title}
 Description: ${scene.description}
@@ -1035,28 +1196,35 @@ Active Threads: ${scene.activeThreadIds.join(', ')}
 Scene Valence: ${scene.valence}''';
 
       final response = await _callLLM(prompt, maxLength: 6144);
-      debugPrint('[BeatDirector] Raw response (first 500): ${response.length > 500 ? response.substring(0, 500) : response}');
+      debugPrint(
+        '[BeatDirector] Raw response (first 500): ${response.length > 500 ? response.substring(0, 500) : response}',
+      );
       final json = parseJson(response);
 
       if (json == null || json['beats'] == null) {
-        debugPrint('[BeatDirector] Parse failed. Keys found: ${json?.keys.toList()}');
+        debugPrint(
+          '[BeatDirector] Parse failed. Keys found: ${json?.keys.toList()}',
+        );
         throw Exception('Failed to parse beats from AI response');
       }
 
       final beatsList = json['beats'] as List;
       debugPrint('[BeatDirector] Found ${beatsList.length} beats');
       if (beatsList.isNotEmpty) {
-        debugPrint('[BeatDirector] First beat keys: ${(beatsList.first as Map).keys.toList()}');
+        debugPrint(
+          '[BeatDirector] First beat keys: ${(beatsList.first as Map).keys.toList()}',
+        );
         debugPrint('[BeatDirector] First beat: ${beatsList.first}');
       }
 
       final sId = '$actIndex-$sceneIndex';
-      project.beats[sId] = beatsList
-          .map((b) => StoryBeat.fromJson(b))
-          .toList();
+      project.beats[sId] = beatsList.map((b) => StoryBeat.fromJson(b)).toList();
 
       await _repository.saveProject(project);
-      _setStatus('Beat Director', '"${scene.title}" broken into ${project.beats[sId]?.length ?? 0} beats!');
+      _setStatus(
+        'Beat Director',
+        '"${scene.title}" broken into ${project.beats[sId]?.length ?? 0} beats!',
+      );
     } catch (e) {
       _setStatus('Beat Director', 'Error: $e');
       rethrow;
@@ -1067,7 +1235,12 @@ Scene Valence: ${scene.valence}''';
   }
 
   /// Stage 5+6: Drafter + Editor — beat → prose.
-  Future<void> runDraftAndEdit(StoryProject project, int actIndex, int sceneIndex, int beatIndex) async {
+  Future<void> runDraftAndEdit(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+    int beatIndex,
+  ) async {
     _isRunning = true;
     final sId = '$actIndex-$sceneIndex';
     final bId = '$sId-$beatIndex';
@@ -1086,13 +1259,18 @@ Scene Valence: ${scene.valence}''';
           : null;
 
       // Build character voices
-      final voices = scene.castNames.map((name) {
-        final char = project.cast.where((c) => c.name == name).firstOrNull;
-        return char != null ? '${char.name} (${char.role}): ${char.description}' : name;
-      }).join('\n');
+      final voices = scene.castNames
+          .map((name) {
+            final char = project.cast.where((c) => c.name == name).firstOrNull;
+            return char != null
+                ? '${char.name} (${char.role}): ${char.description}'
+                : name;
+          })
+          .join('\n');
 
       // Build drafter prompt
-      final drafterPrompt = '''${_getDrafterPrompt(project)}
+      final drafterPrompt =
+          '''${_getDrafterPrompt(project)}
 
 ## Scene: ${scene.title}
 ${scene.description}
@@ -1101,7 +1279,11 @@ ${scene.description}
 ${beat.description}
 
 ## Emotional Shift: ${beat.emotionalShift}
-## Pacing: ${beat.pacing == 0 ? 'SLOW — atmospheric, sensory details' : beat.pacing == 1 ? 'BALANCED — dialogue-heavy' : 'FAST — action, rapid decisions'}
+## Pacing: ${beat.pacing == 0
+              ? 'SLOW — atmospheric, sensory details'
+              : beat.pacing == 1
+              ? 'BALANCED — dialogue-heavy'
+              : 'FAST — action, rapid decisions'}
 ## Valence: ${beat.valence}
 
 ## Characters Present
@@ -1125,7 +1307,8 @@ Write the prose now. Return ONLY the prose text, no commentary.''';
       // Editor pass
       _setStatus('Editor', 'Polishing beat ${beatIndex + 1}...');
 
-      final editorPrompt = '''${_getEditorPrompt(project)}
+      final editorPrompt =
+          '''${_getEditorPrompt(project)}
 
 ## Context
 Scene: ${scene.title}
@@ -1139,7 +1322,10 @@ ${draft.trim()}
 Return ONLY the polished prose text.''';
 
       final edited = await _callLLM(editorPrompt, maxLength: 1024, temp: 0.6);
-      project.prose[bId] = BeatProse(draft: draft.trim(), final_: edited.trim());
+      project.prose[bId] = BeatProse(
+        draft: draft.trim(),
+        final_: edited.trim(),
+      );
 
       await _repository.saveProject(project);
       _setStatus('Editor', 'Beat ${beatIndex + 1} complete!');
@@ -1153,7 +1339,11 @@ Return ONLY the polished prose text.''';
   }
 
   /// Stage 7: Archivist — update cast/lore after prose is written.
-  Future<void> runArchivist(StoryProject project, int actIndex, int sceneIndex) async {
+  Future<void> runArchivist(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+  ) async {
     _isRunning = true;
     _setStatus('Archivist', 'Archiving world updates...');
 
@@ -1167,7 +1357,8 @@ Return ONLY the polished prose text.''';
 
       if (sceneText.isEmpty) return;
 
-      final prompt = '''${_getArchivistPrompt(project.promptTier)}
+      final prompt =
+          '''${_getArchivistPrompt(project.promptTier)}
 
 ## Text to Analyze:
 ${sceneText.toString().substring(0, sceneText.length.clamp(0, 3000))}
@@ -1187,10 +1378,12 @@ ${sceneText.toString().substring(0, sceneText.length.clamp(0, 3000))}
             if (idx != -1) {
               final char = project.cast[idx];
               if (up['append_history'] != null) {
-                char.details['history'] = '${char.details['history'] ?? ''}\n${up['append_history']}';
+                char.details['history'] =
+                    '${char.details['history'] ?? ''}\n${up['append_history']}';
               }
               if (up['append_story_events'] != null) {
-                char.details['story_events'] = '${char.details['story_events'] ?? ''}\n- ${up['append_story_events']}';
+                char.details['story_events'] =
+                    '${char.details['story_events'] ?? ''}\n- ${up['append_story_events']}';
               }
               if (up['update_goals'] != null) {
                 char.details['goals'] = up['update_goals'];
@@ -1204,9 +1397,15 @@ ${sceneText.toString().substring(0, sceneText.length.clamp(0, 3000))}
           for (final up in json['lore_updates'] as List) {
             final entry = StoryLoreEntry.fromJson(up);
             entry.validFromAct = actIndex + 1;
-            entry.validFromScene = (project.scenes[actIndex]?.indexOf(
-              project.scenes[actIndex]!.firstWhere((s) => true, orElse: () => project.scenes[actIndex]!.first)
-            ) ?? 0) + 1;
+            entry.validFromScene =
+                (project.scenes[actIndex]?.indexOf(
+                      project.scenes[actIndex]!.firstWhere(
+                        (s) => true,
+                        orElse: () => project.scenes[actIndex]!.first,
+                      ),
+                    ) ??
+                    0) +
+                1;
             if (!project.lore.any((l) => l.topic == entry.topic)) {
               project.lore.add(entry);
             }
@@ -1227,7 +1426,12 @@ ${sceneText.toString().substring(0, sceneText.length.clamp(0, 3000))}
   }
 
   /// Stage 8: Beat Validator — check continuity.
-  Future<bool> runBeatValidator(StoryProject project, int actIndex, int sceneIndex, int beatIndex) async {
+  Future<bool> runBeatValidator(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+    int beatIndex,
+  ) async {
     final sId = '$actIndex-$sceneIndex';
     final nextBeatIndex = beatIndex + 1;
     if (nextBeatIndex >= (project.beats[sId]?.length ?? 0)) return true;
@@ -1239,7 +1443,8 @@ ${sceneText.toString().substring(0, sceneText.length.clamp(0, 3000))}
       final nextBeat = project.beats[sId]![nextBeatIndex];
       final scene = project.scenes[actIndex]![sceneIndex];
 
-      final prompt = '''${_getBeatValidatorPrompt(project.promptTier)}
+      final prompt =
+          '''${_getBeatValidatorPrompt(project.promptTier)}
 
 Scene Goal: ${scene.description}
 Written Prose Summary: ${prose.substring(0, prose.length.clamp(0, 500))}
@@ -1248,7 +1453,9 @@ Next Beat Plan: ${nextBeat.description}''';
       final response = await _callLLM(prompt, maxLength: 2048);
       final json = parseJson(response);
 
-      if (json != null && json['valid'] == false && json['rectified_beats'] != null) {
+      if (json != null &&
+          json['valid'] == false &&
+          json['rectified_beats'] != null) {
         // Replace future beats with rectified versions
         final rectified = (json['rectified_beats'] as List)
             .map((b) => StoryBeat.fromJson(b))
@@ -1270,7 +1477,11 @@ Next Beat Plan: ${nextBeat.description}''';
   }
 
   /// Auto-write all beats in a scene sequentially.
-  Future<void> autoWriteScene(StoryProject project, int actIndex, int sceneIndex) async {
+  Future<void> autoWriteScene(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+  ) async {
     final sId = '$actIndex-$sceneIndex';
     final beats = project.beats[sId];
     if (beats == null || beats.isEmpty) return;
@@ -1297,9 +1508,15 @@ Next Beat Plan: ${nextBeat.description}''';
     if (currentActIndex == 0) return '';
 
     final buffer = StringBuffer();
-    buffer.writeln('\n\n## STORY SO FAR (Events from previous acts — maintain continuity!)');
-    buffer.writeln('The following is a summary of everything that has happened in the story ');
-    buffer.writeln('up to this point. You MUST maintain consistency with these established ');
+    buffer.writeln(
+      '\n\n## STORY SO FAR (Events from previous acts — maintain continuity!)',
+    );
+    buffer.writeln(
+      'The following is a summary of everything that has happened in the story ',
+    );
+    buffer.writeln(
+      'up to this point. You MUST maintain consistency with these established ',
+    );
     buffer.writeln('events, character developments, and plot threads.\n');
 
     for (int prevAct = 0; prevAct < currentActIndex; prevAct++) {
@@ -1313,7 +1530,9 @@ Next Beat Plan: ${nextBeat.description}''';
         buffer.writeln('\nScenes:');
         for (int s = 0; s < scenes.length; s++) {
           final scene = scenes[s];
-          buffer.writeln('  ${s + 1}. ${scene.title} (${scene.location}) — ${scene.description}');
+          buffer.writeln(
+            '  ${s + 1}. ${scene.title} (${scene.location}) — ${scene.description}',
+          );
           buffer.writeln('     Characters: ${scene.castNames.join(", ")}');
 
           // Include prose excerpts for rich context
@@ -1325,7 +1544,9 @@ Next Beat Plan: ${nextBeat.description}''';
             final prose = project.prose[bId]?.final_;
             if (prose != null && prose.isNotEmpty) {
               // Include a meaningful excerpt
-              final excerpt = prose.length > 300 ? '${prose.substring(0, 300)}...' : prose;
+              final excerpt = prose.length > 300
+                  ? '${prose.substring(0, 300)}...'
+                  : prose;
               proseExcerpts.add(excerpt);
             }
           }
@@ -1350,8 +1571,12 @@ Next Beat Plan: ${nextBeat.description}''';
 
     try {
       // Step 1: Generate scenes (always sequential — single call needed first)
-      if (project.scenes[actIndex] == null || project.scenes[actIndex]!.isEmpty) {
-        _setStatus('Act ${act.number}: Scenes', 'Generating scenes for "${act.title}"...');
+      if (project.scenes[actIndex] == null ||
+          project.scenes[actIndex]!.isEmpty) {
+        _setStatus(
+          'Act ${act.number}: Scenes',
+          'Generating scenes for "${act.title}"...',
+        );
         await runSceneWeaver(project, actIndex);
       }
 
@@ -1364,14 +1589,20 @@ Next Beat Plan: ${nextBeat.description}''';
       for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
         final sId = '$actIndex-$sceneIdx';
         if (project.beats[sId] == null || project.beats[sId]!.isEmpty) {
-          _setStatus('Act ${act.number}: Beats', 'Planning beats for scene ${sceneIdx + 1}/${scenes.length}...');
+          _setStatus(
+            'Act ${act.number}: Beats',
+            'Planning beats for scene ${sceneIdx + 1}/${scenes.length}...',
+          );
           await runBeatDirector(project, actIndex, sceneIdx);
         }
       }
 
       // Write prose for each scene sequentially (beats reference previous beats)
       for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
-        _setStatus('Act ${act.number}: Writing', 'Writing scene ${sceneIdx + 1}/${scenes.length}...');
+        _setStatus(
+          'Act ${act.number}: Writing',
+          'Writing scene ${sceneIdx + 1}/${scenes.length}...',
+        );
         await _writeSceneProseCombined(project, actIndex, sceneIdx);
       }
 
@@ -1387,7 +1618,11 @@ Next Beat Plan: ${nextBeat.description}''';
   }
 
   /// Public method to regenerate prose for a single scene (after clearing old prose).
-  Future<void> regenerateSceneProse(StoryProject project, int actIndex, int sceneIndex) async {
+  Future<void> regenerateSceneProse(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+  ) async {
     _isRunning = true;
     _setStatus('Rewriting', 'Regenerating scene ${sceneIndex + 1} prose...');
     try {
@@ -1403,7 +1638,11 @@ Next Beat Plan: ${nextBeat.description}''';
   }
 
   /// Write prose for a scene beat-by-beat with individual LLM calls.
-  Future<void> _writeSceneProseCombined(StoryProject project, int actIndex, int sceneIndex) async {
+  Future<void> _writeSceneProseCombined(
+    StoryProject project,
+    int actIndex,
+    int sceneIndex,
+  ) async {
     final sId = '$actIndex-$sceneIndex';
     final scenes = project.scenes[actIndex] ?? [];
     if (sceneIndex >= scenes.length) return;
@@ -1421,10 +1660,6 @@ Next Beat Plan: ${nextBeat.description}''';
     final act = project.acts[actIndex];
     final tier = project.promptTier;
 
-    final beatDescriptions = beats.asMap().entries
-        .map((e) => '  ${e.key + 1}. [${e.value.type}] ${e.value.description} (valence: ${e.value.valence})')
-        .join('\n');
-
     final castInfo = scene.castNames.isNotEmpty
         ? 'Characters present: ${scene.castNames.join(", ")}'
         : '';
@@ -1438,7 +1673,9 @@ Next Beat Plan: ${nextBeat.description}''';
       for (int b = prevBeats.length - 1; b >= 0; b--) {
         final prevProse = project.prose['$prevSId-$b']?.final_;
         if (prevProse != null && prevProse.isNotEmpty) {
-          previousSceneText = prevProse.length > 600 ? prevProse.substring(prevProse.length - 600) : prevProse;
+          previousSceneText = prevProse.length > 600
+              ? prevProse.substring(prevProse.length - 600)
+              : prevProse;
           break;
         }
       }
@@ -1452,7 +1689,9 @@ Next Beat Plan: ${nextBeat.description}''';
         for (int b = prevBeats.length - 1; b >= 0; b--) {
           final prevProse = project.prose['$prevSId-$b']?.final_;
           if (prevProse != null && prevProse.isNotEmpty) {
-            previousSceneText = prevProse.length > 600 ? prevProse.substring(prevProse.length - 600) : prevProse;
+            previousSceneText = prevProse.length > 600
+                ? prevProse.substring(prevProse.length - 600)
+                : prevProse;
             break;
           }
         }
@@ -1463,21 +1702,26 @@ Next Beat Plan: ${nextBeat.description}''';
     final pov = project.pov;
     final pace = project.narrativePace;
     final dialogue = project.dialogueDensity;
-    final styleGuide = project.writingStyle.isNotEmpty ? 'Writing Style: ${project.writingStyle}.' : '';
+    final styleGuide = project.writingStyle.isNotEmpty
+        ? 'Writing Style: ${project.writingStyle}.'
+        : '';
     final maturity = project.maturityRating;
 
     // Generate each beat individually for maximum prose length
-    String runningContext = previousSceneText; // Carries forward from scene to scene
+    String runningContext =
+        previousSceneText; // Carries forward from scene to scene
 
     for (int beatIdx = 0; beatIdx < beats.length; beatIdx++) {
       final bId = '$sId-$beatIdx';
-      
+
       // Skip if already finalized
       if (project.prose[bId]?.final_ != null) {
         // Still update running context so the next beat stays continuous
         runningContext = project.prose[bId]!.final_!;
         if (runningContext.length > 600) {
-          runningContext = runningContext.substring(runningContext.length - 600);
+          runningContext = runningContext.substring(
+            runningContext.length - 600,
+          );
         }
         continue;
       }
@@ -1487,7 +1731,10 @@ Next Beat Plan: ${nextBeat.description}''';
       final isOpeningBeat = isFirstScene && isFirstBeat;
 
       // Update status so UI shows per-beat progress
-      _setStatus('Writing', 'Scene ${sceneIndex + 1}, Beat ${beatIdx + 1}/${beats.length}: ${beat.type}...');
+      _setStatus(
+        'Writing',
+        'Scene ${sceneIndex + 1}, Beat ${beatIdx + 1}/${beats.length}: ${beat.type}...',
+      );
 
       // Build forward-context for the last beat so it transitions into the next scene
       String forwardHint = '';
@@ -1502,11 +1749,13 @@ Next Beat Plan: ${nextBeat.description}''';
           if (nextActScenes.isNotEmpty) nextScene = nextActScenes[0];
         }
         if (nextScene != null) {
-          forwardHint = '\nTRANSITION HINT — The NEXT scene is: "${nextScene.title}" at ${nextScene.location}.\n${nextScene.description}\nEnd this beat in a way that naturally leads into the next scene. Do NOT start the next scene — just set up the transition.';
+          forwardHint =
+              '\nTRANSITION HINT — The NEXT scene is: "${nextScene.title}" at ${nextScene.location}.\n${nextScene.description}\nEnd this beat in a way that naturally leads into the next scene. Do NOT start the next scene — just set up the transition.';
         }
       }
 
-      final prompt = '''You are a skilled novelist writing one section of a larger scene.
+      final prompt =
+          '''You are a skilled novelist writing one section of a larger scene.
 
 Story: ${project.concept}
 Act ${act.number}: ${act.title} -- ${act.description}
@@ -1528,13 +1777,25 @@ IMPORTANT -- THIS IS THE OPENING OF THE NOVEL:
 - Open with a hook that draws the reader in immediately.''' : ''}
 
 CONTENT MATURITY: $maturity
-${maturity == 'Explicit' ? 'This is an UNRESTRICTED adult story. Write graphic violence, sexual content, dark themes, and profanity naturally as the story demands. Do NOT censor, fade to black, or skip over explicit scenes. Write them in full vivid detail.' : maturity == 'Mature' ? 'This is a mature adult story. Include realistic violence, strong language, and suggestive/sexual themes where appropriate. You may be moderately graphic but avoid excessive gratuitous detail.' : 'This is a clean story suitable for all audiences. No graphic violence, sexual content, or strong language.'}
+${maturity == 'Explicit'
+              ? 'This is an UNRESTRICTED adult story. Write graphic violence, sexual content, dark themes, and profanity naturally as the story demands. Do NOT censor, fade to black, or skip over explicit scenes. Write them in full vivid detail.'
+              : maturity == 'Mature'
+              ? 'This is a mature adult story. Include realistic violence, strong language, and suggestive/sexual themes where appropriate. You may be moderately graphic but avoid excessive gratuitous detail.'
+              : 'This is a clean story suitable for all audiences. No graphic violence, sexual content, or strong language.'}
 
 WRITING RULES:
 1. Use $pov point of view consistently. ${pov == 'First Person' ? 'The narrator IS the protagonist. Use "I", "my", "me".' : 'NEVER use first person ("I", "my").'}
 2. Use SHORT PARAGRAPHS -- 2-4 sentences maximum per paragraph. Separate paragraphs with blank lines.
-3. Dialogue density: $dialogue. ${dialogue == 'Dialogue-Heavy' ? 'Characters should talk frequently. Dialogue drives the scene.' : dialogue == 'Sparse' ? 'Minimal dialogue. Focus on internal narrative and action.' : 'Balance dialogue with prose.'}
-4. Narrative pace: $pace. ${pace == 'Slow Burn' ? 'Linger on atmosphere and sensory details.' : pace == 'Fast-Paced' ? 'Tight sentences. Favor action. No lingering.' : 'Balance reflection with momentum.'}
+3. Dialogue density: $dialogue. ${dialogue == 'Dialogue-Heavy'
+              ? 'Characters should talk frequently. Dialogue drives the scene.'
+              : dialogue == 'Sparse'
+              ? 'Minimal dialogue. Focus on internal narrative and action.'
+              : 'Balance dialogue with prose.'}
+4. Narrative pace: $pace. ${pace == 'Slow Burn'
+              ? 'Linger on atmosphere and sensory details.'
+              : pace == 'Fast-Paced'
+              ? 'Tight sentences. Favor action. No lingering.'
+              : 'Balance reflection with momentum.'}
 5. Write 400-800 words of rich, detailed prose for this beat.
 6. Vary sentence length. Mix short punchy sentences with longer descriptive ones.
 $styleGuide
@@ -1543,10 +1804,17 @@ $forwardHint
 
 Output ONLY the prose text for this single beat, nothing else. No labels, no headers.''';
 
-      final response = await _callLLM(prompt, maxLength: tier == PromptTier.smallLocal ? 4096 : 8192, temp: 0.85);
+      final response = await _callLLM(
+        prompt,
+        maxLength: tier == PromptTier.smallLocal ? 4096 : 8192,
+        temp: 0.85,
+      );
       final cleanedResponse = _stripThinkTags(response).trim();
 
-      project.prose[bId] = BeatProse(draft: cleanedResponse, final_: cleanedResponse);
+      project.prose[bId] = BeatProse(
+        draft: cleanedResponse,
+        final_: cleanedResponse,
+      );
 
       // Update running context for the next beat
       runningContext = cleanedResponse;

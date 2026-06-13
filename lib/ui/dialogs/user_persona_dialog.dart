@@ -142,7 +142,11 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
               children: [
                 const Text(
                   'User Personas',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white54),
@@ -157,13 +161,17 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                 itemBuilder: (context, index) {
                   final persona = service.personas[index];
                   final isActive = persona.id == service.persona.id;
-                  
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
-                      color: isActive ? Colors.blueAccent.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                      color: isActive
+                          ? Colors.blueAccent.withValues(alpha: 0.1)
+                          : Colors.white.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(8),
-                      border: isActive ? Border.all(color: Colors.blueAccent) : null,
+                      border: isActive
+                          ? Border.all(color: Colors.blueAccent)
+                          : null,
                     ),
                     child: ListTile(
                       leading: PersonaColors.buildPersonaAvatar(
@@ -171,33 +179,51 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                         personaId: persona.id,
                         radius: 20,
                       ),
-                      title: Text(persona.displayLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      title: Text(
+                        persona.displayLabel,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       subtitle: Text(
                         persona.title.isNotEmpty
                             ? persona.name
                             : persona.persona.isNotEmpty
-                                ? (persona.persona.length > 40
-                                    ? '${persona.persona.substring(0, 37)}...'
-                                    : persona.persona)
-                                : '',
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70),
+                            ? (persona.persona.length > 40
+                                  ? '${persona.persona.substring(0, 37)}...'
+                                  : persona.persona)
+                            : '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white70),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (!isActive)
                             TextButton(
-                              onPressed: () => service.setActivePersona(persona.id),
+                              onPressed: () =>
+                                  service.setActivePersona(persona.id),
                               child: const Text('Select'),
                             ),
                           IconButton(
-                            icon: const Icon(Icons.edit, size: 20, color: Colors.white70),
+                            icon: const Icon(
+                              Icons.edit,
+                              size: 20,
+                              color: Colors.white70,
+                            ),
                             onPressed: () => _startEditing(persona),
                           ),
                           if (service.personas.length > 1)
                             IconButton(
-                              icon: const Icon(Icons.delete, size: 20, color: Colors.redAccent),
-                              onPressed: () => _showDeleteConfirmation(context, persona),
+                              icon: const Icon(
+                                Icons.delete,
+                                size: 20,
+                                color: Colors.redAccent,
+                              ),
+                              onPressed: () =>
+                                  _showDeleteConfirmation(context, persona),
                             ),
                         ],
                       ),
@@ -214,19 +240,38 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.auto_awesome, size: 16, color: Colors.purpleAccent),
+                  const Icon(
+                    Icons.auto_awesome,
+                    size: 16,
+                    color: Colors.purpleAccent,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'Learned Facts (${service.persona.learnedFacts.length})',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white70,
+                    ),
                   ),
                   const Spacer(),
                   if (service.persona.learnedFacts.length > 10)
                     TextButton.icon(
-                      onPressed: () => _showClearFactsConfirmation(context, service),
-                      icon: const Icon(Icons.delete_sweep, size: 14, color: Colors.redAccent),
-                      label: const Text('Clear All', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                      onPressed: () =>
+                          _showClearFactsConfirmation(context, service),
+                      icon: const Icon(
+                        Icons.delete_sweep,
+                        size: 14,
+                        color: Colors.redAccent,
+                      ),
+                      label: const Text(
+                        'Clear All',
+                        style: TextStyle(fontSize: 11, color: Colors.redAccent),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                      ),
                     ),
                 ],
               ),
@@ -242,19 +287,30 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                   child: Wrap(
                     spacing: 4,
                     runSpacing: 4,
-                    children: List.generate(service.persona.learnedFacts.length, (i) {
-                      return Chip(
-                        label: Text(
-                          service.persona.learnedFacts[i],
-                          style: const TextStyle(fontSize: 11, color: Colors.white70),
-                        ),
-                        backgroundColor: const Color(0xFF374151),
-                        deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white38),
-                        onDeleted: () => service.removeLearnedFact(i),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      );
-                    }),
+                    children: List.generate(
+                      service.persona.learnedFacts.length,
+                      (i) {
+                        return Chip(
+                          label: Text(
+                            service.persona.learnedFacts[i],
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          backgroundColor: const Color(0xFF374151),
+                          deleteIcon: const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.white38,
+                          ),
+                          onDeleted: () => service.removeLearnedFact(i),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -289,7 +345,11 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
             children: [
               Text(
                 _editingPersona == null ? 'Create Persona' : 'Edit Persona',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.close, color: Colors.white54),
@@ -318,7 +378,11 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                     border: Border.all(color: Colors.white24),
                   ),
                   child: _avatarPath == null
-                      ? const Icon(Icons.add_a_photo, size: 32, color: Colors.white54)
+                      ? const Icon(
+                          Icons.add_a_photo,
+                          size: 32,
+                          color: Colors.white54,
+                        )
                       : null,
                 ),
               ),
@@ -352,7 +416,8 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                         fillColor: Color(0xFF374151),
                         border: OutlineInputBorder(),
                       ),
-                      validator: (value) => value?.isEmpty ?? true ? 'Name is required' : null,
+                      validator: (value) =>
+                          value?.isEmpty ?? true ? 'Name is required' : null,
                     ),
                     const SizedBox(height: 16),
                     // Persona text — expandable
@@ -363,7 +428,8 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                           style: const TextStyle(color: Colors.white),
                           decoration: const InputDecoration(
                             labelText: 'Persona Text',
-                            hintText: 'Describe who you are — appearance, personality, background...',
+                            hintText:
+                                'Describe who you are — appearance, personality, background...',
                             hintStyle: TextStyle(color: Colors.white30),
                             labelStyle: TextStyle(color: Colors.white70),
                             filled: true,
@@ -383,7 +449,9 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                               child: Container(
                                 padding: const EdgeInsets.all(6),
                                 decoration: BoxDecoration(
-                                  color: Colors.blueAccent.withValues(alpha: 0.15),
+                                  color: Colors.blueAccent.withValues(
+                                    alpha: 0.15,
+                                  ),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: const Icon(
@@ -408,14 +476,20 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
             children: [
               TextButton(
                 onPressed: _cancelEditing,
-                child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white70),
+                ),
               ),
               const SizedBox(width: 16),
               ElevatedButton(
                 onPressed: _savePersona,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
                 ),
                 child: const Text('Save'),
               ),
@@ -443,7 +517,11 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                 children: [
                   const Text(
                     'Edit Persona Text',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
@@ -474,7 +552,10 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white70),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton(
@@ -482,7 +563,9 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                       _personaController.text = tempController.text;
                       Navigator.of(dialogContext).pop();
                     },
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                    ),
                     child: const Text('Save'),
                   ),
                 ],
@@ -508,8 +591,11 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
           ),
           ElevatedButton(
             onPressed: () {
-               Provider.of<UserPersonaService>(context, listen: false).deletePersona(persona.id);
-               Navigator.of(context).pop();
+              Provider.of<UserPersonaService>(
+                context,
+                listen: false,
+              ).deletePersona(persona.id);
+              Navigator.of(context).pop();
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text('Delete'),
@@ -519,13 +605,18 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     );
   }
 
-  void _showClearFactsConfirmation(BuildContext context, UserPersonaService service) {
+  void _showClearFactsConfirmation(
+    BuildContext context,
+    UserPersonaService service,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1F2937),
         title: const Text('Clear All Facts'),
-        content: Text('Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.'),
+        content: Text(
+          'Remove all ${service.persona.learnedFacts.length} learned facts? This cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

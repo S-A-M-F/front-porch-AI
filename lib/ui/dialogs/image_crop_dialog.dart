@@ -80,30 +80,30 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
     setState(() => _isPadding = true);
     // Yield to let UI show loading spinner
     await Future.delayed(const Duration(milliseconds: 50));
-    
+
     try {
       final decoded = img.decodeImage(_currentImageBytes);
       if (decoded != null) {
         // Increase canvas size by 25%
         final newWidth = (decoded.width * 1.25).toInt();
         final newHeight = (decoded.height * 1.25).toInt();
-        
+
         final padded = img.Image(width: newWidth, height: newHeight);
         // Fill with app background color
         img.fill(padded, color: img.ColorRgb8(26, 26, 46));
-        
+
         // Center the original image on the new padded canvas
         img.compositeImage(
-          padded, 
-          decoded, 
-          dstX: (newWidth - decoded.width) ~/ 2, 
+          padded,
+          decoded,
+          dstX: (newWidth - decoded.width) ~/ 2,
           dstY: (newHeight - decoded.height) ~/ 2,
         );
-        
+
         final newBytes = img.encodePng(padded);
         if (mounted) {
           setState(() {
-             _currentImageBytes = newBytes;
+            _currentImageBytes = newBytes;
           });
         }
       }
@@ -197,15 +197,16 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                 child: Crop(
                   controller: _cropController,
                   image: _currentImageBytes,
-                  aspectRatio: (widget.aspectRatioWidth != null && widget.aspectRatioHeight != null)
+                  aspectRatio:
+                      (widget.aspectRatioWidth != null &&
+                          widget.aspectRatioHeight != null)
                       ? widget.aspectRatioWidth! / widget.aspectRatioHeight!
                       : null,
                   onCropped: _onCropped,
                   baseColor: const Color(0xFF111827),
                   maskColor: Colors.black.withValues(alpha: 0.6),
-                  cornerDotBuilder: (size, edgeAlignment) => DotControl(
-                    color: Colors.blueAccent,
-                  ),
+                  cornerDotBuilder: (size, edgeAlignment) =>
+                      DotControl(color: Colors.blueAccent),
                   interactive: true,
                   fixCropRect: false,
                 ),
@@ -222,19 +223,40 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                 children: [
                   TextButton.icon(
                     onPressed: (_isCropping || _isPadding) ? null : _padImage,
-                    icon: _isPadding 
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
-                        : const Icon(Icons.zoom_out_map, size: 16, color: Colors.blueAccent),
-                    label: Text(_isPadding ? 'Zooming...' : 'Zoom Out (Pad Canvas)', style: const TextStyle(color: Colors.blueAccent)),
+                    icon: _isPadding
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.blueAccent,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.zoom_out_map,
+                            size: 16,
+                            color: Colors.blueAccent,
+                          ),
+                    label: Text(
+                      _isPadding ? 'Zooming...' : 'Zoom Out (Pad Canvas)',
+                      style: const TextStyle(color: Colors.blueAccent),
+                    ),
                   ),
                   const Spacer(),
                   TextButton(
-                    onPressed: (_isCropping || _isPadding) ? null : () => Navigator.of(context).pop(null),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                    onPressed: (_isCropping || _isPadding)
+                        ? null
+                        : () => Navigator.of(context).pop(null),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white54),
+                    ),
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
-                    onPressed: (_isCropping || _isPadding) ? null : _onCropAndSave,
+                    onPressed: (_isCropping || _isPadding)
+                        ? null
+                        : _onCropAndSave,
                     icon: _isCropping
                         ? const SizedBox(
                             width: 16,
@@ -249,8 +271,13 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ],

@@ -35,8 +35,12 @@ class WavUtils {
 
         int dataOffset = 12;
         while (dataOffset < bytes.length - 8) {
-          final chunkId = String.fromCharCodes(bytes.sublist(dataOffset, dataOffset + 4));
-          final chunkSize = ByteData.sublistView(bytes).getUint32(dataOffset + 4, Endian.little);
+          final chunkId = String.fromCharCodes(
+            bytes.sublist(dataOffset, dataOffset + 4),
+          );
+          final chunkSize = ByteData.sublistView(
+            bytes,
+          ).getUint32(dataOffset + 4, Endian.little);
           if (chunkId == 'data') {
             final pcmStart = dataOffset + 8;
             final pcmEnd = (pcmStart + chunkSize).clamp(0, bytes.length);
@@ -54,14 +58,20 @@ class WavUtils {
       final fileSize = 36 + totalPcmBytes;
       final header = ByteData(44);
       // RIFF
-      header.setUint8(0, 0x52); header.setUint8(1, 0x49);
-      header.setUint8(2, 0x46); header.setUint8(3, 0x46);
+      header.setUint8(0, 0x52);
+      header.setUint8(1, 0x49);
+      header.setUint8(2, 0x46);
+      header.setUint8(3, 0x46);
       header.setUint32(4, fileSize, Endian.little);
-      header.setUint8(8, 0x57); header.setUint8(9, 0x41);
-      header.setUint8(10, 0x56); header.setUint8(11, 0x45);
+      header.setUint8(8, 0x57);
+      header.setUint8(9, 0x41);
+      header.setUint8(10, 0x56);
+      header.setUint8(11, 0x45);
       // fmt
-      header.setUint8(12, 0x66); header.setUint8(13, 0x6D);
-      header.setUint8(14, 0x74); header.setUint8(15, 0x20);
+      header.setUint8(12, 0x66);
+      header.setUint8(13, 0x6D);
+      header.setUint8(14, 0x74);
+      header.setUint8(15, 0x20);
       header.setUint32(16, 16, Endian.little);
       header.setUint16(20, 1, Endian.little);
       header.setUint16(22, channels, Endian.little);
@@ -70,13 +80,19 @@ class WavUtils {
       header.setUint16(32, blockAlign, Endian.little);
       header.setUint16(34, bitsPerSample, Endian.little);
       // data
-      header.setUint8(36, 0x64); header.setUint8(37, 0x61);
-      header.setUint8(38, 0x74); header.setUint8(39, 0x61);
+      header.setUint8(36, 0x64);
+      header.setUint8(37, 0x61);
+      header.setUint8(38, 0x74);
+      header.setUint8(39, 0x61);
       header.setUint32(40, totalPcmBytes, Endian.little);
 
       final tempDir = Directory.systemTemp;
-      final combinedFile = File(p.join(tempDir.path,
-          'tts_combined_${DateTime.now().millisecondsSinceEpoch}.wav'));
+      final combinedFile = File(
+        p.join(
+          tempDir.path,
+          'tts_combined_${DateTime.now().millisecondsSinceEpoch}.wav',
+        ),
+      );
       final sink = combinedFile.openWrite();
       sink.add(header.buffer.asUint8List());
       for (final chunk in pcmChunks) {

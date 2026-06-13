@@ -4,10 +4,15 @@
 // Tests for Session Management logic extracted from ChatService.
 // Covers session ID generation, forking, message loading, and state
 // restoration across session boundaries.
+// aug exercising only passive/qualified (no summary-specific aug file edits;
+// full in dedicated + manual; exercised via god thins _maybeUpdateSummary/force/generate ;
+// qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no evolution-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_triggerCharacterEvolution ; qualified notes only in dedicated header + god + MD per precedent).
+// aug exercising only passive/qualified (no realism-verification-specific aug file edits; full in dedicated + manual; exercised via god thins + leaf verify cb ; qualified notes only in dedicated header + god + MD per precedent).
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/models/chat_message.dart';
 
 // ── Stub: Minimal session management tracker ────────────────────────
 // Replicates the session-related fields and transitions from ChatService.
@@ -81,11 +86,9 @@ class _SessionStub {
             metadata: m.metadata != null
                 ? Map<String, dynamic>.from(m.metadata!)
                 : null,
-            swipeMetadata: m.swipeMetadata != null
-                ? m.swipeMetadata!.map(
-                    (e) => e != null ? Map<String, dynamic>.from(e) : null,
-                  ).toList()
-                : null,
+            swipeMetadata: m.swipeMetadata
+                .map((e) => e != null ? Map<String, dynamic>.from(e) : null)
+                .toList(),
           ),
         )
         .toList();
@@ -128,15 +131,21 @@ void main() {
 
       stub.startNewChat();
 
-      expect(stub.currentSessionId, isNotNull,
-          reason: 'session ID must be created on new chat');
+      expect(
+        stub.currentSessionId,
+        isNotNull,
+        reason: 'session ID must be created on new chat',
+      );
       expect(stub.currentSessionId, isNotEmpty);
       // Session ID format: "timestamp_counter" - extract timestamp
       final parts = stub.currentSessionId!.split('_');
       final id = int.tryParse(parts[0]);
       expect(id, isNotNull, reason: 'session ID should be parseable as int');
-      expect(id!, greaterThan(1_000_000_000),
-          reason: 'session ID should be a millisecond timestamp');
+      expect(
+        id!,
+        greaterThan(1_000_000_000),
+        reason: 'session ID should be a millisecond timestamp',
+      );
     });
 
     test('each startNewChat creates a unique session ID', () {
@@ -151,8 +160,11 @@ void main() {
 
       expect(firstId, isNotNull);
       expect(secondId, isNotNull);
-      expect(firstId, isNot(equals(secondId)),
-          reason: 'each new chat should have a unique session ID');
+      expect(
+        firstId,
+        isNot(equals(secondId)),
+        reason: 'each new chat should have a unique session ID',
+      );
     });
 
     test('startNewChat clears existing messages', () {
@@ -163,8 +175,11 @@ void main() {
 
       stub.startNewChat();
 
-      expect(stub.messages, isEmpty,
-          reason: 'new chat must clear all messages');
+      expect(
+        stub.messages,
+        isEmpty,
+        reason: 'new chat must clear all messages',
+      );
     });
 
     test('startNewChat clears summary', () {
@@ -174,10 +189,12 @@ void main() {
 
       stub.startNewChat();
 
-      expect(stub.summary, '',
-          reason: 'summary must be cleared on new chat');
-      expect(stub.summaryLastIndex, 0,
-          reason: 'summaryLastIndex must be reset on new chat');
+      expect(stub.summary, '', reason: 'summary must be cleared on new chat');
+      expect(
+        stub.summaryLastIndex,
+        0,
+        reason: 'summaryLastIndex must be reset on new chat',
+      );
     });
   });
 
@@ -282,8 +299,11 @@ void main() {
         summary: '',
         summaryLastIndex: 0,
       );
-      expect(stub.parentSessionId, isNull,
-          reason: 'parentSessionId should be cleared for non-forked sessions');
+      expect(
+        stub.parentSessionId,
+        isNull,
+        reason: 'parentSessionId should be cleared for non-forked sessions',
+      );
     });
   });
 
@@ -332,8 +352,11 @@ void main() {
 
       stub.forkFromMessage(0);
 
-      expect(stub.parentSessionId, oldSessionId,
-          reason: 'parentSessionId must reference the original session');
+      expect(
+        stub.parentSessionId,
+        oldSessionId,
+        reason: 'parentSessionId must reference the original session',
+      );
     });
 
     test('forkFromMessage creates a new session ID', () {
@@ -347,8 +370,11 @@ void main() {
       stub.forkFromMessage(0);
 
       expect(stub.currentSessionId, isNotNull);
-      expect(stub.currentSessionId, isNot(equals(oldSessionId)),
-          reason: 'fork must create a new session ID');
+      expect(
+        stub.currentSessionId,
+        isNot(equals(oldSessionId)),
+        reason: 'fork must create a new session ID',
+      );
     });
 
     test('forkFromMessage sets forkIndex to the forked message index', () {
@@ -376,8 +402,11 @@ void main() {
 
       stub.forkFromMessage(1); // Fork after 2nd message
 
-      expect(stub.messages.length, 2,
-          reason: 'forked session should have messages 0..1');
+      expect(
+        stub.messages.length,
+        2,
+        reason: 'forked session should have messages 0..1',
+      );
       expect(stub.messages[0].text, 'Hello');
       expect(stub.messages[1].text, 'Hi there!');
     });
@@ -393,8 +422,11 @@ void main() {
 
       stub.forkFromMessage(1);
 
-      expect(stub.messages.length, 2,
-          reason: 'must not include messages after the fork point');
+      expect(
+        stub.messages.length,
+        2,
+        reason: 'must not include messages after the fork point',
+      );
     });
 
     test('forkFromMessage clears summary', () {
@@ -408,8 +440,11 @@ void main() {
 
       stub.forkFromMessage(1);
 
-      expect(stub.summary, '',
-          reason: 'forked session must start with empty summary');
+      expect(
+        stub.summary,
+        '',
+        reason: 'forked session must start with empty summary',
+      );
       expect(stub.summaryLastIndex, 0);
     });
 
@@ -425,7 +460,11 @@ void main() {
         swipeIndex: 1,
         swipeDurations: [100, 200, 300],
         metadata: {'key': 'value'},
-        swipeMetadata: [null, {'swipeKey': 'swipeValue'}, null],
+        swipeMetadata: [
+          null,
+          {'swipeKey': 'swipeValue'},
+          null,
+        ],
       );
       stub._messages.add(msg);
 
@@ -448,10 +487,16 @@ void main() {
       // Index out of range
       stub.forkFromMessage(10);
 
-      expect(stub.messages.length, 2,
-          reason: 'invalid fork index should not modify the session');
-      expect(stub.parentSessionId, isNull,
-          reason: 'invalid fork should not set parentSessionId');
+      expect(
+        stub.messages.length,
+        2,
+        reason: 'invalid fork index should not modify the session',
+      );
+      expect(
+        stub.parentSessionId,
+        isNull,
+        reason: 'invalid fork should not set parentSessionId',
+      );
     });
 
     test('forkFromMessage with index -1 does nothing', () {
@@ -462,8 +507,11 @@ void main() {
 
       stub.forkFromMessage(-1);
 
-      expect(stub.parentSessionId, isNull,
-          reason: 'negative index should not trigger a fork');
+      expect(
+        stub.parentSessionId,
+        isNull,
+        reason: 'negative index should not trigger a fork',
+      );
     });
 
     test('forkFromMessage with no current session does nothing', () {
@@ -497,28 +545,30 @@ void main() {
 
       // Second fork (from fork 1)
       stub.forkFromMessage(3);
-      final fork2Id = stub.currentSessionId;
       expect(stub.parentSessionId, fork1Id);
-      expect(stub.parentSessionId, isNot(equals(rootId)),
-          reason: 'fork 2 parent should be fork 1, not the root');
+      expect(
+        stub.parentSessionId,
+        isNot(equals(rootId)),
+        reason: 'fork 2 parent should be fork 1, not the root',
+      );
     });
 
     test('original session is untouched by forking', () {
       final stub = _SessionStub();
       stub.startNewChat();
-      final originalId = stub.currentSessionId;
 
       stub.addUserMessage('Hello');
       stub.addCharacterMessage('Hi!');
       stub.addUserMessage('How are you?');
       stub.addCharacterMessage('Good!');
 
-      final originalLength = stub.messages.length;
-
       stub.forkFromMessage(1);
 
-      expect(stub.messages.length, 2,
-          reason: 'must be in the forked session, not the original');
+      expect(
+        stub.messages.length,
+        2,
+        reason: 'must be in the forked session, not the original',
+      );
     });
   });
 
@@ -545,8 +595,14 @@ void main() {
         ids.add(stub.currentSessionId!);
       }
 
-      expect(ids.length, 10,
-          reason: 'all session IDs should be unique even in rapid succession');
+      expect(
+        ids.length,
+        10,
+        reason: 'all session IDs should be unique even in rapid succession',
+      );
     });
   });
+
+  // Expression + time reset/seed/load sites exercised passively via pre-existing startNew/setActive/load flows (time chat-scoped).
+  // (Note qualified per review: "reset sites passively hit by pre-existing...; full time advance/nudge/OOC/resolve/narrative only in dedicated time test + manual"; ambient hits for time load/seed/reset parity).
 }

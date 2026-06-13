@@ -366,8 +366,14 @@ class GenerationResult:
     elapsed_seconds: float = 0.0
     signposts: list = field(default_factory=list)
 
-    def save(self, path: str, index: int = 0):
-        """Save the generated image to a file, decoding NNC tensor if needed."""
+    def save(self, path: str, index: int = 0, verbose: bool = True):
+        """Save the generated image to a file, decoding NNC tensor if needed.
+
+        Args:
+            verbose: If True, prints a "Saved: ..." message to stdout.
+                     Set to False when used from machine interfaces (CLI wrapper)
+                     that need clean JSON on stdout.
+        """
         if index < len(self.images):
             p = Path(path).expanduser()
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -377,14 +383,17 @@ class GenerationResult:
             if data[:4] != b'\x89PNG' and data[:2] != b'\xff\xd8':
                 # NNC tensor → decode to PNG
                 nnc_tensor_to_image(data, str(p))
-                print(f"Saved: {p} (decoded from NNC tensor)")
+                if verbose:
+                    print(f"Saved: {p} (decoded from NNC tensor)")
             else:
                 p.write_bytes(data)
-                print(f"Saved: {p} ({len(data)} bytes)")
+                if verbose:
+                    print(f"Saved: {p} ({len(data)} bytes)")
         else:
-            print(f"No image at index {index} (got {len(self.images)} images)")
+            if verbose:
+                print(f"No image at index {index} (got {len(self.images)} images)")
 
-    def save_all(self, directory: str, prefix: str = "gen"):
+    def save_all(self, directory: str, prefix: str = "gen", verbose: bool = True):
         """Save all generated images to a directory."""
         d = Path(directory).expanduser()
         d.mkdir(parents=True, exist_ok=True)
@@ -394,7 +403,8 @@ class GenerationResult:
                 nnc_tensor_to_image(img_data, str(p))
             else:
                 p.write_bytes(img_data)
-            print(f"Saved: {p}")
+            if verbose:
+                print(f"Saved: {p}")
 
 
 class DrawThingsClient:

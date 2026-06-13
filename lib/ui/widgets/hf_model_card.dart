@@ -20,6 +20,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/hf_model.dart';
 import 'package:front_porch_ai/models/download_task.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/utils/vram_estimator.dart';
 
 /// Glassmorphic card displaying a HuggingFace model with expandable quant options.
@@ -126,16 +127,13 @@ class _HFModelCardState extends State<HFModelCard>
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: _isHovered
-                  ? Colors.indigo.withValues(alpha: 0.12)
-                  : Colors.indigo.withValues(alpha: 0.06),
+              color: AppColors.isLight(context)
+                  ? AppColors.cardOf(context)
+                  : (_isHovered
+                        ? Colors.indigo.withValues(alpha: 0.12)
+                        : Colors.indigo.withValues(alpha: 0.06)),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _isHovered
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : Colors.white.withValues(alpha: 0.08),
-                width: 1,
-              ),
+              border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -171,8 +169,8 @@ class _HFModelCardState extends State<HFModelCard>
                             children: [
                               Text(
                                 widget.model.name,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(context),
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -182,8 +180,8 @@ class _HFModelCardState extends State<HFModelCard>
                               const SizedBox(height: 2),
                               Text(
                                 widget.model.author,
-                                style: const TextStyle(
-                                  color: Colors.white54,
+                                style: TextStyle(
+                                  color: AppColors.textTertiary(context),
                                   fontSize: 12,
                                 ),
                               ),
@@ -195,18 +193,24 @@ class _HFModelCardState extends State<HFModelCard>
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _statChip(Icons.download_rounded, widget.model.downloadsDisplay),
+                            _statChip(
+                              Icons.download_rounded,
+                              widget.model.downloadsDisplay,
+                            ),
                             const SizedBox(width: 8),
-                            _statChip(Icons.favorite_rounded, widget.model.likesDisplay),
+                            _statChip(
+                              Icons.favorite_rounded,
+                              widget.model.likesDisplay,
+                            ),
                             const SizedBox(width: 12),
 
                             // Expand arrow
                             AnimatedRotation(
                               turns: _isExpanded ? 0.5 : 0,
                               duration: const Duration(milliseconds: 300),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.keyboard_arrow_down_rounded,
-                                color: Colors.white70,
+                                color: AppColors.iconSecondary(context),
                                 size: 20,
                               ),
                             ),
@@ -223,13 +227,16 @@ class _HFModelCardState extends State<HFModelCard>
                   axisAlignment: -1,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.15),
+                      color: AppColors.surfaceContainerOf(context),
                       borderRadius: const BorderRadius.only(
                         bottomLeft: Radius.circular(12),
                         bottomRight: Radius.circular(12),
                       ),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: _buildQuantList(),
                   ),
                 ),
@@ -245,12 +252,12 @@ class _HFModelCardState extends State<HFModelCard>
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: Colors.white54),
+        Icon(icon, size: 14, color: AppColors.iconSecondary(context)),
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white70,
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
@@ -262,19 +269,20 @@ class _HFModelCardState extends State<HFModelCard>
   Widget _buildQuantList() {
     final files = widget.model.files;
     if (files.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
+      return Padding(
+        padding: const EdgeInsets.all(16),
         child: Center(
           child: Text(
             'No GGUF files available',
-            style: TextStyle(color: Colors.white54),
+            style: TextStyle(color: AppColors.textTertiary(context)),
           ),
         ),
       );
     }
 
     // Sort by size (smallest first)
-    final sorted = List<HFModelFile>.from(files)..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+    final sorted = List<HFModelFile>.from(files)
+      ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -299,10 +307,18 @@ class _HFModelCardState extends State<HFModelCard>
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: AppColors.resolve(
+          context,
+          Colors.white.withValues(alpha: 0.03),
+          Colors.black.withValues(alpha: 0.02),
+        ),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: AppColors.resolve(
+            context,
+            Colors.white.withValues(alpha: 0.05),
+            AppColors.borderOf(context),
+          ),
         ),
       ),
       child: Row(
@@ -311,10 +327,14 @@ class _HFModelCardState extends State<HFModelCard>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: _getQuantColor(file.quantType.colorCategory).withValues(alpha: 0.15),
+              color: _getQuantColor(
+                file.quantType.colorCategory,
+              ).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: _getQuantColor(file.quantType.colorCategory).withValues(alpha: 0.3),
+                color: _getQuantColor(
+                  file.quantType.colorCategory,
+                ).withValues(alpha: 0.3),
               ),
             ),
             child: Text(
@@ -335,8 +355,8 @@ class _HFModelCardState extends State<HFModelCard>
               children: [
                 Text(
                   file.filename,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -358,7 +378,9 @@ class _HFModelCardState extends State<HFModelCard>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: _getFitStatusColor(fitStatus).withValues(alpha: 0.4),
+                            color: _getFitStatusColor(
+                              fitStatus,
+                            ).withValues(alpha: 0.4),
                             blurRadius: 4,
                           ),
                         ],
@@ -371,7 +393,9 @@ class _HFModelCardState extends State<HFModelCard>
                       child: Text(
                         '${file.sizeDisplay} | VRAM: ${VramEstimator.formatVramEstimate(vramNeeded)} | ${fitStatus.description(vramNeeded, widget.availableVramMb)}',
                         style: TextStyle(
-                          color: _getFitStatusColor(fitStatus).withValues(alpha: 0.8),
+                          color: _getFitStatusColor(
+                            fitStatus,
+                          ).withValues(alpha: 0.8),
                           fontSize: 11,
                         ),
                         maxLines: 1,
@@ -387,7 +411,11 @@ class _HFModelCardState extends State<HFModelCard>
                   LinearProgressIndicator(
                     value: downloadTask.progress,
                     minHeight: 3,
-                    backgroundColor: Colors.white.withValues(alpha: 0.1),
+                    backgroundColor: AppColors.resolve(
+                      context,
+                      Colors.white.withValues(alpha: 0.1),
+                      AppColors.borderOf(context).withValues(alpha: 0.3),
+                    ),
                     valueColor: AlwaysStoppedAnimation<Color>(
                       _getFitStatusColor(fitStatus),
                     ),
@@ -395,8 +423,8 @@ class _HFModelCardState extends State<HFModelCard>
                   const SizedBox(height: 2),
                   Text(
                     downloadTask.statusString,
-                    style: const TextStyle(
-                      color: Colors.white54,
+                    style: TextStyle(
+                      color: AppColors.textTertiary(context),
                       fontSize: 10,
                     ),
                   ),
@@ -431,7 +459,11 @@ class _HFModelCardState extends State<HFModelCard>
       final task = widget.downloadingFiles[file.filename];
       if (task?.state == DownloadTaskState.downloading) {
         return IconButton(
-          icon: const Icon(Icons.pause_circle_rounded, color: Colors.white70, size: 22),
+          icon: Icon(
+            Icons.pause_circle_rounded,
+            color: AppColors.iconSecondary(context),
+            size: 22,
+          ),
           onPressed: () {
             // Pause handled by parent via task ID
           },
@@ -439,26 +471,26 @@ class _HFModelCardState extends State<HFModelCard>
           padding: EdgeInsets.zero,
         );
       }
-      return const Icon(
+      return Icon(
         Icons.hourglass_bottom_rounded,
-        color: Colors.white54,
+        color: AppColors.iconSecondary(context),
         size: 20,
       );
     }
 
     return ElevatedButton(
-      onPressed: fitStatus == VramFitStatus.exceeds ? null : () => widget.onDownload(file),
+      onPressed: fitStatus == VramFitStatus.exceeds
+          ? null
+          : () => widget.onDownload(file),
       style: ElevatedButton.styleFrom(
         backgroundColor: fitStatus == VramFitStatus.exceeds
             ? Colors.red.withValues(alpha: 0.2)
             : Colors.blue.withValues(alpha: 0.3),
         foregroundColor: fitStatus == VramFitStatus.exceeds
             ? Colors.red.withValues(alpha: 0.6)
-            : Colors.white,
+            : AppColors.textPrimary(context),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         minimumSize: const Size(0, 0),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),

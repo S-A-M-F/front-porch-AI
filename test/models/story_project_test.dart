@@ -44,19 +44,13 @@ void main() {
 
   group('StoryScene.fromJson', () {
     test('parses integer fields from int values', () {
-      final scene = StoryScene.fromJson({
-        'number': 3,
-        'valence': 5,
-      });
+      final scene = StoryScene.fromJson({'number': 3, 'valence': 5});
       expect(scene.number, 3);
       expect(scene.valence, 5);
     });
 
     test('parses integer fields from double values (LLM output)', () {
-      final scene = StoryScene.fromJson({
-        'number': 3.0,
-        'valence': 5.0,
-      });
+      final scene = StoryScene.fromJson({'number': 3.0, 'valence': 5.0});
       expect(scene.number, 3);
       expect(scene.valence, 5);
     });

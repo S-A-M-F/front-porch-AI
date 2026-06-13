@@ -13,13 +13,13 @@ void setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      // Use a temp directory that exists and is writable.
-      final tmp = Directory.systemTemp.createTempSync('fpai_test_');
-      return tmp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          // Use a temp directory that exists and is writable.
+          final tmp = Directory.systemTemp.createTempSync('fpai_test_');
+          return tmp.path;
+        }
+        return null;
+      });
 }
 
 /// Helper: create a StorageService backed by an in-memory SharedPreferences
@@ -167,6 +167,29 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getInt('kv_quantization_level'), 2);
     });
+
+    // Coverage for compat thins / legacy shim / backend fields (per review Issue 10; minimal addition to existing group)
+    test(
+      'loadSavedPrompt legacy 1-arg + immediate read + kv/callBuffer thins + backend fields',
+      () async {
+        final svc = await createStorageService({
+          'saved_prompts': '[{"name":"TestPrompt","content":"Hello {{char}}"}]',
+        });
+        // 1-arg legacy shim (side effect + immediate read)
+        svc.loadSavedPrompt('TestPrompt');
+        expect(
+          svc.systemPrompt,
+          contains('Hello {{char}}'),
+        ); // via side-effect set
+        // thins
+        expect(svc.kvQuantizationLevel, isA<int>());
+        expect(svc.callBufferSentences, isA<int>());
+        // direct backend
+        await svc.backendSettings.setKvQuantizationLevel(3);
+        expect(svc.backendSettings.kvQuantizationLevel, 3);
+        expect(svc.kvQuantizationLevel, 3); // via thin
+      },
+    );
   });
 
   // ─── Model Selection (Bug 1 target) ───────────────────────────────
@@ -618,7 +641,10 @@ void main() {
       final svc = await createStorageService();
       await svc.setLocalImageGenUrl('http://192.168.1.100:7860');
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('local_image_gen_url'), 'http://192.168.1.100:7860');
+      expect(
+        prefs.getString('local_image_gen_url'),
+        'http://192.168.1.100:7860',
+      );
     });
 
     test('setImageGenModel persists to SharedPreferences', () async {
@@ -806,12 +832,15 @@ void main() {
   // ─── Character Evolution Settings ─────────────────────────────────
 
   group('Character evolution settings persistence', () {
-    test('setCharacterEvolutionEnabled persists to SharedPreferences', () async {
-      final svc = await createStorageService();
-      await svc.setCharacterEvolutionEnabled(true);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('character_evolution_enabled'), true);
-    });
+    test(
+      'setCharacterEvolutionEnabled persists to SharedPreferences',
+      () async {
+        final svc = await createStorageService();
+        await svc.setCharacterEvolutionEnabled(true);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('character_evolution_enabled'), true);
+      },
+    );
 
     test('setEvolutionInterval clamps and persists', () async {
       final svc = await createStorageService();

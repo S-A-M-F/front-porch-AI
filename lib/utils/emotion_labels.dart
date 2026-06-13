@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'package:flutter/material.dart';
+
 /// Standard emotion labels for character expression images.
 ///
 /// Based on the 28-class go-emotions ONNX model
@@ -552,5 +554,36 @@ class EmotionLabels {
     return 'Classify the emotion "$unknownEmotion" into exactly ONE of these labels: '
         '$labels.\n'
         'Respond with ONLY the label name, nothing else.';
+  }
+
+  /// Returns a suitable accent color for a thin ring around a character's avatar
+  /// based on their current emotion label. Used for visual state in group UIs
+  /// (app bar stacked avatars, member cards, etc.).
+  static Color ringColor(String? emotion) {
+    if (emotion == null) return Colors.grey;
+    switch (emotion.toLowerCase()) {
+      case 'joy':
+      case 'amusement':
+      case 'excitement':
+        return Colors.amber;
+      case 'sadness':
+      case 'grief':
+      case 'disappointment':
+        return Colors.blueGrey;
+      case 'anger':
+      case 'annoyance':
+        return Colors.redAccent;
+      case 'fear':
+      case 'nervousness':
+        return Colors.deepPurpleAccent;
+      case 'affection':
+      case 'love':
+        return Colors.pinkAccent;
+      case 'anticipation':
+      case 'desire':
+        return Colors.orangeAccent;
+      default:
+        return Colors.grey;
+    }
   }
 }

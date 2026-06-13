@@ -18,7 +18,6 @@
 
 import 'dart:io';
 import 'package:front_porch_ai/app_version.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
@@ -61,11 +60,18 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [Colors.blueAccent.shade700, Colors.cyanAccent.shade400],
+                          colors: [
+                            Colors.blueAccent.shade700,
+                            Colors.cyanAccent.shade400,
+                          ],
                         ),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.cloud_sync, color: Colors.white, size: 28),
+                      child: const Icon(
+                        Icons.cloud_sync,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Column(
@@ -79,7 +85,9 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                         ),
                         Text(
                           'Manage cloud sync, backups, and data recovery',
-                          style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
                         ),
                       ],
                     ),
@@ -110,7 +118,11 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
     );
   }
 
-  Widget _buildCloudSyncSection(BuildContext context, StorageService storageService, ThemeData theme) {
+  Widget _buildCloudSyncSection(
+    BuildContext context,
+    StorageService storageService,
+    ThemeData theme,
+  ) {
     // Pre-release builds cannot use cloud sync to prevent database
     // version conflicts with stable releases on other devices.
     if (isPreRelease) {
@@ -128,11 +140,17 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
             ),
             child: Column(
               children: [
-                Icon(Icons.cloud_off, size: 48, color: Colors.amber.withValues(alpha: 0.6)),
+                Icon(
+                  Icons.cloud_off,
+                  size: 48,
+                  color: Colors.amber.withValues(alpha: 0.6),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Cloud Sync Disabled',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -154,7 +172,11 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline, size: 16, color: Colors.blueAccent),
+                      const Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Colors.blueAccent,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -200,9 +222,16 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.cloud_sync, color: Colors.blueAccent, size: 20),
+                      const Icon(
+                        Icons.cloud_sync,
+                        color: Colors.blueAccent,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
-                      Text('Enable Cloud Sync', style: theme.textTheme.titleSmall),
+                      Text(
+                        'Enable Cloud Sync',
+                        style: theme.textTheme.titleSmall,
+                      ),
                     ],
                   ),
                   Switch(
@@ -214,24 +243,44 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                           context: context,
                           builder: (ctx) => AlertDialog(
                             backgroundColor: const Color(0xFF1E293B),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                             title: Row(
                               children: [
-                                Icon(Icons.warning_amber_rounded, color: Colors.amber.shade400, size: 24),
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.amber.shade400,
+                                  size: 24,
+                                ),
                                 const SizedBox(width: 10),
-                                const Text('Alpha Feature', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                const Text(
+                                  'Alpha Feature',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
                             ),
                             content: const Text(
                               'Cloud Sync is currently in alpha. While functional, you may encounter '
                               'occasional issues. Your local data will not be affected.\n\n'
                               'Supported providers: Google Drive, Nextcloud (WebDAV).',
-                              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                height: 1.5,
+                              ),
                             ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.white38),
+                                ),
                               ),
                               ElevatedButton(
                                 onPressed: () => Navigator.pop(ctx, true),
@@ -265,12 +314,23 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     labelText: 'Cloud Provider',
                     filled: true,
                     fillColor: theme.scaffoldBackgroundColor,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'webdav', child: Text('Nextcloud (WebDAV)')),
-                    DropdownMenuItem(value: 'gdrive', child: Text('Google Drive')),
+                    DropdownMenuItem(
+                      value: 'webdav',
+                      child: Text('Nextcloud (WebDAV)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'gdrive',
+                      child: Text('Google Drive'),
+                    ),
                   ],
                   onChanged: (val) {
                     if (val != null) storageService.setCloudSyncProvider(val);
@@ -284,13 +344,20 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     initialValue: storageService.cloudSyncUrl,
                     decoration: InputDecoration(
                       labelText: 'Server URL',
-                      hintText: 'https://your-nextcloud.com/remote.php/dav/files/username',
+                      hintText:
+                          'https://your-nextcloud.com/remote.php/dav/files/username',
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
-                    onChanged: (val) => storageService.setCloudSyncUrl(val.trim()),
+                    onChanged: (val) =>
+                        storageService.setCloudSyncUrl(val.trim()),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
@@ -299,10 +366,16 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       labelText: 'Username',
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
-                    onChanged: (val) => storageService.setCloudSyncUsername(val.trim()),
+                    onChanged: (val) =>
+                        storageService.setCloudSyncUsername(val.trim()),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
@@ -312,11 +385,17 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       labelText: 'Password / App Token',
                       filled: true,
                       fillColor: theme.scaffoldBackgroundColor,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       suffixIcon: const Icon(Icons.key, size: 18),
                     ),
-                    onChanged: (val) => storageService.setCloudSyncPassword(val),
+                    onChanged: (val) =>
+                        storageService.setCloudSyncPassword(val),
                   ),
                 ],
 
@@ -327,29 +406,54 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: syncService.isConnected ? null : () async {
-                            try {
-                              final gProvider = GoogleDriveProvider();
-                              await gProvider.connect({});
-                              syncService.setProvider(gProvider);
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('✅ Signed in to Google Drive!')),
-                                );
-                                setState(() {});
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('❌ Google sign-in failed: $e')),
-                                );
-                              }
-                            }
-                          },
-                          icon: Icon(syncService.isConnected ? Icons.check_circle : Icons.login, size: 18),
-                          label: Text(syncService.isConnected ? 'Connected' : 'Sign in with Google'),
+                          onPressed: syncService.isConnected
+                              ? null
+                              : () async {
+                                  try {
+                                    final gProvider = GoogleDriveProvider();
+                                    await gProvider.connect({});
+                                    syncService.setProvider(gProvider);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            '✅ Signed in to Google Drive!',
+                                          ),
+                                        ),
+                                      );
+                                      setState(() {});
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '❌ Google sign-in failed: $e',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: Icon(
+                            syncService.isConnected
+                                ? Icons.check_circle
+                                : Icons.login,
+                            size: 18,
+                          ),
+                          label: Text(
+                            syncService.isConnected
+                                ? 'Connected'
+                                : 'Sign in with Google',
+                          ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: syncService.isConnected ? Colors.green.shade700 : Colors.blueAccent,
+                            backgroundColor: syncService.isConnected
+                                ? Colors.green.shade700
+                                : Colors.blueAccent,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
@@ -363,7 +467,11 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                             syncService.clearProvider();
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Disconnected from Google Drive')),
+                                const SnackBar(
+                                  content: Text(
+                                    'Disconnected from Google Drive',
+                                  ),
+                                ),
                               );
                               setState(() {});
                             }
@@ -373,11 +481,58 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red.shade700,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 16,
+                            ),
                           ),
                         ),
                       ],
                     ],
+                  ),
+                ],
+
+                // Dev / Source build visibility — shows exactly which paths this session is using.
+                // Extremely useful when running `flutter run` for cloud sync testing and iteration.
+                if (syncService.isConnected) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blueGrey.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Paths in use (helpful for dev builds)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Local root: ${storageService.rootPath ?? "(default)"}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        Text(
+                          'Remote cloud root: ${syncService.cloudRoot}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
 
@@ -411,13 +566,21 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                               final ok = await syncService.testConnection();
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(ok ? '✅ Connection successful!' : '❌ Connection failed: ${syncService.lastError}')),
+                                  SnackBar(
+                                    content: Text(
+                                      ok
+                                          ? '✅ Connection successful!'
+                                          : '❌ Connection failed: ${syncService.lastError}',
+                                    ),
+                                  ),
                                 );
                               }
                             } catch (e) {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('❌ Connection failed: $e')),
+                                  SnackBar(
+                                    content: Text('❌ Connection failed: $e'),
+                                  ),
                                 );
                               }
                             }
@@ -425,7 +588,9 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                           icon: const Icon(Icons.wifi_tethering, size: 18),
                           label: const Text('Test'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent.withValues(alpha: 0.8),
+                            backgroundColor: Colors.blueAccent.withValues(
+                              alpha: 0.8,
+                            ),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
@@ -434,57 +599,93 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: syncService.status == SyncStatus.syncing ? null : () async {
-                            // Full sync now
-                            if (!syncService.isConnected) {
-                              CloudStorageProvider p;
-                              switch (provider) {
-                                case 'webdav':
-                                  p = WebDavProvider();
-                                  break;
-                                case 'gdrive':
-                                  p = GoogleDriveProvider();
-                                  break;
-                                default:
-                                  return;
-                              }
-                              await p.connect({
-                                'url': storageService.cloudSyncUrl,
-                                'username': storageService.cloudSyncUsername,
-                                'password': storageService.cloudSyncPassword,
-                              });
-                              syncService.setProvider(p);
-                            }
+                          onPressed: syncService.status == SyncStatus.syncing
+                              ? null
+                              : () async {
+                                  // Full sync now
+                                  if (!syncService.isConnected) {
+                                    CloudStorageProvider p;
+                                    switch (provider) {
+                                      case 'webdav':
+                                        p = WebDavProvider();
+                                        break;
+                                      case 'gdrive':
+                                        p = GoogleDriveProvider();
+                                        break;
+                                      default:
+                                        return;
+                                    }
+                                    await p.connect({
+                                      'url': storageService.cloudSyncUrl,
+                                      'username':
+                                          storageService.cloudSyncUsername,
+                                      'password':
+                                          storageService.cloudSyncPassword,
+                                    });
+                                    syncService.setProvider(p);
+                                  }
 
-                            final chatsPath = storageService.chatsDir.path;
-                            final rootPath = storageService.rootPath ?? chatsPath;
-                            final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+                                  final chatsPath =
+                                      storageService.chatsDir.path;
+                                  final rootPath =
+                                      storageService.rootPath ?? chatsPath;
+                                  final charactersPath =
+                                      '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
-                            await syncService.fullSync(chatsPath, charactersPath);
-                            if (syncService.status == SyncStatus.success) {
-                              await storageService.setCloudSyncLastTime(DateTime.now().toIso8601String());
+                                  await syncService.fullSync(
+                                    chatsPath,
+                                    charactersPath,
+                                  );
+                                  if (syncService.status ==
+                                      SyncStatus.success) {
+                                    await storageService.setCloudSyncLastTime(
+                                      DateTime.now().toIso8601String(),
+                                    );
 
-                              // Reload characters so newly downloaded PNGs appear in the UI
-                              final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-                              await charRepo.loadCharacters();
+                                    // Reload characters so newly downloaded PNGs appear in the UI
+                                    final charRepo =
+                                        Provider.of<CharacterRepository>(
+                                          context,
+                                          listen: false,
+                                        );
+                                    await charRepo.loadCharacters();
 
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('✅ Synced ${syncService.syncedFiles} files!')),
-                                );
-                              }
-                            } else if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('❌ Sync error: ${syncService.lastError}')),
-                              );
-                            }
-                          },
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '✅ Synced ${syncService.syncedFiles} files!',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } else if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          '❌ Sync error: ${syncService.lastError}',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
                           icon: syncService.status == SyncStatus.syncing
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : const Icon(Icons.sync, size: 18),
-                          label: Text(syncService.status == SyncStatus.syncing
-                              ? 'Syncing ${(syncService.progress * 100).toInt()}%'
-                              : 'Sync Now'),
+                          label: Text(
+                            syncService.status == SyncStatus.syncing
+                                ? 'Syncing ${(syncService.progress * 100).toInt()}%'
+                                : 'Sync Now',
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green.shade700,
                             foregroundColor: Colors.white,
@@ -502,10 +703,20 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       onPressed: syncService.status == SyncStatus.syncing
                           ? null
                           : () async {
-                              final storageService = Provider.of<StorageService>(context, listen: false);
-                              final rootPath = storageService.rootPath ?? storageService.chatsDir.path;
-                              final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
-                              final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+                              final storageService =
+                                  Provider.of<StorageService>(
+                                    context,
+                                    listen: false,
+                                  );
+                              final rootPath =
+                                  storageService.rootPath ??
+                                  storageService.chatsDir.path;
+                              final charactersPath =
+                                  '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+                              final charRepo = Provider.of<CharacterRepository>(
+                                context,
+                                listen: false,
+                              );
 
                               // Ensure provider is connected
                               if (!syncService.isConnected) {
@@ -530,7 +741,10 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
 
                               if (mounted) {
                                 await _showCloudCharacterBrowser(
-                                  context, syncService, charRepo, charactersPath,
+                                  context,
+                                  syncService,
+                                  charRepo,
+                                  charactersPath,
                                 );
                               }
                             },
@@ -538,7 +752,10 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       label: const Text('Browse Cloud Characters'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.blueAccent,
-                        side: const BorderSide(color: Colors.blueAccent, width: 1),
+                        side: const BorderSide(
+                          color: Colors.blueAccent,
+                          width: 1,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
@@ -557,24 +774,41 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                   backgroundColor: const Color(0xFF1E293B),
                                   title: const Row(
                                     children: [
-                                      Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 28),
+                                      Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: Colors.amberAccent,
+                                        size: 28,
+                                      ),
                                       SizedBox(width: 12),
-                                      Expanded(child: Text('Force Upload?', style: TextStyle(color: Colors.white))),
+                                      Expanded(
+                                        child: Text(
+                                          'Force Upload?',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   content: const Text(
                                     'This will overwrite the cloud database with your local copy. '
                                     'Any data on the cloud that is not on this device will be lost.\n\n'
                                     'Use this after restoring a backup to push clean data to the cloud.',
-                                    style: TextStyle(color: Colors.white70, height: 1.5),
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      height: 1.5,
+                                    ),
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(false),
-                                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                                      onPressed: () =>
+                                          Navigator.of(ctx).pop(false),
+                                      child: const Text(
+                                        'Cancel',
+                                        style: TextStyle(color: Colors.white54),
+                                      ),
                                     ),
                                     ElevatedButton(
-                                      onPressed: () => Navigator.of(ctx).pop(true),
+                                      onPressed: () =>
+                                          Navigator.of(ctx).pop(true),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.amberAccent,
                                         foregroundColor: Colors.black87,
@@ -587,17 +821,29 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                               if (confirmed == true) {
                                 try {
                                   await syncService.forceUploadDatabase();
-                                  final storageService = Provider.of<StorageService>(context, listen: false);
-                                  await storageService.setCloudSyncLastTime(DateTime.now().toIso8601String());
+                                  final storageService =
+                                      Provider.of<StorageService>(
+                                        context,
+                                        listen: false,
+                                      );
+                                  await storageService.setCloudSyncLastTime(
+                                    DateTime.now().toIso8601String(),
+                                  );
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('✅ Database uploaded to cloud')),
+                                      const SnackBar(
+                                        content: Text(
+                                          '✅ Database uploaded to cloud',
+                                        ),
+                                      ),
                                     );
                                   }
                                 } catch (e) {
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('❌ Upload failed: $e')),
+                                      SnackBar(
+                                        content: Text('❌ Upload failed: $e'),
+                                      ),
                                     );
                                   }
                                 }
@@ -607,7 +853,10 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       label: const Text('Force Upload Database'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.amberAccent,
-                        side: const BorderSide(color: Colors.amberAccent, width: 1),
+                        side: const BorderSide(
+                          color: Colors.amberAccent,
+                          width: 1,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
@@ -626,9 +875,18 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                   backgroundColor: const Color(0xFF1E293B),
                                   title: const Row(
                                     children: [
-                                      Icon(Icons.delete_forever, color: Colors.redAccent, size: 28),
+                                      Icon(
+                                        Icons.delete_forever,
+                                        color: Colors.redAccent,
+                                        size: 28,
+                                      ),
                                       SizedBox(width: 12),
-                                      Expanded(child: Text('Purge All Cloud Data?', style: TextStyle(color: Colors.white))),
+                                      Expanded(
+                                        child: Text(
+                                          'Purge All Cloud Data?',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   content: const Text(
@@ -637,15 +895,23 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                     '• Character PNG files\n\n'
                                     'Your local data will NOT be affected. '
                                     'You can re-upload with "Force Upload" or "Sync Now" afterwards.',
-                                    style: TextStyle(color: Colors.white70, height: 1.5),
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      height: 1.5,
+                                    ),
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(false),
-                                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                                      onPressed: () =>
+                                          Navigator.of(ctx).pop(false),
+                                      child: const Text(
+                                        'Cancel',
+                                        style: TextStyle(color: Colors.white54),
+                                      ),
                                     ),
                                     ElevatedButton(
-                                      onPressed: () => Navigator.of(ctx).pop(true),
+                                      onPressed: () =>
+                                          Navigator.of(ctx).pop(true),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.redAccent,
                                         foregroundColor: Colors.white,
@@ -660,13 +926,19 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                   await syncService.purgeCloudData();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('☁️ All cloud data deleted')),
+                                      const SnackBar(
+                                        content: Text(
+                                          '☁️ All cloud data deleted',
+                                        ),
+                                      ),
                                     );
                                   }
                                 } catch (e) {
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('❌ Purge failed: $e')),
+                                      SnackBar(
+                                        content: Text('❌ Purge failed: $e'),
+                                      ),
                                     );
                                   }
                                 }
@@ -676,7 +948,10 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       label: const Text('Purge Cloud Data'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.redAccent,
-                        side: const BorderSide(color: Colors.redAccent, width: 1),
+                        side: const BorderSide(
+                          color: Colors.redAccent,
+                          width: 1,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
@@ -688,14 +963,19 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                   const SizedBox(height: 8),
                   Text(
                     'Last synced: ${_formatSyncTime(storageService.cloudSyncLastTime)}',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
                   ),
                 ],
-                if (syncService.status == SyncStatus.error && syncService.lastError != null) ...[
+                if (syncService.status == SyncStatus.error &&
+                    syncService.lastError != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     'Error: ${syncService.lastError}',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.redAccent),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.redAccent,
+                    ),
                   ),
                 ],
               ],
@@ -722,11 +1002,17 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
             ),
             child: Column(
               children: [
-                Icon(Icons.backup, size: 48, color: Colors.amber.withValues(alpha: 0.6)),
+                Icon(
+                  Icons.backup,
+                  size: 48,
+                  color: Colors.amber.withValues(alpha: 0.6),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Backups Disabled',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -773,9 +1059,13 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     final path = await BackupService.createBackup();
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(
-                          path != null ? 'Backup created successfully' : 'No database to back up',
-                        )),
+                        SnackBar(
+                          content: Text(
+                            path != null
+                                ? 'Backup created successfully'
+                                : 'No database to back up',
+                          ),
+                        ),
                       );
                       setState(() {}); // refresh the backup list
                     }
@@ -797,7 +1087,9 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Padding(
                       padding: EdgeInsets.all(16),
-                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     );
                   }
                   final backups = snapshot.data ?? [];
@@ -806,7 +1098,9 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         'No backups yet. Backups will be created before cloud sync runs.',
-                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     );
@@ -814,43 +1108,75 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                   return Column(
                     children: backups.map((backup) {
                       final stat = backup.statSync();
-                      final sizeMb = (stat.size / (1024 * 1024)).toStringAsFixed(1);
+                      final sizeMb = (stat.size / (1024 * 1024))
+                          .toStringAsFixed(1);
                       final modified = stat.modified.toLocal();
-                      final timeStr = '${modified.month}/${modified.day}/${modified.year} '
+                      final timeStr =
+                          '${modified.month}/${modified.day}/${modified.year} '
                           '${modified.hour}:${modified.minute.toString().padLeft(2, '0')}';
                       return ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.storage, size: 20, color: Colors.blueAccent),
+                        leading: const Icon(
+                          Icons.storage,
+                          size: 20,
+                          color: Colors.blueAccent,
+                        ),
                         title: Text(timeStr, style: theme.textTheme.bodyMedium),
-                        subtitle: Text('$sizeMb MB', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                        subtitle: Text(
+                          '$sizeMb MB',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             TextButton(
-                              onPressed: () => _confirmRestore(context, backup.path),
-                              child: const Text('Restore', style: TextStyle(color: Colors.amberAccent)),
+                              onPressed: () =>
+                                  _confirmRestore(context, backup.path),
+                              child: const Text(
+                                'Restore',
+                                style: TextStyle(color: Colors.amberAccent),
+                              ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: Colors.redAccent,
+                              ),
                               tooltip: 'Delete backup',
                               onPressed: () async {
                                 final confirmed = await showDialog<bool>(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
                                     backgroundColor: const Color(0xFF1E293B),
-                                    title: const Text('Delete Backup?', style: TextStyle(color: Colors.white)),
+                                    title: const Text(
+                                      'Delete Backup?',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
                                     content: Text(
                                       'Delete backup from $timeStr ($sizeMb MB)?\n\nThis cannot be undone.',
-                                      style: const TextStyle(color: Colors.white70, height: 1.5),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        height: 1.5,
+                                      ),
                                     ),
                                     actions: [
                                       TextButton(
-                                        onPressed: () => Navigator.of(ctx).pop(false),
-                                        child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                                        onPressed: () =>
+                                            Navigator.of(ctx).pop(false),
+                                        child: const Text(
+                                          'Cancel',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
                                       ),
                                       ElevatedButton(
-                                        onPressed: () => Navigator.of(ctx).pop(true),
+                                        onPressed: () =>
+                                            Navigator.of(ctx).pop(true),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.redAccent,
                                           foregroundColor: Colors.white,
@@ -865,14 +1191,22 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                     await backup.delete();
                                     if (mounted) {
                                       setState(() {});
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Backup deleted')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Backup deleted'),
+                                        ),
                                       );
                                     }
                                   } catch (e) {
                                     if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Delete failed: $e')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Delete failed: $e'),
+                                        ),
                                       );
                                     }
                                   }
@@ -900,7 +1234,11 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
         backgroundColor: const Color(0xFF1E293B),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 28),
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.amberAccent,
+              size: 28,
+            ),
             SizedBox(width: 12),
             Text('Restore Backup?', style: TextStyle(color: Colors.white)),
           ],
@@ -914,7 +1252,10 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -925,14 +1266,18 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                 await AppDatabase.instance();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Backup restored. Please restart the app for full effect.')),
+                    const SnackBar(
+                      content: Text(
+                        'Backup restored. Please restart the app for full effect.',
+                      ),
+                    ),
                   );
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Restore failed: $e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
                 }
               }
             },
@@ -1020,8 +1365,13 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                 children: [
                   const CircularProgressIndicator(),
                   const SizedBox(height: 12),
-                  Text('Fetching ${needDownload.length} preview(s)...',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12, decoration: TextDecoration.none),
+                  Text(
+                    'Fetching ${needDownload.length} preview(s)...',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
                 ],
               ),
@@ -1051,7 +1401,8 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
     for (final entry in imagePaths.entries) {
       try {
         final card = await v2.readCard(entry.value);
-        charNames[entry.key] = card?.name ?? path.basenameWithoutExtension(entry.key);
+        charNames[entry.key] =
+            card?.name ?? path.basenameWithoutExtension(entry.key);
       } catch (_) {
         charNames[entry.key] = path.basenameWithoutExtension(entry.key);
       }
@@ -1070,7 +1421,9 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
             final hasDownloadable = needDownload.isNotEmpty;
             return AlertDialog(
               backgroundColor: const Color(0xFF1E293B),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Row(
                 children: [
                   const Icon(Icons.cloud, color: Colors.blueAccent, size: 22),
@@ -1081,11 +1434,18 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       children: [
                         const Text(
                           'Cloud Characters',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         Text(
                           '${allRemote.length} character(s) • ${localExist.length} on device • ${needDownload.length} available',
-                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
@@ -1101,19 +1461,38 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                       Row(
                         children: [
                           TextButton(
-                            onPressed: () => setDialogState(() => selected.addAll(needDownload)),
-                            child: const Text('Select All New', style: TextStyle(color: Colors.blueAccent, fontSize: 12)),
+                            onPressed: () => setDialogState(
+                              () => selected.addAll(needDownload),
+                            ),
+                            child: const Text(
+                              'Select All New',
+                              style: TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 8),
                           TextButton(
-                            onPressed: () => setDialogState(() => selected.clear()),
-                            child: const Text('Clear', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                            onPressed: () =>
+                                setDialogState(() => selected.clear()),
+                            child: const Text(
+                              'Clear',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                           const Spacer(),
                           if (selected.isNotEmpty)
                             Text(
                               '${selected.length} to download',
-                              style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                         ],
                       ),
@@ -1121,12 +1500,13 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     ],
                     Expanded(
                       child: GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 0.75,
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 0.75,
+                            ),
                         itemCount: allRemote.length,
                         itemBuilder: (ctx, index) {
                           final info = allRemote[index];
@@ -1155,12 +1535,19 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                   color: isLocal
                                       ? Colors.green.withValues(alpha: 0.5)
                                       : isSelected
-                                          ? Colors.blueAccent
-                                          : Colors.white12,
+                                      ? Colors.blueAccent
+                                      : Colors.white12,
                                   width: isSelected ? 2.5 : 1,
                                 ),
                                 boxShadow: isSelected
-                                    ? [BoxShadow(color: Colors.blueAccent.withValues(alpha: 0.3), blurRadius: 8)]
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.blueAccent.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          blurRadius: 8,
+                                        ),
+                                      ]
                                     : null,
                               ),
                               child: ClipRRect(
@@ -1174,15 +1561,23 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                         File(imgPath),
                                         fit: BoxFit.cover,
                                         alignment: Alignment.topCenter,
-                                        errorBuilder: (_, __, ___) => Container(
+                                        errorBuilder: (_, _, _) => Container(
                                           color: Colors.black26,
-                                          child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                                          child: const Icon(
+                                            Icons.person,
+                                            color: Colors.white24,
+                                            size: 48,
+                                          ),
                                         ),
                                       )
                                     else
                                       Container(
                                         color: Colors.black26,
-                                        child: const Icon(Icons.person, color: Colors.white24, size: 48),
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.white24,
+                                          size: 48,
+                                        ),
                                       ),
                                     // Gradient overlay for name
                                     Positioned(
@@ -1190,12 +1585,20 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                       left: 0,
                                       right: 0,
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 8,
+                                        ),
                                         decoration: BoxDecoration(
                                           gradient: LinearGradient(
                                             begin: Alignment.topCenter,
                                             end: Alignment.bottomCenter,
-                                            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.85)],
+                                            colors: [
+                                              Colors.transparent,
+                                              Colors.black.withValues(
+                                                alpha: 0.85,
+                                              ),
+                                            ],
                                           ),
                                         ),
                                         child: Text(
@@ -1221,16 +1624,16 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                           color: isLocal
                                               ? Colors.green
                                               : isSelected
-                                                  ? Colors.blueAccent
-                                                  : Colors.black54,
+                                              ? Colors.blueAccent
+                                              : Colors.black54,
                                         ),
                                         padding: const EdgeInsets.all(2),
                                         child: Icon(
                                           isLocal
                                               ? Icons.check
                                               : isSelected
-                                                  ? Icons.check
-                                                  : Icons.cloud_download_outlined,
+                                              ? Icons.check
+                                              : Icons.cloud_download_outlined,
                                           color: Colors.white,
                                           size: 14,
                                         ),
@@ -1242,14 +1645,25 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                                         top: 4,
                                         left: 4,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 2,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: Colors.green.withValues(alpha: 0.85),
-                                            borderRadius: BorderRadius.circular(6),
+                                            color: Colors.green.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
                                           ),
                                           child: const Text(
                                             'On device',
-                                            style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1267,7 +1681,10 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, <String>{}),
-                  child: const Text('Close', style: TextStyle(color: Colors.white38)),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(color: Colors.white38),
+                  ),
                 ),
                 if (hasDownloadable)
                   ElevatedButton.icon(

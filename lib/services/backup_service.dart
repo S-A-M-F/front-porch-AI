@@ -35,7 +35,9 @@ class BackupService {
   /// Safe to call multiple times — will not create duplicate timers.
   static void startAutoBackup() {
     if (_autoBackupTimer != null) return;
-    debugPrint('[Backup] Auto-backup started (every ${_autoBackupInterval.inMinutes} minutes)');
+    debugPrint(
+      '[Backup] Auto-backup started (every ${_autoBackupInterval.inMinutes} minutes)',
+    );
     _autoBackupTimer = Timer.periodic(_autoBackupInterval, (_) async {
       try {
         await createBackup();
@@ -132,8 +134,12 @@ class BackupService {
     // Replace with backup
     await backupFile.copy(dbPath);
     // Remove stale WAL/SHM
-    try { await File('$dbPath-wal').delete(); } catch (_) {}
-    try { await File('$dbPath-shm').delete(); } catch (_) {}
+    try {
+      await File('$dbPath-wal').delete();
+    } catch (_) {}
+    try {
+      await File('$dbPath-shm').delete();
+    } catch (_) {}
 
     debugPrint('[Backup] Restored backup from: $backupPath');
   }

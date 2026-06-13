@@ -40,6 +40,7 @@ class ChatGenerationSettings {
   List<String>? bannedPhrases;
   bool? reasoningEnabled;
   String? reasoningEffort;
+  String? remoteModelName;
 
   ChatGenerationSettings({
     this.temperature,
@@ -57,6 +58,7 @@ class ChatGenerationSettings {
     this.bannedPhrases,
     this.reasoningEnabled,
     this.reasoningEffort,
+    this.remoteModelName,
   });
 
   /// Whether any field has a non-null override.
@@ -75,26 +77,43 @@ class ChatGenerationSettings {
       stopSequences != null ||
       bannedPhrases != null ||
       reasoningEnabled != null ||
-      reasoningEffort != null;
+      reasoningEffort != null ||
+      remoteModelName != null;
 
   // ── Resolved getters ────────────────────────────────────────────────────
   // Each returns the per-session override if set, otherwise the global value.
 
-  double resolveTemperature(StorageService s) => temperature ?? s.temperature;
-  double resolveMinP(StorageService s) => minP ?? s.minP;
-  double resolveRepeatPenalty(StorageService s) => repeatPenalty ?? s.repeatPenalty;
-  int resolveRepeatPenaltyTokens(StorageService s) => repeatPenaltyTokens ?? s.repeatPenaltyTokens;
-  double resolveXtcThreshold(StorageService s) => xtcThreshold ?? s.xtcThreshold;
-  double resolveXtcProbability(StorageService s) => xtcProbability ?? s.xtcProbability;
-  bool resolveDynamicTempEnabled(StorageService s) => dynamicTempEnabled ?? s.dynamicTempEnabled;
-  double resolveDynamicTempRange(StorageService s) => dynamicTempRange ?? s.dynamicTempRange;
-  int resolveMaxLength(StorageService s) => maxLength ?? s.maxLength;
-  int resolveMinLength(StorageService s) => minLength ?? s.minLength;
-  int resolveContextSize(StorageService s) => contextSize ?? s.contextSize;
-  List<String> resolveStopSequences(StorageService s) => stopSequences ?? s.stopSequences.toList();
-  List<String> resolveBannedPhrases(StorageService s) => bannedPhrases ?? s.bannedPhrases.toList();
-  bool resolveReasoningEnabled(StorageService s) => reasoningEnabled ?? s.reasoningEnabled;
-  String resolveReasoningEffort(StorageService s) => reasoningEffort ?? s.reasoningEffort;
+  double resolveTemperature(StorageService s) =>
+      temperature ?? s.generationSettings.temperature;
+  double resolveMinP(StorageService s) => minP ?? s.generationSettings.minP;
+  double resolveRepeatPenalty(StorageService s) =>
+      repeatPenalty ?? s.generationSettings.repeatPenalty;
+  int resolveRepeatPenaltyTokens(StorageService s) =>
+      repeatPenaltyTokens ?? s.generationSettings.repeatPenaltyTokens;
+  double resolveXtcThreshold(StorageService s) =>
+      xtcThreshold ?? s.generationSettings.xtcThreshold;
+  double resolveXtcProbability(StorageService s) =>
+      xtcProbability ?? s.generationSettings.xtcProbability;
+  bool resolveDynamicTempEnabled(StorageService s) =>
+      dynamicTempEnabled ?? s.generationSettings.dynamicTempEnabled;
+  double resolveDynamicTempRange(StorageService s) =>
+      dynamicTempRange ?? s.generationSettings.dynamicTempRange;
+  int resolveMaxLength(StorageService s) =>
+      maxLength ?? s.generationSettings.maxLength;
+  int resolveMinLength(StorageService s) =>
+      minLength ?? s.generationSettings.minLength;
+  int resolveContextSize(StorageService s) =>
+      contextSize ?? s.backendSettings.contextSize;
+  List<String> resolveStopSequences(StorageService s) =>
+      stopSequences ?? s.generationSettings.stopSequences.toList();
+  List<String> resolveBannedPhrases(StorageService s) =>
+      bannedPhrases ?? s.realismSettings.bannedPhrases.toList();
+  bool resolveReasoningEnabled(StorageService s) =>
+      reasoningEnabled ?? s.backendSettings.reasoningEnabled;
+  String resolveReasoningEffort(StorageService s) =>
+      reasoningEffort ?? s.backendSettings.reasoningEffort;
+  String resolveRemoteModelName(StorageService s) =>
+      remoteModelName ?? s.backendSettings.remoteModelName;
 
   // ── JSON serialisation ──────────────────────────────────────────────────
 
@@ -104,10 +123,14 @@ class ChatGenerationSettings {
     if (temperature != null) map['temperature'] = temperature;
     if (minP != null) map['min_p'] = minP;
     if (repeatPenalty != null) map['repeat_penalty'] = repeatPenalty;
-    if (repeatPenaltyTokens != null) map['rep_pen_tokens'] = repeatPenaltyTokens;
+    if (repeatPenaltyTokens != null) {
+      map['rep_pen_tokens'] = repeatPenaltyTokens;
+    }
     if (xtcThreshold != null) map['xtc_threshold'] = xtcThreshold;
     if (xtcProbability != null) map['xtc_probability'] = xtcProbability;
-    if (dynamicTempEnabled != null) map['dynatemp_enabled'] = dynamicTempEnabled;
+    if (dynamicTempEnabled != null) {
+      map['dynatemp_enabled'] = dynamicTempEnabled;
+    }
     if (dynamicTempRange != null) map['dynatemp_range'] = dynamicTempRange;
     if (maxLength != null) map['max_length'] = maxLength;
     if (minLength != null) map['min_length'] = minLength;
@@ -116,6 +139,7 @@ class ChatGenerationSettings {
     if (bannedPhrases != null) map['banned_phrases'] = bannedPhrases;
     if (reasoningEnabled != null) map['reasoning_enabled'] = reasoningEnabled;
     if (reasoningEffort != null) map['reasoning_effort'] = reasoningEffort;
+    if (remoteModelName != null) map['remote_model_name'] = remoteModelName;
     return map;
   }
 
@@ -143,6 +167,7 @@ class ChatGenerationSettings {
       bannedPhrases: (json['banned_phrases'] as List?)?.cast<String>(),
       reasoningEnabled: json['reasoning_enabled'] as bool?,
       reasoningEffort: json['reasoning_effort'] as String?,
+      remoteModelName: json['remote_model_name'] as String?,
     );
   }
 

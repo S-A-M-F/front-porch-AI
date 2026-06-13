@@ -16,7 +16,7 @@ Draw Things exposes an A1111-compatible HTTP API server that supports:
 - ✅ `/sdapi/v1/schedulers` - List available schedulers
 - ✅ `/sdapi/v1/loras` - List LoRAs
 
-**Conclusion**: Parameters that work with A1111 will work with Draw Things. No separate API handling needed.
+**Conclusion (historical)**: The A1111 HTTP compat layer works for some Draw Things setups, but the robust production path (as of 2026) is the private gRPC+FlatBuffer protocol on port 7859 driven by the bundled Python CLI (dt_grpc_client). The UI, storage, and service now treat Draw Things as a first-class gRPC backend with its own sampler enum, shift/strength/TeaCache etc. The old HTTP assumptions for DT are superseded.
 
 ---
 

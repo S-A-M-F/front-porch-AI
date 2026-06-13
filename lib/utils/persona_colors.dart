@@ -19,7 +19,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 
-
 /// Generates consistent, distinct colors for personas based on their ID.
 /// Used for personas without avatars to provide visual distinction.
 class PersonaColors {
@@ -64,11 +63,7 @@ class PersonaColors {
     return CircleAvatar(
       radius: radius,
       backgroundColor: getColorForPersona(personaId),
-      child: Icon(
-        icon,
-        size: iconSize ?? radius * 1.125,
-        color: Colors.white,
-      ),
+      child: Icon(icon, size: iconSize ?? radius * 1.125, color: Colors.white),
     );
   }
 }

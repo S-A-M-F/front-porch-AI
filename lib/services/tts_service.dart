@@ -75,7 +75,10 @@ class TtsService extends ChangeNotifier {
   /// The UI should observe this and show a snackbar/alert when non-null.
   String? _lastError;
   String? get lastError => _lastError;
-  void clearError() { _lastError = null; notifyListeners(); }
+  void clearError() {
+    _lastError = null;
+    notifyListeners();
+  }
 
   /// The currently active TTS engine instance.
   TtsEngine get activeEngine {
@@ -89,7 +92,8 @@ class TtsService extends ChangeNotifier {
         _elevenlabsEngine.apiKey = _storageService.elevenlabsApiKey;
         _elevenlabsEngine.model = _storageService.elevenlabsModel;
         _elevenlabsEngine.stability = _storageService.elevenlabsStability;
-        _elevenlabsEngine.similarityBoost = _storageService.elevenlabsSimilarity;
+        _elevenlabsEngine.similarityBoost =
+            _storageService.elevenlabsSimilarity;
         _elevenlabsEngine.style = _storageService.elevenlabsStyle;
         return _elevenlabsEngine;
       case 'kokoro':
@@ -120,8 +124,8 @@ class TtsService extends ChangeNotifier {
   Future<void> refreshAvailableVoices() async {
     if (_isPiperEngine) {
       try {
-        _currentAvailableVoices =
-            await _voiceManager.getInstalledPiperVoicesAsTtsVoiceInfo();
+        _currentAvailableVoices = await _voiceManager
+            .getInstalledPiperVoicesAsTtsVoiceInfo();
       } catch (e) {
         print('TTS: Failed to refresh Piper voices: $e');
         _currentAvailableVoices = const [];
@@ -141,10 +145,12 @@ class TtsService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final ready = await activeEngine.ensureModelReady(onProgress: (p) {
-        _modelDownloadProgress = p;
-        notifyListeners();
-      });
+      final ready = await activeEngine.ensureModelReady(
+        onProgress: (p) {
+          _modelDownloadProgress = p;
+          notifyListeners();
+        },
+      );
       return ready;
     } catch (e) {
       print('TTS downloadModel error: $e');
@@ -198,9 +204,10 @@ class TtsService extends ChangeNotifier {
     // Piper is selected), fall back to the global voice for this engine.
     if (_isPiperEngine && !await _voiceManager.isVoiceInstalled(voice)) {
       print(
-          'TTS WARNING: Character voice "$voice" not found for Piper engine. '
-          'Falling back to global Piper voice. (This usually means a character '
-          'was assigned a Kokoro voice while Piper was selected.)');
+        'TTS WARNING: Character voice "$voice" not found for Piper engine. '
+        'Falling back to global Piper voice. (This usually means a character '
+        'was assigned a Kokoro voice while Piper was selected.)',
+      );
       voice = _storageService.ttsVoiceModel;
       if (voice.isEmpty) return;
     }
@@ -253,7 +260,9 @@ class TtsService extends ChangeNotifier {
       _clearCache();
     }
 
-    print('TTS: engine=${_storageService.ttsEngine}, voice=$voice, text="${sanitized.substring(0, sanitized.length.clamp(0, 60))}..."');
+    print(
+      'TTS: engine=${_storageService.ttsEngine}, voice=$voice, text="${sanitized.substring(0, sanitized.length.clamp(0, 60))}..."',
+    );
     _isSpeaking = true;
     _isGenerating = true;
     _generationProgress = 0.0;
@@ -263,11 +272,13 @@ class TtsService extends ChangeNotifier {
     try {
       // For Kokoro, ensure model is downloaded
       if (_storageService.ttsEngine == 'kokoro') {
-        final ready = await activeEngine.ensureModelReady(onProgress: (p) {
-          _modelDownloadProgress = p;
-          _isDownloadingModel = p < 1.0;
-          notifyListeners();
-        });
+        final ready = await activeEngine.ensureModelReady(
+          onProgress: (p) {
+            _modelDownloadProgress = p;
+            _isDownloadingModel = p < 1.0;
+            notifyListeners();
+          },
+        );
         _isDownloadingModel = false;
         if (!ready || !_isSpeaking) {
           print('TTS: Kokoro model not ready');
@@ -292,9 +303,11 @@ class TtsService extends ChangeNotifier {
         final modeLabel = _storageService.ttsNarrateQuotedOnly
             ? 'Only Quotes'
             : _storageService.ttsIgnoreAsterisks
-                ? 'Ignore Asterisks'
-                : 'Verbatim';
-        kDebugPrint('[TtsService] $engineName single full-text generation ($modeLabel mode)');
+            ? 'Ignore Asterisks'
+            : 'Verbatim';
+        kDebugPrint(
+          '[TtsService] $engineName single full-text generation ($modeLabel mode)',
+        );
 
         _generationProgress = 0.01;
         _isGenerating = true;
@@ -308,12 +321,16 @@ class TtsService extends ChangeNotifier {
 
           // Early check for the binary so we don't spam errors once per chunk
           final piperBinary = _piperBinaryPath();
-          if (!File(piperBinary).existsSync() && piperBinary != 'piper' && piperBinary != 'piper.exe') {
+          if (!File(piperBinary).existsSync() &&
+              piperBinary != 'piper' &&
+              piperBinary != 'piper.exe') {
             print('Piper binary not found at: $piperBinary');
             print('See the detailed error below when generation is attempted.');
           }
 
-          final bool readEverythingMode = !_storageService.ttsIgnoreAsterisks && !_storageService.ttsNarrateQuotedOnly;
+          final bool readEverythingMode =
+              !_storageService.ttsIgnoreAsterisks &&
+              !_storageService.ttsNarrateQuotedOnly;
 
           final List<KokoroChunk> chunks;
           if (readEverythingMode) {
@@ -436,12 +453,21 @@ class TtsService extends ChangeNotifier {
         );
         _audioCollector!.reset(); // Ensure clean state for new utterance
 
-        kDebugPrint('[TtsService] Starting parallel generation of ${sentences.length} sentences (concurrency=$maxConcurrency)');
+        kDebugPrint(
+          '[TtsService] Starting parallel generation of ${sentences.length} sentences (concurrency=$maxConcurrency)',
+        );
 
-        for (int batchStart = 0; batchStart < sentences.length; batchStart += maxConcurrency) {
+        for (
+          int batchStart = 0;
+          batchStart < sentences.length;
+          batchStart += maxConcurrency
+        ) {
           if (!_isSpeaking) break;
 
-          final batchEnd = (batchStart + maxConcurrency).clamp(0, sentences.length);
+          final batchEnd = (batchStart + maxConcurrency).clamp(
+            0,
+            sentences.length,
+          );
           final futures = <Future<File?>>[];
 
           for (int i = batchStart; i < batchEnd; i++) {
@@ -486,7 +512,8 @@ class TtsService extends ChangeNotifier {
       notifyListeners();
 
       File? audioFile;
-      if (_storageService.ttsEngine == 'elevenlabs' && validWavFiles.length == 1) {
+      if (_storageService.ttsEngine == 'elevenlabs' &&
+          validWavFiles.length == 1) {
         // ElevenLabs returns a single MP3 — play directly, no WAV concat needed.
         audioFile = validWavFiles.first;
       } else {
@@ -529,7 +556,10 @@ class TtsService extends ChangeNotifier {
   /// Uses a producer-consumer pattern: a producer generates audio files
   /// concurrently as sentences arrive, while a consumer plays them in order.
   /// An initial buffer of 3 sentences gives a head start so playback is smooth.
-  Future<void> speakStreaming(Stream<String> sentenceStream, {String? voiceKey}) async {
+  Future<void> speakStreaming(
+    Stream<String> sentenceStream, {
+    String? voiceKey,
+  }) async {
     if (!_storageService.ttsEnabled) return;
 
     await stop();
@@ -545,7 +575,9 @@ class TtsService extends ChangeNotifier {
 
     // Defensive mismatch protection (same as in speak())
     if (_isPiperEngine && !await _voiceManager.isVoiceInstalled(voice)) {
-      print('TTS WARNING (streaming): Character voice "$voice" not found for Piper. Falling back.');
+      print(
+        'TTS WARNING (streaming): Character voice "$voice" not found for Piper. Falling back.',
+      );
       voice = _storageService.ttsVoiceModel;
       if (voice.isEmpty) return;
     }
@@ -558,11 +590,13 @@ class TtsService extends ChangeNotifier {
 
     // Ensure Kokoro model is ready
     if (_storageService.ttsEngine == 'kokoro') {
-      final ready = await activeEngine.ensureModelReady(onProgress: (p) {
-        _modelDownloadProgress = p;
-        _isDownloadingModel = p < 1.0;
-        notifyListeners();
-      });
+      final ready = await activeEngine.ensureModelReady(
+        onProgress: (p) {
+          _modelDownloadProgress = p;
+          _isDownloadingModel = p < 1.0;
+          notifyListeners();
+        },
+      );
       _isDownloadingModel = false;
       if (!ready) return;
 
@@ -583,11 +617,12 @@ class TtsService extends ChangeNotifier {
     // Shared queue between producer and consumer
     final audioQueue = <File>[];
     bool producerDone = false;
-    Completer<void>? audioAvailable;
     int bufferTarget = _storageService.callBufferSentences.clamp(1, 10);
 
     try {
-      var maxConcurrency = _isPiperEngine ? 1 : _storageService.ttsConcurrency.clamp(1, 8);
+      var maxConcurrency = _isPiperEngine
+          ? 1
+          : _storageService.ttsConcurrency.clamp(1, 8);
       // ElevenLabs: one at a time from the stream (already fast enough)
       if (_storageService.ttsEngine == 'elevenlabs') maxConcurrency = 1;
 
@@ -615,7 +650,9 @@ class TtsService extends ChangeNotifier {
               final modelPath = await _voiceManager.getVoiceModelPath(voice);
               wavFile = await _generatePiperWav(sanitized, modelPath, idx);
             } else {
-              kDebugPrint('[TtsService] Streaming: generating audio for chunk (len=${sanitized.length})');
+              kDebugPrint(
+                '[TtsService] Streaming: generating audio for chunk (len=${sanitized.length})',
+              );
               wavFile = await engine.generateAudio(sanitized, voice, speed);
             }
             return wavFile;
@@ -650,16 +687,13 @@ class TtsService extends ChangeNotifier {
           final file = completedFiles[nextToQueue]!;
           audioQueue.add(file);
           nextToQueue++;
-          if (audioAvailable != null && !audioAvailable!.isCompleted) {
-            audioAvailable!.complete();
-          }
         }
       }
 
       // Wait for initial buffer to fill
       while (!producerDone && audioQueue.length < bufferTarget && _isSpeaking) {
         futureReady = Completer<void>();
-        await futureReady!.future;
+        await futureReady.future;
         collectReady();
       }
 
@@ -677,7 +711,7 @@ class TtsService extends ChangeNotifier {
         } else {
           // Wait for more audio from producer
           futureReady = Completer<void>();
-          await futureReady!.future;
+          await futureReady.future;
           collectReady();
         }
       }
@@ -712,7 +746,9 @@ class TtsService extends ChangeNotifier {
 
     // Defensive mismatch protection (same as in speak())
     if (_isPiperEngine && !await _voiceManager.isVoiceInstalled(voice)) {
-      print('TTS WARNING (generateAudioFile): Character voice "$voice" not found for Piper. Falling back.');
+      print(
+        'TTS WARNING (generateAudioFile): Character voice "$voice" not found for Piper. Falling back.',
+      );
       voice = _storageService.ttsVoiceModel;
       if (voice.isEmpty) return null;
     }
@@ -756,8 +792,15 @@ class TtsService extends ChangeNotifier {
         final speed = _storageService.ttsSpeechRate;
         final maxConcurrency = _storageService.ttsConcurrency;
 
-        for (int batchStart = 0; batchStart < sentences.length; batchStart += maxConcurrency) {
-          final batchEnd = (batchStart + maxConcurrency).clamp(0, sentences.length);
+        for (
+          int batchStart = 0;
+          batchStart < sentences.length;
+          batchStart += maxConcurrency
+        ) {
+          final batchEnd = (batchStart + maxConcurrency).clamp(
+            0,
+            sentences.length,
+          );
           final futures = <Future<File?>>[];
           for (int i = batchStart; i < batchEnd; i++) {
             futures.add(engine.generateAudio(sentences[i], voice, speed));
@@ -765,7 +808,10 @@ class TtsService extends ChangeNotifier {
           final results = await Future.wait(futures);
           bool failed = false;
           for (final result in results) {
-            if (result == null) { failed = true; break; }
+            if (result == null) {
+              failed = true;
+              break;
+            }
             wavFiles.add(result);
           }
           if (failed) break;
@@ -875,20 +921,31 @@ class TtsService extends ChangeNotifier {
   }
 
   /// Generate a WAV file using Piper.
-  Future<File?> _generatePiperWav(String text, String modelPath, int index) async {
+  Future<File?> _generatePiperWav(
+    String text,
+    String modelPath,
+    int index,
+  ) async {
     try {
       final piperPath = _piperBinaryPath();
       final voicesDir = p.dirname(modelPath);
       final voiceName = p.basenameWithoutExtension(modelPath);
 
       final tempDir = Directory.systemTemp;
-      final wavFile = File(p.join(tempDir.path,
-          'piper_tts_${DateTime.now().millisecondsSinceEpoch}_$index.wav'));
+      final wavFile = File(
+        p.join(
+          tempDir.path,
+          'piper_tts_${DateTime.now().millisecondsSinceEpoch}_$index.wav',
+        ),
+      );
 
       _piperProcess = await Process.start(piperPath, [
-        '-m', voiceName,
-        '--data-dir', voicesDir,
-        '-f', wavFile.path,
+        '-m',
+        voiceName,
+        '--data-dir',
+        voicesDir,
+        '-f',
+        wavFile.path,
       ]);
 
       _piperProcess!.stdin.writeln(text);
@@ -910,7 +967,8 @@ class TtsService extends ChangeNotifier {
     } catch (e) {
       final piperPath = _piperBinaryPath();
 
-      if (e is ProcessException && e.message.contains('No such file or directory')) {
+      if (e is ProcessException &&
+          e.message.contains('No such file or directory')) {
         print('''
 ════════════════════════════════════════════════════════════
 Piper TTS binary not found!
@@ -968,8 +1026,12 @@ See docs for current bundling instructions.
 
         int dataOffset = 12;
         while (dataOffset < bytes.length - 8) {
-          final chunkId = String.fromCharCodes(bytes.sublist(dataOffset, dataOffset + 4));
-          final chunkSize = ByteData.sublistView(bytes).getUint32(dataOffset + 4, Endian.little);
+          final chunkId = String.fromCharCodes(
+            bytes.sublist(dataOffset, dataOffset + 4),
+          );
+          final chunkSize = ByteData.sublistView(
+            bytes,
+          ).getUint32(dataOffset + 4, Endian.little);
           if (chunkId == 'data') {
             final pcmStart = dataOffset + 8;
             final pcmEnd = (pcmStart + chunkSize).clamp(0, bytes.length);
@@ -987,14 +1049,20 @@ See docs for current bundling instructions.
       final fileSize = 36 + totalPcmBytes;
       final header = ByteData(44);
       // RIFF
-      header.setUint8(0, 0x52); header.setUint8(1, 0x49);
-      header.setUint8(2, 0x46); header.setUint8(3, 0x46);
+      header.setUint8(0, 0x52);
+      header.setUint8(1, 0x49);
+      header.setUint8(2, 0x46);
+      header.setUint8(3, 0x46);
       header.setUint32(4, fileSize, Endian.little);
-      header.setUint8(8, 0x57); header.setUint8(9, 0x41);
-      header.setUint8(10, 0x56); header.setUint8(11, 0x45);
+      header.setUint8(8, 0x57);
+      header.setUint8(9, 0x41);
+      header.setUint8(10, 0x56);
+      header.setUint8(11, 0x45);
       // fmt
-      header.setUint8(12, 0x66); header.setUint8(13, 0x6D);
-      header.setUint8(14, 0x74); header.setUint8(15, 0x20);
+      header.setUint8(12, 0x66);
+      header.setUint8(13, 0x6D);
+      header.setUint8(14, 0x74);
+      header.setUint8(15, 0x20);
       header.setUint32(16, 16, Endian.little);
       header.setUint16(20, 1, Endian.little);
       header.setUint16(22, channels, Endian.little);
@@ -1003,13 +1071,19 @@ See docs for current bundling instructions.
       header.setUint16(32, blockAlign, Endian.little);
       header.setUint16(34, bitsPerSample, Endian.little);
       // data
-      header.setUint8(36, 0x64); header.setUint8(37, 0x61);
-      header.setUint8(38, 0x74); header.setUint8(39, 0x61);
+      header.setUint8(36, 0x64);
+      header.setUint8(37, 0x61);
+      header.setUint8(38, 0x74);
+      header.setUint8(39, 0x61);
       header.setUint32(40, totalPcmBytes, Endian.little);
 
       final tempDir = Directory.systemTemp;
-      final combinedFile = File(p.join(tempDir.path,
-          'tts_combined_${DateTime.now().millisecondsSinceEpoch}.wav'));
+      final combinedFile = File(
+        p.join(
+          tempDir.path,
+          'tts_combined_${DateTime.now().millisecondsSinceEpoch}.wav',
+        ),
+      );
       final sink = combinedFile.openWrite();
       sink.add(header.buffer.asUint8List());
       for (final chunk in pcmChunks) {
@@ -1026,14 +1100,18 @@ See docs for current bundling instructions.
 
   void _cleanupFiles(List<File> files) {
     for (final file in files) {
-      try { file.deleteSync(); } catch (_) {}
+      try {
+        file.deleteSync();
+      } catch (_) {}
     }
   }
 
   /// Delete the cached audio file and reset cache state.
   void _clearCache() {
     if (_cachedWav != null) {
-      try { _cachedWav!.deleteSync(); } catch (_) {}
+      try {
+        _cachedWav!.deleteSync();
+      } catch (_) {}
       _cachedWav = null;
     }
     _cachedMessageId = null;
@@ -1101,10 +1179,22 @@ See docs for current bundling instructions.
     }
 
     // ── Standard cleanup ──
-    result = result.replaceAll(RegExp(r'<think>.*?</think>', caseSensitive: false, dotAll: true), '');
-    result = result.replaceAll(RegExp(r'<think>.*$', caseSensitive: false, dotAll: true), '');
-    result = result.replaceAll(RegExp(r'\(OOC:.*?\)', caseSensitive: false), '');
-    result = result.replaceAll(RegExp(r'\[OOC:.*?\]', caseSensitive: false), '');
+    result = result.replaceAll(
+      RegExp(r'<think>.*?</think>', caseSensitive: false, dotAll: true),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'<think>.*$', caseSensitive: false, dotAll: true),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'\(OOC:.*?\)', caseSensitive: false),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'\[OOC:.*?\]', caseSensitive: false),
+      '',
+    );
     result = result.replaceAll(RegExp(r'\*'), '');
     result = result.replaceAll(RegExp(r'#{1,6}\s'), '');
     result = result.replaceAll(RegExp(r'[_~`]'), '');
@@ -1113,9 +1203,12 @@ See docs for current bundling instructions.
     result = result.replaceAll(RegExp(r':[a-zA-Z0-9_]+:'), '');
     // Remove emojis (fpai-feature-004)
     result = result.replaceAll(
-        RegExp(r'[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}]',
-            unicode: true),
-        '');
+      RegExp(
+        r'[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}]',
+        unicode: true,
+      ),
+      '',
+    );
     result = result.replaceAll(RegExp(r'\s+'), ' ');
     return result.trim();
   }

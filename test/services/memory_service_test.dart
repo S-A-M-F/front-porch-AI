@@ -42,8 +42,14 @@ void main() {
       });
 
       test('handles single-element vectors', () {
-        expect(MemoryService.cosineSimilarity([5.0], [5.0]), closeTo(1.0, 0.0001));
-        expect(MemoryService.cosineSimilarity([5.0], [-5.0]), closeTo(-1.0, 0.0001));
+        expect(
+          MemoryService.cosineSimilarity([5.0], [5.0]),
+          closeTo(1.0, 0.0001),
+        );
+        expect(
+          MemoryService.cosineSimilarity([5.0], [-5.0]),
+          closeTo(-1.0, 0.0001),
+        );
         expect(MemoryService.cosineSimilarity([0.0], [0.0]), 0.0);
       });
 
@@ -91,8 +97,20 @@ void main() {
 
       test('score is bounded between 0 and 1 for typical results', () {
         // cosineSimilarity returns -1 to 1, but retrieval filters by minScore
-        const mem1 = RetrievedMemory(content: 'a', sessionId: 's', positionStart: 0, positionEnd: 1, score: 1.0);
-        const mem2 = RetrievedMemory(content: 'b', sessionId: 's', positionStart: 0, positionEnd: 1, score: 0.0);
+        const mem1 = RetrievedMemory(
+          content: 'a',
+          sessionId: 's',
+          positionStart: 0,
+          positionEnd: 1,
+          score: 1.0,
+        );
+        const mem2 = RetrievedMemory(
+          content: 'b',
+          sessionId: 's',
+          positionStart: 0,
+          positionEnd: 1,
+          score: 0.0,
+        );
         expect(mem1.score, 1.0);
         expect(mem2.score, 0.0);
       });
@@ -102,21 +120,24 @@ void main() {
       // isOperational depends on StorageService.ragEnabled and EmbeddingService.isAvailable
       // We test the logic pattern without needing real service instances.
 
-      test('isOperational requires both RAG enabled and embeddings available', () {
-        // When ragEnabled=true AND isAvailable=true => operational
-        // When ragEnabled=false AND isAvailable=true => NOT operational
-        // When ragEnabled=true AND isAvailable=false => NOT operational
-        // When ragEnabled=false AND isAvailable=false => NOT operational
+      test(
+        'isOperational requires both RAG enabled and embeddings available',
+        () {
+          // When ragEnabled=true AND isAvailable=true => operational
+          // When ragEnabled=false AND isAvailable=true => NOT operational
+          // When ragEnabled=true AND isAvailable=false => NOT operational
+          // When ragEnabled=false AND isAvailable=false => NOT operational
 
-        bool isOperational(bool ragEnabled, bool embeddingAvailable) {
-          return ragEnabled && embeddingAvailable;
-        }
+          bool isOperational(bool ragEnabled, bool embeddingAvailable) {
+            return ragEnabled && embeddingAvailable;
+          }
 
-        expect(isOperational(true, true), true);
-        expect(isOperational(false, true), false);
-        expect(isOperational(true, false), false);
-        expect(isOperational(false, false), false);
-      });
+          expect(isOperational(true, true), true);
+          expect(isOperational(false, true), false);
+          expect(isOperational(true, false), false);
+          expect(isOperational(false, false), false);
+        },
+      );
 
       test('isEmbedding reflects embedding state', () {
         // isEmbedding is a simple boolean that tracks whether an embedding operation is in progress

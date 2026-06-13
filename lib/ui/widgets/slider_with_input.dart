@@ -34,6 +34,7 @@ class _SliderWithInputState extends State<SliderWithInput> {
   late final FocusNode _focusNode;
   late final TextEditingController _controller;
   late String _formattedValue;
+  double? _dragValue;
 
   @override
   void initState() {
@@ -145,7 +146,10 @@ class _SliderWithInputState extends State<SliderWithInput> {
                   fontWeight: FontWeight.bold,
                 ),
                 decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   isDense: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
@@ -157,10 +161,13 @@ class _SliderWithInputState extends State<SliderWithInput> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
-                    borderSide: BorderSide(color: Colors.blueAccent, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.blueAccent,
+                      width: 1.5,
+                    ),
                   ),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
+                  fillColor: Colors.white.withValues(alpha: 0.05),
                 ),
                 onSubmitted: (_) => _commitValue(),
               ),
@@ -168,11 +175,20 @@ class _SliderWithInputState extends State<SliderWithInput> {
           ],
         ),
         Slider(
-          value: widget.value,
+          value: _dragValue ?? widget.value,
           min: widget.min,
           max: widget.max,
           divisions: widget.divisions,
-          onChanged: widget.onChanged,
+          onChanged: (v) {
+            setState(() => _dragValue = v);
+            _controller.text = widget.isInteger
+                ? v.toInt().toString()
+                : v.toStringAsFixed(widget.decimalPlaces);
+          },
+          onChangeEnd: (v) {
+            widget.onChanged(v);
+            _dragValue = null;
+          },
         ),
       ],
     );

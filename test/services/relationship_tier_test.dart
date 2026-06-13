@@ -324,7 +324,7 @@ void main() {
       final stub = _RelationshipStub();
       stub.setScores(affection: 17);
       // base=10, target=25, current=17-10=7, total=25-10=15
-      expect(stub.shortTermProgressPercent, 7/15);
+      expect(stub.shortTermProgressPercent, 7 / 15);
     });
 
     test('100% at score 150', () {
@@ -347,8 +347,11 @@ void main() {
       stub.setScores(affection: -50);
       final negativeProgress = stub.shortTermProgressPercent;
 
-      expect(positiveProgress, negativeProgress,
-          reason: 'progress should be the same for positive and negative scores');
+      expect(
+        positiveProgress,
+        negativeProgress,
+        reason: 'progress should be the same for positive and negative scores',
+      );
     });
 
     test('progress never exceeds 1.0', () {
@@ -369,12 +372,15 @@ void main() {
       stub.setScores(affection: 24);
       final progressAt24 = stub.shortTermProgressPercent;
       // base=10, target=25, current=24-10=14, total=25-10=15
-      expect(progressAt24, 14/15);
+      expect(progressAt24, 14 / 15);
 
       // At score 25 (start of tier 2): progress resets to 0
       stub.setScores(affection: 25);
-      expect(stub.shortTermProgressPercent, 0.0,
-          reason: 'progress resets to 0 at tier boundary');
+      expect(
+        stub.shortTermProgressPercent,
+        0.0,
+        reason: 'progress resets to 0 at tier boundary',
+      );
     });
   });
 
@@ -420,11 +426,14 @@ void main() {
       final stub = _RelationshipStub();
       stub.setScores(longTerm: 24);
       final progressAt24 = stub.longTermProgressPercent;
-      expect(progressAt24, 14/15);
+      expect(progressAt24, 14 / 15);
 
       stub.setScores(longTerm: 25);
-      expect(stub.longTermProgressPercent, 0.0,
-          reason: 'progress resets to 0 at tier boundary');
+      expect(
+        stub.longTermProgressPercent,
+        0.0,
+        reason: 'progress resets to 0 at tier boundary',
+      );
     });
   });
 
@@ -443,8 +452,11 @@ void main() {
       stub._affectionScore = 100;
       stub._relationshipTier = stub.calculateTier(100);
       expect(stub.relationshipTier, 5);
-      expect(stub.shortTermProgressPercent, 0.0,
-          reason: 'progress resets at tier boundary');
+      expect(
+        stub.shortTermProgressPercent,
+        0.0,
+        reason: 'progress resets at tier boundary',
+      );
     });
 
     test('tier -5 at score -100 has progress 0% (tier boundary)', () {
@@ -452,8 +464,11 @@ void main() {
       stub._affectionScore = -100;
       stub._relationshipTier = stub.calculateTier(-100);
       expect(stub.relationshipTier, -5);
-      expect(stub.shortTermProgressPercent, 0.0,
-          reason: 'progress resets at tier boundary');
+      expect(
+        stub.shortTermProgressPercent,
+        0.0,
+        reason: 'progress resets at tier boundary',
+      );
     });
 
     test('progress increases within tier boundaries', () {

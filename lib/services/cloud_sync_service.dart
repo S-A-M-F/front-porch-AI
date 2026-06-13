@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:front_porch_ai/app_version.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/services/database_merge_service.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
@@ -90,9 +91,18 @@ class CloudSyncService extends ChangeNotifier {
   String? get providerName => _provider?.displayName;
 
   /// Progress from 0.0 to 1.0 during sync.
-  double get progress => _totalFiles > 0 ? (_processedFiles / _totalFiles).clamp(0.0, 1.0) : 0.0;
+  double get progress =>
+      _totalFiles > 0 ? (_processedFiles / _totalFiles).clamp(0.0, 1.0) : 0.0;
   int get totalFiles => _totalFiles;
   int get processedFiles => _processedFiles;
+
+  /// Rawhide / pre-release: /FrontPorchAI-Rawhide
+  /// This provides proper isolation between release channels.
+  String get _cloudRoot =>
+      isPreRelease ? '/FrontPorchAI-Rawhide' : '/FrontPorchAI';
+
+  /// Publicly exposed cloud root for UI / debugging.
+  String get cloudRoot => _cloudRoot;
 
   /// Set the active cloud storage provider.
   void setProvider(CloudStorageProvider? provider) {
@@ -111,7 +121,9 @@ class CloudSyncService extends ChangeNotifier {
   }
 
   /// Run a full bi-directional sync of characters and the database.
-  Future<void> fullSync(String chatsDir, String charactersDir, {
+  Future<void> fullSync(
+    String chatsDir,
+    String charactersDir, {
     Set<String>? validCharIds,
     Set<String>? validGroupIds,
   }) async {
@@ -132,7 +144,9 @@ class CloudSyncService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final didPurge = !(prefs.getBool('cloud_purged_for_0.9.0') ?? false);
       if (didPurge) {
-        debugPrint('[CloudSync] Purging stale cloud data for 0.9.0 fresh start');
+        debugPrint(
+          '[CloudSync] Purging stale cloud data for 0.9.0 fresh start',
+        );
         try {
           await purgeCloudData();
         } catch (e) {
@@ -147,9 +161,15 @@ class CloudSyncService extends ChangeNotifier {
       await _provider!.ensureDir('/FrontPorchAI/characters');
 
       // Count total files for progress tracking
-      _totalFiles = 1 + await _countSyncFiles( // +1 for DB file
-        charactersDir, '/FrontPorchAI/characters', false, ['.png'],
-      );
+      _totalFiles =
+          1 +
+          await _countSyncFiles(
+            // +1 for DB file
+            charactersDir,
+            '/FrontPorchAI/characters',
+            false,
+            ['.png'],
+          );
       notifyListeners();
 
       if (didPurge) {
@@ -160,7 +180,10 @@ class CloudSyncService extends ChangeNotifier {
           final db = await AppDatabase.instance();
           await db.bumpSyncVersion();
           await db.checkpoint();
-          await _provider!.uploadFile(localPath, '/FrontPorchAI/front_porch.db');
+          await _provider!.uploadFile(
+            localPath,
+            '/FrontPorchAI/front_porch.db',
+          );
           _syncedFiles++;
           _processedFiles++;
           notifyListeners();
@@ -223,7 +246,9 @@ class CloudSyncService extends ChangeNotifier {
   Future<void> forceUploadDatabase() async {
     if (_provider == null || !_provider!.isConnected) {
       debugPrint('[CloudSync] Force upload aborted — provider not connected');
-      throw StateError('Cloud provider not connected. Connect first in Settings.');
+      throw StateError(
+        'Cloud provider not connected. Connect first in Settings.',
+      );
     }
     final localPath = AppDatabase.dbFilePath;
     if (localPath == null) {
@@ -245,7 +270,9 @@ class CloudSyncService extends ChangeNotifier {
     // consistency may return the old file briefly).
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('cloud_schema_uploaded', db.schemaVersion);
-    debugPrint('[CloudSync] Force-uploaded local database to cloud (schema v${db.schemaVersion})');
+    debugPrint(
+      '[CloudSync] Force-uploaded local database to cloud (schema v${db.schemaVersion})',
+    );
     notifyListeners();
   }
 
@@ -254,7 +281,9 @@ class CloudSyncService extends ChangeNotifier {
   Future<void> purgeCloudData() async {
     if (_provider == null || !_provider!.isConnected) {
       debugPrint('[CloudSync] Purge aborted — provider not connected');
-      throw StateError('Cloud provider not connected. Connect first in Settings.');
+      throw StateError(
+        'Cloud provider not connected. Connect first in Settings.',
+      );
     }
 
     try {
@@ -294,9 +323,9 @@ class CloudSyncService extends ChangeNotifier {
     RemoteFileInfo? remoteInfo;
     try {
       final remoteFiles = await _provider!.listFiles('/FrontPorchAI');
-      remoteInfo = remoteFiles.where(
-        (f) => path.basename(f.remotePath) == 'front_porch.db'
-      ).firstOrNull;
+      remoteInfo = remoteFiles
+          .where((f) => path.basename(f.remotePath) == 'front_porch.db')
+          .firstOrNull;
     } catch (_) {}
 
     // Read local sync version
@@ -324,9 +353,12 @@ class CloudSyncService extends ChangeNotifier {
       // Remote is NEWER → this app is outdated, block sync
       _schemaMismatch = true;
       _status = SyncStatus.error;
-      _lastError = 'Schema version mismatch: local v$localSchema, remote v$remoteSchema. '
+      _lastError =
+          'Schema version mismatch: local v$localSchema, remote v$remoteSchema. '
           'Please update the app on this device to continue cloud sync.';
-      debugPrint('[CloudSync] SCHEMA MISMATCH (remote newer) — local: v$localSchema, remote: v$remoteSchema. Aborting sync.');
+      debugPrint(
+        '[CloudSync] SCHEMA MISMATCH (remote newer) — local: v$localSchema, remote: v$remoteSchema. Aborting sync.',
+      );
       notifyListeners();
       return;
     }
@@ -342,11 +374,15 @@ class CloudSyncService extends ChangeNotifier {
         // Already uploaded this schema before. The remote DB may be stale
         // (Drive eventual consistency) or may contain new data from another
         // device. Download → merge → upload to preserve both sides.
-        debugPrint('[CloudSync] Remote schema v$remoteSchema < local v$localSchema, '
-            'but v$uploadedSchema was already uploaded — merging then re-uploading.');
+        debugPrint(
+          '[CloudSync] Remote schema v$remoteSchema < local v$localSchema, '
+          'but v$uploadedSchema was already uploaded — merging then re-uploading.',
+        );
 
         // Merge remote changes into local (if any)
-        final tempDir = await Directory.systemTemp.createTemp('fp_merge_schema_');
+        final tempDir = await Directory.systemTemp.createTemp(
+          'fp_merge_schema_',
+        );
         final tempPath = path.join(tempDir.path, 'remote.db');
         try {
           await _provider!.downloadFile(remotePath, tempPath);
@@ -355,15 +391,22 @@ class CloudSyncService extends ChangeNotifier {
           // THEN merge the migrated data into local.
           final tempDbFile = File(tempPath);
           if (await tempDbFile.exists()) {
-            final merged = await DatabaseMergeService.mergeRemoteIntoLocal(db, tempPath);
+            final merged = await DatabaseMergeService.mergeRemoteIntoLocal(
+              db,
+              tempPath,
+            );
             if (merged) {
               _dbWasDownloaded = true;
             }
           }
         } catch (e) {
-          debugPrint('[CloudSync] Merge during schema bypass failed (non-fatal): $e');
+          debugPrint(
+            '[CloudSync] Merge during schema bypass failed (non-fatal): $e',
+          );
         } finally {
-          try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+          try {
+            await Directory(tempDir.path).delete(recursive: true);
+          } catch (_) {}
         }
 
         // Upload the merged result
@@ -377,21 +420,29 @@ class CloudSyncService extends ChangeNotifier {
       }
 
       // First time seeing this mismatch — prompt user before uploading.
-      debugPrint('[CloudSync] Remote schema v$remoteSchema < local v$localSchema — will download and migrate.');
+      debugPrint(
+        '[CloudSync] Remote schema v$remoteSchema < local v$localSchema — will download and migrate.',
+      );
 
       if (localVersion == 0 && remoteInfo != null) {
         // Fresh install: download the old schema DB so we get the user's data
         await AppDatabase.closeAndReset();
         await _provider!.downloadFile(remotePath, localPath);
-        try { await File('$localPath-wal').delete(); } catch (_) {}
-        try { await File('$localPath-shm').delete(); } catch (_) {}
+        try {
+          await File('$localPath-wal').delete();
+        } catch (_) {}
+        try {
+          await File('$localPath-shm').delete();
+        } catch (_) {}
 
         // Reopen — Drift migration will automatically upgrade v2→v3
         await AppDatabase.instance();
 
         _syncedFiles++;
         _dbWasDownloaded = true;
-        debugPrint('[CloudSync] Downloaded v$remoteSchema DB and migrated to v$localSchema');
+        debugPrint(
+          '[CloudSync] Downloaded v$remoteSchema DB and migrated to v$localSchema',
+        );
       }
 
       // Flag so caller can show a warning dialog before uploading
@@ -401,7 +452,9 @@ class CloudSyncService extends ChangeNotifier {
       return; // Do NOT upload yet — wait for user confirmation
     }
 
-    debugPrint('[CloudSync] DB versions — local: $localVersion, remote: $remoteVersion (schema v$localSchema)');
+    debugPrint(
+      '[CloudSync] DB versions — local: $localVersion, remote: $remoteVersion (schema v$localSchema)',
+    );
 
     if (remoteInfo == null) {
       // No remote DB yet → bump version and upload
@@ -418,20 +471,30 @@ class CloudSyncService extends ChangeNotifier {
       await db.checkpoint();
       await _provider!.uploadFile(localPath, remotePath);
       _syncedFiles++;
-      debugPrint('[CloudSync] First sync after migration — uploaded local DB as source of truth');
+      debugPrint(
+        '[CloudSync] First sync after migration — uploaded local DB as source of truth',
+      );
     } else if (localVersion == 0 && remoteVersion > 0) {
       // Fresh install with existing remote → download and replace
       await AppDatabase.closeAndReset();
       await _provider!.downloadFile(remotePath, localPath);
-      try { await File('$localPath-wal').delete(); } catch (_) {}
-      try { await File('$localPath-shm').delete(); } catch (_) {}
+      try {
+        await File('$localPath-wal').delete();
+      } catch (_) {}
+      try {
+        await File('$localPath-shm').delete();
+      } catch (_) {}
       await AppDatabase.instance();
       _syncedFiles++;
       _dbWasDownloaded = true;
-      debugPrint('[CloudSync] Fresh install — downloaded remote DB (version $remoteVersion)');
+      debugPrint(
+        '[CloudSync] Fresh install — downloaded remote DB (version $remoteVersion)',
+      );
     } else if (localVersion == remoteVersion && localVersion > 0) {
       // Versions match → nothing to do
-      debugPrint('[CloudSync] Skipped DB sync — versions match ($localVersion)');
+      debugPrint(
+        '[CloudSync] Skipped DB sync — versions match ($localVersion)',
+      );
     } else {
       // Versions differ → download remote to temp, merge, then upload
       final tempDir = await Directory.systemTemp.createTemp('fp_merge_');
@@ -440,7 +503,10 @@ class CloudSyncService extends ChangeNotifier {
         await _provider!.downloadFile(remotePath, tempPath);
 
         // Run row-level merge
-        final merged = await DatabaseMergeService.mergeRemoteIntoLocal(db, tempPath);
+        final merged = await DatabaseMergeService.mergeRemoteIntoLocal(
+          db,
+          tempPath,
+        );
 
         if (merged) {
           _dbWasDownloaded = true; // signal callers to reload repos
@@ -455,7 +521,9 @@ class CloudSyncService extends ChangeNotifier {
         debugPrint('[CloudSync] Merge failed: $e');
         rethrow;
       } finally {
-        try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
+        try {
+          await Directory(tempDir.path).delete(recursive: true);
+        } catch (_) {}
       }
     }
 
@@ -481,14 +549,15 @@ class CloudSyncService extends ChangeNotifier {
       // to match the QueryExecutorUser's schemaVersion.
       int schemaVersion = 0;
       try {
-        final headerBytes = await tempFile.openRead(60, 64).fold<List<int>>(
-          [], (prev, chunk) => prev..addAll(chunk),
-        );
+        final headerBytes = await tempFile
+            .openRead(60, 64)
+            .fold<List<int>>([], (prev, chunk) => prev..addAll(chunk));
         if (headerBytes.length >= 4) {
-          schemaVersion = (headerBytes[0] << 24) |
-                          (headerBytes[1] << 16) |
-                          (headerBytes[2] << 8) |
-                           headerBytes[3];
+          schemaVersion =
+              (headerBytes[0] << 24) |
+              (headerBytes[1] << 16) |
+              (headerBytes[2] << 8) |
+              headerBytes[3];
         }
       } catch (e) {
         debugPrint('[CloudSync] Could not read schema version from header: $e');
@@ -500,101 +569,50 @@ class CloudSyncService extends ChangeNotifier {
         final tempDb = NativeDatabase(tempFile);
         await tempDb.ensureOpen(_SyncVersionUser());
         final result = await tempDb.runSelect(
-          'SELECT version FROM sync_meta WHERE id = 1', [],
+          'SELECT version FROM sync_meta WHERE id = 1',
+          [],
         );
         syncVersion = result.isNotEmpty ? result.first['version'] as int : 0;
         await tempDb.close();
       } catch (_) {}
 
-      debugPrint('[CloudSync] Remote versions — sync: $syncVersion, schema: $schemaVersion');
+      debugPrint(
+        '[CloudSync] Remote versions — sync: $syncVersion, schema: $schemaVersion',
+      );
       return (syncVersion, schemaVersion);
     } catch (e) {
       debugPrint('[CloudSync] Could not read remote versions: $e');
       return (0, 0);
     } finally {
-      try { await Directory(tempDir.path).delete(recursive: true); } catch (_) {}
-    }
-  }
-
-
-
-  /// Upload local files to remote (no downloading). Used for characters
-  /// so the user can selectively choose which remote characters to pull.
-  Future<void> _uploadOnlyDirectory({
-    required String localDir,
-    required String remoteDir,
-    List<String>? extensions,
-  }) async {
-    final localDirectory = Directory(localDir);
-    debugPrint('[CloudSync] _uploadOnlyDirectory: localDir=$localDir, remoteDir=$remoteDir');
-    if (!await localDirectory.exists()) {
-      debugPrint('[CloudSync] _uploadOnlyDirectory: local directory does NOT exist, skipping');
-      return;
-    }
-
-    final localFiles = <String, File>{};
-    await _collectLocalFiles(localDirectory, localDir, localFiles, false, extensions);
-    debugPrint('[CloudSync] _uploadOnlyDirectory: found ${localFiles.length} local files');
-    for (final f in localFiles.keys) {
-      debugPrint('[CloudSync]   local file: $f');
-    }
-
-    // Gather remote files for comparison
-    List<RemoteFileInfo> remoteFiles;
-    try {
-      remoteFiles = await _provider!.listFiles(remoteDir);
-    } catch (e) {
-      debugPrint('[CloudSync] _uploadOnlyDirectory: error listing remote: $e');
-      remoteFiles = [];
-    }
-    debugPrint('[CloudSync] _uploadOnlyDirectory: found ${remoteFiles.length} remote files');
-
-    final remoteNames = remoteFiles
-        .map((rf) => path.basename(rf.remotePath))
-        .toSet();
-
-    for (final entry in localFiles.entries) {
-      final relativePath = entry.key;
-      final localFile = entry.value;
-      final remotePath = '$remoteDir/${relativePath.replaceAll('\\', '/')}';
-      final baseName = path.basename(relativePath);
-
-      if (!remoteNames.contains(baseName)) {
-        await _provider!.ensureDir(path.dirname(remotePath).replaceAll('\\', '/'));
-        await _provider!.uploadFile(localFile.path, remotePath);
-        _syncedFiles++;
-      } else {
-        // Upload if local is newer
-        final remoteInfo = remoteFiles.firstWhere(
-          (rf) => path.basename(rf.remotePath) == baseName,
-          orElse: () => RemoteFileInfo(remotePath: '', lastModified: null),
-        );
-        if (remoteInfo.lastModified != null) {
-          final localStat = await localFile.stat();
-          if (localStat.modified.isAfter(remoteInfo.lastModified!)) {
-            await _provider!.uploadFile(localFile.path, remotePath);
-            _syncedFiles++;
-          }
-        }
-      }
-      _processedFiles++;
-      notifyListeners();
+      try {
+        await Directory(tempDir.path).delete(recursive: true);
+      } catch (_) {}
     }
   }
 
   /// List ALL character PNGs on the remote.
   /// Returns a list of (filename, existsLocally) pairs.
-  Future<List<({String name, bool existsLocally})>> listAllRemoteCharacters(String localCharactersDir) async {
-    debugPrint('[CloudSync] listAllRemoteCharacters: localCharactersDir=$localCharactersDir');
+  Future<List<({String name, bool existsLocally})>> listAllRemoteCharacters(
+    String localCharactersDir,
+  ) async {
+    debugPrint(
+      '[CloudSync] listAllRemoteCharacters: localCharactersDir=$localCharactersDir',
+    );
     if (_provider == null || !_provider!.isConnected) {
-      debugPrint('[CloudSync] listAllRemoteCharacters: provider null or not connected');
+      debugPrint(
+        '[CloudSync] listAllRemoteCharacters: provider null or not connected',
+      );
       return [];
     }
 
     try {
       await _provider!.ensureDir('/FrontPorchAI/characters');
-      final remoteFiles = await _provider!.listFiles('/FrontPorchAI/characters');
-      debugPrint('[CloudSync] listAllRemoteCharacters: ${remoteFiles.length} remote files found');
+      final remoteFiles = await _provider!.listFiles(
+        '/FrontPorchAI/characters',
+      );
+      debugPrint(
+        '[CloudSync] listAllRemoteCharacters: ${remoteFiles.length} remote files found',
+      );
       for (final rf in remoteFiles) {
         debugPrint('[CloudSync]   remote: ${rf.remotePath}');
       }
@@ -607,9 +625,13 @@ class CloudSyncService extends ChangeNotifier {
             localNames.add(path.basename(entity.path));
           }
         }
-        debugPrint('[CloudSync] listAllRemoteCharacters: ${localNames.length} local PNGs found');
+        debugPrint(
+          '[CloudSync] listAllRemoteCharacters: ${localNames.length} local PNGs found',
+        );
       } else {
-        debugPrint('[CloudSync] listAllRemoteCharacters: local dir does NOT exist');
+        debugPrint(
+          '[CloudSync] listAllRemoteCharacters: local dir does NOT exist',
+        );
       }
 
       final result = <({String name, bool existsLocally})>[];
@@ -628,12 +650,16 @@ class CloudSyncService extends ChangeNotifier {
 
   /// List character PNGs that exist on the remote but NOT locally.
   /// Returns a list of filenames (e.g. ['char_abc.png', 'char_def.png']).
-  Future<List<String>> listRemoteOnlyCharacters(String localCharactersDir) async {
+  Future<List<String>> listRemoteOnlyCharacters(
+    String localCharactersDir,
+  ) async {
     if (_provider == null || !_provider!.isConnected) return [];
 
     try {
       await _provider!.ensureDir('/FrontPorchAI/characters');
-      final remoteFiles = await _provider!.listFiles('/FrontPorchAI/characters');
+      final remoteFiles = await _provider!.listFiles(
+        '/FrontPorchAI/characters',
+      );
 
       final localDir = Directory(localCharactersDir);
       final localNames = <String>{};
@@ -660,7 +686,10 @@ class CloudSyncService extends ChangeNotifier {
   }
 
   /// Download specific character PNGs from remote by filename.
-  Future<int> downloadCharacters(String localCharactersDir, List<String> filenames) async {
+  Future<int> downloadCharacters(
+    String localCharactersDir,
+    List<String> filenames,
+  ) async {
     if (_provider == null || !_provider!.isConnected) return 0;
 
     final dir = Directory(localCharactersDir);
@@ -684,7 +713,9 @@ class CloudSyncService extends ChangeNotifier {
 
   /// Download remote-only character PNGs to a temp directory for preview.
   /// Returns a map of filename → temp file path.
-  Future<Map<String, String>> downloadCharactersToTemp(List<String> filenames) async {
+  Future<Map<String, String>> downloadCharactersToTemp(
+    List<String> filenames,
+  ) async {
     if (_provider == null || !_provider!.isConnected) return {};
 
     final tempDir = await Directory.systemTemp.createTemp('fp_char_preview_');
@@ -779,7 +810,13 @@ class CloudSyncService extends ChangeNotifier {
 
     // Gather local files
     final localFiles = <String, File>{};
-    await _collectLocalFiles(localDirectory, localDir, localFiles, recursive, extensions);
+    await _collectLocalFiles(
+      localDirectory,
+      localDir,
+      localFiles,
+      recursive,
+      extensions,
+    );
 
     // Gather remote files
     List<RemoteFileInfo> remoteFiles;
@@ -802,7 +839,10 @@ class CloudSyncService extends ChangeNotifier {
     for (final entry in remoteMap.entries) {
       final relativePath = entry.key;
       final remoteInfo = entry.value;
-      final localPath = path.join(localDir, relativePath.replaceAll('/', Platform.pathSeparator));
+      final localPath = path.join(
+        localDir,
+        relativePath.replaceAll('/', Platform.pathSeparator),
+      );
       final localFile = File(localPath);
 
       bool shouldDownload = false;
@@ -829,7 +869,9 @@ class CloudSyncService extends ChangeNotifier {
           _syncedFiles++;
         } catch (e) {
           // Clean up partial temp file on failure
-          try { await File(tempPath).delete(); } catch (_) {}
+          try {
+            await File(tempPath).delete();
+          } catch (_) {}
           debugPrint('[CloudSync] Download failed for $relativePath: $e');
         }
       }
@@ -860,7 +902,9 @@ class CloudSyncService extends ChangeNotifier {
           }
         }
       } catch (e) {
-        debugPrint('[CloudSync] Failed to upload ${path.basename(relativePath)}: $e');
+        debugPrint(
+          '[CloudSync] Failed to upload ${path.basename(relativePath)}: $e',
+        );
       }
       _processedFiles++;
       notifyListeners();
@@ -877,7 +921,8 @@ class CloudSyncService extends ChangeNotifier {
   ) async {
     await for (final entity in dir.list(recursive: recursive)) {
       if (entity is File) {
-        if (extensions != null && !extensions.any((ext) => entity.path.endsWith(ext))) {
+        if (extensions != null &&
+            !extensions.any((ext) => entity.path.endsWith(ext))) {
           continue;
         }
         final relativePath = entity.path.substring(baseDir.length + 1);
@@ -888,12 +933,21 @@ class CloudSyncService extends ChangeNotifier {
 
   /// Count total unique files in a sync pair (local + remote) for progress tracking.
   Future<int> _countSyncFiles(
-    String localDir, String remoteDir, bool recursive, List<String>? extensions,
+    String localDir,
+    String remoteDir,
+    bool recursive,
+    List<String>? extensions,
   ) async {
     final localDirectory = Directory(localDir);
     final localFiles = <String, File>{};
     if (await localDirectory.exists()) {
-      await _collectLocalFiles(localDirectory, localDir, localFiles, recursive, extensions);
+      await _collectLocalFiles(
+        localDirectory,
+        localDir,
+        localFiles,
+        recursive,
+        extensions,
+      );
     }
 
     List<RemoteFileInfo> remoteFiles;
@@ -916,7 +970,6 @@ class CloudSyncService extends ChangeNotifier {
     }
     return allKeys.length;
   }
-
 }
 
 /// Minimal QueryExecutorUser for opening a raw NativeDatabase to read sync_meta.
@@ -926,7 +979,10 @@ class _SyncVersionUser extends QueryExecutorUser {
   int get schemaVersion => 3; // Match current schema so Drift doesn't try to migrate
 
   @override
-  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) async {
+  Future<void> beforeOpen(
+    QueryExecutor executor,
+    OpeningDetails details,
+  ) async {
     // No-op: we just want to read one row, no migrations needed
   }
 }

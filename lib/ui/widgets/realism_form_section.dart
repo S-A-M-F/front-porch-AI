@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Shared Realism Engine configuration form.
 ///
@@ -47,6 +48,30 @@ class RealismFormSection extends StatelessWidget {
   final String currentTask;
   final ValueChanged<String> onCurrentTaskChanged;
 
+  // Realism Verification (Director/Verifier) toggle — shown under Optional Features like other optionals.
+  // Sliders for max reprocesses + strictness live in the Details dialog (right-click edit); form surfaces the toggle for creator/edit flows.
+  final bool realismVerificationEnabled;
+  final ValueChanged<bool> onRealismVerificationChanged;
+  final bool showVerificationToggle;
+
+  // Optional verif tunables (1-5); rendered as compact sliders after the toggle when showVerificationToggle.
+  // Allows 3 controls in group per-member expanders + main forms (dialog also has independent for right-click).
+  final int realismVerificationMaxReprocesses;
+  final ValueChanged<int>? onRealismVerificationMaxReprocessesChanged;
+  final int realismVerificationStrictness;
+  final ValueChanged<int>? onRealismVerificationStrictnessChanged;
+
+  // Optional needs form (rendered separately from Optional Features).
+  // When provided, the caller is responsible for rendering this widget
+  // (e.g. in the character creator). When null, no needs UI is rendered.
+  final Widget? needsFormSection;
+
+  // Visibility controls (for group creator where some features are global only)
+  final bool showNsfwCooldownToggle;
+  final bool showChaosToggle;
+  final bool showTimeAndDay;
+  final bool showMasterEnabledToggle;
+
   const RealismFormSection({
     super.key,
     required this.enabled,
@@ -71,6 +96,18 @@ class RealismFormSection extends StatelessWidget {
     required this.onChaosModeChanged,
     required this.currentTask,
     required this.onCurrentTaskChanged,
+    required this.realismVerificationEnabled,
+    required this.onRealismVerificationChanged,
+    this.showVerificationToggle = true,
+    this.realismVerificationMaxReprocesses = 1,
+    this.onRealismVerificationMaxReprocessesChanged,
+    this.realismVerificationStrictness = 3,
+    this.onRealismVerificationStrictnessChanged,
+    this.needsFormSection,
+    this.showNsfwCooldownToggle = true,
+    this.showChaosToggle = true,
+    this.showTimeAndDay = true,
+    this.showMasterEnabledToggle = true,
   });
 
   static const _timeOptions = [
@@ -128,176 +165,242 @@ class RealismFormSection extends StatelessWidget {
   }
 
   Color _bondColor(int score) {
-    if (score >= 20) return Colors.greenAccent;
-    if (score >= 0) return Colors.blueAccent;
-    if (score >= -19) return Colors.orangeAccent;
-    return Colors.redAccent;
+    if (score >= 20) return AppColors.bondHigh;
+    if (score >= 0) return AppColors.bondMid;
+    if (score >= -19) return AppColors.bondLow;
+    return AppColors.bondNeg;
   }
 
   Color _trustColor(int level) {
-    if (level >= 20) return Colors.tealAccent;
-    if (level >= 0) return Colors.blueAccent;
-    if (level >= -19) return Colors.orangeAccent;
-    return Colors.redAccent;
+    if (level >= 20) return AppColors.trustHigh;
+    if (level >= 0) return AppColors.bondMid;
+    if (level >= -19) return AppColors.bondLow;
+    return AppColors.bondNeg;
   }
 
   @override
   Widget build(BuildContext context) {
+    final labelStyle = TextStyle(
+      color: AppColors.textSecondary(context),
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.5,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Master Toggle ──
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: enabled ? Colors.blueAccent.withValues(alpha: 0.4) : Colors.white12,
+        // ── Master Toggle (can be hidden in group creator where the group-level toggle controls it) ──
+        if (showMasterEnabledToggle)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: enabled
+                    ? AppColors.formMasterAccent.withValues(alpha: 0.4)
+                    : AppColors.borderOf(context),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: enabled
+                        ? AppColors.formMasterAccent.withValues(alpha: 0.2)
+                        : AppColors.surfaceContainerOf(
+                            context,
+                          ).withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.psychology,
+                    color: enabled
+                        ? AppColors.formMasterAccent
+                        : AppColors.iconSecondary(context),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Enable Realism Engine',
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        enabled
+                            ? 'Character will start with pre-configured state'
+                            : 'Realism Engine will use default values',
+                        style: TextStyle(
+                          color: enabled
+                              ? AppColors.formMasterAccent
+                              : AppColors.textTertiary(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  onChanged: onEnabledChanged,
+                  activeTrackColor: AppColors.formMasterAccent.withValues(
+                    alpha: 0.5,
+                  ),
+                  activeThumbColor: AppColors.formMasterAccent,
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: enabled
-                      ? Colors.blueAccent.withValues(alpha: 0.2)
-                      : Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.psychology,
-                  color: enabled ? Colors.blueAccent : Colors.white38,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Enable Realism Engine',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      enabled
-                          ? 'Character will start with pre-configured state'
-                          : 'Realism Engine will use default values',
-                      style: TextStyle(
-                        color: enabled ? Colors.blueAccent : Colors.white38,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: enabled,
-                onChanged: onEnabledChanged,
-                activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
-                activeThumbColor: Colors.blueAccent,
-              ),
-            ],
-          ),
-        ),
 
         // ── Configuration Form (only when enabled) ──
         if (enabled) ...[
           const SizedBox(height: 20),
 
-          // Time & Day Section
-          _sectionHeader(Icons.schedule, 'Time & Day', Colors.amberAccent),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
-            child: Row(
-              children: [
-                // Time of Day dropdown
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Time of Day', style: _labelStyle),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: DropdownButton<String>(
-                          value: timeOfDay,
-                          isExpanded: true,
-                          dropdownColor: const Color(0xFF1E293B),
-                          underline: const SizedBox(),
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          items: _timeOptions.map((t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(_formatTimeLabel(t)),
-                          )).toList(),
-                          onChanged: (v) { if (v != null) onTimeOfDayChanged(v); },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Day Number
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Day Number', style: _labelStyle),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: TextField(
-                          controller: TextEditingController(text: dayCount.toString())
-                            ..selection = TextSelection.fromPosition(
-                              TextPosition(offset: dayCount.toString().length),
+          if (showTimeAndDay) ...[
+            // Time & Day Section
+            _sectionHeader(
+              Icons.schedule,
+              'Time & Day',
+              AppColors.timeDayAccent,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.cardOf(context),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.borderOf(context)),
+              ),
+              child: Row(
+                children: [
+                  // Time of Day dropdown
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Time of Day', style: labelStyle),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerOf(context),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors.borderOf(context),
                             ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          onChanged: (v) {
-                            final n = int.tryParse(v);
-                            if (n != null && n >= 1) onDayCountChanged(n);
-                          },
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          child: DropdownButton<String>(
+                            value: timeOfDay,
+                            isExpanded: true,
+                            dropdownColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
+                            underline: const SizedBox(),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                            ),
+                            items: _timeOptions
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(_formatTimeLabel(t)),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              if (v != null) onTimeOfDayChanged(v);
+                            },
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 16),
+                  // Day Number
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Day Number', style: labelStyle),
+                        const SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerOf(context),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors.borderOf(context),
+                            ),
+                          ),
+                          child: TextField(
+                            controller:
+                                TextEditingController(text: dayCount.toString())
+                                  ..selection = TextSelection.fromPosition(
+                                    TextPosition(
+                                      offset: dayCount.toString().length,
+                                    ),
+                                  ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                            ),
+                            onChanged: (v) {
+                              final n = int.tryParse(v);
+                              if (n != null && n >= 1) onDayCountChanged(n);
+                            },
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ], // end showTimeAndDay
           const SizedBox(height: 20),
 
+          // Needs Simulation (rendered separately when provided by caller).
+          // ignore: use_null_aware_elements — '?' doesn't work in children lists
+          if (needsFormSection != null) needsFormSection!,
+
           // Relationship Section
-          _sectionHeader(Icons.favorite, 'Relationship', Colors.pinkAccent),
+          _sectionHeader(
+            Icons.favorite,
+            'Relationship',
+            AppColors.relationshipAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
             child: Column(
               children: [
                 // Short-Term Bond
@@ -309,6 +412,7 @@ class RealismFormSection extends StatelessWidget {
                   tierName: _shortTermTierName(shortTermBond),
                   color: _bondColor(shortTermBond),
                   onChanged: (v) => onShortTermBondChanged(v.round()),
+                  context: context,
                 ),
                 const SizedBox(height: 16),
                 // Long-Term Bond
@@ -320,6 +424,7 @@ class RealismFormSection extends StatelessWidget {
                   tierName: _longTermTierName(longTermBond),
                   color: _bondColor(longTermBond),
                   onChanged: (v) => onLongTermBondChanged(v.round()),
+                  context: context,
                 ),
                 const SizedBox(height: 16),
                 // Trust Level
@@ -331,6 +436,7 @@ class RealismFormSection extends StatelessWidget {
                   tierName: _trustLevelName(trustLevel),
                   color: _trustColor(trustLevel),
                   onChanged: (v) => onTrustLevelChanged(v.round()),
+                  context: context,
                 ),
               ],
             ),
@@ -338,11 +444,19 @@ class RealismFormSection extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Emotion Section
-          _sectionHeader(Icons.mood, 'Starting Emotion', Colors.purpleAccent),
+          _sectionHeader(
+            Icons.mood,
+            'Starting Emotion',
+            AppColors.emotionAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
             child: Row(
               children: [
                 // Emotion text field
@@ -351,26 +465,39 @@ class RealismFormSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Emotion', style: _labelStyle),
+                      Text('Emotion', style: labelStyle),
                       const SizedBox(height: 8),
                       Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.surfaceContainerOf(context),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(
+                            color: AppColors.borderOf(context),
+                          ),
                         ),
                         child: TextField(
                           controller: TextEditingController(text: emotion)
                             ..selection = TextSelection.fromPosition(
                               TextPosition(offset: emotion.length),
                             ),
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          style: TextStyle(
+                            color: AppColors.textPrimary(context),
+                            fontSize: 14,
+                          ),
                           onChanged: onEmotionChanged,
                           decoration: InputDecoration(
                             hintText: 'e.g. curious, guarded, amused',
-                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 13),
+                            hintStyle: TextStyle(
+                              color: AppColors.textTertiary(
+                                context,
+                              ).withValues(alpha: 0.6),
+                              fontSize: 13,
+                            ),
                             border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
@@ -383,26 +510,39 @@ class RealismFormSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Intensity', style: _labelStyle),
+                      Text('Intensity', style: labelStyle),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.surfaceContainerOf(context),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(
+                            color: AppColors.borderOf(context),
+                          ),
                         ),
                         child: DropdownButton<String>(
                           value: emotionIntensity,
                           isExpanded: true,
-                          dropdownColor: const Color(0xFF1E293B),
+                          dropdownColor: AppColors.surfaceContainerOf(context),
                           underline: const SizedBox(),
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          items: _intensityOptions.map((i) => DropdownMenuItem(
-                            value: i,
-                            child: Text(i[0].toUpperCase() + i.substring(1)),
-                          )).toList(),
-                          onChanged: (v) { if (v != null) onEmotionIntensityChanged(v); },
+                          style: TextStyle(
+                            color: AppColors.textPrimary(context),
+                            fontSize: 14,
+                          ),
+                          items: _intensityOptions
+                              .map(
+                                (i) => DropdownMenuItem(
+                                  value: i,
+                                  child: Text(
+                                    i[0].toUpperCase() + i.substring(1),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) onEmotionIntensityChanged(v);
+                          },
                         ),
                       ),
                     ],
@@ -414,71 +554,169 @@ class RealismFormSection extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Optional Toggles
-          _sectionHeader(Icons.tune, 'Optional Features', Colors.tealAccent),
+          _sectionHeader(
+            Icons.tune,
+            'Optional Features',
+            AppColors.optionalAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
             child: Column(
               children: [
-                _toggleRow(
-                  icon: Icons.thermostat,
-                  label: 'NSFW Cooldown System',
-                  subtitle: 'Realistic arousal/refractory mechanics',
-                  value: nsfwCooldownEnabled,
-                  onChanged: onNsfwCooldownChanged,
-                ),
-                const Divider(color: Colors.white10, height: 24),
-                _toggleRow(
-                  icon: Icons.casino,
-                  label: 'Chaos Mode (Chance Time)',
-                  subtitle: 'Random narrative events during roleplay',
-                  value: chaosModeEnabled,
-                  onChanged: onChaosModeChanged,
-                ),
+                if (showNsfwCooldownToggle) ...[
+                  buildToggleRow(
+                    icon: Icons.thermostat,
+                    label: 'NSFW Cooldown System',
+                    subtitle: 'Realistic arousal/refractory mechanics',
+                    value: nsfwCooldownEnabled,
+                    onChanged: onNsfwCooldownChanged,
+                    context: context,
+                  ),
+                  if (showChaosToggle)
+                    Divider(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                      height: 24,
+                    ),
+                ],
+                if (showChaosToggle) ...[
+                  buildToggleRow(
+                    icon: Icons.casino,
+                    label: 'Chaos Mode (Chance Time)',
+                    subtitle: 'Random narrative events during roleplay',
+                    value: chaosModeEnabled,
+                    onChanged: onChaosModeChanged,
+                    context: context,
+                  ),
+                ],
+
+                // Realism Verification toggle (last optional; independent of needs).
+                // Uses same _toggleRow + card styling. Sliders for passes/strictness are in Details dialog per spec.
+                if (showVerificationToggle) ...[
+                  if (showChaosToggle || showNsfwCooldownToggle)
+                    Divider(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                      height: 24,
+                    ),
+                  buildToggleRow(
+                    icon: Icons.verified_user,
+                    label: 'Realism Verification (Director/Verifier)',
+                    subtitle:
+                        'Optional director thread validates realism deltas + needs JSON; supplies corrections + reason or re-feeds for reprocessing (extra eval cost; strong models recommended)',
+                    value: realismVerificationEnabled,
+                    onChanged: onRealismVerificationChanged,
+                    context: context,
+                  ),
+                  // Compact sliders for the 2 tunables (shown in forms including group per-member when toggle visible).
+                  // 1-5 range; onChanged provided by caller (pages, group seed); defaults safe if not.
+                  const SizedBox(height: 8),
+                  Text(
+                    'Max reprocess passes: $realismVerificationMaxReprocesses',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                  Slider(
+                    value: realismVerificationMaxReprocesses.toDouble(),
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: '$realismVerificationMaxReprocesses',
+                    onChanged: (d) => onRealismVerificationMaxReprocessesChanged
+                        ?.call(d.round()),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Strictness (1=lenient … 5=strict): $realismVerificationStrictness',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                  Slider(
+                    value: realismVerificationStrictness.toDouble(),
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: '$realismVerificationStrictness',
+                    onChanged: (d) =>
+                        onRealismVerificationStrictnessChanged?.call(d.round()),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 20),
 
           // Task / Quest Section
-          _sectionHeader(Icons.flag, 'Current Task / Quest', Colors.orangeAccent),
+          _sectionHeader(
+            Icons.flag,
+            'Current Task / Quest',
+            AppColors.taskAccent,
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
+            decoration: BoxDecoration(
+              color: AppColors.cardOf(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderOf(context)),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Task', style: _labelStyle),
+                Text('Task', style: labelStyle),
                 const SizedBox(height: 8),
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
+                    color: AppColors.surfaceContainerOf(context),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white12),
+                    border: Border.all(color: AppColors.borderOf(context)),
                   ),
                   child: TextField(
                     controller: TextEditingController(text: currentTask)
                       ..selection = TextSelection.fromPosition(
                         TextPosition(offset: currentTask.length),
                       ),
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 14,
+                    ),
                     maxLines: 3,
                     minLines: 1,
                     onChanged: onCurrentTaskChanged,
                     decoration: InputDecoration(
-                      hintText: 'e.g. Find the missing artifact, Survive the first day at school',
-                      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 13),
+                      hintText:
+                          'e.g. Find the missing artifact, Survive the first day at school',
+                      hintStyle: TextStyle(
+                        color: AppColors.textTertiary(
+                          context,
+                        ).withValues(alpha: 0.6),
+                        fontSize: 13,
+                      ),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Sets the initial quest or objective when a new conversation starts.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
+                  style: TextStyle(
+                    color: AppColors.textTertiary(
+                      context,
+                    ).withValues(alpha: 0.7),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -505,21 +743,6 @@ class RealismFormSection extends StatelessWidget {
     );
   }
 
-  static BoxDecoration _cardDecoration() {
-    return BoxDecoration(
-      color: const Color(0xFF1E293B),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-    );
-  }
-
-  static const _labelStyle = TextStyle(
-    color: Colors.white70,
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
-    letterSpacing: 0.5,
-  );
-
   Widget _sliderRow({
     required String label,
     required int value,
@@ -528,13 +751,22 @@ class RealismFormSection extends StatelessWidget {
     required String tierName,
     required Color color,
     required ValueChanged<double> onChanged,
+    required BuildContext context,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text(label, style: _labelStyle),
+            Text(
+              label,
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -544,7 +776,11 @@ class RealismFormSection extends StatelessWidget {
               ),
               child: Text(
                 '$tierName ($value)',
-                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -553,7 +789,9 @@ class RealismFormSection extends StatelessWidget {
         SliderTheme(
           data: SliderThemeData(
             activeTrackColor: color,
-            inactiveTrackColor: Colors.white12,
+            inactiveTrackColor: AppColors.borderOf(
+              context,
+            ).withValues(alpha: 0.3),
             thumbColor: color,
             trackHeight: 3,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
@@ -570,35 +808,55 @@ class RealismFormSection extends StatelessWidget {
     );
   }
 
-  Widget _toggleRow({
+  /// Shared (public static for DRY across form + edit dialog manual rows).
+  /// AppColors exclusive in new authority/Optional/verif surfaces per re-grep (verifiedAccentOf for on-state + resolve/helpers; withValues(alpha) only on resolved AppColors values; no raw color literals (Colors or hex) in authority/Optional/verif *executable* code; comments filtered from hygiene greps).
+  static Widget buildToggleRow({
     required IconData icon,
     required String label,
-    required String subtitle,
+    String subtitle = '',
     required bool value,
     required ValueChanged<bool> onChanged,
+    required BuildContext context,
   }) {
+    final onColor = AppColors.verifiedAccentOf(context);
     return Row(
       children: [
-        Icon(icon, color: value ? Colors.tealAccent : Colors.white38, size: 20),
+        Icon(
+          icon,
+          color: value ? onColor : AppColors.iconSecondary(context),
+          size: 20,
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(
-                color: value ? Colors.white : Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              )),
-              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: value
+                      ? AppColors.textPrimary(context)
+                      : AppColors.textSecondary(context),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (subtitle.isNotEmpty)
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 11,
+                  ),
+                ),
             ],
           ),
         ),
         Switch(
           value: value,
           onChanged: onChanged,
-          activeTrackColor: Colors.tealAccent.withValues(alpha: 0.5),
-          activeThumbColor: Colors.tealAccent,
+          activeTrackColor: onColor.withValues(alpha: 0.5),
+          activeThumbColor: onColor,
         ),
       ],
     );

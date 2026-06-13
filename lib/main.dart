@@ -29,49 +29,36 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/ui/layout/main_layout.dart'; // Keep original import for MainLayout
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/open_router_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/backend_manager.dart';
+import 'package:front_porch_ai/app_version.dart';
+import 'package:front_porch_ai/database/database.dart';
+// ignore: unused_import — used in the commented-out auto-cleanup block below
+import 'package:front_porch_ai/database/database_cleanup.dart';
+import 'package:front_porch_ai/database/data_migration_service.dart';
+
+// Barrel imports for the most common services and widgets used directly in main.dart
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Services and modules not yet in the services barrel (internal, low-frequency, or side-effect heavy)
 import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/hardware_service.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/user_persona_service.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/setup_service.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/update_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/services/voice_manager.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
-import 'package:front_porch_ai/services/stt_service.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
-import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
-import 'package:front_porch_ai/database/database.dart';
-import 'package:front_porch_ai/database/data_migration_service.dart';
-import 'package:front_porch_ai/services/backup_service.dart';
 import 'package:front_porch_ai/services/db_reunification_service.dart';
 import 'package:front_porch_ai/services/embedding_service.dart';
 import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
-import 'package:front_porch_ai/services/story_repository.dart';
-import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 import 'package:front_porch_ai/services/file_consolidation_service.dart';
-
-import 'package:front_porch_ai/ui/widgets/setup_overlay.dart';
-import 'package:front_porch_ai/ui/widgets/remote_lock_overlay.dart';
-import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
-import 'package:front_porch_ai/ui/dialogs/stable_db_import_dialog.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 import 'package:front_porch_ai/services/web_chat_bridge.dart';
-import 'package:front_porch_ai/services/expression_classifier.dart';
-import 'package:front_porch_ai/app_version.dart';
+
+// Cloud provider implementations (not re-exported from the services barrel)
+import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
+import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
+
+// Dialogs and specific widgets used only in main.dart (direct imports are appropriate)
+import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/stable_db_import_dialog.dart';
 
 /// Prefix SharedPreferences keys for beta builds so window state is
 /// isolated from the stable installation.  Unchanged for stable builds.
@@ -121,6 +108,18 @@ void main(List<String> args) async {
     await DataMigrationService.cleanupLegacyFiles();
   } catch (_) {}
 
+  // TODO: Enable after verifying DatabaseCleanup behaves correctly in production
+  // try {
+  //   final report = await DatabaseCleanup.checkOrphans(db);
+  //   if (report.totalOrphans > 0 || report.totalBrokenRefs > 0) {
+  //     debugPrint('[DB] Found ${report.totalOrphans + report.totalBrokenRefs}'
+  //         ' orphaned records — running cleanup');
+  //     await DatabaseCleanup.cleanOrphans(db);
+  //   }
+  // } catch (e) {
+  //   debugPrint('[DB] Orphan cleanup failed: $e (non-fatal)');
+  // }
+
   WindowOptions windowOptions = const WindowOptions(
     size: Size(1280, 720),
     center: true,
@@ -147,7 +146,10 @@ void main(List<String> args) async {
           await windowManager.setSize(Size(windowWidth, windowHeight));
         }
         await windowManager.maximize();
-      } else if (windowX != null && windowY != null && windowWidth != null && windowHeight != null) {
+      } else if (windowX != null &&
+          windowY != null &&
+          windowWidth != null &&
+          windowHeight != null) {
         // Restore saved position + size
         await windowManager.setBounds(
           Rect.fromLTWH(windowX, windowY, windowWidth, windowHeight),
@@ -166,11 +168,17 @@ void main(List<String> args) async {
       providers: [
         Provider<AppDatabase>.value(value: db),
         Provider<bool>.value(value: needsMigration), // migration flag
-        ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProvider(create: (_) => StorageService()),
+        // AppState owns only transient UI state (selected tab index).
+        // Theme / dark mode is now driven exclusively by StorageService (single source of truth,
+        // persisted, notifies after async prefs load). This eliminates the prior race + glue bugs.
+        ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProxyProvider<StorageService, DownloadManager>(
           create: (context) => DownloadManager(
-            targetDir: Provider.of<StorageService>(context, listen: false).modelsDir.path,
+            targetDir: Provider.of<StorageService>(
+              context,
+              listen: false,
+            ).modelsDir.path,
           ),
           update: (context, storage, previous) =>
               previous ?? DownloadManager(targetDir: storage.modelsDir.path),
@@ -192,6 +200,17 @@ void main(List<String> args) async {
               previous ?? CharacterRepository(db, storage),
         ),
         ChangeNotifierProvider(create: (context) => UserPersonaService(db)),
+        // GroupChatRepository early (before ChatService) so the DI wiring in ChatService
+        // create/update can successfully Provider.of it. Critical for the decoupled
+        // member loading fallback in setActiveGroup.
+        ChangeNotifierProxyProvider<StorageService, GroupChatRepository>(
+          create: (context) => GroupChatRepository(
+            Provider.of<StorageService>(context, listen: false),
+            db,
+          ),
+          update: (context, storage, previous) =>
+              previous ?? GroupChatRepository(storage, db),
+        ),
         ChangeNotifierProvider(create: (context) => FolderService(db)),
         ChangeNotifierProxyProvider2<
           CharacterRepository,
@@ -229,7 +248,11 @@ void main(List<String> args) async {
           update: (context, storage, previous) =>
               previous ?? BackendManager(storage),
         ),
-        ChangeNotifierProxyProvider2<StorageService, DownloadManager, ModelManager>(
+        ChangeNotifierProxyProvider2<
+          StorageService,
+          DownloadManager,
+          ModelManager
+        >(
           create: (context) => ModelManager(
             Provider.of<StorageService>(context, listen: false),
             Provider.of<DownloadManager>(context, listen: false),
@@ -238,19 +261,40 @@ void main(List<String> args) async {
               previous ?? ModelManager(storage, downloadManager),
         ),
         ChangeNotifierProvider(create: (_) => OpenRouterService()),
-        ChangeNotifierProxyProvider3<
+        ChangeNotifierProvider(create: (_) => PseudoRemoteService()),
+        ChangeNotifierProxyProvider5<
           KoboldService,
           OpenRouterService,
+          PseudoRemoteService,
           StorageService,
+          BackendManager,
           LLMProvider
         >(
           create: (context) => LLMProvider(
             Provider.of<KoboldService>(context, listen: false),
             Provider.of<OpenRouterService>(context, listen: false),
+            Provider.of<PseudoRemoteService>(context, listen: false),
             Provider.of<StorageService>(context, listen: false),
+            Provider.of<BackendManager>(context, listen: false),
           ),
-          update: (context, kobold, openRouter, storage, previous) =>
-              previous ?? LLMProvider(kobold, openRouter, storage),
+          update:
+              (
+                context,
+                kobold,
+                openRouter,
+                pseudoRemote,
+                storage,
+                backend,
+                previous,
+              ) =>
+                  previous ??
+                  LLMProvider(
+                    kobold,
+                    openRouter,
+                    pseudoRemote,
+                    storage,
+                    backend,
+                  ),
         ),
         ChangeNotifierProxyProvider4<
           KoboldService,
@@ -273,6 +317,10 @@ void main(List<String> args) async {
             );
             chatService.setCharacterRepository(
               Provider.of<CharacterRepository>(context, listen: false),
+            );
+            // Wire GroupChatRepository for decoupled group member loading
+            chatService.setGroupChatRepository(
+              Provider.of<GroupChatRepository>(context, listen: false),
             );
             // Wire MemoryService for RAG
             try {
@@ -298,6 +346,9 @@ void main(List<String> args) async {
               previous.setCharacterRepository(
                 Provider.of<CharacterRepository>(context, listen: false),
               );
+              previous.setGroupChatRepository(
+                Provider.of<GroupChatRepository>(context, listen: false),
+              );
               try {
                 previous.setTtsService(
                   Provider.of<TtsService>(context, listen: false),
@@ -318,36 +369,37 @@ void main(List<String> args) async {
             chatService.setCharacterRepository(
               Provider.of<CharacterRepository>(context, listen: false),
             );
+            chatService.setGroupChatRepository(
+              Provider.of<GroupChatRepository>(context, listen: false),
+            );
             return chatService;
           },
         ),
-        ChangeNotifierProxyProvider<StorageService, ExpressionClassifierService>(
-          create: (context) =>
-              ExpressionClassifierService(Provider.of<StorageService>(context, listen: false)),
+        ChangeNotifierProxyProvider<
+          StorageService,
+          ExpressionClassifierService
+        >(
+          create: (context) => ExpressionClassifierService(
+            Provider.of<StorageService>(context, listen: false),
+          ),
           update: (context, storage, previous) =>
               previous ?? ExpressionClassifierService(storage),
         ),
-        ChangeNotifierProxyProvider<StorageService, GroupChatRepository>(
-          create: (context) => GroupChatRepository(
-            Provider.of<StorageService>(context, listen: false),
-            db,
-          ),
-          update: (context, storage, previous) =>
-              previous ?? GroupChatRepository(storage, db),
-        ),
-        ChangeNotifierProxyProvider3<
+        ChangeNotifierProxyProvider4<
           StorageService,
           BackendManager,
           KoboldService,
+          PseudoRemoteService,
           SetupService
         >(
           create: (context) => SetupService(
             Provider.of<StorageService>(context, listen: false),
             Provider.of<BackendManager>(context, listen: false),
             Provider.of<KoboldService>(context, listen: false),
+            Provider.of<PseudoRemoteService>(context, listen: false),
           ),
-          update: (context, storage, backend, kobold, previous) =>
-              previous ?? SetupService(storage, backend, kobold),
+          update: (context, storage, backend, kobold, pseudoRemote, previous) =>
+              previous ?? SetupService(storage, backend, kobold, pseudoRemote),
         ),
         ChangeNotifierProvider(create: (_) => UpdateService()),
         ChangeNotifierProxyProvider<StorageService, VoiceManager>(
@@ -671,8 +723,14 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       final folderService = Provider.of<FolderService>(context, listen: false);
-      final personaService = Provider.of<UserPersonaService>(context, listen: false);
-      final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+      final personaService = Provider.of<UserPersonaService>(
+        context,
+        listen: false,
+      );
+      final groupRepo = Provider.of<GroupChatRepository>(
+        context,
+        listen: false,
+      );
       final worldRepo = Provider.of<WorldRepository>(context, listen: false);
 
       charRepo.updateDatabase(newDb);
@@ -717,8 +775,8 @@ class _MyAppState extends State<MyApp> with WindowListener {
       debugPrint('Failed to save window state: $e');
     }
 
-    // Stop KoboldCPP backend BEFORE destroying the window.
-    // This prevents orphaned processes when the app closes.
+    // Stop managed backends (KoboldCPP + PseudoRemote) BEFORE destroying
+    // the window. This prevents orphaned processes when the app closes.
     try {
       final koboldService = Provider.of<KoboldService>(context, listen: false);
       if (koboldService.isRunning) {
@@ -726,6 +784,17 @@ class _MyAppState extends State<MyApp> with WindowListener {
       }
     } catch (e) {
       debugPrint('AG_DEBUG: Error stopping Kobold on window close: $e');
+    }
+    try {
+      final pseudoRemote = Provider.of<PseudoRemoteService>(
+        context,
+        listen: false,
+      );
+      if (pseudoRemote.isRunning) {
+        await pseudoRemote.stop();
+      }
+    } catch (e) {
+      debugPrint('AG_DEBUG: Error stopping PseudoRemote on window close: $e');
     }
 
     // Run pending installer if user deferred the update
@@ -769,26 +838,26 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, appState, child) {
+    // StorageService is the single source of truth for isDark (persisted + notifies on load/toggle).
+    // Using Consumer2 ensures the entire MaterialApp tree (and thus ThemeData) rebuilds when the user
+    // toggles or when the async prefs load completes. AppState is kept only for selectedIndex.
+    return Consumer2<StorageService, AppState>(
+      builder: (context, storage, appState, child) {
+        final isDark = storage.uiSettings.isDark;
         return MaterialApp(
           title: 'Front Porch AI',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            brightness: appState.darkMode ? Brightness.dark : Brightness.light,
+            brightness: isDark ? Brightness.dark : Brightness.light,
             primarySwatch: Colors.blue,
-            scaffoldBackgroundColor: appState.darkMode
+            scaffoldBackgroundColor: isDark
                 ? const Color(0xFF0F172A)
-                : const Color(0xFFF3F4F6),
-            cardColor: appState.darkMode
-                ? const Color(0xFF1E293B)
-                : Colors.white,
+                : const Color(0xFFF8F4ED), // warmer paper
+            cardColor: isDark ? const Color(0xFF1E293B) : Colors.white,
             textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme)
                 .apply(
-                  bodyColor: appState.darkMode ? Colors.white : Colors.black87,
-                  displayColor: appState.darkMode
-                      ? Colors.white
-                      : Colors.black87,
+                  bodyColor: isDark ? Colors.white : Colors.black87,
+                  displayColor: isDark ? Colors.white : Colors.black87,
                 ),
             useMaterial3: true,
           ),
@@ -842,6 +911,13 @@ class _MyAppState extends State<MyApp> with WindowListener {
                         if (kobold.isRunning) await kobold.stopKobold();
                       } catch (_) {}
                       try {
+                        final pseudo = Provider.of<PseudoRemoteService>(
+                          context,
+                          listen: false,
+                        );
+                        if (pseudo.isRunning) await pseudo.stop();
+                      } catch (_) {}
+                      try {
                         final webServer = Provider.of<WebServerService>(
                           context,
                           listen: false,
@@ -868,7 +944,8 @@ class _MyAppState extends State<MyApp> with WindowListener {
               final responsiveScale = (width / 1280).clamp(0.85, 1.5);
 
               // Combine with user preference
-              final effectiveScale = responsiveScale * storage.textScale;
+              final effectiveScale =
+                  responsiveScale * storage.uiSettings.textScale;
 
               return MediaQuery(
                 data: MediaQuery.of(
@@ -992,7 +1069,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                           child: ListView.separated(
                             shrinkWrap: true,
                             itemCount: _availableBackups.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const SizedBox(height: 4),
                             itemBuilder: (context, index) {
                               final backup = _availableBackups[index];
@@ -1695,18 +1772,16 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     final storage = Provider.of<StorageService>(context, listen: false);
     await storage.initialized;
-    if (!storage.cloudSyncEnabled || storage.cloudSyncProvider == 'none')
+    if (!storage.cloudSyncSettings.cloudSyncEnabled ||
+        storage.cloudSyncSettings.cloudSyncProvider == 'none') {
       return;
+    }
 
     final syncService = Provider.of<CloudSyncService>(context, listen: false);
 
-    // Wire cloud sync service into ChatService
-    final chatService = Provider.of<ChatService>(context, listen: false);
-    chatService.setCloudSyncService(syncService);
-
     // Create and connect the appropriate provider
     CloudStorageProvider provider;
-    switch (storage.cloudSyncProvider) {
+    switch (storage.cloudSyncSettings.cloudSyncProvider) {
       case 'webdav':
         provider = WebDavProvider();
         break;
@@ -1719,9 +1794,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
     try {
       await provider.connect({
-        'url': storage.cloudSyncUrl,
-        'username': storage.cloudSyncUsername,
-        'password': storage.cloudSyncPassword,
+        'url': storage.cloudSyncSettings.cloudSyncUrl,
+        'username': storage.cloudSyncSettings.cloudSyncUsername,
+        'password': storage.cloudSyncSettings.cloudSyncPassword,
       });
       syncService.setProvider(provider);
 
@@ -1735,16 +1810,20 @@ class _MyAppState extends State<MyApp> with WindowListener {
       await BackupService.createBackup();
       await BackupService.pruneBackups();
 
-      // Purge any accumulated soft-deleted rows before sync
+      // Purge any accumulated soft-deleted rows before sync.
+      // We skip characters + groups to protect recent soft-deletes (used by the
+      // new deletion + reconciliation system) so the deletion signal can propagate
+      // via the DB before being hard-purged. This is especially important within
+      // the same cloud namespace (e.g. Rawhide talking only to other Rawhide instances).
       final db = await AppDatabase.instance();
-      await db.purgeDeletedRows();
+      await db.purgeDeletedRows(skipTables: {'characters', 'groups'});
 
       await syncService.fullSync(chatsPath, charactersPath);
 
       // Check for schema version mismatch (e.g. newer UUID schema on another device)
       if (syncService.schemaMismatch) {
         // Disable cloud sync so it doesn't keep failing
-        await storage.setCloudSyncEnabled(false);
+        await storage.cloudSyncSettings.setCloudSyncEnabled(false);
 
         if (context.mounted) {
           showDialog(
@@ -1822,6 +1901,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           personaService.updateDatabase(newDb);
           groupRepo.updateDatabase(newDb);
           worldRepo.updateDatabase(newDb);
+          final chatService = Provider.of<ChatService>(context, listen: false);
           chatService.updateDatabase(newDb);
           await charRepo.loadCharacters();
           await charRepo.cleanOrphanedPngs();
@@ -1876,7 +1956,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
                     Navigator.of(ctx).pop();
                     try {
                       await syncService.forceUploadDatabase();
-                      await storage.setCloudSyncLastTime(
+                      await storage.cloudSyncSettings.setCloudSyncLastTime(
                         DateTime.now().toIso8601String(),
                       );
                     } catch (e) {
@@ -1897,7 +1977,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
       }
 
       if (syncService.status == SyncStatus.success) {
-        await storage.setCloudSyncLastTime(DateTime.now().toIso8601String());
+        await storage.cloudSyncSettings.setCloudSyncLastTime(
+          DateTime.now().toIso8601String(),
+        );
         // Reload characters so newly downloaded PNGs appear in the UI
         final charRepo = Provider.of<CharacterRepository>(
           context,
@@ -1935,6 +2017,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
           personaService.updateDatabase(newDb);
           groupRepo.updateDatabase(newDb);
           worldRepo.updateDatabase(newDb);
+          final chatService = Provider.of<ChatService>(context, listen: false);
           chatService.updateDatabase(newDb);
 
           // Now reload all data from the new DB
@@ -1955,9 +2038,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
   Future<void> _autoStartWebServer(BuildContext context) async {
     final storage = Provider.of<StorageService>(context, listen: false);
     await storage.initialized;
-    if (!storage.webServerEnabled) return;
+    if (!storage.webServerSettings.webServerEnabled) return;
 
     final webServer = Provider.of<WebServerService>(context, listen: false);
-    await webServer.start(storage.webServerPort);
+    await webServer.start(storage.webServerSettings.webServerPort);
   }
 }

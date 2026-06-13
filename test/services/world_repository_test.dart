@@ -21,7 +21,11 @@ void main() {
 
     test('deleteWorld removes from list', () {
       final worlds = <model.World>[
-        model.World(name: 'To Delete', description: 'Temporary', lorebook: Lorebook(entries: [])),
+        model.World(
+          name: 'To Delete',
+          description: 'Temporary',
+          lorebook: Lorebook(entries: []),
+        ),
       ];
       worlds.removeAt(0);
       expect(worlds, isEmpty);
@@ -29,7 +33,11 @@ void main() {
 
     test('saveWorld updates existing world by index', () {
       final worlds = <model.World>[
-        model.World(name: 'Original', description: 'Old', lorebook: Lorebook(entries: [])),
+        model.World(
+          name: 'Original',
+          description: 'Old',
+          lorebook: Lorebook(entries: []),
+        ),
       ];
       worlds[0].description = 'Updated';
       expect(worlds[0].description, 'Updated');
@@ -41,7 +49,9 @@ void main() {
         description: 'Has lore',
         lorebook: Lorebook(entries: []),
       );
-      world.lorebook.entries.add(LorebookEntry(key: 'test', content: 'Test lore'));
+      world.lorebook.entries.add(
+        LorebookEntry(key: 'test', content: 'Test lore'),
+      );
       expect(world.lorebook.entries.length, 1);
       expect(world.lorebook.entries[0].content, 'Test lore');
     });
@@ -50,9 +60,11 @@ void main() {
       final world = model.World(
         name: 'Update World',
         description: 'Editable',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(key: 'original', content: 'Original content'),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(key: 'original', content: 'Original content'),
+          ],
+        ),
       );
       world.lorebook.entries[0].content = 'Updated content';
       expect(world.lorebook.entries[0].content, 'Updated content');
@@ -62,10 +74,12 @@ void main() {
       final world = model.World(
         name: 'Delete World',
         description: 'Has entries',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(key: 'keep', content: 'Keep this'),
-          LorebookEntry(key: 'remove', content: 'Remove this'),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(key: 'keep', content: 'Keep this'),
+            LorebookEntry(key: 'remove', content: 'Remove this'),
+          ],
+        ),
       );
       world.lorebook.entries.removeWhere((e) => e.key == 'remove');
       expect(world.lorebook.entries.length, 1);
@@ -76,9 +90,11 @@ void main() {
       final world = model.World(
         name: 'Toggle World',
         description: 'Toggle test',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(key: 'entry1', content: 'Content 1', enabled: true),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(key: 'entry1', content: 'Content 1', enabled: true),
+          ],
+        ),
       );
       world.lorebook.entries[0].enabled = false;
       expect(world.lorebook.entries[0].enabled, false);
@@ -96,24 +112,41 @@ void main() {
           linkedCharacterName: 'Hero',
         ),
       ];
-      final found = worlds.where((w) => w.linkedCharacterName == 'Hero').toList();
+      final found = worlds
+          .where((w) => w.linkedCharacterName == 'Hero')
+          .toList();
       expect(found.length, 1);
       expect(found[0].name, 'Hero World');
     });
 
     test('world without linkedCharacterName is not found by name lookup', () {
       final worlds = <model.World>[
-        model.World(name: 'Standalone', description: 'No link', lorebook: Lorebook(entries: [])),
+        model.World(
+          name: 'Standalone',
+          description: 'No link',
+          lorebook: Lorebook(entries: []),
+        ),
       ];
-      final found = worlds.where((w) => w.linkedCharacterName == 'Hero').toList();
+      final found = worlds
+          .where((w) => w.linkedCharacterName == 'Hero')
+          .toList();
       expect(found, isEmpty);
     });
 
     test('multiple worlds can coexist', () {
       final worlds = <model.World>[
-        model.World(name: 'World A', lorebook: Lorebook(entries: [])),
-        model.World(name: 'World B', lorebook: Lorebook(entries: [])),
-        model.World(name: 'World C', lorebook: Lorebook(entries: [])),
+        model.World(
+          name: 'World A',
+          lorebook: Lorebook(entries: []),
+        ),
+        model.World(
+          name: 'World B',
+          lorebook: Lorebook(entries: []),
+        ),
+        model.World(
+          name: 'World C',
+          lorebook: Lorebook(entries: []),
+        ),
       ];
       expect(worlds.length, 3);
     });

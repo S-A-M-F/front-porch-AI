@@ -53,7 +53,7 @@ class DesktopSpellCheckService implements SpellCheckService {
         return SuggestionSpan(
           TextRange(
             start: map['startIndex'] as int,
-            end:   map['endIndex']   as int,
+            end: map['endIndex'] as int,
           ),
           (map['suggestions'] as List<dynamic>).cast<String>(),
         );

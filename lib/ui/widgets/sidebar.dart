@@ -19,10 +19,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 import 'package:front_porch_ai/ui/pages/character_creator_page.dart';
+import 'package:front_porch_ai/ui/pages/create_group_chat_page.dart';
 
 class Sidebar extends StatelessWidget {
   const Sidebar({super.key});
@@ -34,7 +36,7 @@ class Sidebar extends StatelessWidget {
 
     return Container(
       width: 250,
-      color: const Color(0xFF0F172A), // Dark slate
+      color: AppColors.backgroundOf(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -59,32 +61,44 @@ class Sidebar extends StatelessWidget {
             onTap: () => appState.setIndex(0),
           ),
           InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => CharacterCreatorPage(),
-              ),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => CharacterCreatorPage())),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.amber.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
-              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-              margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(
+                vertical: 12.0,
+                horizontal: 12.0,
+              ),
+              margin: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 4.0,
+              ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.psychology,
-                    color: Colors.amberAccent,
+                    color: AppColors.resolve(
+                      context,
+                      Colors.amberAccent,
+                      Colors.amber.shade700,
+                    ),
                     size: 22,
                   ),
                   const SizedBox(width: 12),
-                  const Flexible(
+                  Flexible(
                     child: Text(
                       'AI Character Creator',
                       style: TextStyle(
-                        color: Colors.amberAccent,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.amberAccent,
+                          Colors.amber.shade700,
+                        ),
                         fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -100,13 +114,53 @@ class Sidebar extends StatelessWidget {
             isSelected: appState.selectedIndex == 1,
             onTap: () => appState.setIndex(1),
           ),
+          InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CreateGroupChatPage()),
+            ),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(
+                vertical: 12.0,
+                horizontal: 12.0,
+              ),
+              margin: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 4.0,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.group_add,
+                    color: const Color(0xFF7C3AED),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      'Create Group Chat',
+                      style: TextStyle(
+                        color: const Color(0xFF7C3AED),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           _SidebarItem(
             icon: Icons.dns_outlined,
             label: 'Manage Models',
             isSelected: appState.selectedIndex == 2,
             onTap: () => appState.setIndex(2),
           ),
-           _SidebarItem(
+          _SidebarItem(
             icon: Icons.settings_outlined,
             label: 'Settings',
             isSelected: appState.selectedIndex == 3,
@@ -131,24 +185,33 @@ class Sidebar extends StatelessWidget {
             onTap: () => appState.setIndex(6),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 4.0,
+            ),
             child: InkWell(
-              onTap: () => launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
+              onTap: () =>
+                  launchUrl(Uri.parse('https://ko-fi.com/sosukeaizen37411')),
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
-                child: const Row(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12.0,
+                  horizontal: 12.0,
+                ),
+                child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.coffee_outlined,
                       color: Color(0xFFFF5E5B), // Ko-fi brand coral
                       size: 22,
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Flexible(
                       child: Text(
                         'Buy Me a Coffee ☕',
-                        style: TextStyle(color: Colors.white70),
+                        style: TextStyle(
+                          color: AppColors.textSecondary(context),
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -166,20 +229,30 @@ class Sidebar extends StatelessWidget {
                 Tooltip(
                   message: 'Join our Discord Server',
                   child: GestureDetector(
-                    onTap: () => launchUrl(Uri.parse('https://discord.gg/e4tET6rpdv')),
-                    child: const MouseRegion(
+                    onTap: () =>
+                        launchUrl(Uri.parse('https://discord.gg/e4tET6rpdv')),
+                    child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.discord, size: 20, color: Colors.white54),
+                      child: Icon(
+                        Icons.discord,
+                        size: 20,
+                        color: AppColors.textSecondary(context),
+                      ),
                     ),
                   ),
                 ),
                 Tooltip(
                   message: 'Join our Matrix Server',
                   child: GestureDetector(
-                    onTap: () => launchUrl(Uri.parse('https://matrix.dreamersai.art')),
-                    child: const MouseRegion(
+                    onTap: () =>
+                        launchUrl(Uri.parse('https://matrix.dreamersai.art')),
+                    child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.grid_view_rounded, size: 20, color: Colors.white54),
+                      child: Icon(
+                        Icons.grid_view_rounded,
+                        size: 20,
+                        color: AppColors.textSecondary(context),
+                      ),
                     ),
                   ),
                 ),
@@ -187,17 +260,22 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
             child: Consumer<UpdateService>(
               builder: (context, updateService, _) {
                 final version = updateService.currentVersion.isNotEmpty
-                    ? 'v${updateService.currentVersion}'
+                    ? updateService.displayCurrentVersion
                     : 'v0.0.0';
                 return Row(
                   children: [
                     Text(
                       version,
-                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textTertiary(context),
+                      ),
                     ),
                     if (updateService.updateAvailable) ...[
                       const SizedBox(width: 8),
@@ -205,7 +283,11 @@ class Sidebar extends StatelessWidget {
                         onTap: () => UpdateDialog.show(context),
                         child: const Tooltip(
                           message: 'Update available!',
-                          child: Icon(Icons.arrow_circle_up, size: 18, color: Colors.greenAccent),
+                          child: Icon(
+                            Icons.arrow_circle_up,
+                            size: 18,
+                            color: Colors.greenAccent,
+                          ),
                         ),
                       ),
                     ],
@@ -242,7 +324,15 @@ class _SidebarItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+            // Subtle selection: light blue tint in light mode (paper bg), low-alpha white in dark.
+            // Reuses AppColors.resolve (existing scaffold) — no new helper or private method.
+            color: isSelected
+                ? AppColors.resolve(
+                    context,
+                    Colors.white.withValues(alpha: 0.08),
+                    const Color(0xFFBFDBFE),
+                  )
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
@@ -250,7 +340,9 @@ class _SidebarItem extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? Colors.white : Colors.white70,
+                color: isSelected
+                    ? AppColors.textPrimary(context)
+                    : AppColors.textSecondary(context),
                 size: 22,
               ),
               const SizedBox(width: 12),
@@ -258,8 +350,12 @@ class _SidebarItem extends StatelessWidget {
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white70,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    color: isSelected
+                        ? AppColors.textPrimary(context)
+                        : AppColors.textSecondary(context),
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),

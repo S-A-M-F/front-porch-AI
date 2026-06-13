@@ -110,18 +110,25 @@ void main() {
 
     test('handles mixed trailing commas in objects and arrays', () {
       const input = '{"items": [1, 2,], "meta": {"count": 3,},}';
-      expect(JsonSanitizer.sanitize(input), '{"items": [1, 2], "meta": {"count": 3}}');
+      expect(
+        JsonSanitizer.sanitize(input),
+        '{"items": [1, 2], "meta": {"count": 3}}',
+      );
     });
 
     test('strips thinking tags with complex content', () {
-      const input = '<thinking>\nStep 1: Analyze\nStep 2: Conclude\n</thinking>{"result": true}';
+      const input =
+          '<thinking>\nStep 1: Analyze\nStep 2: Conclude\n</thinking>{"result": true}';
       expect(JsonSanitizer.sanitize(input), '{"result": true}');
     });
 
     test('handles multiple JSON markers (extracts from first { to last })', () {
       // JSON extraction grabs from first '{' to last '}', including content between
       const input = 'JSON:\n{"first": true} JSON:\n{"second": false}';
-      expect(JsonSanitizer.sanitize(input), '{"first": true} JSON:\n{"second": false}');
+      expect(
+        JsonSanitizer.sanitize(input),
+        '{"first": true} JSON:\n{"second": false}',
+      );
     });
 
     test('handles text before and after JSON with thinking tags', () {
@@ -160,7 +167,11 @@ void main() {
 
     test('parses nested JSON objects', () {
       const input = '{"outer": {"inner": {"deep": true}}}';
-      expect(JsonSanitizer.tryParse(input), {'outer': {'inner': {'deep': true}}});
+      expect(JsonSanitizer.tryParse(input), {
+        'outer': {
+          'inner': {'deep': true},
+        },
+      });
     });
 
     test('returns null for JSON arrays (expects Map only)', () {
@@ -170,7 +181,8 @@ void main() {
     });
 
     test('handles JSON with mixed types', () {
-      const input = '{"name": "test", "count": 5, "active": true, "tags": ["a", "b"]}';
+      const input =
+          '{"name": "test", "count": 5, "active": true, "tags": ["a", "b"]}';
       final result = JsonSanitizer.tryParse(input);
       expect(result?['name'], 'test');
       expect(result?['count'], 5);
@@ -189,12 +201,15 @@ void main() {
       expect(result?['quote'], 'She said "hello"');
     });
 
-    test('parses JSON with newline escaping (sanitizer escapes, json.decode unescapes)', () {
-      // The sanitizer converts real \n to literal \n in strings,
-      // then json.decode interprets \n back to a real newline
-      const input = '{"text": "line1\nline2"}';
-      final result = JsonSanitizer.tryParse(input);
-      expect(result?['text'], 'line1\nline2');
-    });
+    test(
+      'parses JSON with newline escaping (sanitizer escapes, json.decode unescapes)',
+      () {
+        // The sanitizer converts real \n to literal \n in strings,
+        // then json.decode interprets \n back to a real newline
+        const input = '{"text": "line1\nline2"}';
+        final result = JsonSanitizer.tryParse(input);
+        expect(result?['text'], 'line1\nline2');
+      },
+    );
   });
 }

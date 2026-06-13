@@ -257,3 +257,66 @@ When in doubt, the **Test Card** flow in the character editor or simply starting
 ---
 
 *This document is kept in sync with the implementation in `lib/services/v2_card_service.dart`, `lib/services/character_repository.dart`, `lib/ui/dialogs/edit_character_dialog.dart`, `lib/ui/pages/create_character_page.dart`, and `lib/ui/pages/home_page.dart` (import/export flows).*
+
+---
+
+## Group Cards (fpa_group format)
+
+Front Porch supports exporting an entire **group chat** as a single portable PNG file (`.group.png`). This is a Front Porch innovation — there is no equivalent single-file group format in SillyTavern as of 2026.
+
+### Container
+
+- The file is a normal PNG.
+- All group data lives in a private `fpa_group` tEXt chunk (base64-encoded JSON).
+- The chunk is deliberately invisible to SillyTavern, Risu, Agnai, Chub, etc. so they treat the file as an ordinary image.
+
+### Top-level envelope
+
+```json
+{
+  "spec": "front_porch_group_card",
+  "spec_version": "1.0",
+  "data": { ... GroupCard object ... }
+}
+```
+
+### The `data` object (GroupCard)
+
+- `name`, `turn_order`, `auto_advance`, `director_mode`
+- `first_message`, `scenario`, `system_prompt` (group-level)
+- `members`: array of full V2.5 character card objects (with `avatar_base64` when present for high-fidelity round-tripping)
+- `realism_state`: **optional** — the group-level per-character realism + needs snapshot (same shape stored in `groups.default_member_realism_state` and `sessions.group_realism_state`).
+- `character_system_prompts`: **optional** — per-character system prompt overrides that only apply inside this specific group (keyed by stable charId). Additive in spec v1.0.
+
+When `realism_state` is present, importing the Group Card seeds `groups.default_member_realism_state` so that:
+- New chats start with the exported realism values.
+- Splitting a member out of the group into a solo character preserves bond/trust/emotion/needs/fixation/relationships from the group session.
+
+**Legacy note (v1.0 compatibility):** Older Group Cards may have `characterSystemPrompts` (or `character_system_prompts`) nested inside `realism_state` instead of at the top level of `data`. Front Porch importers automatically promote this data to the clean `character_system_prompts` field on the imported `GroupChat`. Writers should prefer the new top-level location going forward.
+
+### Prompt Priority Inside a Group (v1.0)
+
+When building the system prompt for a character speaking in a group, Front Porch uses this order (highest to lowest):
+
+1. **Group-level `system_prompt`** (if non-empty) — the base instructions for the whole group (scene, rules, tone, "don't talk over each other", etc.).
+2. **Per-character `character_system_prompts[charId]`** (if set for the speaking character in this group) — appended as additional instructions specific to that character in this group. Takes precedence over the character's normal card prompt.
+3. **Character's normal `system_prompt`** (from their individual card) — fallback if no group-specific override exists for them.
+4. **Per-character Author's Note** (if set for the speaker in this group) — always additive on top of the above, lighter weight, with its own strength control.
+
+This hierarchy ensures a group prompt sets the scene without completely erasing per-character instructions.
+
+### Why this matters for direct-SQL tools
+
+If you ever add Group Card read/write support to Character Card Forge, you must:
+1. Look for the `fpa_group` tEXt chunk (not `chara`).
+2. Parse the envelope above.
+3. When writing groups, prefer the new top-level `character_system_prompts` (optional, additive in v1.0). For full backward compatibility with older cards, also read from the legacy location inside `realism_state.characterSystemPrompts` / `character_system_prompts` and promote it.
+4. When writing groups/sessions, populate the two v30 realism columns (or at minimum the `realism_state` inside the exported Group Card) if you want realism state to survive export → import → split.
+
+The columns and the `realism_state` key inside Group Cards were added precisely so that group-evolved state is no longer trapped in hidden chat messages. The `character_system_prompts` field follows the same portability goals.
+
+See `lib/services/group_card_service.dart`, `lib/models/group_card.dart`, and the v30 columns in `lib/database/database.dart` for the canonical implementation.
+
+**Recommended reading for AI agents / Claude working on Forge integration:**  
+`docs/CharacterCardForge_GroupChat_Integration_Guide.md` — the definitive post-v30 guide covering the decoupled `group_members` architecture, private avatars, Group Card (`fpa_group`) format, ID remapping for Group Dynamics, and the “Separate to my library” splitting feature.
+

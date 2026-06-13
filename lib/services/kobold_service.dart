@@ -19,7 +19,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/http.dart' show ClientException;
@@ -37,6 +36,7 @@ class KoboldService extends ChangeNotifier
   final List<String> _logs = [];
   String _modelLoadingStatus = '';
   bool _modelReady = false;
+
   /// One-shot flag for UI notifications (e.g. snackbar). Set to true when the
   /// model finishes loading, consumed once by the home page. Unlike _modelReady,
   /// this is reset after reading so it only triggers the notification once.
@@ -148,7 +148,6 @@ class KoboldService extends ChangeNotifier
     }
   }
 
-
   @override
   void dispose() {
     _stopReadinessProbe();
@@ -217,7 +216,9 @@ class KoboldService extends ChangeNotifier
     // processes from accumulating — especially on Windows where port reuse
     // isn't immediate.
     if (_isRunning || _process != null) {
-      debugPrint('[KoboldService] startKobold called while still running — stopping first.');
+      debugPrint(
+        '[KoboldService] startKobold called while still running — stopping first.',
+      );
       await stopKobold();
       // Give the OS a moment to release the port
       await Future<void>.delayed(const Duration(seconds: 1));
@@ -261,66 +262,69 @@ class KoboldService extends ChangeNotifier
         gpuLayers.toString(),
       ];
 
-    // \u2500\u2500 GPU backend flags \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // \u2500\u2500 GPU backend flags \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-    if (useVulkan) args.add('--usevulkan');
+      if (useVulkan) args.add('--usevulkan');
 
-    if (useCublas) {
-      // Always pass an explicit GPU ID with --usecublas to prevent KoboldCPP
-      // from defaulting to GPU 0 which may be an iGPU on multi-GPU systems.
-      // Bug fix: on a system with both an iGPU (GPU 0) and a discrete RTX (GPU 1)
-      // the old code silently ran everything on the iGPU at ~0.5 t/s.
-      args.addAll(['--usecublas', _storageService.gpuId.toString()]);
-    }
+      if (useCublas) {
+        // Always pass an explicit GPU ID with --usecublas to prevent KoboldCPP
+        // from defaulting to GPU 0 which may be an iGPU on multi-GPU systems.
+        // Bug fix: on a system with both an iGPU (GPU 0) and a discrete RTX (GPU 1)
+        // the old code silently ran everything on the iGPU at ~0.5 t/s.
+        args.addAll(['--usecublas', _storageService.gpuId.toString()]);
+      }
 
-    if (useRocm) {
-      args.add('--usehipblas');
-      // Flash attention kernel crashes on many AMD GPUs — always disable for ROCm.
-      args.add('--noflashattention');
-    }
-    // Note: Metal is used automatically on macOS Apple Silicon, no flag needed.
+      if (useRocm) {
+        args.add('--usehipblas');
+        // Flash attention kernel crashes on many AMD GPUs — always disable for ROCm.
+        args.add('--noflashattention');
+      }
+      // Note: Metal is used automatically on macOS Apple Silicon, no flag needed.
 
-    // \u2500\u2500 FlashAttention \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    // Bug fix: previously only added when KV quantization was also enabled,
-    // meaning CUDA/Metal users without KV quant never got the ~30% speed boost.
-    // Now enabled independently for CUDA and Metal. ROCm is excluded above.
-    final wantsFlashAttn = _storageService.flashAttentionEnabled;
-    final canUseFlashAttn = (useCublas || useMetal) && !useRocm;
-    if (wantsFlashAttn && canUseFlashAttn) {
-      args.add('--flashattention');
-    }
-
-    // \u2500\u2500 KV Cache Quantization \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    // Flash attention is a prerequisite for V-cache quantization. Since we
-    // may have already added it above, only add the flag if it wasn\u2019t added.
-    if (_storageService.kvQuantizationLevel > 0) {
-      args.add('--quantkv');
-      args.add(_storageService.kvQuantizationLevel.toString());
-      // Ensure flash attention is present for quantised V-cache even if the
-      // user disabled it in Advanced settings (quantkv requires it).
-      if (!args.contains('--flashattention') && !useRocm) {
+      // \u2500\u2500 FlashAttention \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // Bug fix: previously only added when KV quantization was also enabled,
+      // meaning CUDA/Metal users without KV quant never got the ~30% speed boost.
+      // Now enabled independently for CUDA and Metal. ROCm is excluded above.
+      final wantsFlashAttn = _storageService.flashAttentionEnabled;
+      final canUseFlashAttn = (useCublas || useMetal) && !useRocm;
+      if (wantsFlashAttn && canUseFlashAttn) {
         args.add('--flashattention');
       }
-    }
 
-    // \u2500\u2500 mlock \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    // Prevents the OS from paging model weights to disk under memory pressure.
-    // Without this, a system at the edge of RAM capacity can drop from 20 t/s
-    // to 0.5 t/s mid-session. Default ON for Win/Mac, OFF for Linux (requires
-    // root or ulimit -l unlimited which most users haven\u2019t set).
-    if (_storageService.mlockEnabled) {
-      args.add('--usemlock');
-    }
+      // \u2500\u2500 KV Cache Quantization \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // Flash attention is a prerequisite for V-cache quantization. Since we
+      // may have already added it above, only add the flag if it wasn\u2019t added.
+      if (_storageService.kvQuantizationLevel > 0) {
+        args.add('--quantkv');
+        args.add(_storageService.kvQuantizationLevel.toString());
+        // Ensure flash attention is present for quantised V-cache even if the
+        // user disabled it in Advanced settings (quantkv requires it).
+        if (!args.contains('--flashattention') && !useRocm) {
+          args.add('--flashattention');
+        }
+      }
 
-    // \u2500\u2500 BLAS batch size \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    // Controls how many tokens are processed in parallel during prefill (prompt
-    // evaluation). Higher = faster context loading, more VRAM. Default 512.
-    // Large-VRAM users (24 GB+) benefit from 1024\u20132048.
-    if (_storageService.blasBatchSize != 512) {
-      // Only pass the flag when non-default so KoboldCPP\u2019s built-in default
-      // applies for users who haven\u2019t changed this setting.
-      args.addAll(['--blasbatchsize', _storageService.blasBatchSize.toString()]);
-    }
+      // \u2500\u2500 mlock \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // Prevents the OS from paging model weights to disk under memory pressure.
+      // Without this, a system at the edge of RAM capacity can drop from 20 t/s
+      // to 0.5 t/s mid-session. Default ON for Win/Mac, OFF for Linux (requires
+      // root or ulimit -l unlimited which most users haven\u2019t set).
+      if (_storageService.mlockEnabled) {
+        args.add('--usemlock');
+      }
+
+      // \u2500\u2500 BLAS batch size \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // Controls how many tokens are processed in parallel during prefill (prompt
+      // evaluation). Higher = faster context loading, more VRAM. Default 512.
+      // Large-VRAM users (24 GB+) benefit from 1024\u20132048.
+      if (_storageService.blasBatchSize != 512) {
+        // Only pass the flag when non-default so KoboldCPP\u2019s built-in default
+        // applies for users who haven\u2019t changed this setting.
+        args.addAll([
+          '--blasbatchsize',
+          _storageService.blasBatchSize.toString(),
+        ]);
+      }
     }
 
     try {
@@ -500,17 +504,24 @@ class KoboldService extends ChangeNotifier
               final textToken = (json['text'] as String?) ?? '';
 
               // Log first few events and any unexpected patterns for debugging
-              if (_sseDataEvents <= 3 || (rawToken.isEmpty && thinkToken.isEmpty && textToken.isEmpty)) {
-                debugPrint('[KoboldCpp:SSE] Event #$_sseDataEvents — '
-                    'token=${rawToken.length}ch, '
-                    'thinking_token=${thinkToken.length}ch, '
-                    'text=${textToken.length}ch');
+              if (_sseDataEvents <= 3 ||
+                  (rawToken.isEmpty &&
+                      thinkToken.isEmpty &&
+                      textToken.isEmpty)) {
+                debugPrint(
+                  '[KoboldCpp:SSE] Event #$_sseDataEvents — '
+                  'token=${rawToken.length}ch, '
+                  'thinking_token=${thinkToken.length}ch, '
+                  'text=${textToken.length}ch',
+                );
               }
 
               // KoboldCPP thinking models send reasoning in 'thinking_token'
               // while 'token' is "" during the think phase. We emit synthetic
               // <think>/<think> tags at boundaries but skip the actual content.
-              if (thinkToken.isNotEmpty && rawToken.isEmpty && textToken.isEmpty) {
+              if (thinkToken.isNotEmpty &&
+                  rawToken.isEmpty &&
+                  textToken.isEmpty) {
                 if (!_inThinkPhase) {
                   _inThinkPhase = true;
                   yield '<think>';

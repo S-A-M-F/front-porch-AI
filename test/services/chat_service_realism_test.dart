@@ -73,21 +73,6 @@ class _RealismEngineStub {
     return score > 0 ? 10 : -10;
   }
 
-  /// Migration: scale old scores (±150) to new range (±300)
-  int _migrateShortTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
-  int _migrateLongTermScore(int rawScore) {
-    if (rawScore.abs() <= 150) {
-      return (rawScore * 2).clamp(-300, 300);
-    }
-    return rawScore;
-  }
-
   // ── startNewChat realism reset (mirrors ChatService lines 2142-2186) ─
   void startNewChatSession({
     required FrontPorchExtensions? characterExtensions,
@@ -108,16 +93,14 @@ class _RealismEngineStub {
       }
     }
 
-    if (hasFrontPorchExtensions) {
-      // Character has baseline extensions — preserve arousal/fixation.
-      // Do NOT reset.
-    } else {
-      // Reset arousal/fixation for fresh chat
-      _arousalLevel = 0;
-      _fixationLifespan = 0;
-      _activeFixation = '';
-      _cooldownTurnsRemaining = 0;
-    }
+    // Always reset runtime per-chat fields on new chat (arousal/fixation/cooldowns).
+    // Declarative fields (bond/trust/emotion) seeded above from extensions or defaults.
+    // Matches production after removal of the hasFrontPorchExtensions preserve bug that
+    // caused fixation bleed on explicit "New Chat".
+    _arousalLevel = 0;
+    _fixationLifespan = 0;
+    _activeFixation = '';
+    _cooldownTurnsRemaining = 0;
 
     if (_realismEnabled && hasFrontPorchExtensions) {
       _relationshipTier = _calculateTier(_affectionScore);
@@ -287,8 +270,11 @@ void main() {
         hasFrontPorchExtensions: false,
       );
 
-      expect(stub.arousalLevel, 0,
-          reason: 'arousal should be reset for fresh chat without extensions');
+      expect(
+        stub.arousalLevel,
+        0,
+        reason: 'arousal should be reset for fresh chat without extensions',
+      );
     });
 
     test('resets fixation to empty when no extensions', () {
@@ -301,8 +287,11 @@ void main() {
         hasFrontPorchExtensions: false,
       );
 
-      expect(stub.activeFixation, '',
-          reason: 'fixation should be cleared for fresh chat');
+      expect(
+        stub.activeFixation,
+        '',
+        reason: 'fixation should be cleared for fresh chat',
+      );
       expect(stub.fixationLifespan, 0);
     });
 
@@ -319,33 +308,36 @@ void main() {
       expect(stub.cooldownTurnsRemaining, 0);
     });
 
-    test('does NOT reset arousal/fixation when extensions present', () {
-      final stub = _RealismEngineStub();
+    test(
+      'always resets arousal/fixation/cooldowns on new chat (even when extensions present)',
+      () {
+        final stub = _RealismEngineStub();
 
-      // Set some realism state
-      stub.applyRealismMetadata(
-        arousalDelta: 3,
-        emotionLabel: 'flustered',
-      );
-      stub._activeFixation = 'the mysterious amulet';
-      stub._fixationLifespan = 4;
+        // Set some runtime state from prior session
+        stub.applyRealismMetadata(arousalDelta: 3, emotionLabel: 'flustered');
+        stub._activeFixation = 'the mysterious amulet';
+        stub._fixationLifespan = 4;
+        stub._cooldownTurnsRemaining = 2;
 
-      // Start new chat WITH extensions
-      stub.startNewChatSession(
-        characterExtensions: FrontPorchExtensions(
-          realismEnabled: true,
-          shortTermBond: 20,
-          longTermBond: 15,
-          trustLevel: 10,
-        ),
-        hasFrontPorchExtensions: true,
-      );
+        // Start new chat WITH extensions
+        stub.startNewChatSession(
+          characterExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            shortTermBond: 20,
+            longTermBond: 15,
+            trustLevel: 10,
+          ),
+          hasFrontPorchExtensions: true,
+        );
 
-      // Arousal should be preserved (seeded from extensions, not reset)
-      // Note: extensions seed shortTermBond=20, so affection becomes 20
-      expect(stub.affectionScore, 20);
-      expect(stub.realismEnabled, isTrue);
-    });
+        // Runtime fields always reset (no bleed); declarative seeded from extensions
+        expect(stub.affectionScore, 20);
+        expect(stub.realismEnabled, isTrue);
+        expect(stub.arousalLevel, 0);
+        expect(stub.activeFixation, '');
+        expect(stub.cooldownTurnsRemaining, 0);
+      },
+    );
 
     test('preserves realism extensions from character', () {
       final stub = _RealismEngineStub();
@@ -370,31 +362,38 @@ void main() {
       expect(stub.nsfwCooldownEnabled, isTrue);
     });
 
-    test('preserves arousal/fixation when extensions present (emotional continuity)', () {
-      final stub = _RealismEngineStub();
+    test(
+      'always resets runtime arousal/fixation on new chat (no emotional-continuity bleed for runtime fields)',
+      () {
+        final stub = _RealismEngineStub();
 
-      // Simulate arousal from a previous chat session
-      stub._arousalLevel = 7;
-      stub._activeFixation = 'something old';
-      stub._fixationLifespan = 3;
+        // Simulate runtime state from a previous chat session (the exact bleed repro)
+        stub._arousalLevel = 7;
+        stub._activeFixation = 'something old';
+        stub._fixationLifespan = 3;
 
-      // New chat with extensions — arousal is PRESERVED for emotional continuity
-      stub.startNewChatSession(
-        characterExtensions: FrontPorchExtensions(
-          realismEnabled: true,
-          shortTermBond: 10,
-          longTermBond: 5,
-          trustLevel: 5,
-        ),
-        hasFrontPorchExtensions: true,
-      );
+        // New chat with extensions — runtime fields are RESET (declarative bond etc. come from card)
+        stub.startNewChatSession(
+          characterExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            shortTermBond: 10,
+            longTermBond: 5,
+            trustLevel: 5,
+          ),
+          hasFrontPorchExtensions: true,
+        );
 
-      // Arousal is preserved because extensions indicate ongoing relationship
-      expect(stub.arousalLevel, 7,
-          reason: 'arousal is preserved for emotional continuity when extensions exist');
-      // But bond scores ARE seeded from extensions
-      expect(stub.affectionScore, 10);
-    });
+        // Runtime fields reset (the fix); declarative fields seeded from extensions
+        expect(
+          stub.arousalLevel,
+          0,
+          reason:
+              'runtime arousal/fixation must not bleed into new chat even when extensions present',
+        );
+        expect(stub.activeFixation, '');
+        expect(stub.affectionScore, 10); // declarative from card
+      },
+    );
   });
 
   group('Realism Engine — setActiveCharacter arousal/fixation reset', () {
@@ -406,8 +405,11 @@ void main() {
       // Switch to a different character
       stub.resetRealismOnCharacterSwitch();
 
-      expect(stub.arousalLevel, 0,
-          reason: 'arousal must not bleed between characters');
+      expect(
+        stub.arousalLevel,
+        0,
+        reason: 'arousal must not bleed between characters',
+      );
     });
 
     test('resets fixation when switching characters', () {
@@ -418,8 +420,11 @@ void main() {
 
       stub.resetRealismOnCharacterSwitch();
 
-      expect(stub.activeFixation, '',
-          reason: 'fixation must not bleed between characters');
+      expect(
+        stub.activeFixation,
+        '',
+        reason: 'fixation must not bleed between characters',
+      );
       expect(stub.fixationLifespan, 0);
     });
 
@@ -433,8 +438,11 @@ void main() {
       // Note: resetRealismOnCharacterSwitch only resets arousal/fixation,
       // not cooldown — but in ChatService, cooldown is tied to arousal.
       // The test verifies the stub behavior matches the real code.
-      expect(stub.cooldownTurnsRemaining, 3,
-          reason: 'cooldown is not reset by character switch in the stub');
+      expect(
+        stub.cooldownTurnsRemaining,
+        3,
+        reason: 'cooldown is not reset by character switch in the stub',
+      );
     });
   });
 
@@ -459,14 +467,26 @@ void main() {
 
       // All state must be preserved
       expect(stub.realismEnabled, isFalse);
-      expect(stub.affectionScore, savedAffection,
-          reason: 'affection must be preserved when disabling realism');
-      expect(stub.characterEmotion, savedEmotion,
-          reason: 'emotion must be preserved when disabling realism');
-      expect(stub.trustLevel, savedTrust,
-          reason: 'trust must be preserved when disabling realism');
-      expect(stub.arousalLevel, savedArousal,
-          reason: 'arousal must be preserved when disabling realism');
+      expect(
+        stub.affectionScore,
+        savedAffection,
+        reason: 'affection must be preserved when disabling realism',
+      );
+      expect(
+        stub.characterEmotion,
+        savedEmotion,
+        reason: 'emotion must be preserved when disabling realism',
+      );
+      expect(
+        stub.trustLevel,
+        savedTrust,
+        reason: 'trust must be preserved when disabling realism',
+      );
+      expect(
+        stub.arousalLevel,
+        savedArousal,
+        reason: 'arousal must be preserved when disabling realism',
+      );
     });
 
     test('setRealismEnabled(true) after false restores state', () {
@@ -478,8 +498,11 @@ void main() {
       stub.setRealismEnabled(true);
 
       expect(stub.realismEnabled, isTrue);
-      expect(stub.affectionScore, 8,
-          reason: 'state must be preserved across enable/disable cycle');
+      expect(
+        stub.affectionScore,
+        8,
+        reason: 'state must be preserved across enable/disable cycle',
+      );
       expect(stub.characterEmotion, 'calm');
     });
 
@@ -491,38 +514,59 @@ void main() {
 
       stub.setRealismEnabled(true);
 
-      expect(stub.greetingEvalPending, isFalse,
-          reason: 'pending greeting eval should be consumed');
-      expect(stub.isProcessingGreeting, isFalse,
-          reason: 'processing flag should be cleared after eval');
+      expect(
+        stub.greetingEvalPending,
+        isFalse,
+        reason: 'pending greeting eval should be consumed',
+      );
+      expect(
+        stub.isProcessingGreeting,
+        isFalse,
+        reason: 'processing flag should be cleared after eval',
+      );
     });
 
-    test('setRealismEnabled(true) does NOT run eval when baseline already exists', () {
-      final stub = _RealismEngineStub();
-      stub._greetingEvalPending = true;
+    test(
+      'setRealismEnabled(true) does NOT run eval when baseline already exists',
+      () {
+        final stub = _RealismEngineStub();
+        stub._greetingEvalPending = true;
 
-      // Set a baseline so retroactive scan is NOT triggered
-      stub.applyRealismMetadata(emotionLabel: 'happy');
-      expect(stub.hasRealismBaseline, isTrue);
+        // Set a baseline so retroactive scan is NOT triggered
+        stub.applyRealismMetadata(emotionLabel: 'happy');
+        expect(stub.hasRealismBaseline, isTrue);
 
-      stub.setRealismEnabled(true);
+        stub.setRealismEnabled(true);
 
-      expect(stub.greetingEvalPending, isTrue,
-          reason: 'should not consume pending flag when baseline exists');
-      expect(stub.isProcessingGreeting, isFalse,
-          reason: 'should not run eval when baseline already captured');
-    });
+        expect(
+          stub.greetingEvalPending,
+          isTrue,
+          reason: 'should not consume pending flag when baseline exists',
+        );
+        expect(
+          stub.isProcessingGreeting,
+          isFalse,
+          reason: 'should not run eval when baseline already captured',
+        );
+      },
+    );
 
-    test('setRealismEnabled(true) does NOT trigger retroactive eval on fresh chat', () {
-      final stub = _RealismEngineStub();
-      // No messages, no baseline, no pending greeting
-      expect(stub.hasRealismBaseline, isFalse);
+    test(
+      'setRealismEnabled(true) does NOT trigger retroactive eval on fresh chat',
+      () {
+        final stub = _RealismEngineStub();
+        // No messages, no baseline, no pending greeting
+        expect(stub.hasRealismBaseline, isFalse);
 
-      stub.setRealismEnabled(true);
+        stub.setRealismEnabled(true);
 
-      expect(stub.isProcessingGreeting, isFalse,
-          reason: 'should not run retroactive eval with no messages');
-    });
+        expect(
+          stub.isProcessingGreeting,
+          isFalse,
+          reason: 'should not run retroactive eval with no messages',
+        );
+      },
+    );
   });
 
   group('Realism Engine — tier calculation', () {
@@ -537,12 +581,15 @@ void main() {
       expect(stub.relationshipTier, greaterThan(0));
     });
 
-    test('short-term tier: negative score gets tier -1 from metadata application', () {
-      final stub = _RealismEngineStub();
-      stub.applyRealismMetadata(bondDelta: -10);
-      // With new 21-tier system, score -10 => tier -1 (absScore < 15)
-      expect(stub.relationshipTier, -1);
-    });
+    test(
+      'short-term tier: negative score gets tier -1 from metadata application',
+      () {
+        final stub = _RealismEngineStub();
+        stub.applyRealismMetadata(bondDelta: -10);
+        // With new 21-tier system, score -10 => tier -1 (absScore < 15)
+        expect(stub.relationshipTier, -1);
+      },
+    );
 
     test('long-term tier mirrors short-term logic', () {
       final stub = _RealismEngineStub();
@@ -583,8 +630,11 @@ void main() {
     test('bond delta caps at -10 to 15 range', () {
       final stub = _RealismEngineStub();
       stub.applyRealismMetadata(bondDelta: 100);
-      expect(stub.affectionScore, 15,
-          reason: 'affection should be capped at 15');
+      expect(
+        stub.affectionScore,
+        15,
+        reason: 'affection should be capped at 15',
+      );
     });
 
     test('trust delta updates trust level', () {
@@ -596,13 +646,11 @@ void main() {
     test('trust delta clamps to -100..100', () {
       final stub = _RealismEngineStub();
       stub.applyRealismMetadata(trustDelta: 200);
-      expect(stub.trustLevel, 100,
-          reason: 'trust should be clamped to 100');
+      expect(stub.trustLevel, 100, reason: 'trust should be clamped to 100');
 
       final stub2 = _RealismEngineStub();
       stub2.applyRealismMetadata(trustDelta: -200);
-      expect(stub2.trustLevel, -100,
-          reason: 'trust should be clamped to -100');
+      expect(stub2.trustLevel, -100, reason: 'trust should be clamped to -100');
     });
 
     test('arousal delta updates arousal level', () {
@@ -666,14 +714,26 @@ void main() {
       // Restore
       stub.restoreBaselineFromState(captured);
 
-      expect(stub.affectionScore, 10,
-          reason: 'affection should be restored from baseline');
-      expect(stub.characterEmotion, 'happy',
-          reason: 'emotion should be restored from baseline');
-      expect(stub.arousalLevel, 3,
-          reason: 'arousal should be restored from baseline');
-      expect(stub.trustLevel, 5,
-          reason: 'trust should be restored from baseline');
+      expect(
+        stub.affectionScore,
+        10,
+        reason: 'affection should be restored from baseline',
+      );
+      expect(
+        stub.characterEmotion,
+        'happy',
+        reason: 'emotion should be restored from baseline',
+      );
+      expect(
+        stub.arousalLevel,
+        3,
+        reason: 'arousal should be restored from baseline',
+      );
+      expect(
+        stub.trustLevel,
+        5,
+        reason: 'trust should be restored from baseline',
+      );
     });
 
     test('regen preserves baseline from previous accepted message', () {
@@ -685,7 +745,6 @@ void main() {
 
       // Simulate: message 2 generated with more state
       stub.applyRealismMetadata(bondDelta: 3, emotionLabel: 'friendly');
-      final baseline2 = stub.captureRealismState();
 
       // Simulate: message 3 generated (current)
       stub.applyRealismMetadata(bondDelta: -2, emotionLabel: 'annoyed');
@@ -694,10 +753,17 @@ void main() {
       // Regenerate message 2: restore baseline1, then re-evaluate
       stub.restoreBaselineFromState(baseline1);
 
-      expect(stub.affectionScore, baseline1['affectionScore'],
-          reason: 'regeneration must restore baseline from previous accepted message');
-      expect(stub.characterEmotion, baseline1['characterEmotion'],
-          reason: 'emotion must be restored from baseline');
+      expect(
+        stub.affectionScore,
+        baseline1['affectionScore'],
+        reason:
+            'regeneration must restore baseline from previous accepted message',
+      );
+      expect(
+        stub.characterEmotion,
+        baseline1['characterEmotion'],
+        reason: 'emotion must be restored from baseline',
+      );
     });
 
     test('regen shows realistic deltas instead of wild swings', () {
@@ -718,8 +784,11 @@ void main() {
       stub.applyRealismMetadata(bondDelta: 2);
       final restoredState = stub.affectionScore;
 
-      expect(wildState, lessThanOrEqualTo(-10),
-          reason: 'wild swing without baseline would be extreme (clamped to -10)');
+      expect(
+        wildState,
+        lessThanOrEqualTo(-10),
+        reason: 'wild swing without baseline would be extreme (clamped to -10)',
+      );
       expect(
         (restoredState - (stableBaseline['affectionScore'] as int)).abs(),
         lessThan(10),
@@ -737,9 +806,7 @@ void main() {
     test('nsfwCooldownEnabled can be seeded from extensions', () {
       final stub = _RealismEngineStub();
       stub.startNewChatSession(
-        characterExtensions: FrontPorchExtensions(
-          nsfwCooldownEnabled: true,
-        ),
+        characterExtensions: FrontPorchExtensions(nsfwCooldownEnabled: true),
         hasFrontPorchExtensions: true,
       );
       expect(stub.nsfwCooldownEnabled, isTrue);

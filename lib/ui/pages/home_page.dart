@@ -16,36 +16,37 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'package:front_porch_ai/database/database.dart';
 import 'dart:io';
-import 'package:path/path.dart' as path;
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:front_porch_ai/providers/app_state.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/world_repository.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
-import 'package:front_porch_ai/services/kobold_service.dart';
-import 'package:front_porch_ai/services/byaf_service.dart';
-import 'package:front_porch_ai/ui/dialogs/byaf_import_dialog.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
-import 'package:front_porch_ai/models/group_chat.dart';
-import 'package:front_porch_ai/ui/pages/chat_page.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
-import 'package:front_porch_ai/ui/pages/character_creator_page.dart';
-import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
-import 'package:front_porch_ai/models/character_card.dart';
+import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:image/image.dart' as img;
+
+import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+
+// Barrel imports (preferred during major refactor per project guidelines)
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/utils/character_id.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+// Specific pages, dialogs, and internal services not in barrels
+import 'package:front_porch_ai/ui/pages/chat_page.dart';
+import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
+import 'package:front_porch_ai/ui/pages/edit_group_page.dart';
+import 'package:front_porch_ai/ui/pages/character_creator_page.dart';
 import 'package:front_porch_ai/ui/pages/story_home_view.dart';
+import 'package:front_porch_ai/ui/dialogs/byaf_import_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/tag_dialog.dart';
+import 'package:front_porch_ai/services/byaf_service.dart';
+import 'package:uuid/uuid.dart';
+import 'package:drift/drift.dart' show Value;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -54,8 +55,6 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-enum SearchScope { currentFolder, folderRecursive, allCharacters }
-
 class _HomePageState extends State<HomePage> {
   String _searchQuery = '';
   String? _activeFolderId; // null = top level view
@@ -63,7 +62,7 @@ class _HomePageState extends State<HomePage> {
   SearchScope _searchScope = SearchScope.currentFolder;
   final _searchController = TextEditingController();
 
-  // Multi-select for group creation
+  // Multi-select mode (used for organizing into folders, bulk actions, etc.)
   bool _isSelecting = false;
   // Multi-select for folder organization
   bool _isOrganizing = false;
@@ -83,14 +82,27 @@ class _HomePageState extends State<HomePage> {
   // Scroll controller for the character grid (visible scrollbar)
   final ScrollController _gridScrollController = ScrollController();
 
+  // Keep strong reference to active InAppBrowser instances.
+  // The flutter_inappwebview package (especially on macOS/Windows desktop)
+  // requires the Dart InAppBrowser subclass to stay alive while the native
+  // browser window exists, otherwise closing the window can crash the app.
+  CharacterBrowser? _activeBrowser;
+
   @override
   void initState() {
     super.initState();
-    // Load persisted sort preference
     final storage = Provider.of<StorageService>(context, listen: false);
     _sortMode = storage.sortMode;
     _gridScale = storage.gridScale;
-    // Defer cache refresh to after characters load to avoid race condition
+    // StorageService._init() is async — settings may not be loaded yet.
+    // Wait for init to complete so persisted values are reflected.
+    storage.initialized.then((_) {
+      if (!mounted) return;
+      setState(() {
+        _sortMode = storage.sortMode;
+        _gridScale = storage.gridScale;
+      });
+    });
     Future.microtask(() => _refreshLastActivityCache());
   }
 
@@ -138,7 +150,7 @@ class _HomePageState extends State<HomePage> {
                 const Text('Model loaded and ready!'),
               ],
             ),
-            backgroundColor: const Color(0xFF2A2A2A),
+            backgroundColor: AppColors.surfaceContainerOf(context),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -149,28 +161,40 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// Query the DB to build caches for last activity time and message count per character.
+  ///
+  /// Keys in the output maps are always the stableGroupId (image basename or sanitized name)
+  /// so they match what the grid and sort logic use via CharacterCard.stableGroupId.
+  ///
+  /// We correlate via each library card's dbId because 1:1 sessions currently store the
+  /// integer dbId in sessions.character_id (post group overhaul). Group sessions (with
+  /// groupId set, character_id often null) do not contribute here — this is by design
+  /// for the decoupled model (group activity lives with the private group members).
   Future<void> _refreshLastActivityCache() async {
     try {
       final db = await AppDatabase.instance();
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
 
-      // Get counts and activity from DB
+      // Get counts and activity from DB (keys are whatever was stored in sessions.character_id,
+      // currently the dbId for 1:1 sessions).
       final msgCounts = await db.getMessageCountsPerCharacter();
       final lastActivity = await db.getLastActivityPerCharacter();
 
-      // Map from character DB id (UUID) → message count
+      // Output maps MUST be keyed by stableGroupId (the value used for all lookups
+      // in the grid for chips + 'recent'/'messages' sorting).
       final newMsgCount = <String, int>{};
-      for (final card in charRepo.characters) {
-        if (card.dbId != null && msgCounts.containsKey(card.dbId)) {
-          newMsgCount[card.dbId!] = msgCounts[card.dbId!]!;
-        }
-      }
-
-      // Map from character DB id (UUID) → last activity time
       final newCache = <String, DateTime>{};
+
       for (final card in charRepo.characters) {
-        if (card.dbId != null && lastActivity.containsKey(card.dbId)) {
-          newCache[card.dbId!] = lastActivity[card.dbId!]!;
+        final stableId = card.stableGroupId;
+        if (card.dbId != null) {
+          final dbKey =
+              card.dbId!; // matches what is stored in sessions for 1:1
+          if (msgCounts.containsKey(dbKey)) {
+            newMsgCount[stableId] = msgCounts[dbKey]!;
+          }
+          if (lastActivity.containsKey(dbKey)) {
+            newCache[stableId] = lastActivity[dbKey]!;
+          }
         }
       }
 
@@ -190,15 +214,36 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  String _getCharacterIdFromCard(CharacterCard card) {
-    if (card.imagePath != null) {
-      return path.basenameWithoutExtension(card.imagePath!);
-    }
-    return card.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+  /// Delegates to the canonical stable group ID.
+  /// See [StableGroupId.stableGroupId] in lib/utils/character_id.dart
+  String _getCharacterIdFromCard(CharacterCard card) => card.stableGroupId;
+
+  /// Legacy alias — prefer _getCharacterIdFromCard for new code.
+  @Deprecated('Use _getCharacterIdFromCard for stable group ID resolution')
+  String getStableCharacterId(CharacterCard card) => card.stableGroupId;
+
+  void _toggleSelectMode() {
+    setState(() {
+      _isSelecting = !_isSelecting;
+      _isOrganizing = false;
+      if (!_isSelecting) _selectedCharacterIds.clear();
+    });
+  }
+
+  void _toggleOrganizeMode() {
+    setState(() {
+      _isOrganizing = !_isOrganizing;
+      _isSelecting = false;
+      if (!_isOrganizing) _selectedCharacterIds.clear();
+    });
   }
 
   void _toggleSelect(CharacterCard character) {
-    final id = _getCharacterIdFromCard(character);
+    final id = character.imagePath != null
+        ? path.basenameWithoutExtension(character.imagePath!)
+        : character.name
+              .replaceAll(RegExp(r'[^\w\s]'), '')
+              .replaceAll(' ', '_');
     setState(() {
       if (_selectedCharacterIds.contains(id)) {
         _selectedCharacterIds.remove(id);
@@ -224,6 +269,12 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _searchController.dispose();
     _gridScrollController.dispose();
+
+    // Close any open character browser to avoid native window leaks / crashes
+    // on app exit while the inappwebview window is still visible.
+    _activeBrowser?.close();
+    _activeBrowser = null;
+
     super.dispose();
   }
 
@@ -242,9 +293,11 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text(
                   'Get started by creating a new character!',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(color: Colors.white70),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.color?.withValues(alpha: 0.7),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -347,849 +400,61 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
-        // Filter characters based on search and active folder
-        final filteredCharacters = _getFilteredCharacters(repo, folderService);
-
         return _wrapWithStatusBar(
           context,
-          Stack(
-            children: [
-              Column(
-                children: [
-                  // Header row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0,
-                      vertical: 16.0,
-                    ),
-                    child: Row(
-                      children: [
-                        if (_isSelecting || _isOrganizing) ...[
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            tooltip: 'Cancel selection',
-                            onPressed: _cancelSelection,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${_selectedCharacterIds.length} selected',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: _isOrganizing
-                                      ? Colors.blueAccent
-                                      : Colors.purpleAccent,
-                                ),
-                          ),
-                        ] else if (_activeFolderId != null) ...[
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back),
-                            tooltip: 'Back to all characters',
-                            onPressed: () => setState(() {
-                              if (_folderStack.isNotEmpty) {
-                                _activeFolderId = _folderStack.removeLast();
-                              } else {
-                                _activeFolderId = null;
-                              }
-                              _searchScope = SearchScope.currentFolder;
-                            }),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _getActiveFolderName(folderService),
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ] else
-                          _buildModeToggle(),
-                        const SizedBox(width: 16),
-                        // Sort dropdown
-                        if (!_isSelecting && !_isOrganizing)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white12),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _sortMode,
-                                icon: const Icon(
-                                  Icons.sort,
-                                  size: 18,
-                                  color: Colors.white54,
-                                ),
-                                dropdownColor: const Color(0xFF1E293B),
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 13,
-                                ),
-                                isDense: true,
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: 'name',
-                                    child: Text('Name (A→Z)'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'recent',
-                                    child: Text('Recent Activity'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'importDate',
-                                    child: Text('Import Date'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'messages',
-                                    child: Text('Messages Sent'),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(() => _sortMode = value);
-                                    Provider.of<StorageService>(
-                                      context,
-                                      listen: false,
-                                    ).setSortMode(value);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        // Grid scale slider
-                        if (!_isSelecting && !_isOrganizing)
-                          SizedBox(
-                            width: 120,
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.grid_view,
-                                  size: 16,
-                                  color: Colors.white38,
-                                ),
-                                Expanded(
-                                  child: SliderTheme(
-                                    data: SliderThemeData(
-                                      trackHeight: 3,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 6,
-                                      ),
-                                      overlayShape:
-                                          const RoundSliderOverlayShape(
-                                            overlayRadius: 12,
-                                          ),
-                                      activeTrackColor: Colors.blueAccent
-                                          .withValues(alpha: 0.7),
-                                      inactiveTrackColor: Colors.white12,
-                                      thumbColor: Colors.blueAccent,
-                                    ),
-                                    child: Slider(
-                                      value: _gridScale,
-                                      min: 150,
-                                      max: 450,
-                                      onChanged: (v) =>
-                                          setState(() => _gridScale = v),
-                                      onChangeEnd: (v) {
-                                        Provider.of<StorageService>(
-                                          context,
-                                          listen: false,
-                                        ).setGridScale(v);
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.view_module,
-                                  size: 16,
-                                  color: Colors.white38,
-                                ),
-                              ],
-                            ),
-                          ),
-                        const Spacer(),
-                        if (!_isSelecting && !_isOrganizing) ...[
-                          IconButton(
-                            tooltip: 'Select characters for group chat',
-                            icon: const Icon(
-                              Icons.group_add,
-                              color: Colors.purpleAccent,
-                            ),
-                            onPressed: () =>
-                                setState(() => _isSelecting = true),
-                          ),
-                          IconButton(
-                            tooltip: 'Organize into folders',
-                            icon: const Icon(
-                              Icons.drive_file_move_outlined,
-                              color: Colors.blueAccent,
-                            ),
-                            onPressed: () =>
-                                setState(() => _isOrganizing = true),
-                          ),
-                          if (_activeFolderId == null)
-                            IconButton(
-                              tooltip: 'New Folder',
-                              icon: const Icon(
-                                Icons.create_new_folder_outlined,
-                              ),
-                              onPressed: () =>
-                                  _createFolder(context, folderService),
-                            ),
-                          if (_activeFolderId != null)
-                            IconButton(
-                              tooltip: 'New Subfolder',
-                              icon: const Icon(
-                                Icons.create_new_folder_outlined,
-                                color: Colors.amberAccent,
-                              ),
-                              onPressed: () => _createFolder(
-                                context,
-                                folderService,
-                                parentId: _activeFolderId,
-                              ),
-                            ),
-                          PopupMenuButton<String>(
-                            tooltip: 'Import Characters',
-                            icon: const Icon(Icons.download),
-                            onSelected: (value) {
-                              if (value == 'cards') _importCharacter(context);
-                              if (value == 'folder')
-                                _folderImportCharacters(context);
-                              if (value == 'byaf') _importByaf(context);
-                            },
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(
-                                value: 'cards',
-                                child: ListTile(
-                                  leading: Icon(Icons.download),
-                                  title: Text('Import Cards'),
-                                  dense: true,
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'folder',
-                                child: ListTile(
-                                  leading: Icon(Icons.library_add),
-                                  title: Text('Import Folder'),
-                                  dense: true,
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'byaf',
-                                child: ListTile(
-                                  leading: Icon(Icons.archive_outlined),
-                                  title: Text('Import Backyard AI (.byaf)'),
-                                  dense: true,
-                                ),
-                              ),
-                            ],
-                          ),
-                           IconButton(
-                            tooltip: 'Browse AI Character Cards',
-                            icon: const Icon(
-                              Icons.public,
-                              color: Colors.blueAccent,
-                            ),
-                            onPressed: () => _openBrowser(context),
-                          ),
-                          IconButton(
-                            tooltip: 'Chub.ai (Caution)',
-                            icon: const Icon(
-                              Icons.warning_amber_rounded,
-                              color: Colors.redAccent,
-                            ),
-                            onPressed: () => _showChubWarning(context),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  // Search bar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: TextField(
-                      controller: _searchController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: _activeFolderId != null && _searchScope != SearchScope.allCharacters
-                            ? 'Search this folder...'
-                            : 'Search by name or tag...',
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        prefixIcon: _activeFolderId != null
-                            ? PopupMenuButton<SearchScope>(
-                                icon: Icon(
-                                  _searchScope == SearchScope.allCharacters ? Icons.search : Icons.folder_open,
-                                  color: _searchScope == SearchScope.allCharacters
-                                      ? Colors.blueAccent
-                                      : Colors.amberAccent,
-                                  size: 20,
-                                ),
-                                tooltip: 'Search scope',
-                                color: const Color(0xFF1E293B),
-                                onSelected: (val) =>
-                                    setState(() => _searchScope = val),
-                                itemBuilder: (_) => [
-                                  PopupMenuItem(
-                                    value: SearchScope.currentFolder,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.folder,
-                                          size: 18,
-                                          color: _searchScope == SearchScope.currentFolder
-                                              ? Colors.amberAccent
-                                              : Colors.white54,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'This Folder Only',
-                                          style: TextStyle(
-                                            color: _searchScope == SearchScope.currentFolder
-                                                ? Colors.amberAccent
-                                                : Colors.white70,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: SearchScope.folderRecursive,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.snippet_folder,
-                                          size: 18,
-                                          color: _searchScope == SearchScope.folderRecursive
-                                              ? Colors.amberAccent
-                                              : Colors.white54,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Folder & Subfolders',
-                                          style: TextStyle(
-                                            color: _searchScope == SearchScope.folderRecursive
-                                                ? Colors.amberAccent
-                                                : Colors.white70,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: SearchScope.allCharacters,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.search,
-                                          size: 18,
-                                          color: _searchScope == SearchScope.allCharacters
-                                              ? Colors.blueAccent
-                                              : Colors.white54,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'All Characters',
-                                          style: TextStyle(
-                                            color: _searchScope == SearchScope.allCharacters
-                                                ? Colors.blueAccent
-                                                : Colors.white70,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const Icon(Icons.search, color: Colors.white38),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(
-                                  Icons.clear,
-                                  color: Colors.white38,
-                                ),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                        filled: true,
-                        fillColor: const Color(0xFF1E293B),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                        ),
-                      ),
-                      onChanged: (value) =>
-                          setState(() => _searchQuery = value),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Grid with folders, groups, and characters
-                  Expanded(
-                    child: _buildGrid(
-                      context,
-                      repo,
-                      folderService,
-                      filteredCharacters,
-                      groupRepo,
-                    ),
-                  ),
-                ],
-              ),
-              // Group chat selection bar (purple)
-              if (_isSelecting && _selectedCharacterIds.isNotEmpty)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
-                      border: const Border(
-                        top: BorderSide(color: Colors.white10),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, -2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.group,
-                          color: Colors.purpleAccent.withValues(alpha: 0.7),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '${_selectedCharacterIds.length} selected',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: _cancelSelection,
-                          child: const Text(
-                            'Cancel',
-                            style: TextStyle(color: Colors.white54),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: _selectedCharacterIds.length >= 2
-                              ? () => _showCreateGroupDialog(context, repo)
-                              : null,
-                          icon: const Icon(Icons.group_add),
-                          label: const Text('Create Group'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purpleAccent,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: Colors.white10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              // Organize selection bar (blue)
-              if (_isOrganizing && _selectedCharacterIds.isNotEmpty)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1F2937),
-                      border: const Border(
-                        top: BorderSide(color: Colors.white10),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, -2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.drive_file_move,
-                          color: Colors.blueAccent.withValues(alpha: 0.7),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '${_selectedCharacterIds.length} selected',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: _cancelSelection,
-                          child: const Text(
-                            'Cancel',
-                            style: TextStyle(color: Colors.white54),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: _selectedCharacterIds.isNotEmpty
-                              ? () => _showMoveToFolderDialog(
-                                  context,
-                                  repo,
-                                  folderService,
-                                )
-                              : null,
-                          icon: const Icon(Icons.drive_file_move, size: 18),
-                          label: const Text('Move to Folder'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: Colors.white10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
+          CharacterCardGrid(
+            searchQuery: _searchQuery,
+            searchScope: _searchScope,
+            activeFolderId: _activeFolderId,
+            sortMode: _sortMode,
+            lastActivityCache: _lastActivityCache,
+            messageCountCache: _messageCountCache,
+            gridScale: _gridScale,
+            isSelecting: _isSelecting,
+            isOrganizing: _isOrganizing,
+            selectedCharacterIds: _selectedCharacterIds,
+            searchController: _searchController,
+            gridScrollController: _gridScrollController,
+            repo: repo,
+            folderService: folderService,
+            groupRepo: groupRepo,
+            modeToggle: _buildModeToggle(),
+            onTapCharacter: _handleTapCharacter,
+            onTapGroup: _handleTapGroup,
+            onToggleSelect: _toggleSelect,
+            onToggleSelectMode: _toggleSelectMode,
+            onToggleOrganizeMode: _toggleOrganizeMode,
+            onContextMenuAction: _handleContextMenuAction,
+            onImport: _handleImport,
+            onOpenBrowser: _handleOpenBrowser,
+            onAcceptFolderDrop: _handleAcceptFolderDrop,
+            onFolderDialogAction: _handleFolderDialogAction,
+            onFolderTap: _handleFolderTap,
+            onFolderNavigateBack: _handleFolderNavigateBack,
+            onCancelSelection: _cancelSelection,
+            // onCreateGroup no longer wired — old select-for-group path deprecated.
+            onMoveToFolder: _handleMoveToFolder,
+            onSortChanged: _handleSortChanged,
+            onGridScaleChanged: _handleGridScaleChanged,
+            onGridScaleChangeEnd: _handleGridScaleChangeEnd,
+            onSearchScopeChanged: _handleSearchScopeChanged,
+            onSearchQueryChanged: _handleSearchQueryChanged,
+            onResolveCharImage: _resolveCharImage,
+            onDeleteGroup: _handleDeleteGroup,
+            onAfterNavigateBack: _refreshLastActivityCache,
+            onGroupContextMenuAction: _handleGroupContextMenuAction,
           ),
         );
       },
     );
   }
 
-  List<CharacterCard> _getFilteredCharacters(
-    CharacterRepository repo,
-    FolderService folderService,
-  ) {
-    List<CharacterCard> characters;
-
-    // When _searchScope is allCharacters and there's a search query, skip the folder filter
-    final skipFolderFilter = _searchScope == SearchScope.allCharacters && _searchQuery.isNotEmpty;
-    if (_activeFolderId != null && !skipFolderFilter) {
-      // Show only characters in this folder
-      List<String> folderFilenames;
-      if (_searchQuery.isNotEmpty && _searchScope == SearchScope.currentFolder) {
-        folderFilenames = folderService.getCharactersInFolder(_activeFolderId!);
-      } else {
-        folderFilenames = folderService.getCharactersInFolderRecursive(_activeFolderId!);
-      }
-      // Compare by filename since FolderService stores filenames only
-      characters = repo.characters
-          .where(
-            (c) =>
-                c.imagePath != null &&
-                folderFilenames.contains(path.basename(c.imagePath!)),
-          )
-          .toList();
-    } else {
-      characters = repo.characters.toList();
-    }
-
-    // Apply search filter
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      characters = characters.where((c) {
-        if (c.name.toLowerCase().contains(query)) return true;
-        if (c.tags.any((t) => t.toLowerCase().contains(query))) return true;
-        return false;
-      }).toList();
-    }
-
-    // Apply sort
-    switch (_sortMode) {
-      case 'name':
-        characters.sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-        break;
-      case 'recent':
-        characters.sort((a, b) {
-          final aId = a.dbId ?? _getCharacterIdFromCard(a);
-          final bId = b.dbId ?? _getCharacterIdFromCard(b);
-          final aTime = _lastActivityCache[aId] ?? DateTime(1970);
-          final bTime = _lastActivityCache[bId] ?? DateTime(1970);
-          return bTime.compareTo(aTime); // newest first
-        });
-        break;
-      case 'importDate':
-        characters.sort((a, b) {
-          final aEpoch = _extractImportEpoch(a);
-          final bEpoch = _extractImportEpoch(b);
-          return bEpoch.compareTo(aEpoch); // newest first
-        });
-        break;
-    }
-    if (_sortMode == 'messages') {
-      characters.sort((a, b) {
-        final aId = a.dbId ?? _getCharacterIdFromCard(a);
-        final bId = b.dbId ?? _getCharacterIdFromCard(b);
-        final aCount = _messageCountCache[aId] ?? 0;
-        final bCount = _messageCountCache[bId] ?? 0;
-        return bCount.compareTo(aCount); // most messages first
-      });
-    }
-
-    return characters;
-  }
-
-  /// Extracts the import epoch from a character's PNG filename.
-  /// Filenames follow the pattern: `CharName_EPOCH.png`
-  int _extractImportEpoch(CharacterCard card) {
-    if (card.imagePath == null) return 0;
-    final basename = path.basenameWithoutExtension(card.imagePath!);
-    final lastUnderscore = basename.lastIndexOf('_');
-    if (lastUnderscore == -1) return 0;
-    return int.tryParse(basename.substring(lastUnderscore + 1)) ?? 0;
-  }
-
-  String _getActiveFolderName(FolderService folderService) {
-    if (_activeFolderId == null) return 'My Characters';
-    final folder = folderService.folders
-        .where((f) => f.id == _activeFolderId)
-        .firstOrNull;
-    return folder?.name ?? 'Folder';
-  }
-
-  Widget _buildGrid(
-    BuildContext context,
-    CharacterRepository repo,
-    FolderService folderService,
-    List<CharacterCard> filteredCharacters,
-    GroupChatRepository groupRepo,
-  ) {
-    // Show folders: at top level show top-level folders, inside a folder show subfolders
-    final showFolders = _searchQuery.isEmpty;
-    final folders = showFolders
-        ? folderService.getSubfolders(_activeFolderId)
-        : <CharacterFolder>[];
-
-    // Show group cards at top level only
-    final groups =
-        (_activeFolderId == null &&
-            _searchQuery.isEmpty &&
-            !_isSelecting &&
-            !_isOrganizing)
-        ? groupRepo.groups
-        : <GroupChat>[];
-
-    // At top level, show unfoldered characters only (unless searching)
-    List<CharacterCard> displayCharacters;
-    if (showFolders && _activeFolderId == null) {
-      final folderedFilenames = folderService.getUnfolderedCharacterPaths();
-      displayCharacters = filteredCharacters
-          .where(
-            (c) =>
-                c.imagePath == null ||
-                !folderedFilenames.contains(path.basename(c.imagePath!)),
-          )
-          .toList();
-    } else {
-      displayCharacters = filteredCharacters;
-    }
-
-    final totalItems =
-        folders.length + groups.length + displayCharacters.length;
-    if (totalItems == 0) {
-      return Center(
-        child: Text(
-          _searchQuery.isNotEmpty
-              ? 'No characters match "$_searchQuery"'
-              : 'This folder is empty',
-          style: const TextStyle(color: Colors.white38, fontSize: 16),
-        ),
-      );
-    }
-
-    return Scrollbar(
-      controller: _gridScrollController,
-      thumbVisibility: true,
-      child: GridView.builder(
-        controller: _gridScrollController,
-        padding: EdgeInsets.fromLTRB(
-          24,
-          24,
-          24,
-          (_isSelecting || _isOrganizing) ? 80 : 24,
-        ),
-        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: _gridScale,
-          childAspectRatio: 0.7,
-          crossAxisSpacing: 24,
-          mainAxisSpacing: 24,
-        ),
-        itemCount: totalItems,
-        itemBuilder: (context, index) {
-          // Render folder cards first
-          if (index < folders.length) {
-            return _buildFolderCard(
-              context,
-              folders[index],
-              folderService,
-              repo,
-            );
-          }
-          // Then group cards
-          final groupOffset = index - folders.length;
-          if (groupOffset < groups.length) {
-            return _buildGroupCard(context, groups[groupOffset], repo);
-          }
-          // Then character cards
-          final character = displayCharacters[groupOffset - groups.length];
-          return _buildCharacterCard(context, character, folderService);
-        },
-      ),
-    );
-  }
-
-  Widget _buildFolderCard(
-    BuildContext context,
-    CharacterFolder folder,
-    FolderService folderService,
-    CharacterRepository repo,
-  ) {
-    final charCount = folder.characterPaths.length;
-
-    return DragTarget<CharacterCard>(
-      onAcceptWithDetails: (details) async {
-        await folderService.addToFolder(folder.id, details.data.imagePath!);
-      },
-      builder: (context, candidateData, rejectedData) {
-        final isHovering = candidateData.isNotEmpty;
-        return Card(
-          color: isHovering
-              ? Colors.amber.shade900.withValues(alpha: 0.4)
-              : const Color(0xFF1E293B),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: isHovering
-                  ? Colors.amber
-                  : Colors.white.withValues(alpha: 0.1),
-              width: isHovering ? 2 : 1,
-            ),
-          ),
-          child: InkWell(
-            onTap: () => setState(() {
-              if (_activeFolderId != null) {
-                _folderStack.add(_activeFolderId!);
-              }
-              _activeFolderId = folder.id;
-            }),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isSmall = constraints.maxHeight < 200;
-                final isTiny = constraints.maxHeight < 140;
-                final iconSize = isTiny ? 32.0 : (isSmall ? 48.0 : 72.0);
-                final fontSize = isTiny ? 11.0 : (isSmall ? 13.0 : 16.0);
-
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.folder,
-                      size: iconSize,
-                      color: isHovering ? Colors.amber : Colors.amber.shade700,
-                    ),
-                    SizedBox(height: isTiny ? 4 : (isSmall ? 8 : 16)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        folder.name,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: fontSize,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: isTiny ? 1 : 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (!isTiny) ...[
-                      SizedBox(height: isSmall ? 4 : 8),
-                      Text(
-                        '$charCount character${charCount == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: isSmall ? 11 : 13,
-                        ),
-                      ),
-                    ],
-                    if (!isSmall) ...[
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.edit,
-                              color: Colors.white54,
-                              size: 18,
-                            ),
-                            tooltip: 'Rename',
-                            onPressed: () =>
-                                _renameFolder(context, folder, folderService),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete,
-                              color: Colors.redAccent,
-                              size: 18,
-                            ),
-                            tooltip: 'Delete folder',
-                            onPressed: () =>
-                                _deleteFolder(context, folder, folderService),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Wraps content with an optional model-loading status bar at the bottom.
   Widget _buildModeToggle() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.surfaceContainerOf(context),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppColors.borderOf(context)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1224,11 +489,21 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isActive
-              ? Colors.amber.shade800.withValues(alpha: 0.25)
+              ? AppColors.resolve(
+                  context,
+                  Colors.amber.shade800.withValues(alpha: 0.25),
+                  Colors.amber.withValues(alpha: 0.15),
+                )
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: isActive
-              ? Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5))
+              ? Border.all(
+                  color: AppColors.resolve(
+                    context,
+                    Colors.amber.shade700.withValues(alpha: 0.5),
+                    Colors.amber.shade700.withValues(alpha: 0.4),
+                  ),
+                )
               : null,
         ),
         child: Row(
@@ -1237,13 +512,21 @@ class _HomePageState extends State<HomePage> {
             Icon(
               icon,
               size: 18,
-              color: isActive ? Colors.amber.shade400 : Colors.white38,
+              color: isActive
+                  ? AppColors.resolve(
+                      context,
+                      Colors.amber.shade400,
+                      Colors.amber.shade800,
+                    )
+                  : AppColors.iconSecondary(context),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? Colors.white : Colors.white54,
+                color: isActive
+                    ? AppColors.textPrimary(context)
+                    : AppColors.textSecondary(context),
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),
@@ -1270,687 +553,39 @@ class _HomePageState extends State<HomePage> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            border: Border(top: BorderSide(color: Colors.white12)),
+            color: AppColors.surfaceContainerOf(context),
+            border: Border(top: BorderSide(color: AppColors.borderOf(context))),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 status,
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                style: TextStyle(
+                  color: AppColors.textSecondary(context),
+                  fontSize: 13,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: const LinearProgressIndicator(
+                child: LinearProgressIndicator(
                   minHeight: 4,
-                  backgroundColor: Color(0xFF333333),
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    const Color(0xFF333333),
+                    AppColors.surfaceContainerLight,
+                  ),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.greenAccent,
+                  ),
                 ),
               ),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildCharacterCard(
-    BuildContext context,
-    CharacterCard character,
-    FolderService folderService,
-  ) {
-    return LongPressDraggable<CharacterCard>(
-      data: character,
-      feedback: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 150,
-          height: 200,
-          child: Card(
-            color: const Color(0xFF1E293B),
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: character.imagePath != null
-                ? Image.file(
-                    _resolveCharImage(character.imagePath!),
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                  )
-                : const Icon(Icons.person, size: 64, color: Colors.white24),
-          ),
-        ),
-      ),
-      childWhenDragging: Opacity(
-        opacity: 0.3,
-        child: _buildCharacterCardInner(context, character, folderService),
-      ),
-      child: _buildCharacterCardInner(context, character, folderService),
-    );
-  }
-
-  Widget _buildCharacterCardInner(
-    BuildContext context,
-    CharacterCard character,
-    FolderService folderService,
-  ) {
-    final charId = character.dbId ?? _getCharacterIdFromCard(character);
-    final msgCount = _messageCountCache[charId] ?? 0;
-    
-    final stringId = _getCharacterIdFromCard(character);
-    final isSelected = _selectedCharacterIds.contains(stringId);
-
-    return Card(
-      color: Theme.of(context).cardColor,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isSelected
-              ? Colors.purpleAccent
-              : Theme.of(context).dividerColor.withValues(alpha: 0.1),
-          width: isSelected ? 2.5 : 1,
-        ),
-      ),
-      child: Stack(
-        children: [
-          InkWell(
-            onTap: () async {
-              if (_isSelecting || _isOrganizing) {
-                _toggleSelect(character);
-                return;
-              }
-              final chatService = Provider.of<ChatService>(
-                context,
-                listen: false,
-              );
-              final charId = _getCharacterIdFromCard(character);
-              final sessions = await chatService.getSessionsForId(charId);
-
-              if (!context.mounted) return;
-
-              if (sessions.length > 1) {
-                final selectedId = await _showSessionPickerDialog(
-                  context,
-                  sessions,
-                  character.name,
-                );
-                if (selectedId == null || !context.mounted) return;
-                await chatService.setActiveCharacter(character);
-                if (selectedId != '__new__') {
-                  await chatService.loadSession(selectedId);
-                }
-                if (selectedId == '__new__') {
-                  await chatService.startNewChat();
-                }
-              } else {
-                await chatService.setActiveCharacter(character);
-              }
-              if (context.mounted) {
-                await Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const ChatPage()));
-                _refreshLastActivityCache();
-              }
-            },
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isCompact = constraints.maxWidth < 200;
-                final isTiny = constraints.maxWidth < 160;
-
-                if (isTiny) {
-                  // Very small: image only with name overlay
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      character.imagePath != null
-                          ? Image.file(
-                              _resolveCharImage(character.imagePath!),
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
-                            )
-                          : Container(
-                              color: Colors.grey.shade800,
-                              child: const Icon(
-                                Icons.person,
-                                size: 32,
-                                color: Colors.white24,
-                              ),
-                            ),
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [Colors.black87, Colors.transparent],
-                            ),
-                          ),
-                          child: Text(
-                            character.name,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      flex: isCompact ? 4 : 3,
-                      child: character.imagePath != null
-                          ? Image.file(
-                              _resolveCharImage(character.imagePath!),
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
-                            )
-                          : Container(
-                              color: Colors.grey.shade800,
-                              child: Icon(
-                                Icons.person,
-                                size: isCompact ? 32 : 64,
-                                color: Colors.white24,
-                              ),
-                            ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Padding(
-                        padding: EdgeInsets.all(isCompact ? 6.0 : 12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    character.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: isCompact ? 12 : null,
-                                        ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (msgCount > 0)
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.chat_bubble_outline,
-                                        size: 11,
-                                        color: Colors.white38,
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        '$msgCount',
-                                        style: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: isCompact ? 10 : 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                              ],
-                            ),
-                            if (!isCompact) ...[
-                              const SizedBox(height: 4),
-                              // Tag chips (show first 3 tags)
-                              if (character.tags.isNotEmpty)
-                                Flexible(
-                                  child: Wrap(
-                                    spacing: 4,
-                                    runSpacing: 2,
-                                    children: character.tags
-                                        .take(3)
-                                        .map(
-                                          (tag) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.amber.shade900
-                                                  .withValues(alpha: 0.3),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              tag,
-                                              style: TextStyle(
-                                                color: Colors.amber.shade300,
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                )
-                              else
-                                Flexible(
-                                  child: Text(
-                                    character.formattedDescription,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-
-          // Selection checkbox overlay
-          if (_isSelecting || _isOrganizing)
-            Positioned(
-              top: 8,
-              left: 8,
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? (_isOrganizing
-                            ? Colors.blueAccent
-                            : Colors.purpleAccent)
-                      : Colors.black54,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? (_isOrganizing
-                              ? Colors.blueAccent
-                              : Colors.purpleAccent)
-                        : Colors.white38,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? const Icon(Icons.check, size: 16, color: Colors.white)
-                    : null,
-              ),
-            ),
-          // Right-click context menu for actions (replaces overlay buttons)
-          if (!_isSelecting && !_isOrganizing)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onSecondaryTapUp: (details) {
-                  final position = details.globalPosition;
-                  showMenu<String>(
-                    context: context,
-                    position: RelativeRect.fromLTRB(
-                      position.dx,
-                      position.dy,
-                      position.dx,
-                      position.dy,
-                    ),
-                    color: const Color(0xFF2A2A2A),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    items: [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.edit,
-                            color: Colors.white70,
-                            size: 20,
-                          ),
-                          title: Text(
-                            'Edit Character',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'duplicate',
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.copy,
-                            color: Colors.white70,
-                            size: 20,
-                          ),
-                          title: Text(
-                            'Duplicate Character',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'export',
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.upload,
-                            color: Colors.white70,
-                            size: 20,
-                          ),
-                          title: Text(
-                            'Export PNG',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                      if (_activeFolderId != null)
-                        const PopupMenuItem(
-                          value: 'remove_folder',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.folder_off,
-                              color: Colors.amber,
-                              size: 20,
-                            ),
-                            title: Text(
-                              'Remove from Folder',
-                              style: TextStyle(color: Colors.amber),
-                            ),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.delete,
-                            color: Colors.redAccent,
-                            size: 20,
-                          ),
-                          title: Text(
-                            'Delete',
-                            style: TextStyle(color: Colors.redAccent),
-                          ),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ],
-                  ).then((value) {
-                    if (value == null) return;
-                    switch (value) {
-                      case 'edit':
-                        _editCharacter(context, character);
-                        break;
-                      case 'duplicate':
-                        _duplicateCharacter(context, character);
-                        break;
-                      case 'export':
-                        _exportCharacter(context, character);
-                        break;
-                      case 'remove_folder':
-                        folderService.removeFromFolder(
-                          _activeFolderId!,
-                          character.imagePath!,
-                        );
-                        break;
-                      case 'delete':
-                        _confirmDeleteCharacter(context, character);
-                        break;
-                    }
-                  });
-                },
-                child: const SizedBox.shrink(),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Group Card ─────────────────────────────────────────────────
-
-  Widget _buildGroupCard(
-    BuildContext context,
-    GroupChat group,
-    CharacterRepository repo,
-  ) {
-    // Resolve character cards for the group
-    final characters = <CharacterCard>[];
-    for (final id in group.characterIds) {
-      final match = repo.characters
-          .where((c) => _getCharacterIdFromCard(c) == id)
-          .firstOrNull;
-      if (match != null) characters.add(match);
-    }
-
-    return Card(
-      color: const Color(0xFF1E293B),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.purpleAccent.withValues(alpha: 0.3)),
-      ),
-      child: InkWell(
-        onTap: () async {
-          final chatService = Provider.of<ChatService>(context, listen: false);
-          final groupId = 'group_${group.id}';
-          final sessions = await chatService.getSessionsForId(groupId);
-
-          if (!context.mounted) return;
-
-          if (sessions.length > 1) {
-            final selectedId = await _showSessionPickerDialog(
-              context,
-              sessions,
-              group.name,
-            );
-            if (selectedId == null || !context.mounted) return;
-            await chatService.setActiveGroup(group);
-            if (selectedId != '__new__') {
-              await chatService.loadSession(selectedId);
-            }
-            if (selectedId == '__new__') {
-              await chatService.startNewChat();
-            }
-          } else {
-            await chatService.setActiveGroup(group);
-          }
-          if (context.mounted) {
-            await Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const ChatPage()));
-            _refreshLastActivityCache();
-          }
-        },
-        child: Stack(
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final h = constraints.maxHeight;
-                final isCompact = h < 220;
-                final avatarSize = isCompact ? 40.0 : 56.0;
-                final avatarAreaH = isCompact ? 50.0 : 80.0;
-                final overlapStep = isCompact ? 22.0 : 30.0;
-                final nameFontSize = isCompact ? 12.0 : 16.0;
-                final subFontSize = isCompact ? 10.0 : 13.0;
-                final badgeFontSize = isCompact ? 9.0 : 11.0;
-                final iconSize = isCompact ? 16.0 : 20.0;
-
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(height: isCompact ? 8 : 16),
-                    // Stacked avatars
-                    SizedBox(
-                      height: avatarAreaH,
-                      width: double.infinity,
-                      child: Center(
-                        child: SizedBox(
-                          width:
-                              avatarSize +
-                              (characters.take(4).length - 1) * overlapStep,
-                          height: avatarAreaH,
-                          child: Stack(
-                            children: [
-                              for (
-                                int i = 0;
-                                i < characters.take(4).length;
-                                i++
-                              )
-                                Positioned(
-                                  left: i * overlapStep,
-                                  child: Container(
-                                    width: avatarSize,
-                                    height: avatarSize,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.purpleAccent,
-                                        width: 2,
-                                      ),
-                                      image: characters[i].imagePath != null
-                                          ? DecorationImage(
-                                              image: FileImage(
-                                                _resolveCharImage(
-                                                  characters[i].imagePath!,
-                                                ),
-                                              ),
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.topCenter,
-                                            )
-                                          : null,
-                                      color: characters[i].imagePath == null
-                                          ? Colors.grey.shade700
-                                          : null,
-                                    ),
-                                    child: characters[i].imagePath == null
-                                        ? Icon(
-                                            Icons.person,
-                                            color: Colors.white24,
-                                            size: avatarSize * 0.5,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: isCompact ? 4 : 16),
-                    // Group icon badge
-                    Icon(
-                      Icons.group,
-                      color: Colors.purpleAccent,
-                      size: iconSize,
-                    ),
-                    SizedBox(height: isCompact ? 2 : 8),
-                    Flexible(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          group.name,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: nameFontSize,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: isCompact ? 1 : 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    if (!isCompact) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '${characters.length} character${characters.length == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: subFontSize,
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: isCompact ? 2 : 4),
-                    // Turn order label
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? 4 : 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.purpleAccent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        group.turnOrder == TurnOrder.roundRobin
-                            ? 'Round Robin'
-                            : 'Random',
-                        style: TextStyle(
-                          color: Colors.purpleAccent.withValues(alpha: 0.8),
-                          fontSize: badgeFontSize,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: isCompact ? 4 : 0),
-                  ],
-                );
-              },
-            ),
-            // Delete group button
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Material(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => _confirmDeleteGroup(context, group),
-                  child: const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Icon(
-                      Icons.delete,
-                      color: Colors.redAccent,
-                      size: 18,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1964,7 +599,7 @@ class _HomePageState extends State<HomePage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Colors.blueAccent, width: 0.5),
@@ -1980,9 +615,10 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: Text(
                 'Continue a chat with $characterName?',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -2004,13 +640,13 @@ class _HomePageState extends State<HomePage> {
                   label: const Text('Start New Chat'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.greenAccent,
-                    side: const BorderSide(color: Colors.greenAccent),
+                    side: BorderSide(color: Colors.greenAccent),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              const Divider(color: Colors.white10),
+              Divider(color: AppColors.borderOf(context)),
               const SizedBox(height: 4),
               // Session list
               Expanded(
@@ -2027,7 +663,7 @@ class _HomePageState extends State<HomePage> {
                     final description = s['session_description'] as String?;
 
                     return Card(
-                      color: const Color(0xFF374151),
+                      color: AppColors.cardOf(context),
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -2039,16 +675,16 @@ class _HomePageState extends State<HomePage> {
                                 size: 20,
                                 color: Colors.blueAccent,
                               )
-                            : const Icon(
+                            : Icon(
                                 Icons.chat,
                                 size: 20,
-                                color: Colors.white38,
+                                color: AppColors.textTertiary(context),
                               ),
                         title: Text(
                           s['preview'],
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: Colors.white,
+                            color: AppColors.textPrimary(context),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2059,18 +695,19 @@ class _HomePageState extends State<HomePage> {
                             const SizedBox(height: 4),
                             Text(
                               dateStr,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white54,
+                                color: AppColors.textTertiary(context),
                               ),
                             ),
-                            if (description != null && description.isNotEmpty) ...[
+                            if (description != null &&
+                                description.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
                                 description,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.white38,
+                                  color: AppColors.textTertiary(context),
                                   fontStyle: FontStyle.italic,
                                 ),
                                 maxLines: 1,
@@ -2082,40 +719,92 @@ class _HomePageState extends State<HomePage> {
                               spacing: 6,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: Colors.blueAccent.withValues(alpha: 0.15),
+                                    color: Colors.blueAccent.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3), width: 0.5),
+                                    border: Border.all(
+                                      color: Colors.blueAccent.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      width: 0.5,
+                                    ),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.forum, size: 10, color: Colors.blueAccent.shade100),
+                                      Icon(
+                                        Icons.forum,
+                                        size: 10,
+                                        color: AppColors.resolve(
+                                          context,
+                                          Colors.blueAccent.shade200,
+                                          Colors.blueAccent.shade700,
+                                        ),
+                                      ),
                                       const SizedBox(width: 4),
                                       Text(
                                         '$messageCount total',
-                                        style: TextStyle(fontSize: 10, color: Colors.blueAccent.shade100, fontWeight: FontWeight.w500),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: AppColors.resolve(
+                                            context,
+                                            Colors.blueAccent.shade200,
+                                            Colors.blueAccent.shade700,
+                                          ),
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
                                 if (userMessageCount > 0)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: Colors.greenAccent.withValues(alpha: 0.15),
+                                      color: Colors.greenAccent.withValues(
+                                        alpha: 0.15,
+                                      ),
                                       borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3), width: 0.5),
+                                      border: Border.all(
+                                        color: Colors.greenAccent.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        width: 0.5,
+                                      ),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.person, size: 10, color: Colors.greenAccent.shade100),
+                                        Icon(
+                                          Icons.person,
+                                          size: 10,
+                                          color: AppColors.resolve(
+                                            context,
+                                            Colors.greenAccent.shade200,
+                                            Colors.greenAccent.shade700,
+                                          ),
+                                        ),
                                         const SizedBox(width: 4),
                                         Text(
                                           '$userMessageCount user',
-                                          style: TextStyle(fontSize: 10, color: Colors.greenAccent.shade100, fontWeight: FontWeight.w500),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppColors.resolve(
+                                              context,
+                                              Colors.greenAccent.shade200,
+                                              Colors.greenAccent.shade700,
+                                            ),
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -2126,9 +815,9 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 4),
                               Text(
                                 '↳ Branched at message #${(s['fork_index'] ?? 0) + 1}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.blueAccent,
+                                  color: AppColors.textSecondary(context),
                                 ),
                               ),
                             ],
@@ -2149,14 +838,254 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppColors.textSecondary(context)),
             ),
           ),
         ],
       ),
     );
+  }
+
+  // ─── CharacterCardGrid Callback Handlers ────────────────────────
+
+  Future<void> _handleTapCharacter(CharacterCard character) async {
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final charId = character.dbId ?? _getCharacterIdFromCard(character);
+    final sessions = await chatService.getSessionsForId(charId);
+
+    if (!context.mounted) return;
+
+    if (sessions.length > 1) {
+      final selectedId = await _showSessionPickerDialog(
+        context,
+        sessions,
+        character.name,
+      );
+      if (selectedId == null || !context.mounted) return;
+      await chatService.setActiveCharacter(character);
+      if (selectedId != '__new__') {
+        await chatService.loadSession(selectedId);
+      }
+      if (selectedId == '__new__') {
+        await chatService.startNewChat();
+      }
+    } else {
+      await chatService.setActiveCharacter(character);
+    }
+    if (context.mounted) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ChatPage()));
+      _refreshLastActivityCache();
+    }
+  }
+
+  Future<void> _handleTapGroup(GroupChat group) async {
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+    final groupId = 'group_${group.id}';
+    final sessions = await chatService.getSessionsForId(groupId);
+
+    if (!context.mounted) return;
+
+    if (sessions.length > 1) {
+      final selectedId = await _showSessionPickerDialog(
+        context,
+        sessions,
+        group.name,
+      );
+      if (selectedId == null || !context.mounted) return;
+      await chatService.setActiveGroup(group, groupRepo: groupRepo);
+      if (selectedId != '__new__') {
+        await chatService.loadSession(selectedId);
+      }
+      if (selectedId == '__new__') {
+        await chatService.startNewChat();
+      }
+    } else {
+      await chatService.setActiveGroup(group, groupRepo: groupRepo);
+    }
+    if (context.mounted) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ChatPage()));
+      _refreshLastActivityCache();
+    }
+  }
+
+  void _handleContextMenuAction(String action, CharacterCard character) {
+    switch (action) {
+      case 'edit':
+        _editCharacter(context, character);
+        break;
+      case 'duplicate':
+        _duplicateCharacter(context, character);
+        break;
+      case 'export':
+        _exportCharacter(context, character);
+        break;
+      case 'remove_folder':
+        final folderService = Provider.of<FolderService>(
+          context,
+          listen: false,
+        );
+        if (_activeFolderId != null && character.imagePath != null) {
+          folderService.removeFromFolder(
+            _activeFolderId!,
+            character.imagePath!,
+          );
+        }
+        break;
+      case 'delete':
+        _confirmDeleteCharacter(context, character);
+        break;
+    }
+  }
+
+  void _handleGroupContextMenuAction(String action, GroupChat group) {
+    switch (action) {
+      case 'edit':
+        _editGroup(group);
+        break;
+      case 'duplicate':
+        _duplicateGroup(group);
+        break;
+      case 'export':
+        _exportGroup(group);
+        break;
+      case 'extract':
+        _extractCharactersFromGroup(group);
+        break;
+      case 'delete':
+        _confirmDeleteGroup(context, group);
+        break;
+    }
+  }
+
+  Future<void> _editGroup(GroupChat group) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => EditGroupPage(group: group)),
+    );
+    // GroupChatRepository.save() already calls notifyListeners(),
+    // so the home grid rebuilds automatically after edit.
+  }
+
+  void _duplicateGroup(GroupChat group) {
+    // Placeholder — real implementation will copy the GroupChat definition (new id, "Copy of" name, same seeds/ lore / worlds / prompts).
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Duplicate Group not yet implemented: ${group.name}'),
+        ),
+      );
+    }
+  }
+
+  void _handleImport(String source) {
+    switch (source) {
+      case 'cards':
+        _importCharacter(context);
+        break;
+      case 'folder':
+        _folderImportCharacters(context);
+        break;
+      case 'byaf':
+        _importByaf(context);
+        break;
+    }
+  }
+
+  void _handleOpenBrowser(String site) {
+    switch (site) {
+      case 'aicc':
+        _openBrowser(context);
+        break;
+      case 'chub':
+        _showChubWarning(context);
+        break;
+    }
+  }
+
+  Future<void> _handleAcceptFolderDrop(
+    CharacterCard character,
+    CharacterFolder folder,
+  ) async {
+    final folderService = Provider.of<FolderService>(context, listen: false);
+    if (character.imagePath != null) {
+      await folderService.addToFolder(folder.id, character.imagePath!);
+    }
+  }
+
+  void _handleFolderDialogAction(
+    FolderDialogAction action, {
+    CharacterFolder? folder,
+    String? parentId,
+  }) {
+    final folderService = Provider.of<FolderService>(context, listen: false);
+    switch (action) {
+      case FolderDialogAction.create:
+        _createFolder(context, folderService, parentId: parentId);
+        break;
+      case FolderDialogAction.rename:
+        if (folder != null) _renameFolder(context, folder, folderService);
+        break;
+      case FolderDialogAction.delete:
+        if (folder != null) _deleteFolder(context, folder, folderService);
+        break;
+    }
+  }
+
+  void _handleFolderTap(CharacterFolder folder) {
+    setState(() {
+      if (_activeFolderId != null) {
+        _folderStack.add(_activeFolderId!);
+      }
+      _activeFolderId = folder.id;
+    });
+  }
+
+  void _handleFolderNavigateBack() {
+    setState(() {
+      if (_folderStack.isNotEmpty) {
+        _activeFolderId = _folderStack.removeLast();
+      } else {
+        _activeFolderId = null;
+      }
+    });
+  }
+
+  void _handleMoveToFolder(Set<String> selectedIds) {
+    final repo = Provider.of<CharacterRepository>(context, listen: false);
+    final folderService = Provider.of<FolderService>(context, listen: false);
+    _showMoveToFolderDialog(context, repo, folderService);
+  }
+
+  void _handleSortChanged(String mode) {
+    setState(() => _sortMode = mode);
+    Provider.of<StorageService>(context, listen: false).setSortMode(mode);
+  }
+
+  void _handleGridScaleChanged(double scale) {
+    setState(() => _gridScale = scale);
+  }
+
+  void _handleGridScaleChangeEnd(double scale) {
+    Provider.of<StorageService>(context, listen: false).setGridScale(scale);
+  }
+
+  void _handleSearchScopeChanged(SearchScope scope) {
+    setState(() => _searchScope = scope);
+  }
+
+  void _handleSearchQueryChanged(String query) {
+    setState(() => _searchQuery = query);
+  }
+
+  void _handleDeleteGroup(GroupChat group) {
+    _confirmDeleteGroup(context, group);
   }
 
   void _confirmDeleteGroup(BuildContext context, GroupChat group) {
@@ -2189,7 +1118,8 @@ class _HomePageState extends State<HomePage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
+            onPressed: () async {
+              Navigator.of(ctx).pop();
               final groupRepo = Provider.of<GroupChatRepository>(
                 context,
                 listen: false,
@@ -2198,8 +1128,11 @@ class _HomePageState extends State<HomePage> {
                 context,
                 listen: false,
               );
-              groupRepo.delete(group.id, cloudSyncService: cloudSyncService);
-              Navigator.pop(ctx);
+              await groupRepo.delete(
+                group.id,
+                cloudSyncService: cloudSyncService,
+              );
+              // No post-delete snackbar for groups (character delete shows one via the outer context)
             },
             child: const Text('Delete'),
           ),
@@ -2259,7 +1192,9 @@ class _HomePageState extends State<HomePage> {
                   final isSubfolder = folder.parentId != null;
                   return ListTile(
                     leading: Icon(
-                      isSubfolder ? Icons.subdirectory_arrow_right : Icons.folder,
+                      isSubfolder
+                          ? Icons.subdirectory_arrow_right
+                          : Icons.folder,
                       color: Colors.amberAccent,
                     ),
                     title: Text(
@@ -2268,7 +1203,10 @@ class _HomePageState extends State<HomePage> {
                     ),
                     subtitle: Text(
                       '${folder.characterPaths.length} characters',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                      ),
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -2285,37 +1223,37 @@ class _HomePageState extends State<HomePage> {
                     },
                   );
                 }),
-              const Divider(color: Colors.white12),
-              ListTile(
-                leading: const Icon(
-                  Icons.create_new_folder,
-                  color: Colors.greenAccent,
+                const Divider(color: Colors.white12),
+                ListTile(
+                  leading: const Icon(
+                    Icons.create_new_folder,
+                    color: Colors.greenAccent,
+                  ),
+                  title: const Text(
+                    'New Folder',
+                    style: TextStyle(color: Colors.greenAccent),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  hoverColor: Colors.white10,
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final name = await _promptFolderName(context);
+                    if (name != null && name.isNotEmpty && context.mounted) {
+                      final folder = await folderService.createFolder(name);
+                      await _moveSelectedToFolder(
+                        context,
+                        folder.id,
+                        repo,
+                        folderService,
+                      );
+                    }
+                  },
                 ),
-                title: const Text(
-                  'New Folder',
-                  style: TextStyle(color: Colors.greenAccent),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                hoverColor: Colors.white10,
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final name = await _promptFolderName(context);
-                  if (name != null && name.isNotEmpty && context.mounted) {
-                    final folder = await folderService.createFolder(name);
-                    await _moveSelectedToFolder(
-                      context,
-                      folder.id,
-                      repo,
-                      folderService,
-                    );
-                  }
-                },
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
         actions: [
           TextButton(
@@ -2389,932 +1327,7 @@ class _HomePageState extends State<HomePage> {
     _cancelSelection();
   }
 
-  void _showCreateGroupDialog(BuildContext context, CharacterRepository repo) {
-    _showCreateGroupDialogInner(context, repo);
-  }
-
-  void _showCreateGroupDialogInner(
-    BuildContext context,
-    CharacterRepository repo,
-  ) {
-    final nameController = TextEditingController();
-    final firstMessageController = TextEditingController();
-    final scenarioController = TextEditingController();
-    final systemPromptController = TextEditingController(
-      text: ChatService.defaultGroupSystemPrompt,
-    );
-    TurnOrder selectedTurnOrder = TurnOrder.roundRobin;
-    bool autoAdvance = false;
-    bool isGeneratingFirstMessage = false;
-    bool isGeneratingScenario = false;
-    bool directorMode = false;
-    final Map<String, String> characterVoices = {}; // charId -> voiceKey
-
-    // Build default name from selected character names
-    final selectedChars = <CharacterCard>[];
-    for (final id in _selectedCharacterIds) {
-      final match = repo.characters
-          .where((c) => _getCharacterIdFromCard(c) == id)
-          .firstOrNull;
-      if (match != null) selectedChars.add(match);
-    }
-    nameController.text = selectedChars.map((c) => c.name).join(' & ');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F2937),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.group_add, color: Colors.purpleAccent),
-              SizedBox(width: 8),
-              Text('Create Group Chat', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Selected characters preview
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: selectedChars
-                        .map(
-                          (c) => Chip(
-                            avatar: c.imagePath != null
-                                ? CircleAvatar(
-                                    backgroundImage: FileImage(
-                                      _resolveCharImage(c.imagePath!),
-                                    ),
-                                  )
-                                : const CircleAvatar(
-                                    child: Icon(Icons.person, size: 14),
-                                  ),
-                            label: Text(
-                              c.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            backgroundColor: Colors.purpleAccent.withValues(
-                              alpha: 0.2,
-                            ),
-                            side: BorderSide(
-                              color: Colors.purpleAccent.withValues(alpha: 0.4),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  // Group name
-                  TextField(
-                    controller: nameController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Group Name',
-                      labelStyle: TextStyle(color: Colors.white54),
-                      hintText: 'Enter a group name...',
-                      hintStyle: TextStyle(color: Colors.white24),
-                      enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.purpleAccent),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Turn order
-                  const Text(
-                    'Turn Order',
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<TurnOrder>(
-                    segments: const [
-                      ButtonSegment(
-                        value: TurnOrder.roundRobin,
-                        label: Text('Round Robin'),
-                        icon: Icon(Icons.repeat),
-                      ),
-                      ButtonSegment(
-                        value: TurnOrder.random,
-                        label: Text('Random'),
-                        icon: Icon(Icons.shuffle),
-                      ),
-                    ],
-                    selected: {selectedTurnOrder},
-                    onSelectionChanged: (val) =>
-                        setDialogState(() => selectedTurnOrder = val.first),
-                    style: ButtonStyle(
-                      foregroundColor: WidgetStateProperty.resolveWith(
-                        (states) => states.contains(WidgetState.selected)
-                            ? Colors.white
-                            : Colors.white54,
-                      ),
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                        (states) => states.contains(WidgetState.selected)
-                            ? Colors.purpleAccent
-                            : Colors.transparent,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Auto-advance toggle
-                  SwitchListTile(
-                    value: autoAdvance,
-                    onChanged: directorMode
-                        ? null
-                        : (val) => setDialogState(() => autoAdvance = val),
-                    title: Text(
-                      'Auto-Advance',
-                      style: TextStyle(
-                        color: directorMode ? Colors.white30 : Colors.white,
-                        fontSize: 14,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      'Characters respond automatically one after another',
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
-                    activeColor: Colors.purpleAccent,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const SizedBox(height: 8),
-                  // ── Director Mode toggle ──
-                  SwitchListTile(
-                    value: directorMode,
-                    onChanged: (val) async {
-                      setDialogState(() {
-                        directorMode = val;
-                        if (val) autoAdvance = true;
-                      });
-                      // Auto-generate scenario, first message, and set director prompt
-                      if (val) {
-                        systemPromptController.text =
-                            ChatService.observerModeSystemPrompt;
-                        // Auto-generate scenario
-                        final llmProvider = Provider.of<LLMProvider>(
-                          context,
-                          listen: false,
-                        );
-                        final service = llmProvider.activeService;
-                        if (service.isReady &&
-                            scenarioController.text.trim().isEmpty) {
-                          setDialogState(() => isGeneratingScenario = true);
-                          try {
-                            final charBriefs = selectedChars
-                                .map((c) {
-                                  final trait = c.personality.isNotEmpty
-                                      ? c.personality.split('.').first
-                                      : (c.description.isNotEmpty
-                                            ? c.description.split('.').first
-                                            : c.name);
-                                  return '${c.name} ($trait)';
-                                })
-                                .join(', ');
-                            final scenarioPrompt =
-                                '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
-                                'Do NOT use <think> tags.]\n\n'
-                                'Write a brief scenario (1-2 sentences max) for a group roleplay with: $charBriefs.\n'
-                                'This is a DIRECTOR MODE scenario — there is NO user/player present. '
-                                'The characters interact ONLY with each other.\n'
-                                'Describe WHERE the characters are and WHAT is happening between them.\n\n'
-                                'SCENARIO: ';
-                            final buffer = StringBuffer();
-                            final params = GenerationParams(
-                              prompt: scenarioPrompt,
-                              maxLength: 500,
-                              temperature: 0.9,
-                              stopSequences: ['\n\n', 'END', '---', '<think>'],
-                            );
-                            await for (final token in service.generateStream(
-                              params,
-                            )) {
-                              buffer.write(token);
-                            }
-                            var result = buffer
-                                .toString()
-                                .replaceAll(
-                                  RegExp(
-                                    r'<think>[\s\S]*?</think>',
-                                    caseSensitive: false,
-                                  ),
-                                  '',
-                                )
-                                .replaceAll(
-                                  RegExp(
-                                    r'<think>[\s\S]*$',
-                                    caseSensitive: false,
-                                  ),
-                                  '',
-                                )
-                                .replaceAll(
-                                  RegExp(r'</think>', caseSensitive: false),
-                                  '',
-                                )
-                                .replaceAll(
-                                  RegExp(
-                                    r'^SCENARIO:\s*',
-                                    caseSensitive: false,
-                                  ),
-                                  '',
-                                )
-                                .replaceAll('"', '')
-                                .trim();
-                            if (result.isNotEmpty)
-                              scenarioController.text = result;
-                          } catch (_) {}
-                          setDialogState(() => isGeneratingScenario = false);
-                          // Auto-generate first message using the scenario
-                          if (service.isReady) {
-                            setDialogState(
-                              () => isGeneratingFirstMessage = true,
-                            );
-                            try {
-                              final charDescriptions = selectedChars
-                                  .map((c) {
-                                    final persona = c.personality.isNotEmpty
-                                        ? c.personality
-                                        : c.description;
-                                    return '- ${c.name}: $persona';
-                                  })
-                                  .join('\n');
-                              final scenarioCtx =
-                                  scenarioController.text.trim().isNotEmpty
-                                  ? '\nThe scenario is: ${scenarioController.text.trim()}'
-                                  : '';
-                              final metaPrompt =
-                                  '[INSTRUCTIONS: Output ONLY the creative scene text. '
-                                  'Do NOT plan, reason, analyze, or explain. '
-                                  'Do NOT use <think> tags. Start writing IMMEDIATELY.]\n\n'
-                                  'Write a vivid, immersive opening scene (3-5 paragraphs) '
-                                  'for a DIRECTOR MODE group roleplay featuring:\n$charDescriptions\n$scenarioCtx\n\n'
-                                  'CRITICAL: There is NO user/player present. Characters interact ONLY with each other.\n'
-                                  'Each character MUST have at least 2 lines of dialogue.\n'
-                                  'Characters address and react to EACH OTHER.\n'
-                                  'Use *asterisks* for actions.\n'
-                                  'When done, write "END SCENE" on its own line.\n\n'
-                                  'BEGIN SCENE:\n';
-                              final buffer = StringBuffer();
-                              final params = GenerationParams(
-                                prompt: metaPrompt,
-                                maxLength: 2000,
-                                temperature: 0.85,
-                                stopSequences: [
-                                  'END SCENE',
-                                  '---',
-                                  '[END]',
-                                  '<think>',
-                                ],
-                              );
-                              await for (final token in service.generateStream(
-                                params,
-                              )) {
-                                buffer.write(token);
-                              }
-                              var result = buffer
-                                  .toString()
-                                  .replaceAll(
-                                    RegExp(
-                                      r'<think>[\s\S]*?</think>',
-                                      caseSensitive: false,
-                                    ),
-                                    '',
-                                  )
-                                  .replaceAll(
-                                    RegExp(
-                                      r'<think>[\s\S]*$',
-                                      caseSensitive: false,
-                                    ),
-                                    '',
-                                  )
-                                  .replaceAll(
-                                    RegExp(r'</think>', caseSensitive: false),
-                                    '',
-                                  );
-                              final marker = result.indexOf('BEGIN SCENE:');
-                              if (marker >= 0)
-                                result = result.substring(
-                                  marker + 'BEGIN SCENE:'.length,
-                                );
-                              final cleaned = result
-                                  .split('\n')
-                                  .where((line) {
-                                    final t = line.trimLeft();
-                                    return !(t.startsWith('The user wants') ||
-                                        t.startsWith('I need to') ||
-                                        t.startsWith('I will') ||
-                                        t.startsWith('I should') ||
-                                        t.startsWith('Let me ') ||
-                                        t.startsWith('I\'ll ') ||
-                                        RegExp(
-                                          r'^\d+\.\s+(Write|Use|Set|Make|Do|Keep|NOT|Create|End|Establish)',
-                                        ).hasMatch(t));
-                                  })
-                                  .join('\n')
-                                  .trim();
-                              if (cleaned.isNotEmpty)
-                                firstMessageController.text = cleaned;
-                            } catch (_) {}
-                            setDialogState(
-                              () => isGeneratingFirstMessage = false,
-                            );
-                          }
-                        }
-                      } else {
-                        // Revert to default group prompt
-                        systemPromptController.text =
-                            ChatService.defaultGroupSystemPrompt;
-                      }
-                    },
-                    title: Row(
-                      children: [
-                        const Icon(
-                          Icons.movie_creation,
-                          size: 16,
-                          color: Colors.amberAccent,
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Director Mode',
-                          style: TextStyle(color: Colors.white, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                    subtitle: const Text(
-                      'Characters chat autonomously — you direct the scene',
-                      style: TextStyle(color: Colors.amberAccent, fontSize: 11),
-                    ),
-                    activeColor: Colors.amberAccent,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  // ── Per-character voice selection ──
-                  if (selectedChars.length > 1) ...[
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Character Voices',
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                    const SizedBox(height: 6),
-                    ...selectedChars.map((c) {
-                      final charId = _getCharacterIdFromCard(c);
-                      final currentVoice =
-                          characterVoices[charId] ?? c.ttsVoice;
-                      final tts = Provider.of<TtsService>(
-                        context,
-                        listen: false,
-                      );
-                      final voices = tts.activeVoices;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            c.imagePath != null
-                                ? CircleAvatar(
-                                    radius: 12,
-                                    backgroundImage: FileImage(
-                                      _resolveCharImage(c.imagePath!),
-                                    ),
-                                  )
-                                : const CircleAvatar(
-                                    radius: 12,
-                                    child: Icon(Icons.person, size: 12),
-                                  ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                c.name,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                            DropdownButton<String>(
-                              value:
-                                  (currentVoice != null &&
-                                      currentVoice.isNotEmpty)
-                                  ? currentVoice
-                                  : null,
-                              hint: const Text(
-                                'Default',
-                                style: TextStyle(
-                                  color: Colors.white30,
-                                  fontSize: 11,
-                                ),
-                              ),
-                              dropdownColor: const Color(0xFF2D3748),
-                              underline: const SizedBox(),
-                              isDense: true,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                              ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: '',
-                                  child: Text(
-                                    'Default',
-                                    style: TextStyle(fontSize: 11),
-                                  ),
-                                ),
-                                ...voices.map(
-                                  (v) => DropdownMenuItem(
-                                    value: v.id,
-                                    child: Text(
-                                      v.name,
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                setDialogState(() {
-                                  characterVoices[charId] = val ?? '';
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                  const SizedBox(height: 16),
-                  // ── Scenario (optional) — with Generate button ──
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Scenario (optional)',
-                          style: TextStyle(color: Colors.white54, fontSize: 12),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: isGeneratingScenario
-                            ? null
-                            : () async {
-                                final llmProvider = Provider.of<LLMProvider>(
-                                  context,
-                                  listen: false,
-                                );
-                                final service = llmProvider.activeService;
-                                if (!service.isReady) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'LLM backend is not ready. Start KoboldCPP or configure your API first.',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                setDialogState(
-                                  () => isGeneratingScenario = true,
-                                );
-
-                                final charNames = selectedChars
-                                    .map((c) => c.name)
-                                    .join(', ');
-                                final charBriefs = selectedChars
-                                    .map((c) {
-                                      final trait = c.personality.isNotEmpty
-                                          ? c.personality.split('.').first
-                                          : (c.description.isNotEmpty
-                                                ? c.description.split('.').first
-                                                : c.name);
-                                      return '${c.name} ($trait)';
-                                    })
-                                    .join(', ');
-
-                                final scenarioPrompt =
-                                    '[Output ONLY the scenario text. No planning, reasoning, or explanation. '
-                                    'Do NOT use <think> tags.]\n\n'
-                                    'Write a brief scenario (1-2 sentences max) for a group roleplay with: $charBriefs.\n'
-                                    'The scenario should describe WHERE the characters are and WHAT is happening.\n'
-                                    'Use {{user}} to refer to the player. Keep it concise like:\n'
-                                    '"{{user}} and $charNames are hanging out at a rooftop bar downtown on a Friday night."\n\n'
-                                    'SCENARIO: ';
-
-                                try {
-                                  final buffer = StringBuffer();
-                                  final params = GenerationParams(
-                                    prompt: scenarioPrompt,
-                                    maxLength: 500,
-                                    temperature: 0.9,
-                                    stopSequences: [
-                                      '\n\n',
-                                      'END',
-                                      '---',
-                                      '<think>',
-                                    ],
-                                  );
-                                  await for (final token
-                                      in service.generateStream(params)) {
-                                    buffer.write(token);
-                                  }
-                                  var result = buffer
-                                      .toString()
-                                      .replaceAll(
-                                        RegExp(
-                                          r'<think>[\s\S]*?</think>',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      )
-                                      .replaceAll(
-                                        RegExp(
-                                          r'<think>[\s\S]*$',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      )
-                                      .replaceAll(
-                                        RegExp(
-                                          r'</think>',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      )
-                                      .replaceAll(
-                                        RegExp(
-                                          r'^SCENARIO:\s*',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      )
-                                      .replaceAll('"', '')
-                                      .trim();
-
-                                  if (result.isNotEmpty) {
-                                    scenarioController.text = result;
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Generation failed: $e'),
-                                      ),
-                                    );
-                                  }
-                                } finally {
-                                  setDialogState(
-                                    () => isGeneratingScenario = false,
-                                  );
-                                }
-                              },
-                        icon: isGeneratingScenario
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.amberAccent,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.auto_awesome,
-                                size: 16,
-                                color: Colors.amberAccent,
-                              ),
-                        label: Text(
-                          isGeneratingScenario ? 'Generating...' : 'Generate',
-                          style: const TextStyle(
-                            color: Colors.amberAccent,
-                            fontSize: 12,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: scenarioController,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'e.g. {{user}} and friends are at a rooftop bar...',
-                      hintStyle: TextStyle(color: Colors.white24),
-                      enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.purpleAccent),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // ── First Message (optional) — with Generate button ──
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'First Message (optional)',
-                          style: TextStyle(color: Colors.white54, fontSize: 12),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: isGeneratingFirstMessage
-                            ? null
-                            : () async {
-                                final llmProvider = Provider.of<LLMProvider>(
-                                  context,
-                                  listen: false,
-                                );
-                                final service = llmProvider.activeService;
-                                if (!service.isReady) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'LLM backend is not ready. Start KoboldCPP or configure your API first.',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                setDialogState(
-                                  () => isGeneratingFirstMessage = true,
-                                );
-
-                                // Build a meta-prompt from all selected characters
-                                final charDescriptions = selectedChars
-                                    .map((c) {
-                                      final persona = c.personality.isNotEmpty
-                                          ? c.personality
-                                          : c.description;
-                                      final scenario = c.scenario.isNotEmpty
-                                          ? ' Scenario: ${c.scenario}'
-                                          : '';
-                                      return '- ${c.name}: $persona$scenario';
-                                    })
-                                    .join('\n');
-
-                                final scenarioContext =
-                                    scenarioController.text.trim().isNotEmpty
-                                    ? '\nThe group scenario is: ${scenarioController.text.trim()}'
-                                    : '';
-
-                                final metaPrompt =
-                                    '[INSTRUCTIONS: Output ONLY the creative scene text. '
-                                    'Do NOT plan, reason, analyze, or explain what you will write. '
-                                    'Do NOT list requirements or break down the task. '
-                                    'Do NOT use <think> tags. Start writing the scene IMMEDIATELY.]\n\n'
-                                    'Write a vivid, immersive opening scene (4-6 paragraphs, at least 400 words) '
-                                    'for a group roleplay featuring:\n$charDescriptions\n$scenarioContext\n\n'
-                                    'CRITICAL REQUIREMENTS:\n'
-                                    '- {{user}} is PRESENT in the scene. Characters notice, acknowledge, and speak TO {{user}}.\n'
-                                    '- EACH character MUST have at least 2 lines of spoken dialogue using quotation marks.\n'
-                                    '- Characters MUST interact with EACH OTHER — they speak to, react to, and acknowledge one another.\n'
-                                    '- Describe the environment with rich sensory details (sights, sounds, smells, textures).\n'
-                                    '- Show each character doing physical actions that reveal their personality.\n'
-                                    '- Use third-person narration with *asterisks* for actions and descriptions.\n'
-                                    '- Do NOT write any dialogue, thoughts, or actions for {{user}}.\n'
-                                    '- End with a character directly addressing {{user}}, creating a natural moment for {{user}} to respond.\n'
-                                    '- When the scene is complete, write "END SCENE" on its own line.\n\n'
-                                    'BEGIN SCENE:\n';
-
-                                try {
-                                  final buffer = StringBuffer();
-                                  final params = GenerationParams(
-                                    prompt: metaPrompt,
-                                    maxLength: 4000,
-                                    temperature: 0.85,
-                                    stopSequences: [
-                                      'END SCENE',
-                                      '---',
-                                      '[END]',
-                                      '<think>',
-                                    ],
-                                  );
-                                  await for (final token
-                                      in service.generateStream(params)) {
-                                    buffer.write(token);
-                                  }
-                                  var result = buffer
-                                      .toString()
-                                      .replaceAll(
-                                        RegExp(
-                                          r'<think>[\s\S]*?</think>',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      )
-                                      .replaceAll(
-                                        RegExp(
-                                          r'<think>[\s\S]*$',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      )
-                                      .replaceAll(
-                                        RegExp(
-                                          r'</think>',
-                                          caseSensitive: false,
-                                        ),
-                                        '',
-                                      );
-
-                                  final sceneMarker = result.indexOf(
-                                    'BEGIN SCENE:',
-                                  );
-                                  if (sceneMarker >= 0) {
-                                    result = result.substring(
-                                      sceneMarker + 'BEGIN SCENE:'.length,
-                                    );
-                                  }
-
-                                  final lines = result.split('\n');
-                                  final cleaned = lines
-                                      .where((line) {
-                                        final trimmed = line.trimLeft();
-                                        if (trimmed.startsWith(
-                                              'The user wants',
-                                            ) ||
-                                            trimmed.startsWith('I need to') ||
-                                            trimmed.startsWith('I will') ||
-                                            trimmed.startsWith('I should') ||
-                                            trimmed.startsWith('Let me ') ||
-                                            trimmed.startsWith('I\'ll ') ||
-                                            RegExp(
-                                              r'^\d+\.\s+(Write|Use|Set|Make|Do|Keep|NOT|Create|End|Establish)',
-                                            ).hasMatch(trimmed)) {
-                                          return false;
-                                        }
-                                        return true;
-                                      })
-                                      .join('\n')
-                                      .trim();
-
-                                  if (cleaned.isNotEmpty) {
-                                    firstMessageController.text = cleaned;
-                                  }
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Generation failed: $e'),
-                                      ),
-                                    );
-                                  }
-                                } finally {
-                                  setDialogState(
-                                    () => isGeneratingFirstMessage = false,
-                                  );
-                                }
-                              },
-                        icon: isGeneratingFirstMessage
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.amberAccent,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.auto_awesome,
-                                size: 16,
-                                color: Colors.amberAccent,
-                              ),
-                        label: Text(
-                          isGeneratingFirstMessage
-                              ? 'Generating...'
-                              : 'Generate',
-                          style: const TextStyle(
-                            color: Colors.amberAccent,
-                            fontSize: 12,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: firstMessageController,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Custom greeting or tap Generate ✨ (uses scenario above)',
-                      hintStyle: TextStyle(color: Colors.white24),
-                      enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.purpleAccent),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // System Prompt (optional)
-                  TextField(
-                    controller: systemPromptController,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'System Prompt (optional)',
-                      labelStyle: TextStyle(color: Colors.white54),
-                      hintText: 'Override the global system prompt...',
-                      hintStyle: TextStyle(color: Colors.white24),
-                      enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.purpleAccent),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white54),
-              ),
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.check),
-              label: const Text('Create'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purpleAccent,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                final name = nameController.text.trim();
-                if (name.isEmpty) return;
-
-                final group = GroupChat(
-                  id: 'group_${DateTime.now().millisecondsSinceEpoch}',
-                  name: name,
-                  characterIds: _selectedCharacterIds.toList(),
-                  turnOrder: selectedTurnOrder,
-                  autoAdvance: autoAdvance,
-                  directorMode: directorMode,
-                  firstMessage: firstMessageController.text.trim(),
-                  scenario: scenarioController.text.trim(),
-                  systemPrompt: systemPromptController.text.trim(),
-                );
-
-                final groupRepo = Provider.of<GroupChatRepository>(
-                  context,
-                  listen: false,
-                );
-                groupRepo.save(group);
-
-                // Save per-character voices
-                final charRepo = Provider.of<CharacterRepository>(
-                  context,
-                  listen: false,
-                );
-                for (final entry in characterVoices.entries) {
-                  final card = charRepo.characters
-                      .where((c) => _getCharacterIdFromCard(c) == entry.key)
-                      .firstOrNull;
-                  if (card != null && entry.value != card.ttsVoice) {
-                    card.ttsVoice = entry.value.isEmpty ? null : entry.value;
-                    charRepo.updateCharacter(card);
-                  }
-                }
-
-                Navigator.pop(ctx);
-                _cancelSelection();
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Group "$name" created!'),
-                    backgroundColor: Colors.purpleAccent.shade700,
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // (old group creator dialog variables and body fully removed — 2026 overhaul)
 
   // ─── Folder Actions ─────────────────────────────────────────────
 
@@ -3483,12 +1496,18 @@ class _HomePageState extends State<HomePage> {
 
   ButtonStyle _buttonStyle() {
     return ElevatedButton.styleFrom(
-      backgroundColor: Colors.white.withValues(alpha: 0.1),
-      foregroundColor: Colors.white,
+      backgroundColor: AppColors.resolve(
+        context,
+        Colors.white.withValues(alpha: 0.1),
+        Colors.black.withValues(alpha: 0.05),
+      ),
+      foregroundColor: AppColors.textPrimary(context),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Colors.white24),
+        side: BorderSide(
+          color: AppColors.resolve(context, Colors.white24, Colors.black26),
+        ),
       ),
     );
   }
@@ -3632,10 +1651,20 @@ class _HomePageState extends State<HomePage> {
 
     if (files.isEmpty) return;
 
-    // Single file: use the original flow with tag dialog
+    // Single file: check if this is a Front Porch Group Card first (novel format)
     if (files.length == 1) {
       final file = files.first;
       try {
+        final groupService = GroupCardService();
+        final groupCard = await groupService.readGroupCard(file.path);
+
+        if (groupCard != null) {
+          // This is a Group Card PNG — do the special group import
+          await _importGroupCard(context, file, groupCard);
+          return;
+        }
+
+        // Normal character card
         final worldRepo = Provider.of<WorldRepository>(context, listen: false);
         final repo = Provider.of<CharacterRepository>(context, listen: false);
         final card = await repo.importCharacter(file, worldRepo: worldRepo);
@@ -3675,8 +1704,9 @@ class _HomePageState extends State<HomePage> {
 
     if (result == null ||
         result.files.isEmpty ||
-        result.files.first.path == null)
+        result.files.first.path == null) {
       return;
+    }
     if (!context.mounted) return;
 
     final filePath = result.files.first.path!;
@@ -3988,6 +2018,636 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Import a Group Card PNG (the novel Front Porch format).
+  /// Creates all member characters (with full collision handling) + the group.
+  Future<void> _importGroupCard(
+    BuildContext context,
+    File file,
+    GroupCard groupCard,
+  ) async {
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+
+    // Clean-break private import (per plan + user directive): NEVER touch library/CharacterRepository.
+    // All members go to private groups/<id>/avatars/ + typed group_members rows (UUID keys).
+    // "Separate to my library" is the sole allowed bridge (later).
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final db = Provider.of<AppDatabase>(context, listen: false);
+
+    final groupId = 'group_${DateTime.now().millisecondsSinceEpoch}';
+    int successCount = 0;
+    int failCount = 0;
+
+    // Mapping from original exported stable IDs (or names) to the *new UUIDs* for this group's members.
+    // Realism, prompts, objectives, relationships etc. are remapped to these UUIDs (correct for decoupled model).
+    final Map<String, String> oldStableIdToNewStableId = {};
+
+    // Use the high-fidelity raw member data when available
+    final rawMembers = groupCard.rawMemberData.isNotEmpty
+        ? groupCard.rawMemberData
+        : groupCard.members.map((c) => c.toJson()).toList();
+
+    for (final raw in rawMembers) {
+      File? tempPng;
+      try {
+        // Create a temporary valid character card PNG from the raw portable data
+        // (existing high-fidelity temp + embed logic reused verbatim for private target)
+        final memberJson = {
+          'spec': 'chara_card_v2',
+          'spec_version': '2.0',
+          'data': raw,
+        };
+        final jsonStr = jsonEncode(memberJson);
+        final b64 = base64Encode(utf8.encode(jsonStr));
+
+        final tempDir = await Directory.systemTemp.createTemp(
+          'fp_group_member_',
+        );
+
+        // Check if this member has an embedded avatar from a previous Group Card export
+        final avatarBase64 =
+            raw['avatar_base64'] as String? ??
+            (raw['data'] as Map?)?['avatar_base64'] as String?;
+
+        if (avatarBase64 != null && avatarBase64.isNotEmpty) {
+          // Use the real avatar that was embedded on export
+          final avatarBytes = base64Decode(avatarBase64);
+          var avatarImg =
+              img.decodePng(avatarBytes) ?? img.decodeImage(avatarBytes);
+
+          if (avatarImg != null) {
+            // Embed the character metadata into the real avatar image
+            avatarImg.textData ??= {};
+            avatarImg.textData!['chara'] = b64;
+
+            tempPng = File(
+              path.join(
+                tempDir.path,
+                'member_${DateTime.now().millisecondsSinceEpoch}.png',
+              ),
+            );
+            await tempPng.writeAsBytes(img.encodePng(avatarImg));
+          }
+        }
+
+        // Fallback: create a colored placeholder if no embedded avatar (foreign group cards, or old exports)
+        if (tempPng == null) {
+          final memberName =
+              (raw['name'] ?? raw['data']?['name'] ?? 'Character').toString();
+
+          // Deterministic pleasant color from the name
+          final hash = memberName.codeUnits.fold(0, (a, b) => a + b);
+          final r = (80 + (hash % 120)).clamp(60, 200);
+          final g = (70 + ((hash * 7) % 130)).clamp(60, 200);
+          final b = (90 + ((hash * 13) % 110)).clamp(70, 190);
+
+          final placeholder = img.Image(width: 400, height: 600);
+          img.fill(placeholder, color: img.ColorRgb8(r, g, b));
+
+          placeholder.textData ??= {};
+          placeholder.textData!['chara'] = b64;
+
+          tempPng = File(
+            path.join(
+              tempDir.path,
+              'member_${DateTime.now().millisecondsSinceEpoch}.png',
+            ),
+          );
+          await tempPng.writeAsBytes(img.encodePng(placeholder));
+        }
+
+        // === DECOUPLED PRIVATE MATERIALIZATION (replaces charRepo.importCharacter pollution) ===
+        final memberId = const Uuid().v4();
+
+        // Private avatars dir under groups/<groupId>/avatars (created on demand; never library)
+        final avDir = Directory(
+          path.join(storage.groupsDir.path, groupId, 'avatars'),
+        );
+        await avDir.create(recursive: true);
+        final targetAvatar = File(path.join(avDir.path, '$memberId.png'));
+        await tempPng.copy(targetAvatar.path);
+        // tempPng is guaranteed non-null here (set in embedded or fallback placeholder path above)
+
+        // Map raw (portable V2 shape) to typed GroupMembers row. Inline (no new helper).
+        final data = (raw['data'] is Map)
+            ? Map<String, dynamic>.from(raw['data'] as Map)
+            : Map<String, dynamic>.from(raw as Map);
+        String jsonOrDefault(dynamic v, [String d = '[]']) {
+          if (v == null) return d;
+          if (v is String) return v;
+          try {
+            return jsonEncode(v);
+          } catch (_) {
+            return d;
+          }
+        }
+
+        await db.insertGroupMember(
+          GroupMembersCompanion.insert(
+            id: memberId,
+            groupId: groupId,
+            name: (data['name'] ?? data['data']?['name'] ?? 'Unknown')
+                .toString(),
+            description: Value(
+              (data['description'] ?? data['desc'] ?? '').toString(),
+            ),
+            personality: Value((data['personality'] ?? '').toString()),
+            scenario: Value((data['scenario'] ?? '').toString()),
+            firstMessage: Value(
+              (data['first_mes'] ?? data['firstMessage'] ?? '').toString(),
+            ),
+            mesExample: Value(
+              (data['mes_example'] ?? data['mesExample'] ?? '').toString(),
+            ),
+            systemPrompt: Value(
+              (data['system_prompt'] ?? data['systemPrompt'] ?? '').toString(),
+            ),
+            postHistoryInstructions: Value(
+              (data['post_history_instructions'] ?? '').toString(),
+            ),
+            alternateGreetings: Value(
+              jsonOrDefault(
+                data['alternate_greetings'] ?? data['alternateGreetings'],
+              ),
+            ),
+            tags: Value(jsonOrDefault(data['tags'] ?? [])),
+            avatarFilename: Value('$memberId.png'),
+            ttsVoice: Value(data['tts_voice']?.toString()),
+            lorebook: Value(
+              data['character_book'] != null
+                  ? jsonEncode(data['character_book'])
+                  : null,
+            ),
+            worldNames: Value(jsonOrDefault(data['world_names'] ?? [])),
+            frontPorchExtensions: Value(
+              (data['extensions'] is Map &&
+                      (data['extensions'] as Map)['front_porch'] != null)
+                  ? jsonEncode((data['extensions'] as Map)['front_porch'])
+                  : null,
+            ),
+            rawExtensions: Value(
+              (data['extensions'] is Map)
+                  ? jsonEncode(
+                      Map<String, dynamic>.from(data['extensions'] as Map)
+                        ..remove('front_porch'),
+                    )
+                  : null,
+            ),
+            memberState: const Value('{}'),
+          ),
+        );
+
+        // Record mapping for realism remap (now to our UUID, correct for decoupled model)
+        final originalStableId = (raw['_original_stable_id'] as String?)
+            ?.trim();
+        if (originalStableId != null && originalStableId.isNotEmpty) {
+          oldStableIdToNewStableId[originalStableId] = memberId;
+        }
+        successCount++;
+      } catch (e) {
+        debugPrint('Failed to import one group member: $e');
+        failCount++;
+      } finally {
+        // Clean temp (best effort)
+        try {
+          if (tempPng != null && await tempPng.exists()) {
+            await tempPng.delete();
+            await tempPng.parent.delete(recursive: true);
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (successCount == 0) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Group import failed — no members could be created.'),
+          ),
+        );
+      }
+      // Best-effort cleanup of any partially materialized private avatar tree
+      // (prevents orphan dirs/files from failed imports; addresses data bloat risk
+      // for user-provided imagery that traveled in the Group Card).
+      try {
+        final orphanDir = Directory(path.join(storage.groupsDir.path, groupId));
+        if (await orphanDir.exists()) {
+          await orphanDir.delete(recursive: true);
+        }
+      } catch (_) {}
+      return;
+    }
+
+    // Create the group itself (shell + portable realism state with UUID keys)
+    // Seed portable group realism/needs defaults (including relationships for Group Dynamics)
+    // from the imported card if present. This fulfills the v30+ contract that
+    // defaultMemberRealismState travels with Group Cards for new sessions and split-to-solo.
+    final importedRealism = groupCard.extensions?['realism_state'];
+
+    // Path B compatibility: Prefer the new top-level `character_system_prompts` key in the Group Card.
+    // Fall back to promoting from the legacy location inside `realism_state` (for cards exported before this change).
+    Map<String, String> importedCharPrompts = groupCard.characterSystemPrompts;
+    if (importedCharPrompts.isEmpty && importedRealism is Map) {
+      final legacy =
+          importedRealism['characterSystemPrompts'] ??
+          importedRealism['character_system_prompts'];
+      if (legacy is Map) {
+        importedCharPrompts = legacy.map(
+          (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+        );
+      }
+    }
+
+    // ── Remap ID-keyed data using the old→new stable ID mapping we built during import ──
+    String finalBaseline = groupCard.baselineRealismState;
+    String finalDefaultMember = groupCard.defaultMemberRealismState;
+    Map<String, String> finalCharPrompts = importedCharPrompts;
+    Map<String, List<Map<String, dynamic>>> finalObjectives =
+        groupCard.memberObjectives;
+
+    if (oldStableIdToNewStableId.isNotEmpty) {
+      String _remapIdsInJson(String jsonString, Map<String, String> mapping) {
+        if (jsonString.isEmpty || jsonString == '{}') return jsonString;
+        try {
+          final decoded = jsonDecode(jsonString);
+          if (decoded is! Map) return jsonString;
+
+          final Map<String, dynamic> rewritten = {};
+
+          Map<String, dynamic> rewritePerCharMap(Map input) {
+            final Map<String, dynamic> out = {};
+            for (final entry in input.entries) {
+              final oldId = entry.key.toString();
+              final newId = mapping[oldId] ?? oldId;
+              final value = entry.value;
+
+              if (value is Map && value.containsKey('relationships')) {
+                final inner = Map<String, dynamic>.from(value);
+                final rels = inner['relationships'];
+                if (rels is Map) {
+                  final newRels = <String, dynamic>{};
+                  for (final r in rels.entries) {
+                    final oldTarget = r.key.toString();
+                    final newTarget = mapping[oldTarget] ?? oldTarget;
+                    newRels[newTarget] = r.value;
+                  }
+                  inner['relationships'] = newRels;
+                }
+                out[newId] = inner;
+              } else {
+                out[newId] = value;
+              }
+            }
+            return out;
+          }
+
+          if (decoded.containsKey('perChar') && decoded['perChar'] is Map) {
+            rewritten['perChar'] = rewritePerCharMap(decoded['perChar'] as Map);
+            for (final k in decoded.keys) {
+              if (k != 'perChar') rewritten[k] = decoded[k];
+            }
+          } else {
+            rewritten.addAll(rewritePerCharMap(decoded));
+          }
+
+          return jsonEncode(rewritten);
+        } catch (_) {
+          return jsonString;
+        }
+      }
+
+      finalBaseline = _remapIdsInJson(
+        groupCard.baselineRealismState,
+        oldStableIdToNewStableId,
+      );
+      finalDefaultMember = _remapIdsInJson(
+        groupCard.defaultMemberRealismState,
+        oldStableIdToNewStableId,
+      );
+
+      final remappedPrompts = <String, String>{};
+      for (final e in importedCharPrompts.entries) {
+        remappedPrompts[oldStableIdToNewStableId[e.key] ?? e.key] = e.value;
+      }
+      finalCharPrompts = remappedPrompts;
+
+      final remappedObjectives = <String, List<Map<String, dynamic>>>{};
+      for (final e in groupCard.memberObjectives.entries) {
+        remappedObjectives[oldStableIdToNewStableId[e.key] ?? e.key] = e.value;
+      }
+      finalObjectives = remappedObjectives;
+    }
+
+    final newGroup = GroupChat(
+      id: groupId,
+      name: groupCard.name,
+      turnOrder: groupCard.turnOrder == 'random'
+          ? TurnOrder.random
+          : TurnOrder.roundRobin,
+      autoAdvance: groupCard.autoAdvance,
+      directorMode: groupCard.directorMode,
+      firstMessage: groupCard.firstMessage,
+      scenario: groupCard.scenario,
+      systemPrompt: groupCard.systemPrompt,
+      groupLorebook: groupCard.groupLorebook ?? '',
+      worldIds: groupCard.worldIds,
+      inheritCharacterLorebooks: groupCard.inheritCharacterLorebooks,
+      chaosModeEnabled: groupCard.chaosModeEnabled,
+      chaosNsfwEnabled: groupCard.chaosNsfwEnabled,
+      baselineRealismState: finalBaseline.isNotEmpty ? finalBaseline : '{}',
+      defaultMemberRealismState: finalDefaultMember.isNotEmpty
+          ? finalDefaultMember
+          : '{}',
+      characterSystemPrompts: finalCharPrompts,
+    );
+
+    // Carry per-char objectives (now with correctly remapped IDs)
+    if (finalObjectives.isNotEmpty) {
+      try {
+        final currentState = jsonDecode(newGroup.defaultMemberRealismState);
+        final mutable = (currentState is Map)
+            ? Map<String, dynamic>.from(currentState)
+            : <String, dynamic>{};
+        mutable['imported_member_objectives'] = finalObjectives;
+        newGroup.defaultMemberRealismState = jsonEncode(mutable);
+      } catch (_) {}
+    }
+
+    await groupRepo.save(newGroup);
+
+    if (context.mounted) {
+      final msg = failCount > 0
+          ? 'Partially imported group "${groupCard.name}": $successCount member(s) succeeded, $failCount failed. The group shell was created with the successful members only (their data + private avatars are fully usable; use "Separate to my library" to extract any as solo characters).'
+          : 'Imported group "${groupCard.name}" with $successCount members!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: failCount > 0
+              ? Colors.orange.shade700
+              : Colors.purpleAccent.shade700,
+        ),
+      );
+    }
+  }
+
+  /// Extract all members of a group as independent standalone characters.
+  /// This creates fresh copies so you can use them in 1:1 chats, heavily customize
+  /// them, or put them in other groups — without affecting the original group.
+  ///
+  /// Especially valuable after importing someone else's Group Card.
+  Future<void> _extractCharactersFromGroup(GroupChat group) async {
+    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+
+    // Real members from decoupled table + private avatars (extends this existing method; "Separate to my library" now functional).
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final members = await groupRepo.getMembersForGroup(group.id);
+
+    if (members.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No characters found in this group.')),
+        );
+      }
+      return;
+    }
+
+    int extracted = 0;
+    for (final m in members) {
+      try {
+        final resolvedPath = m.avatarFilename != null
+            ? path.join(
+                storage.groupsDir.path,
+                group.id,
+                'avatars',
+                m.avatarFilename!,
+              )
+            : null;
+        if (resolvedPath == null || !await File(resolvedPath).exists()) {
+          continue;
+        }
+        final card = m.toCharacterCard(resolvedImagePath: resolvedPath);
+        await charRepo.duplicateCharacter(
+          card,
+        ); // library copy is the intended "Separate to my library" action
+        extracted++;
+      } catch (e) {
+        debugPrint('Failed to extract ${m.name}: $e');
+      }
+    }
+
+    if (context.mounted) {
+      final msg = extracted == 1
+          ? 'Extracted 1 character as an individual.'
+          : 'Extracted $extracted characters as individuals.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.teal.shade700),
+      );
+    }
+  }
+
+  /// Export a group as a single self-contained PNG "Group Card".
+  /// This is a Front Porch novel format (fpa_group chunk) that bundles every
+  /// member character (full data + lorebooks + extensions) plus group settings.
+  ///
+  /// Zero-compromise fidelity: every member is always included, even if the
+  /// private avatar file is missing on disk. For those, a full V2 PNG with
+  /// placeholder image + embedded metadata is synthesized on the fly so the
+  /// recipient can import the complete group and later "Separate to my library"
+  /// any or all members as independent characters.
+  Future<void> _exportGroup(GroupChat group) async {
+    final context = this.context; // capture from StatefulWidget
+
+    final groupRepo = Provider.of<GroupChatRepository>(context, listen: false);
+    final storage = Provider.of<StorageService>(context, listen: false);
+
+    final members = await groupRepo.getMembersForGroup(group.id);
+
+    // Always produce a CharacterCard for 100% of members (use '' when no
+    // private avatar file exists; toCharacterCard and downstream tolerate it).
+    final memberCards = <CharacterCard>[];
+    for (final m in members) {
+      String? resolvedPath;
+      if (m.avatarFilename != null) {
+        final p = path.join(
+          storage.groupsDir.path,
+          group.id,
+          'avatars',
+          m.avatarFilename!,
+        );
+        if (await File(p).exists()) {
+          resolvedPath = p;
+        }
+      }
+      memberCards.add(m.toCharacterCard(resolvedImagePath: resolvedPath ?? ''));
+    }
+
+    if (members.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot export empty group')),
+        );
+      }
+      return;
+    }
+
+    // Embed current avatar images (or synthesize full placeholder PNGs with
+    // complete V2 metadata) as base64 for perfect roundtrip fidelity.
+    // Every member gets an avatar_base64 entry and an _original_stable_id
+    // (file basename when real avatar existed, else the group_members UUID)
+    // so realism relationships, objectives, system prompts etc. remap correctly
+    // even for members that had no avatar at export time.
+    final rawMembersWithAvatars = <Map<String, dynamic>>[];
+
+    // Snapshot per-character objectives for portable Group Card
+    final memberObjectives = <String, List<Map<String, dynamic>>>{};
+    try {
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      for (final card in memberCards) {
+        final charId = _getCharacterIdFromCard(card);
+        final objs = await db.getObjectivesForCharacter(charId);
+        if (objs.isNotEmpty) {
+          memberObjectives[charId] = objs
+              .map(
+                (o) => {
+                  'objective': o.objective,
+                  'tasks': o.tasks,
+                  'isPrimary': o.isPrimary,
+                  'active': o.active,
+                  'checkFrequency': o.checkFrequency,
+                  'injectionDepth': o.injectionDepth,
+                },
+              )
+              .toList();
+        }
+      }
+    } catch (_) {
+      // Best effort for objectives snapshot
+    }
+
+    for (int i = 0; i < memberCards.length; i++) {
+      final card = memberCards[i];
+      final m = members[i];
+      final raw = Map<String, dynamic>.from(card.toJson());
+
+      String? stableIdForRemap;
+      bool hasRealAvatar = false;
+
+      if (card.imagePath != null && card.imagePath!.isNotEmpty) {
+        try {
+          stableIdForRemap = path.basenameWithoutExtension(card.imagePath!);
+
+          final imageFile = File(card.imagePath!);
+          if (await imageFile.exists()) {
+            final bytes = await imageFile.readAsBytes();
+            raw['avatar_base64'] = base64Encode(bytes);
+            hasRealAvatar = true;
+          }
+        } catch (_) {
+          // Best effort — don't fail the whole export over one avatar.
+        }
+      }
+
+      if (!hasRealAvatar) {
+        // Synthesize a complete valid PNG (placeholder image + full chara
+        // metadata) so this member is 100% present and extractable later.
+        try {
+          final v2 = V2CardService();
+          final bytes = await v2.encodeCharacterCardToPngBytes(card, null);
+          raw['avatar_base64'] = base64Encode(bytes);
+        } catch (_) {
+          // If synthesis also fails, still include the textual data; import
+          // side has its own legacy placeholder path as final safety net.
+        }
+        // Use the stable group_members UUID when there was never an avatar file.
+        stableIdForRemap ??= m.id;
+      }
+
+      if (stableIdForRemap != null && stableIdForRemap.isNotEmpty) {
+        raw['_original_stable_id'] = stableIdForRemap;
+      }
+
+      rawMembersWithAvatars.add(raw);
+    }
+
+    final safeName = group.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Group Card',
+      fileName: '$safeName.group.png',
+      type: FileType.custom,
+      allowedExtensions: ['png'],
+    );
+
+    if (outputFile != null) {
+      if (!outputFile.endsWith('.png')) {
+        outputFile += '.png';
+      }
+
+      try {
+        // Build the portable GroupCard (full member snapshots)
+        // Critical: For the realism snapshot we send the *immutable baseline seed*,
+        // not the evolved state from chatting.
+        final portable = GroupCard(
+          name: group.name,
+          members: memberCards,
+          rawMemberData:
+              rawMembersWithAvatars, // includes avatar_base64 for fidelity
+          turnOrder: group.turnOrder.name,
+          autoAdvance: group.autoAdvance,
+          directorMode: group.directorMode,
+          firstMessage: group.firstMessage,
+          scenario: group.scenario,
+          systemPrompt: group.systemPrompt,
+          characterSystemPrompts: group.characterSystemPrompts,
+          chaosModeEnabled: group.chaosModeEnabled,
+          chaosNsfwEnabled: group.chaosNsfwEnabled,
+          groupLorebook: group.groupLorebook,
+          worldIds: group.worldIds,
+          inheritCharacterLorebooks: group.inheritCharacterLorebooks,
+          baselineRealismState: group.baselineRealismState,
+          defaultMemberRealismState: group.defaultMemberRealismState,
+          memberObjectives: memberObjectives,
+          extensions:
+              (group.baselineRealismState.isNotEmpty &&
+                  group.baselineRealismState != '{}')
+              ? {
+                  'realism_state': jsonDecode(group.baselineRealismState),
+                  // Also expose the richer default state under the legacy key for
+                  // any external readers that only looked at the old realism_state blob.
+                  if (group.defaultMemberRealismState.isNotEmpty &&
+                      group.defaultMemberRealismState != '{}')
+                    'default_member_realism_state': jsonDecode(
+                      group.defaultMemberRealismState,
+                    ),
+                }
+              : (group.defaultMemberRealismState.isNotEmpty &&
+                    group.defaultMemberRealismState != '{}')
+              ? {
+                  'default_member_realism_state': jsonDecode(
+                    group.defaultMemberRealismState,
+                  ),
+                }
+              : null,
+        );
+
+        final service = GroupCardService();
+        // No custom source image → auto-collage from member avatars (the magic path)
+        await service.saveGroupCardAsPng(portable, outputFile);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Group card exported to $outputFile')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Group export failed: $e')));
+        }
+      }
+    }
+  }
+
   // ─── Browser Integrations ──────────────────────────────────────
 
   Future<void> _openBrowser(BuildContext context) async {
@@ -4072,9 +2732,12 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      final browser = CharacterBrowser(onDownload: handleDownloadUrl);
+      _activeBrowser = CharacterBrowser(
+        onDownload: handleDownloadUrl,
+        onClosed: () => _activeBrowser = null,
+      );
 
-      await browser.openUrlRequest(
+      await _activeBrowser!.openUrlRequest(
         urlRequest: URLRequest(url: WebUri('https://aicharactercards.com/')),
         settings: InAppBrowserClassSettings(
           browserSettings: InAppBrowserSettings(
@@ -4173,9 +2836,12 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      final browser = CharacterBrowser(onDownload: handleChubDownload);
+      _activeBrowser = CharacterBrowser(
+        onDownload: handleChubDownload,
+        onClosed: () => _activeBrowser = null,
+      );
 
-      await browser.openUrlRequest(
+      await _activeBrowser!.openUrlRequest(
         urlRequest: URLRequest(url: WebUri('https://chub.ai/')),
         settings: InAppBrowserClassSettings(
           browserSettings: InAppBrowserSettings(
@@ -4376,8 +3042,9 @@ class _HomePageState extends State<HomePage> {
 // Custom InAppBrowser for character downloads
 class CharacterBrowser extends InAppBrowser {
   final Future<void> Function(String url) onDownload;
+  final VoidCallback? onClosed;
 
-  CharacterBrowser({required this.onDownload});
+  CharacterBrowser({required this.onDownload, this.onClosed});
 
   @override
   Future<NavigationActionPolicy>? shouldOverrideUrlLoading(
@@ -4405,6 +3072,9 @@ class CharacterBrowser extends InAppBrowser {
 
   @override
   void onExit() {
+    super
+        .onExit(); // Required for proper internal cleanup in flutter_inappwebview
     debugPrint('AG_DEBUG: Browser closed');
+    onClosed?.call();
   }
 }

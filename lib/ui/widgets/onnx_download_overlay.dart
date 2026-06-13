@@ -15,7 +15,6 @@
 //
 // You should have received a copy of Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,10 +26,7 @@ import 'package:front_porch_ai/services/expression_classifier.dart';
 class OnnxDownloadOverlay extends StatefulWidget {
   final ExpressionClassifierService classifierService;
 
-  const OnnxDownloadOverlay({
-    super.key,
-    required this.classifierService,
-  });
+  const OnnxDownloadOverlay({super.key, required this.classifierService});
 
   @override
   State<OnnxDownloadOverlay> createState() => _OnnxDownloadOverlayState();

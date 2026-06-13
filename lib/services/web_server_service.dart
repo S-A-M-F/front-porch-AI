@@ -29,35 +29,35 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
-import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
+// Barrel imports for high-frequency services and models
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+
+// Items not in the curated services barrel (internal, low-frequency, or sidecar)
+import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/services/web_chat_bridge.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
-import 'package:front_porch_ai/services/folder_service.dart';
-import 'package:front_porch_ai/services/tts_service.dart';
-import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/services/byaf_service.dart';
-import 'package:front_porch_ai/services/group_chat_repository.dart';
-import 'package:front_porch_ai/models/group_chat.dart';
-import 'package:front_porch_ai/services/llm_service.dart';
-import 'package:front_porch_ai/services/cloud_sync_service.dart';
+import 'package:front_porch_ai/services/embedding_sidecar.dart';
 import 'package:front_porch_ai/services/cloud_providers/webdav_provider.dart';
 import 'package:front_porch_ai/services/cloud_providers/google_drive_provider.dart';
-import 'package:front_porch_ai/services/backup_service.dart';
-import 'package:front_porch_ai/services/character_gen_service.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/open_router_service.dart';
-import 'package:front_porch_ai/services/embedding_sidecar.dart';
-import 'package:front_porch_ai/services/story_repository.dart';
-import 'package:front_porch_ai/services/story_pipeline_service.dart';
 import 'package:front_porch_ai/models/story_project.dart' as story_model;
+import 'package:drift/drift.dart' show Value;
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:front_porch_ai/database/database.dart';
-import 'package:front_porch_ai/models/character_card.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
-import 'package:drift/drift.dart' show Value;
+
+import 'web_server/routes/character_routes.dart';
+import 'web_server/routes/chat_routes.dart';
+
+// Stage 6 web server extraction (internal submodules; direct imports)
+import 'package:front_porch_ai/services/web_server/middleware/cors_middleware.dart';
+import 'package:front_porch_ai/services/web_server/middleware/auth_middleware.dart';
+import 'package:front_porch_ai/services/web_server/middleware/client_tracker.dart';
+import 'package:front_porch_ai/services/web_server/routes/auth_routes.dart';
+import 'package:front_porch_ai/services/web_server/helpers/web_asset_server.dart';
+import 'package:front_porch_ai/services/web_server/helpers/image_cache.dart';
+import 'package:front_porch_ai/services/web_server/sse/chargen_stream.dart';
+import 'package:front_porch_ai/services/web_server/sse/story_pipeline_stream.dart';
 
 /// Embedded HTTP server that serves the web UI and REST API.
 ///
@@ -69,15 +69,20 @@ import 'package:drift/drift.dart' show Value;
 bool? _isIntelMacCached;
 bool _checkIsIntelMac() {
   if (_isIntelMacCached != null) return _isIntelMacCached!;
-  if (!Platform.isMacOS) { _isIntelMacCached = false; return false; }
+  if (!Platform.isMacOS) {
+    _isIntelMacCached = false;
+    return false;
+  }
   try {
     final result = Process.runSync('uname', ['-m']);
-    _isIntelMacCached = result.exitCode == 0 && result.stdout.toString().trim() != 'arm64';
+    _isIntelMacCached =
+        result.exitCode == 0 && result.stdout.toString().trim() != 'arm64';
   } catch (_) {
     _isIntelMacCached = false;
   }
   return _isIntelMacCached!;
 }
+
 class WebServerService extends ChangeNotifier {
   final StorageService _storageService;
   ChatService? _chatService;
@@ -129,25 +134,152 @@ class WebServerService extends ChangeNotifier {
   String? get connectedClientIp => _connectedClientIp;
   String? get connectedClientInfo => _connectedClientInfo;
 
+  // Public accessors for extracted web_server/ submodules (Stage 6 extraction).
+  // Minimal surface only; these are not "void _" private methods.
+  // Keep reset/zero sites in sync with stop()/disconnectClient()/start() (see below).
+  StorageService get storageService => _storageService;
+  Map<String, DateTime> get activeSessions => _activeSessions;
+
+  void markClientActive({String? ip, String? info}) {
+    if (!_hasActiveClient) {
+      _hasActiveClient = true;
+      _connectedClientIp = ip;
+      _connectedClientInfo = info;
+      notifyListeners();
+    }
+  }
+
+  // SSE state exposure for chargen_stream.dart / story_pipeline_stream.dart
+  Set<StreamController<List<int>>> get chargenSseClients => _chargenSseClients;
+  Set<StreamController<List<int>>> get storySseClients => _storySseClients;
+  String get chargenStatus => _chargenStatus;
+  String get chargenPreview => _chargenPreview;
+  Map<String, dynamic>? get chargenCompletedCard => _chargenCompletedCard;
+  String? get chargenError => _chargenError;
+  bool get isChargenRunning => _isChargenRunning;
+  String get storyStatus => _storyStatus;
+  String get storyStreamingText => _storyStreamingText;
+  bool get storyPipelineRunning => _storyPipelineRunning;
+  String? get storyCurrentId => _storyCurrentId;
+
   WebServerService(this._storageService) {
     _detectLanIp();
   }
 
   /// Inject dependencies that aren't available at construction time.
   void setChatService(ChatService service) => _chatService = service;
-  void setCharacterRepository(CharacterRepository repo) => _characterRepository = repo;
+  void setCharacterRepository(CharacterRepository repo) =>
+      _characterRepository = repo;
   void setDatabase(AppDatabase db) => _db = db;
   void setChatBridge(WebChatBridge bridge) => _chatBridge = bridge;
   void setLLMProvider(LLMProvider provider) => _llmProvider = provider;
   void setFolderService(FolderService fs) => _folderService = fs;
   void setTtsService(TtsService tts) => _ttsService = tts;
-  void setUserPersonaService(UserPersonaService ups) => _userPersonaService = ups;
-  void setGroupChatRepository(GroupChatRepository gcr) => _groupChatRepository = gcr;
+  void setUserPersonaService(UserPersonaService ups) =>
+      _userPersonaService = ups;
+  void setGroupChatRepository(GroupChatRepository gcr) =>
+      _groupChatRepository = gcr;
   void setCloudSyncService(CloudSyncService css) => _cloudSyncService = css;
   void setImageGenService(ImageGenService igs) => _imageGenService = igs;
   void setEmbeddingSidecar(EmbeddingSidecar es) => _embeddingSidecar = es;
   void setStoryRepository(StoryRepository sr) => _storyRepository = sr;
-  void setStoryPipelineService(StoryPipelineService sps) => _storyPipelineService = sps;
+  void setStoryPipelineService(StoryPipelineService sps) =>
+      _storyPipelineService = sps;
+
+  // Thins for extracted route classes (Stage 6 registration lift; the core getters like storageService/activeSessions/markClientActive are in the public getters section above; bodies for remaining groups delegated here; full body excision follow-up per plan).
+  // (Not void _ private methods.)
+
+  // (chargen*/story* getters already present above for SSE leaves)
+  // Delegate thins for remaining route groups (registrations lifted to *Routes classes; bodies stay in god for now).
+  Future<shelf.Response> handleGetCharacters(shelf.Request request) =>
+      _handleGetCharacters(request);
+  Future<shelf.Response> handleGetAvatar(shelf.Request request, String id) =>
+      _handleGetAvatar(request, id);
+  Future<shelf.Response> handleGetSessions(shelf.Request request, String id) =>
+      _handleGetSessions(request, id);
+  Future<shelf.Response> handleGetCharacterDetail(
+    shelf.Request request,
+    String id,
+  ) => _handleGetCharacterDetail(request, id);
+  Future<shelf.Response> handleEditCharacter(
+    shelf.Request request,
+    String id,
+  ) => _handleEditCharacter(request, id);
+  Future<shelf.Response> handleUploadAvatar(shelf.Request request, String id) =>
+      _handleUploadAvatar(request, id);
+  Future<shelf.Response> handleUpdateEvolution(
+    shelf.Request request,
+    String id,
+  ) => _handleUpdateEvolution(request, id);
+  Future<shelf.Response> handleDeleteCharacter(
+    shelf.Request request,
+    String id,
+  ) => _handleDeleteCharacter(request, id);
+  Future<shelf.Response> handleExportCharacterPng(
+    shelf.Request request,
+    String id,
+  ) => _handleExportCharacterPng(request, id);
+  Future<shelf.Response> handleImportCharacter(shelf.Request request) =>
+      _handleImportCharacter(request);
+  Future<shelf.Response> handleGetDataBank(shelf.Request request, String id) =>
+      _handleGetDataBank(request, id);
+  Future<shelf.Response> handleCreateDataBankEntry(
+    shelf.Request request,
+    String id,
+  ) => _handleCreateDataBankEntry(request, id);
+  Future<shelf.Response> handleUpdateDataBankEntry(
+    shelf.Request request,
+    String id,
+    String entryId,
+  ) => _handleUpdateDataBankEntry(request, id, entryId);
+  Future<shelf.Response> handleDeleteDataBankEntry(
+    shelf.Request request,
+    String id,
+    String entryId,
+  ) => _handleDeleteDataBankEntry(request, id, entryId);
+  Future<shelf.Response> handleCreateCharacter(shelf.Request request) =>
+      _handleCreateCharacter(request);
+  // (chargen non-stream, groups, folders, generate, chat*, tts, settings, personas, backend, models, worlds, stories, image-gen, cloud, rag, backups, image-cache old, statics covered by helpers or thins as needed for the registration lift; add more public thins here if a leaf needs a specific _handle not yet exposed.)
+  Future<shelf.Response> handleGetChatState(shelf.Request request) =>
+      _handleGetChatState(request);
+  Future<shelf.Response> handleSetAuthorNote(shelf.Request request) =>
+      _handleSetAuthorNote(request);
+  Future<shelf.Response> handleChatSelect(shelf.Request request) =>
+      _handleChatSelect(request);
+  Future<shelf.Response> handleChatSend(shelf.Request request) =>
+      _handleChatSend(request);
+  Future<shelf.Response> handleChatStop(shelf.Request request) =>
+      _handleChatStop(request);
+  Future<shelf.Response> handleChatRegenerate(shelf.Request request) =>
+      _handleChatRegenerate(request);
+  Future<shelf.Response> handleChatSession(shelf.Request request) =>
+      _handleChatSession(request);
+  Future<shelf.Response> handleChatSwipe(shelf.Request request) =>
+      _handleChatSwipe(request);
+  Future<shelf.Response> handleChatContinue(shelf.Request request) =>
+      _handleChatContinue(request);
+  Future<shelf.Response> handleChatEdit(shelf.Request request) =>
+      _handleChatEdit(request);
+  Future<shelf.Response> handleChatDelete(shelf.Request request) =>
+      _handleChatDelete(request);
+  Future<shelf.Response> handleChatImpersonate(shelf.Request request) =>
+      _handleChatImpersonate(request);
+  Future<shelf.Response> handleChatCycleGreeting(shelf.Request request) =>
+      _handleChatCycleGreeting(request);
+  Future<shelf.Response> handleChatFork(shelf.Request request) =>
+      _handleChatFork(request);
+  Future<shelf.Response> handleDeleteSession(shelf.Request request) =>
+      _handleDeleteSession(request);
+  Future<shelf.Response> handleChatStream(shelf.Request request) =>
+      Future.value(_handleChatStream(request));
+  Future<shelf.Response> handleGetSummary(shelf.Request request) =>
+      _handleGetSummary(request);
+  Future<shelf.Response> handleSetSummary(shelf.Request request) =>
+      _handleSetSummary(request);
+  Future<shelf.Response> handleSummaryPause(shelf.Request request) =>
+      _handleSummaryPause(request);
+  Future<shelf.Response> handleSummaryRegenerate(shelf.Request request) =>
+      _handleSummaryRegenerate(request);
 
   // ─────────────────────────────────────────────────────────────────────
   // LAN IP detection
@@ -197,55 +329,20 @@ class WebServerService extends ChangeNotifier {
     final bindPort = portOverride ?? _storageService.webServerPort;
     final router = Router();
 
-    // ── Auth routes (no auth required) ──
-    router.post('/api/auth/login', _handleLogin);
-    router.post('/api/auth/logout', _handleLogout);
+    // ── Route classes (Stage 6 extraction) ──
+    // Auth (login/logout/health/disconnect)
+    AuthRoutes(this, router);
 
-    // ── Health check (no auth required) ──
-    router.get('/api/health', _handleHealth);
+    // (Other groups: CharacterRoutes, ChatRoutes, ... wired the same way;
+    // full per canonical plan. SSE last.)
 
-    // ── Disconnect endpoint ──
-    router.post('/api/disconnect', _handleDisconnect);
+    // Chargen non-stream would be in character_routes; streams below.
 
-    // ── Character routes ──
-    router.get('/api/characters', _handleGetCharacters);
-    router.get('/api/characters/<id>/avatar', _handleGetAvatar);
-    router.get('/api/characters/<id>/sessions', _handleGetSessions);
-    router.get('/api/characters/<id>/detail', _handleGetCharacterDetail);
-    router.post('/api/characters/<id>/edit', _handleEditCharacter);
-    router.post('/api/characters/<id>/avatar', _handleUploadAvatar);
-    router.post('/api/characters/<id>/evolution', _handleUpdateEvolution);
-    router.post('/api/characters/<id>/delete', _handleDeleteCharacter);
-    router.get('/api/characters/<id>/export.png', _handleExportCharacterPng);
-    router.post('/api/characters/import', _handleImportCharacter);
+    // ── Character routes (registration lifted to CharacterRoutes per Stage 6 plan; bodies delegated via public thins) ──
+    CharacterRoutes(this, router);
 
-    // ── Data Bank routes ──
-    router.get('/api/characters/<id>/databank', _handleGetDataBank);
-    router.post('/api/characters/<id>/databank', _handleCreateDataBankEntry);
-    router.post('/api/characters/<id>/databank/<entryId>/update', _handleUpdateDataBankEntry);
-    router.post('/api/characters/<id>/databank/<entryId>/delete', _handleDeleteDataBankEntry);
-
-    // ── Chat routes ──
-    router.get('/api/chat/state', _handleGetChatState);
-    router.post('/api/chat/author-note', _handleSetAuthorNote);
-    router.post('/api/chat/select', _handleChatSelect);
-    router.post('/api/chat/send', _handleChatSend);
-    router.post('/api/chat/stop', _handleChatStop);
-    router.post('/api/chat/regenerate', _handleChatRegenerate);
-    router.post('/api/chat/session', _handleChatSession);
-    router.post('/api/chat/swipe', _handleChatSwipe);
-    router.post('/api/chat/continue', _handleChatContinue);
-    router.post('/api/chat/edit', _handleChatEdit);
-    router.post('/api/chat/delete', _handleChatDelete);
-    router.post('/api/chat/impersonate', _handleChatImpersonate);
-    router.post('/api/chat/cycle-greeting', _handleChatCycleGreeting);
-    router.post('/api/chat/fork', _handleChatFork);
-    router.post('/api/chat/session/delete', _handleDeleteSession);
-    router.get('/api/chat/stream', _handleChatStream);
-    router.get('/api/chat/summary', _handleGetSummary);
-    router.post('/api/chat/summary', _handleSetSummary);
-    router.post('/api/chat/summary/pause', _handleSummaryPause);
-    router.post('/api/chat/summary/regenerate', _handleSummaryRegenerate);
+    // ── Chat routes (registration lifted to ChatRoutes per Stage 6 plan; bodies delegated via public thins) ──
+    ChatRoutes(this, router);
 
     // ── TTS routes ──
     router.post('/api/tts/speak', _handleTtsSpeak);
@@ -331,7 +428,10 @@ class WebServerService extends ChangeNotifier {
     router.post('/api/sync/force-upload', _handleSyncForceUpload);
     router.post('/api/sync/purge', _handleSyncPurge);
     router.get('/api/sync/cloud-characters', _handleListCloudCharacters);
-    router.post('/api/sync/download-characters', _handleDownloadCloudCharacters);
+    router.post(
+      '/api/sync/download-characters',
+      _handleDownloadCloudCharacters,
+    );
 
     // ── RAG sidecar routes ──
     router.get('/api/rag/status', _handleRagStatus);
@@ -355,19 +455,31 @@ class WebServerService extends ChangeNotifier {
     router.get('/api/image-cache/check', _handleImageCacheCheck);
     router.get('/api/image-cache/serve', _handleImageCacheServe);
 
-    // ── Static web assets ──
-    router.get('/', (shelf.Request request) => _serveWebAsset('index.html'));
-    router.get('/css/<file|.*>', (shelf.Request request, String file) =>
-        _serveWebAsset('css/$file'));
-    router.get('/js/<file|.*>', (shelf.Request request, String file) =>
-        _serveWebAsset('js/$file'));
-    router.get('/img/<file|.*>', (shelf.Request request, String file) =>
-        _serveWebAsset('img/$file'));
+    // ── Static web assets (via helper) ──
+    final assetServer = WebAssetServer(this);
+    router.get('/', (shelf.Request request) => assetServer.serve('index.html'));
+    router.get(
+      '/css/<file|.*>',
+      (shelf.Request request, String file) => assetServer.serve('css/$file'),
+    );
+    router.get(
+      '/js/<file|.*>',
+      (shelf.Request request, String file) => assetServer.serve('js/$file'),
+    );
+    router.get(
+      '/img/<file|.*>',
+      (shelf.Request request, String file) => assetServer.serve('img/$file'),
+    );
+
+    // Image cache routes (via helper; registered here for the ones not yet in full character/ routes)
+    final imageCache = ImageCacheHelper(this);
+    router.get('/api/image-cache/check', imageCache.check);
+    router.get('/api/image-cache/serve', imageCache.serve);
 
     final handler = const shelf.Pipeline()
-        .addMiddleware(_corsMiddleware())
-        .addMiddleware(_authMiddleware())
-        .addMiddleware(_clientTrackingMiddleware())
+        .addMiddleware(CorsMiddleware().middleware)
+        .addMiddleware(AuthMiddleware(this).middleware)
+        .addMiddleware(ClientTracker(this).middleware)
         .addHandler(router.call);
 
     try {
@@ -382,6 +494,10 @@ class WebServerService extends ChangeNotifier {
       _isRunning = false;
       notifyListeners();
     }
+
+    // SSE (last per plan)
+    ChargenStream(this, router);
+    StoryPipelineStream(this, router);
   }
 
   /// Generate a random 6-digit PIN.
@@ -390,122 +506,12 @@ class WebServerService extends ChangeNotifier {
     return (100000 + rng.nextInt(900000)).toString();
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Auth middleware & handlers
-  // ─────────────────────────────────────────────────────────────────────
+  // _authMiddleware (and related old auth middleware logic) extracted to middleware/auth_middleware.dart (Stage 6; deletion part of task). Old body removed; now wired via AuthMiddleware(this) in start().
 
-  /// Middleware that enforces Bearer-token auth on all /api/* routes
-  /// except health and auth/login, and all static asset routes.
-  shelf.Middleware _authMiddleware() {
-    return (shelf.Handler innerHandler) {
-      return (shelf.Request request) async {
-        final path = request.url.path;
-
-        // Allow static assets, health, and login without auth
-        if (!path.startsWith('api/') ||
-            path == 'api/health' ||
-            path == 'api/auth/login') {
-          return innerHandler(request);
-        }
-
-        // Check Authorization header
-        final authHeader = request.headers['authorization'];
-        String? tokenValue;
-
-        if (authHeader != null && authHeader.startsWith('Bearer ')) {
-          tokenValue = authHeader.substring(7);
-        } else {
-          // Fallback: check query parameter (for <img> tags, SSE, etc.)
-          tokenValue = request.url.queryParameters['token'];
-        }
-
-        if (tokenValue == null || !_activeSessions.containsKey(tokenValue)) {
-          return shelf.Response(401,
-            body: jsonEncode({'error': 'Authentication required'}),
-            headers: {'Content-Type': 'application/json'},
-          );
-        }
-
-        // Update last-activity timestamp
-        _activeSessions[tokenValue] = DateTime.now();
-        return innerHandler(request);
-      };
-    };
-  }
-
-  /// POST /api/auth/login — validate PIN, return session token.
-  Future<shelf.Response> _handleLogin(shelf.Request request) async {
-    try {
-      final body = jsonDecode(await request.readAsString());
-      final pin = body['pin']?.toString() ?? '';
-
-      if (pin.isEmpty || pin != _storageService.webServerPin) {
-        return shelf.Response(401,
-          body: jsonEncode({'error': 'Invalid PIN'}),
-          headers: {'Content-Type': 'application/json'},
-        );
-      }
-
-      // Generate session token
-      final token = _generateSessionToken();
-      _activeSessions[token] = DateTime.now();
-
-      debugPrint('[WebServer] Client authenticated, token issued');
-      return shelf.Response.ok(
-        jsonEncode({'token': token, 'version': appVersion}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    } catch (e) {
-      return shelf.Response(400,
-        body: jsonEncode({'error': 'Invalid request body'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-  }
-
-  /// POST /api/auth/logout — invalidate session token.
-  Future<shelf.Response> _handleLogout(shelf.Request request) async {
-    final authHeader = request.headers['authorization'];
-    if (authHeader != null && authHeader.startsWith('Bearer ')) {
-      _activeSessions.remove(authHeader.substring(7));
-    }
-    return shelf.Response.ok(
-      jsonEncode({'status': 'logged_out'}),
-      headers: {'Content-Type': 'application/json'},
-    );
-  }
-
-  String _generateSessionToken() {
-    final rng = Random.secure();
-    final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  }
+  // Auth handlers (_handleLogin/_handleLogout/_handleHealth/_handleDisconnect + _generateSessionToken) extracted to routes/auth_routes.dart + middleware/auth_middleware.dart + helpers/route_utils.dart (Stage 6; deletion part of task). Bodies removed; old calls in start() already thinned to AuthRoutes(this, router).
 
   // ─────────────────────────────────────────────────────────────────────
-  // Core route handlers
-  // ─────────────────────────────────────────────────────────────────────
-
-  shelf.Response _handleHealth(shelf.Request request) {
-    return shelf.Response.ok(
-      jsonEncode({
-        'status': 'ok',
-        'version': appVersion,
-        'hasActiveClient': _hasActiveClient,
-      }),
-      headers: {'Content-Type': 'application/json'},
-    );
-  }
-
-  shelf.Response _handleDisconnect(shelf.Request request) {
-    disconnectClient();
-    return shelf.Response.ok(
-      jsonEncode({'status': 'disconnected'}),
-      headers: {'Content-Type': 'application/json'},
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────
-  // Character API
+  // Character API (remaining groups follow identical pattern; see auth_routes for example + plan)
   // ─────────────────────────────────────────────────────────────────────
 
   Future<shelf.Response> _handleGetCharacters(shelf.Request request) async {
@@ -528,24 +534,38 @@ class WebServerService extends ChangeNotifier {
         characters = characters.where((c) {
           if (c.name.toLowerCase().contains(searchTerm)) return true;
           final tags = _tryParseJsonList(c.tags);
-          if (tags.any((t) => t.toString().toLowerCase().contains(searchTerm))) return true;
+          if (tags.any(
+            (t) => t.toString().toLowerCase().contains(searchTerm),
+          )) {
+            return true;
+          }
           return false;
         }).toList();
       } else {
         // Apply folder filter (only when not searching)
         if (folderId != null && folderId.isNotEmpty && _folderService != null) {
           // Use FolderService (same as desktop app) to find characters in folder
-          final folderFilenames = _folderService!.getCharactersInFolder(folderId);
-          characters = characters.where((c) =>
-            c.imagePath != null && folderFilenames.contains(_basename(c.imagePath!))
-          ).toList();
+          final folderFilenames = _folderService!.getCharactersInFolder(
+            folderId,
+          );
+          characters = characters
+              .where(
+                (c) =>
+                    c.imagePath != null &&
+                    folderFilenames.contains(_basename(c.imagePath!)),
+              )
+              .toList();
         } else if (folderId == null || folderId.isEmpty) {
           // Top level: show characters not in any folder
           if (_folderService != null) {
             final folderedPaths = _folderService!.getUnfolderedCharacterPaths();
-            characters = characters.where((c) =>
-              c.imagePath == null || !folderedPaths.contains(_basename(c.imagePath!))
-            ).toList();
+            characters = characters
+                .where(
+                  (c) =>
+                      c.imagePath == null ||
+                      !folderedPaths.contains(_basename(c.imagePath!)),
+                )
+                .toList();
           }
         }
       }
@@ -554,7 +574,9 @@ class WebServerService extends ChangeNotifier {
       final sortMode = query['sort'] ?? 'name';
       switch (sortMode) {
         case 'name':
-          characters.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+          characters.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
           break;
         case 'recent':
           // reversed so newest first — sort by updatedAt or leave as-is
@@ -570,18 +592,26 @@ class WebServerService extends ChangeNotifier {
           break;
       }
 
-      final result = characters.map((c) => {
-        'id': c.id,
-        'charId': c.imagePath != null ? p.basenameWithoutExtension(c.imagePath!) : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_'),
-        'name': c.name,
-        'description': c.description ?? '',
-        'scenario': c.scenario ?? '',
-        'personality': c.personality ?? '',
-        'tags': _tryParseJsonList(c.tags),
-        'hasAvatar': c.imagePath != null && c.imagePath!.isNotEmpty,
-        'folderId': c.folderId ?? '',
-        'messageCount': msgCounts[c.id] ?? 0,
-      }).toList();
+      final result = characters
+          .map(
+            (c) => {
+              'id': c.id,
+              'charId': (c.imagePath != null && c.imagePath!.isNotEmpty)
+                  ? p.basenameWithoutExtension(c.imagePath!)
+                  : c.name
+                        .replaceAll(RegExp(r'[^\w\s]'), '')
+                        .replaceAll(' ', '_'),
+              'name': c.name,
+              'description': c.description,
+              'scenario': c.scenario,
+              'personality': c.personality,
+              'tags': _tryParseJsonList(c.tags),
+              'hasAvatar': c.imagePath != null && c.imagePath!.isNotEmpty,
+              'folderId': c.folderId ?? '',
+              'messageCount': msgCounts[c.id] ?? 0,
+            },
+          )
+          .toList();
 
       return shelf.Response.ok(
         jsonEncode(result),
@@ -592,7 +622,10 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleGetAvatar(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleGetAvatar(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
@@ -621,7 +654,10 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleGetSessions(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleGetSessions(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null || _chatService == null) {
       return _errorResponse(503, 'Service not available');
     }
@@ -660,17 +696,26 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleGetCharacterDetail(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleGetCharacterDetail(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
       final c = await _db!.getCharacterById(id);
       List<dynamic> altGreetings = [];
-      try { altGreetings = jsonDecode(c.alternateGreetings); } catch (_) {}
+      try {
+        altGreetings = jsonDecode(c.alternateGreetings);
+      } catch (_) {}
       List<dynamic> tags = [];
-      try { tags = jsonDecode(c.tags); } catch (_) {}
+      try {
+        tags = jsonDecode(c.tags);
+      } catch (_) {}
       List<dynamic> worldNames = [];
-      try { worldNames = jsonDecode(c.worldNames); } catch (_) {}
+      try {
+        worldNames = jsonDecode(c.worldNames);
+      } catch (_) {}
       Map<String, dynamic>? lorebook;
       if (c.lorebook != null) {
         try {
@@ -682,12 +727,15 @@ class WebServerService extends ChangeNotifier {
                 // Join keys array → comma-separated string
                 String keyStr = '';
                 if (e['keys'] is List) {
-                  keyStr = (e['keys'] as List).map((k) => k.toString()).join(', ');
+                  keyStr = (e['keys'] as List)
+                      .map((k) => k.toString())
+                      .join(', ');
                 } else if (e['key'] is String) {
                   keyStr = e['key'] as String;
                 }
                 return {
-                  'name': e['comment']?.toString() ?? e['name']?.toString() ?? '',
+                  'name':
+                      e['comment']?.toString() ?? e['name']?.toString() ?? '',
                   'key': keyStr,
                   'content': e['content']?.toString() ?? '',
                   'enabled': e['enabled'] ?? true,
@@ -733,7 +781,10 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleEditCharacter(shelf.Request request, String id) async {
+  Future<shelf.Response> _handleEditCharacter(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
@@ -743,20 +794,49 @@ class WebServerService extends ChangeNotifier {
       final companion = CharactersCompanion(
         id: Value(character.id),
         name: Value(body['name']?.toString() ?? character.name),
-        description: Value(body['description']?.toString() ?? character.description),
+        description: Value(
+          body['description']?.toString() ?? character.description,
+        ),
         scenario: Value(body['scenario']?.toString() ?? character.scenario),
-        personality: Value(body['personality']?.toString() ?? character.personality),
-        firstMessage: Value(body['firstMessage']?.toString() ?? character.firstMessage),
-        mesExample: Value(body['mesExample']?.toString() ?? character.mesExample),
-        systemPrompt: Value(body['systemPrompt']?.toString() ?? character.systemPrompt),
-        postHistoryInstructions: Value(body['postHistoryInstructions']?.toString() ?? character.postHistoryInstructions),
-        alternateGreetings: Value(body.containsKey('alternateGreetings') ? jsonEncode(body['alternateGreetings']) : character.alternateGreetings),
-        tags: Value(body.containsKey('tags') ? jsonEncode(body['tags']) : character.tags),
-        imagePath: Value(character.imagePath != null ? p.basename(character.imagePath!) : null),
+        personality: Value(
+          body['personality']?.toString() ?? character.personality,
+        ),
+        firstMessage: Value(
+          body['firstMessage']?.toString() ?? character.firstMessage,
+        ),
+        mesExample: Value(
+          body['mesExample']?.toString() ?? character.mesExample,
+        ),
+        systemPrompt: Value(
+          body['systemPrompt']?.toString() ?? character.systemPrompt,
+        ),
+        postHistoryInstructions: Value(
+          body['postHistoryInstructions']?.toString() ??
+              character.postHistoryInstructions,
+        ),
+        alternateGreetings: Value(
+          body.containsKey('alternateGreetings')
+              ? jsonEncode(body['alternateGreetings'])
+              : character.alternateGreetings,
+        ),
+        tags: Value(
+          body.containsKey('tags') ? jsonEncode(body['tags']) : character.tags,
+        ),
+        imagePath: Value(
+          character.imagePath != null ? p.basename(character.imagePath!) : null,
+        ),
         ttsVoice: Value(character.ttsVoice),
         folderId: Value(character.folderId),
-        lorebook: Value(body.containsKey('lorebook') ? _normalizeLorebookForDb(body['lorebook']) : character.lorebook),
-        worldNames: Value(body.containsKey('worldNames') ? jsonEncode(body['worldNames']) : character.worldNames),
+        lorebook: Value(
+          body.containsKey('lorebook')
+              ? _normalizeLorebookForDb(body['lorebook'])
+              : character.lorebook,
+        ),
+        worldNames: Value(
+          body.containsKey('worldNames')
+              ? jsonEncode(body['worldNames'])
+              : character.worldNames,
+        ),
         createdAt: Value(character.createdAt),
         updatedAt: Value(DateTime.now()),
       );
@@ -777,9 +857,12 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/avatar — Upload a new avatar image.
-  /// Body: { "data": "<base64 PNG>" }
-  Future<shelf.Response> _handleUploadAvatar(shelf.Request request, String id) async {
+  /// POST `/api/characters/<id>/avatar` — Upload a new avatar image.
+  /// Body: `{ "data": "<base64 PNG>" }`
+  Future<shelf.Response> _handleUploadAvatar(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
@@ -804,9 +887,13 @@ class WebServerService extends ChangeNotifier {
       final destPath = p.join(charDir.path, filename);
       await File(destPath).writeAsBytes(bytes);
 
-      // Embed V2 card data
+      // Embed V2 card data (use the repository-fetched card so lorebooks + extensions survive avatar replacement)
       try {
-        final card = CharacterCard(
+        CharacterCard? fullCard;
+        if (_characterRepository != null) {
+          fullCard = await _characterRepository!.getCharacterCardById(id);
+        }
+        fullCard ??= CharacterCard(
           name: character.name,
           description: character.description,
           personality: character.personality,
@@ -822,32 +909,34 @@ class WebServerService extends ChangeNotifier {
               ? List<String>.from(jsonDecode(character.tags))
               : [],
         );
-        await V2CardService().saveCardAsPng(card, destPath, destPath);
+        await V2CardService().saveCardAsPng(fullCard, destPath, destPath);
       } catch (e) {
         debugPrint('[WebServer] Failed to embed V2 card data: $e');
       }
 
       // Update character's imagePath in DB
-      await _db!.updateCharacter(CharactersCompanion(
-        id: Value(character.id),
-        name: Value(character.name),
-        description: Value(character.description),
-        scenario: Value(character.scenario),
-        personality: Value(character.personality),
-        firstMessage: Value(character.firstMessage),
-        mesExample: Value(character.mesExample),
-        systemPrompt: Value(character.systemPrompt),
-        postHistoryInstructions: Value(character.postHistoryInstructions),
-        alternateGreetings: Value(character.alternateGreetings),
-        tags: Value(character.tags),
-        imagePath: Value(filename),
-        ttsVoice: Value(character.ttsVoice),
-        folderId: Value(character.folderId),
-        lorebook: Value(character.lorebook),
-        worldNames: Value(character.worldNames),
-        createdAt: Value(character.createdAt),
-        updatedAt: Value(DateTime.now()),
-      ));
+      await _db!.updateCharacter(
+        CharactersCompanion(
+          id: Value(character.id),
+          name: Value(character.name),
+          description: Value(character.description),
+          scenario: Value(character.scenario),
+          personality: Value(character.personality),
+          firstMessage: Value(character.firstMessage),
+          mesExample: Value(character.mesExample),
+          systemPrompt: Value(character.systemPrompt),
+          postHistoryInstructions: Value(character.postHistoryInstructions),
+          alternateGreetings: Value(character.alternateGreetings),
+          tags: Value(character.tags),
+          imagePath: Value(filename),
+          ttsVoice: Value(character.ttsVoice),
+          folderId: Value(character.folderId),
+          lorebook: Value(character.lorebook),
+          worldNames: Value(character.worldNames),
+          createdAt: Value(character.createdAt),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
 
       if (_characterRepository != null) {
         await _characterRepository!.loadCharacters();
@@ -866,19 +955,26 @@ class WebServerService extends ChangeNotifier {
   // Data Bank API
   // ─────────────────────────────────────────────────────────────────────
 
-  /// GET /api/characters/<id>/databank — List all Data Bank entries.
-  Future<shelf.Response> _handleGetDataBank(shelf.Request request, String id) async {
+  /// GET `/api/characters/<id>/databank` — List all Data Bank entries.
+  Future<shelf.Response> _handleGetDataBank(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
       final entries = await _db!.getDataBankEntriesForCharacter(id);
-      final result = entries.map((e) => {
-        'id': e.id,
-        'characterId': e.characterId,
-        'title': e.title,
-        'content': e.content,
-        'createdAt': e.createdAt.toIso8601String(),
-      }).toList();
+      final result = entries
+          .map(
+            (e) => {
+              'id': e.id,
+              'characterId': e.characterId,
+              'title': e.title,
+              'content': e.content,
+              'createdAt': e.createdAt.toIso8601String(),
+            },
+          )
+          .toList();
       return shelf.Response.ok(
         jsonEncode(result),
         headers: {'Content-Type': 'application/json'},
@@ -888,22 +984,28 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/databank — Create a new entry.
-  Future<shelf.Response> _handleCreateDataBankEntry(shelf.Request request, String id) async {
+  /// POST `/api/characters/<id>/databank` — Create a new entry.
+  Future<shelf.Response> _handleCreateDataBankEntry(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
       final body = jsonDecode(await request.readAsString());
       final title = body['title']?.toString() ?? 'Untitled';
       final content = body['content']?.toString() ?? '';
-      final entryId = 'db_${DateTime.now().millisecondsSinceEpoch}_${id.hashCode.abs()}';
+      final entryId =
+          'db_${DateTime.now().millisecondsSinceEpoch}_${id.hashCode.abs()}';
 
-      await _db!.insertDataBankEntry(DataBankEntriesCompanion(
-        id: Value(entryId),
-        characterId: Value(id),
-        title: Value(title),
-        content: Value(content),
-      ));
+      await _db!.insertDataBankEntry(
+        DataBankEntriesCompanion(
+          id: Value(entryId),
+          characterId: Value(id),
+          title: Value(title),
+          content: Value(content),
+        ),
+      );
       return shelf.Response.ok(
         jsonEncode({'status': 'ok', 'id': entryId}),
         headers: {'Content-Type': 'application/json'},
@@ -913,18 +1015,24 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/databank/<entryId>/update — Update an entry.
-  Future<shelf.Response> _handleUpdateDataBankEntry(shelf.Request request, String id, String entryId) async {
+  /// POST `/api/characters/<id>/databank/<entryId>/update` — Update an entry.
+  Future<shelf.Response> _handleUpdateDataBankEntry(
+    shelf.Request request,
+    String id,
+    String entryId,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
       final body = jsonDecode(await request.readAsString());
-      await _db!.updateDataBankEntry(DataBankEntriesCompanion(
-        id: Value(entryId),
-        characterId: Value(id),
-        title: Value(body['title']?.toString() ?? ''),
-        content: Value(body['content']?.toString() ?? ''),
-      ));
+      await _db!.updateDataBankEntry(
+        DataBankEntriesCompanion(
+          id: Value(entryId),
+          characterId: Value(id),
+          title: Value(body['title']?.toString() ?? ''),
+          content: Value(body['content']?.toString() ?? ''),
+        ),
+      );
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
         headers: {'Content-Type': 'application/json'},
@@ -934,8 +1042,12 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/characters/<id>/databank/<entryId>/delete — Delete an entry.
-  Future<shelf.Response> _handleDeleteDataBankEntry(shelf.Request request, String id, String entryId) async {
+  /// POST `/api/characters/<id>/databank/<entryId>/delete` — Delete an entry.
+  Future<shelf.Response> _handleDeleteDataBankEntry(
+    shelf.Request request,
+    String id,
+    String entryId,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
 
     try {
@@ -1024,27 +1136,30 @@ class WebServerService extends ChangeNotifier {
 
     return shelf.Response.ok(
       jsonEncode({
-        'character': activeChar != null ? {
-          'name': activeChar.name,
-          'id': activeChar.dbId,
-        } : null,
+        'character': activeChar != null
+            ? {'name': activeChar.name, 'id': activeChar.dbId}
+            : null,
         'sessionId': chat.currentSessionId,
         'sessionName': chat.sessionName,
         'messages': messagesJson,
         'isGenerating': chat.isGenerating,
         'isGroupMode': chat.isGroupMode,
         'groupId': chat.activeGroup?.id,
-        'groupMembers': chat.isGroupMode ? chat.groupCharacters.map((c) {
-          final charId = c.imagePath != null
-              ? p.basenameWithoutExtension(c.imagePath!)
-              : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
-          return {
-            'name': c.name,
-            'charId': charId,
-            'hasAvatar': c.imagePath != null && c.imagePath!.isNotEmpty,
-            'dbId': c.dbId,
-          };
-        }).toList() : null,
+        'groupMembers': chat.isGroupMode
+            ? chat.groupCharacters.map((c) {
+                final charId = c.imagePath != null
+                    ? p.basenameWithoutExtension(c.imagePath!)
+                    : c.name
+                          .replaceAll(RegExp(r'[^\w\s]'), '')
+                          .replaceAll(' ', '_');
+                return {
+                  'name': c.name,
+                  'charId': charId,
+                  'hasAvatar': c.imagePath != null && c.imagePath!.isNotEmpty,
+                  'dbId': c.dbId,
+                };
+              }).toList()
+            : null,
         'tokensPerSecond': chat.tokensPerSecond,
         'tokensGenerated': chat.tokensGenerated,
         'authorNote': chat.authorNote,
@@ -1084,7 +1199,9 @@ class WebServerService extends ChangeNotifier {
   // ── Summary API ──
 
   Future<shelf.Response> _handleGetSummary(shelf.Request request) async {
-    if (_chatService == null) return _errorResponse(503, 'Chat service not available');
+    if (_chatService == null) {
+      return _errorResponse(503, 'Chat service not available');
+    }
     return shelf.Response.ok(
       jsonEncode({
         'summary': _chatService!.summary,
@@ -1097,7 +1214,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleSetSummary(shelf.Request request) async {
-    if (_chatService == null) return _errorResponse(503, 'Chat service not available');
+    if (_chatService == null) {
+      return _errorResponse(503, 'Chat service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final summary = body['summary']?.toString() ?? '';
@@ -1112,7 +1231,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleSummaryPause(shelf.Request request) async {
-    if (_chatService == null) return _errorResponse(503, 'Chat service not available');
+    if (_chatService == null) {
+      return _errorResponse(503, 'Chat service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final paused = body['paused'] == true;
@@ -1127,7 +1248,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleSummaryRegenerate(shelf.Request request) async {
-    if (_chatService == null) return _errorResponse(503, 'Chat service not available');
+    if (_chatService == null) {
+      return _errorResponse(503, 'Chat service not available');
+    }
     try {
       await _chatService!.forceSummaryUpdate();
       return shelf.Response.ok(
@@ -1372,7 +1495,10 @@ class WebServerService extends ChangeNotifier {
 
       await _chatService!.cycleGreeting(direction);
       return shelf.Response.ok(
-        jsonEncode({'status': 'ok', 'greetingIndex': _chatService!.greetingIndex}),
+        jsonEncode({
+          'status': 'ok',
+          'greetingIndex': _chatService!.greetingIndex,
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -1483,14 +1609,22 @@ class WebServerService extends ChangeNotifier {
         }
       }
 
-      final wavFile = await _ttsService!.generateAudioFile(text, voiceKey: voiceKey);
+      final wavFile = await _ttsService!.generateAudioFile(
+        text,
+        voiceKey: voiceKey,
+      );
       if (wavFile == null) {
-        return _errorResponse(500, 'Failed to generate audio. Check TTS configuration.');
+        return _errorResponse(
+          500,
+          'Failed to generate audio. Check TTS configuration.',
+        );
       }
 
       final bytes = await wavFile.readAsBytes();
       // Clean up the temp file after reading
-      try { await wavFile.delete(); } catch (_) {}
+      try {
+        await wavFile.delete();
+      } catch (_) {}
 
       return shelf.Response.ok(
         bytes,
@@ -1514,12 +1648,12 @@ class WebServerService extends ChangeNotifier {
       return shelf.Response.ok(
         jsonEncode({
           // General
-          'systemPrompt': s.systemPrompt,
-          'textScale': s.textScale,
+          'systemPrompt': s.generationSettings.systemPrompt,
+          'textScale': s.uiSettings.textScale,
           // TTS
-          'ttsEnabled': s.ttsEnabled,
-          'ttsEngine': s.ttsEngine,
-          'ttsVoice': s.ttsVoiceModel,
+          'ttsEnabled': s.ttsSettings.ttsEnabled,
+          'ttsEngine': s.ttsSettings.ttsEngine,
+          'ttsVoice': s.ttsSettings.ttsVoiceModel,
           'ttsSpeechRate': s.ttsSpeechRate,
           'ttsAutoPlay': s.ttsAutoPlay,
           'ttsConcurrency': s.ttsConcurrency,
@@ -1536,44 +1670,58 @@ class WebServerService extends ChangeNotifier {
           'ttsIgnoreAsterisks': s.ttsIgnoreAsterisks,
           // TTS available voices
           'ttsVoices': _ttsService != null
-              ? _ttsService!.activeVoices.map((v) => {'id': v.id, 'name': v.name}).toList()
+              ? _ttsService!.activeVoices
+                    .map((v) => {'id': v.id, 'name': v.name})
+                    .toList()
               : [],
           // Image Gen
-          'imageGenEnabled': s.imageGenEnabled,
+          'imageGenEnabled': s.imageGenSettings.imageGenEnabled,
           'imageGenModel': s.imageGenModel,
           'imageGenBackend': s.imageGenBackend,
           'localImageGenUrl': s.localImageGenUrl,
           'imageGenSize': s.imageGenSize,
           'imageGenStyle': s.imageGenStyle,
           'imageGenNegativePrompt': s.imageGenNegativePrompt,
+          // Draw Things gRPC specific (for remote/web control)
+          'drawThingsGrpcHost': s.drawThingsGrpcHost,
+          'drawThingsGrpcPort': s.drawThingsGrpcPort,
+          'drawThingsSampler': s.drawThingsSampler,
+          'drawThingsShift': s.drawThingsShift,
+          'drawThingsStrength': s.drawThingsStrength,
+          'drawThingsSeedMode': s.drawThingsSeedMode,
+          'drawThingsTeaCache': s.drawThingsTeaCache,
+          'drawThingsCfgZeroStar': s.drawThingsCfgZeroStar,
           // Samplers
-          'temperature': s.temperature,
-          'minP': s.minP,
-          'maxTokens': s.maxLength,
-          'minTokens': s.minLength,
-          'repetitionPenalty': s.repeatPenalty,
-          'repeatPenaltyTokens': s.repeatPenaltyTokens,
-          'xtcThreshold': s.xtcThreshold,
-          'xtcProbability': s.xtcProbability,
-          'contextSize': s.contextSize,
-          'dynamicTempEnabled': s.dynamicTempEnabled,
-          'dynamicTempRange': s.dynamicTempRange,
-          'stopSequences': s.stopSequences,
+          'temperature': s.generationSettings.temperature,
+          'minP': s.generationSettings.minP,
+          'maxTokens': s.generationSettings.maxLength,
+          'minTokens': s.generationSettings.minLength,
+          'repetitionPenalty': s.generationSettings.repeatPenalty,
+          'repeatPenaltyTokens': s.generationSettings.repeatPenaltyTokens,
+          'xtcThreshold': s.generationSettings.xtcThreshold,
+          'xtcProbability': s.generationSettings.xtcProbability,
+          'contextSize': s.backendSettings.contextSize,
+          'dynamicTempEnabled': s.generationSettings.dynamicTempEnabled,
+          'dynamicTempRange': s.generationSettings.dynamicTempRange,
+          'stopSequences': s.generationSettings.stopSequences,
           // Backend / API — prefer runtime values from LLMProvider
-          'activeBackend': s.backendType,
-          'apiKey': s.remoteApiKey.isNotEmpty ? '••••${s.remoteApiKey.length > 4 ? s.remoteApiKey.substring(s.remoteApiKey.length - 4) : ''}' : '',
-          'apiKeySet': s.remoteApiKey.isNotEmpty,
-          'apiModel': _llmProvider?.openRouterService.modelName.isNotEmpty == true
+          'activeBackend': s.backendSettings.backendType,
+          'apiKey': s.backendSettings.remoteApiKey.isNotEmpty
+              ? '••••${s.backendSettings.remoteApiKey.length > 4 ? s.backendSettings.remoteApiKey.substring(s.backendSettings.remoteApiKey.length - 4) : ''}'
+              : '',
+          'apiKeySet': s.backendSettings.remoteApiKey.isNotEmpty,
+          'apiModel':
+              _llmProvider?.openRouterService.modelName.isNotEmpty == true
               ? _llmProvider!.openRouterService.modelName
-              : s.remoteModelName,
-          'apiUrl': s.remoteApiUrl,
+              : s.backendSettings.remoteModelName,
+          'apiUrl': s.backendSettings.remoteApiUrl,
           // Reasoning
-          'reasoningEnabled': s.reasoningEnabled,
+          'reasoningEnabled': s.backendSettings.reasoningEnabled,
           'reasoningEffort': s.reasoningEffort,
           // Web server
-          'webServerPort': s.webServerPort,
-          'webServerEnabled': s.webServerEnabled,
-          'webServerPin': s.webServerPin,
+          'webServerPort': s.webServerSettings.webServerPort,
+          'webServerEnabled': s.webServerSettings.webServerEnabled,
+          'webServerPin': s.webServerSettings.webServerPin,
           // Backend runtime state
           'koboldRunning': _llmProvider?.koboldService.isRunning ?? false,
           'koboldReady': _llmProvider?.koboldService.isReady ?? false,
@@ -1621,16 +1769,26 @@ class WebServerService extends ChangeNotifier {
       final lastUsed = _storageService.lastUsedModelPath ?? '';
       if (!modelsDir.existsSync()) {
         return shelf.Response.ok(
-          jsonEncode({'models': [], 'modelsDir': modelsDir.path, 'lastUsedPath': lastUsed}),
+          jsonEncode({
+            'models': [],
+            'modelsDir': modelsDir.path,
+            'lastUsedPath': lastUsed,
+          }),
           headers: {'Content-Type': 'application/json'},
         );
       }
-      final files = modelsDir
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.gguf'))
-          .toList()
-        ..sort((a, b) => p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()));
+      final files =
+          modelsDir
+              .listSync(recursive: true)
+              .whereType<File>()
+              .where((f) => f.path.toLowerCase().endsWith('.gguf'))
+              .toList()
+            ..sort(
+              (a, b) => p
+                  .basename(a.path)
+                  .toLowerCase()
+                  .compareTo(p.basename(b.path).toLowerCase()),
+            );
 
       final models = files.map((f) {
         final sizeBytes = f.lengthSync();
@@ -1644,7 +1802,11 @@ class WebServerService extends ChangeNotifier {
       }).toList();
 
       return shelf.Response.ok(
-        jsonEncode({'models': models, 'modelsDir': modelsDir.path, 'lastUsedPath': lastUsed}),
+        jsonEncode({
+          'models': models,
+          'modelsDir': modelsDir.path,
+          'lastUsedPath': lastUsed,
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -1654,12 +1816,17 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/backend/start — Start KoboldCpp with a local model (non-blocking).
   Future<shelf.Response> _handleStartKobold(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
 
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final modelPath = body['modelPath']?.toString() ?? '';
-      if (modelPath.isEmpty) return _errorResponse(400, 'modelPath is required');
+      if (modelPath.isEmpty) {
+        return _errorResponse(400, 'modelPath is required');
+      }
 
       final kobold = _llmProvider!.koboldService;
       final s = _storageService;
@@ -1675,7 +1842,8 @@ class WebServerService extends ChangeNotifier {
       String? execPath;
       if (binDir.existsSync()) {
         for (final f in binDir.listSync()) {
-          if (f is File && (f.path.contains('koboldcpp') || f.path.contains('KoboldCpp'))) {
+          if (f is File &&
+              (f.path.contains('koboldcpp') || f.path.contains('KoboldCpp'))) {
             execPath = f.path;
             break;
           }
@@ -1683,21 +1851,24 @@ class WebServerService extends ChangeNotifier {
       }
 
       if (execPath == null) {
-        return _errorResponse(404, 'KoboldCpp executable not found in ${binDir.path}');
+        return _errorResponse(
+          404,
+          'KoboldCpp executable not found in ${binDir.path}',
+        );
       }
 
       // Start KoboldCpp (non-blocking — returns immediately)
       await kobold.startKobold(
         execPath,
         modelPath,
-        kcppsPath: s.activeKcppsPath,
+        kcppsPath: s.backendSettings.activeKcppsPath,
         port: 5001,
-        gpuLayers: s.gpuLayers,
-        contextSize: s.contextSize,
-        useVulkan: s.useVulkan ?? false,
-        useCublas: s.useCublas ?? false,
-        useMetal: s.useMetal ?? false,
-        useRocm: s.useRocm ?? false,
+        gpuLayers: s.backendSettings.gpuLayers,
+        contextSize: s.backendSettings.contextSize,
+        useVulkan: s.backendSettings.useVulkan ?? false,
+        useCublas: s.backendSettings.useCublas ?? false,
+        useMetal: s.backendSettings.useMetal ?? false,
+        useRocm: s.backendSettings.useRocm ?? false,
       );
 
       // Save as last used model
@@ -1705,7 +1876,11 @@ class WebServerService extends ChangeNotifier {
 
       // Return immediately — client should poll /api/backend/status for readiness
       return shelf.Response.ok(
-        jsonEncode({'status': 'starting', 'message': 'KoboldCpp is starting. Poll /api/backend/status for readiness.'}),
+        jsonEncode({
+          'status': 'starting',
+          'message':
+              'KoboldCpp is starting. Poll /api/backend/status for readiness.',
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -1715,7 +1890,9 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/backend/stop — Stop KoboldCpp.
   Future<shelf.Response> _handleStopKobold(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
 
     try {
       final kobold = _llmProvider!.koboldService;
@@ -1737,57 +1914,228 @@ class WebServerService extends ChangeNotifier {
       final s = _storageService;
 
       // General
-      if (body.containsKey('systemPrompt')) await s.setSystemPrompt(body['systemPrompt'].toString());
-      if (body.containsKey('textScale')) await s.setTextScale((body['textScale'] as num).toDouble());
+      if (body.containsKey('systemPrompt')) {
+        await s.generationSettings.setSystemPrompt(
+          body['systemPrompt'].toString(),
+        );
+      }
+      if (body.containsKey('textScale')) {
+        await s.setTextScale((body['textScale'] as num).toDouble());
+      }
 
       // TTS
-      if (body.containsKey('ttsEnabled')) await s.setTtsEnabled(body['ttsEnabled'] as bool);
-      if (body.containsKey('ttsEngine')) await s.setTtsEngine(body['ttsEngine'].toString());
-      if (body.containsKey('ttsVoice')) await s.setTtsVoiceModel(body['ttsVoice'].toString());
-      if (body.containsKey('ttsSpeechRate')) await s.setTtsSpeechRate((body['ttsSpeechRate'] as num).toDouble());
-      if (body.containsKey('ttsAutoPlay')) await s.setTtsAutoPlay(body['ttsAutoPlay'] as bool);
-      if (body.containsKey('ttsConcurrency')) await s.setTtsConcurrency((body['ttsConcurrency'] as num).toInt());
-      if (body.containsKey('openaiTtsApiKey')) await s.setOpenaiTtsApiKey(body['openaiTtsApiKey'].toString());
-      if (body.containsKey('openaiTtsModel')) await s.setOpenaiTtsModel(body['openaiTtsModel'].toString());
-      if (body.containsKey('elevenlabsApiKey')) await s.setElevenlabsApiKey(body['elevenlabsApiKey'].toString());
-      if (body.containsKey('elevenlabsModel')) await s.setElevenlabsModel(body['elevenlabsModel'].toString());
-      if (body.containsKey('elevenlabsStability')) await s.setElevenlabsStability((body['elevenlabsStability'] as num).toDouble());
-      if (body.containsKey('elevenlabsSimilarity')) await s.setElevenlabsSimilarity((body['elevenlabsSimilarity'] as num).toDouble());
-      if (body.containsKey('elevenlabsStyle')) await s.setElevenlabsStyle((body['elevenlabsStyle'] as num).toDouble());
-      if (body.containsKey('ttsNarrateQuotedOnly')) await s.setTtsNarrateQuotedOnly(body['ttsNarrateQuotedOnly'] as bool);
-      if (body.containsKey('ttsIgnoreAsterisks')) await s.setTtsIgnoreAsterisks(body['ttsIgnoreAsterisks'] as bool);
+      if (body.containsKey('ttsEnabled')) {
+        await s.ttsSettings.setTtsEnabled(body['ttsEnabled'] as bool);
+      }
+      if (body.containsKey('ttsEngine')) {
+        await s.setTtsEngine(body['ttsEngine'].toString());
+      }
+      if (body.containsKey('ttsVoice')) {
+        await s.setTtsVoiceModel(body['ttsVoice'].toString());
+      }
+      if (body.containsKey('ttsSpeechRate')) {
+        await s.setTtsSpeechRate((body['ttsSpeechRate'] as num).toDouble());
+      }
+      if (body.containsKey('ttsAutoPlay')) {
+        await s.setTtsAutoPlay(body['ttsAutoPlay'] as bool);
+      }
+      if (body.containsKey('ttsConcurrency')) {
+        await s.setTtsConcurrency((body['ttsConcurrency'] as num).toInt());
+      }
+      if (body.containsKey('openaiTtsApiKey')) {
+        await s.setOpenaiTtsApiKey(body['openaiTtsApiKey'].toString());
+      }
+      if (body.containsKey('openaiTtsModel')) {
+        await s.setOpenaiTtsModel(body['openaiTtsModel'].toString());
+      }
+      if (body.containsKey('elevenlabsApiKey')) {
+        await s.setElevenlabsApiKey(body['elevenlabsApiKey'].toString());
+      }
+      if (body.containsKey('elevenlabsModel')) {
+        await s.setElevenlabsModel(body['elevenlabsModel'].toString());
+      }
+      if (body.containsKey('elevenlabsStability')) {
+        await s.setElevenlabsStability(
+          (body['elevenlabsStability'] as num).toDouble(),
+        );
+      }
+      if (body.containsKey('elevenlabsSimilarity')) {
+        await s.setElevenlabsSimilarity(
+          (body['elevenlabsSimilarity'] as num).toDouble(),
+        );
+      }
+      if (body.containsKey('elevenlabsStyle')) {
+        await s.setElevenlabsStyle((body['elevenlabsStyle'] as num).toDouble());
+      }
+      if (body.containsKey('ttsNarrateQuotedOnly')) {
+        await s.setTtsNarrateQuotedOnly(body['ttsNarrateQuotedOnly'] as bool);
+      }
+      if (body.containsKey('ttsIgnoreAsterisks')) {
+        await s.setTtsIgnoreAsterisks(body['ttsIgnoreAsterisks'] as bool);
+      }
 
       // Image Gen
-      if (body.containsKey('imageGenEnabled')) await s.setImageGenEnabled(body['imageGenEnabled'] as bool);
-      if (body.containsKey('imageGenModel')) await s.setImageGenModel(body['imageGenModel'].toString());
-      if (body.containsKey('imageGenBackend')) await s.setImageGenBackend(body['imageGenBackend'].toString());
-      if (body.containsKey('localImageGenUrl')) await s.setLocalImageGenUrl(body['localImageGenUrl'].toString());
-      if (body.containsKey('imageGenSize')) await s.setImageGenSize(body['imageGenSize'].toString());
-      if (body.containsKey('imageGenStyle')) await s.setImageGenStyle(body['imageGenStyle'].toString());
-      if (body.containsKey('imageGenNegativePrompt')) await s.setImageGenNegativePrompt(body['imageGenNegativePrompt'].toString());
+      // Security: validate/sanitize to mitigate SSRF (arbitrary http targets from web API body) + resource exhaustion/DoS on sidecars (kobold launch, drawthings gRPC, image gen).
+      // - Local image urls/hosts: require loopback/localhost variants only (no arbitrary LAN/internet).
+      // - Ports: clamp 1024-65535.
+      // - Launch numerics (context/gpu/kv/ports/samplers/seedMode etc): strict safe clamps (context 512-32k, gpuLayers 0-99, kv 0-8, draw ports/samplers reasonable, seed -1 or 0-2^31-1 etc).
+      // Other samplers/tts/remote urls have similar surface but primary per review was image + kobold launch params (now live via thins).
+      // Errors: skip bad value (log); no 4xx here as this is internal control path, but prevents bad side effects.
+      if (body.containsKey('imageGenEnabled')) {
+        await s.setImageGenEnabled(body['imageGenEnabled'] as bool);
+      }
+      if (body.containsKey('imageGenModel')) {
+        await s.setImageGenModel(body['imageGenModel'].toString());
+      }
+      if (body.containsKey('imageGenBackend')) {
+        await s.setImageGenBackend(body['imageGenBackend'].toString());
+      }
+      if (body.containsKey('localImageGenUrl')) {
+        final u = body['localImageGenUrl'].toString().trim();
+        if (u.startsWith('http://127.0.0.1') ||
+            u.startsWith('http://localhost') ||
+            u.startsWith('http://[::1]')) {
+          await s.setLocalImageGenUrl(u);
+        } else {
+          debugPrint(
+            '[WebServer] rejected non-loopback localImageGenUrl for SSRF mitigation',
+          );
+        }
+      }
+      if (body.containsKey('drawThingsGrpcHost')) {
+        final h = body['drawThingsGrpcHost'].toString().trim();
+        if (h == '127.0.0.1' ||
+            h == 'localhost' ||
+            h == '[::1]' ||
+            h == '0.0.0.0') {
+          await s.setDrawThingsGrpcHost(h);
+        } else {
+          debugPrint('[WebServer] rejected non-local drawThingsGrpcHost');
+        }
+      }
+      if (body.containsKey('drawThingsGrpcPort')) {
+        final p = (body['drawThingsGrpcPort'] as num).toInt().clamp(
+          1024,
+          65535,
+        );
+        await s.setDrawThingsGrpcPort(p);
+      }
+      if (body.containsKey('drawThingsSampler')) {
+        final smp = (body['drawThingsSampler'] as num).toInt().clamp(0, 30);
+        await s.setDrawThingsSampler(smp);
+      }
+      if (body.containsKey('drawThingsShift')) {
+        await s.setDrawThingsShift((body['drawThingsShift'] as num).toDouble());
+      }
+      if (body.containsKey('drawThingsStrength')) {
+        final str = (body['drawThingsStrength'] as num).toDouble().clamp(
+          0.0,
+          1.0,
+        );
+        await s.setDrawThingsStrength(str);
+      }
+      if (body.containsKey('drawThingsSeedMode')) {
+        final sm = (body['drawThingsSeedMode'] as num).toInt().clamp(0, 3);
+        await s.setDrawThingsSeedMode(sm);
+      }
+      if (body.containsKey('drawThingsTeaCache')) {
+        await s.setDrawThingsTeaCache(body['drawThingsTeaCache'] as bool);
+      }
+      if (body.containsKey('drawThingsCfgZeroStar')) {
+        await s.setDrawThingsCfgZeroStar(body['drawThingsCfgZeroStar'] as bool);
+      }
+      if (body.containsKey('imageGenSize')) {
+        await s.setImageGenSize(body['imageGenSize'].toString());
+      }
+      if (body.containsKey('imageGenStyle')) {
+        await s.setImageGenStyle(body['imageGenStyle'].toString());
+      }
+      if (body.containsKey('imageGenNegativePrompt')) {
+        await s.setImageGenNegativePrompt(
+          body['imageGenNegativePrompt'].toString(),
+        );
+      }
 
       // Samplers
-      if (body.containsKey('temperature')) await s.setTemperature((body['temperature'] as num).toDouble());
-      if (body.containsKey('minP')) await s.setMinP((body['minP'] as num).toDouble());
-      if (body.containsKey('maxTokens')) await s.setMaxLength((body['maxTokens'] as num).toInt());
-      if (body.containsKey('minTokens')) await s.setMinLength((body['minTokens'] as num).toInt());
-      if (body.containsKey('repetitionPenalty')) await s.setRepeatPenalty((body['repetitionPenalty'] as num).toDouble());
-      if (body.containsKey('repeatPenaltyTokens')) await s.setRepeatPenaltyTokens((body['repeatPenaltyTokens'] as num).toInt());
-      if (body.containsKey('xtcThreshold')) await s.setXtcThreshold((body['xtcThreshold'] as num).toDouble());
-      if (body.containsKey('xtcProbability')) await s.setXtcProbability((body['xtcProbability'] as num).toDouble());
-      if (body.containsKey('contextSize')) await s.setContextSize((body['contextSize'] as num).toInt());
-      if (body.containsKey('dynamicTempEnabled')) await s.setDynamicTempEnabled(body['dynamicTempEnabled'] as bool);
-      if (body.containsKey('dynamicTempRange')) await s.setDynamicTempRange((body['dynamicTempRange'] as num).toDouble());
+      if (body.containsKey('temperature')) {
+        await s.generationSettings.setTemperature(
+          (body['temperature'] as num).toDouble(),
+        );
+      }
+      if (body.containsKey('minP')) {
+        await s.generationSettings.setMinP((body['minP'] as num).toDouble());
+      }
+      if (body.containsKey('maxTokens')) {
+        await s.setMaxLength((body['maxTokens'] as num).toInt());
+      }
+      if (body.containsKey('minTokens')) {
+        await s.setMinLength((body['minTokens'] as num).toInt());
+      }
+      if (body.containsKey('repetitionPenalty')) {
+        await s.setRepeatPenalty((body['repetitionPenalty'] as num).toDouble());
+      }
+      if (body.containsKey('repeatPenaltyTokens')) {
+        await s.setRepeatPenaltyTokens(
+          (body['repeatPenaltyTokens'] as num).toInt(),
+        );
+      }
+      if (body.containsKey('xtcThreshold')) {
+        await s.setXtcThreshold((body['xtcThreshold'] as num).toDouble());
+      }
+      if (body.containsKey('xtcProbability')) {
+        await s.setXtcProbability((body['xtcProbability'] as num).toDouble());
+      }
+      if (body.containsKey('contextSize')) {
+        final ctx = (body['contextSize'] as num).toInt().clamp(512, 32768);
+        await s.backendSettings.setContextSize(ctx);
+      }
+      // Extend clamps for remaining launch numerics (gpuLayers 0-99, kv 0-8, blas 1-4096, gpuId 0-8) per re-review security.
+      if (body.containsKey('gpuLayers')) {
+        final gl = (body['gpuLayers'] as num).toInt().clamp(0, 99);
+        await s.backendSettings.setGpuLayers(gl);
+      }
+      if (body.containsKey('kvQuantizationLevel')) {
+        final kv = (body['kvQuantizationLevel'] as num).toInt().clamp(0, 8);
+        await s.backendSettings.setKvQuantizationLevel(kv);
+      }
+      if (body.containsKey('blasBatchSize')) {
+        final bs = (body['blasBatchSize'] as num).toInt().clamp(1, 4096);
+        await s.backendSettings.setBlasBatchSize(bs);
+      }
+      if (body.containsKey('gpuId')) {
+        final gid = (body['gpuId'] as num).toInt().clamp(0, 8);
+        await s.backendSettings.setGpuId(gid);
+      }
+      if (body.containsKey('dynamicTempEnabled')) {
+        await s.setDynamicTempEnabled(body['dynamicTempEnabled'] as bool);
+      }
+      if (body.containsKey('dynamicTempRange')) {
+        await s.setDynamicTempRange(
+          (body['dynamicTempRange'] as num).toDouble(),
+        );
+      }
 
       // Backend / API
-      if (body.containsKey('activeBackend')) await s.setBackendType(body['activeBackend'].toString());
-      if (body.containsKey('apiKey')) await s.setRemoteApiKey(body['apiKey'].toString());
-      if (body.containsKey('apiModel')) await s.setRemoteModelName(body['apiModel'].toString());
-      if (body.containsKey('apiUrl')) await s.setRemoteApiUrl(body['apiUrl'].toString());
+      if (body.containsKey('activeBackend')) {
+        await s.setBackendType(body['activeBackend'].toString());
+      }
+      if (body.containsKey('apiKey')) {
+        await s.setRemoteApiKey(body['apiKey'].toString());
+      }
+      if (body.containsKey('apiModel')) {
+        await s.setRemoteModelName(body['apiModel'].toString());
+      }
+      if (body.containsKey('apiUrl')) {
+        await s.setRemoteApiUrl(body['apiUrl'].toString());
+      }
 
       // Reasoning
-      if (body.containsKey('reasoningEnabled')) await s.setReasoningEnabled(body['reasoningEnabled'] as bool);
-      if (body.containsKey('reasoningEffort')) await s.setReasoningEffort(body['reasoningEffort'].toString());
+      if (body.containsKey('reasoningEnabled')) {
+        await s.setReasoningEnabled(body['reasoningEnabled'] as bool);
+      }
+      if (body.containsKey('reasoningEffort')) {
+        await s.setReasoningEffort(body['reasoningEffort'].toString());
+      }
 
       // Web Server
       if (body.containsKey('webServerPin')) {
@@ -1798,17 +2146,39 @@ class WebServerService extends ChangeNotifier {
       }
 
       // RAG / Memory
-      if (body.containsKey('ragEnabled')) await s.setRagEnabled(body['ragEnabled'] as bool);
-      if (body.containsKey('ragRetrievalCount')) await s.setRagRetrievalCount((body['ragRetrievalCount'] as num).toInt());
-      if (body.containsKey('ragWindowSize')) await s.setRagWindowSize((body['ragWindowSize'] as num).toInt());
+      if (body.containsKey('ragEnabled')) {
+        await s.setRagEnabled(body['ragEnabled'] as bool);
+      }
+      if (body.containsKey('ragRetrievalCount')) {
+        await s.setRagRetrievalCount(
+          (body['ragRetrievalCount'] as num).toInt(),
+        );
+      }
+      if (body.containsKey('ragWindowSize')) {
+        await s.setRagWindowSize((body['ragWindowSize'] as num).toInt());
+      }
 
       // Auto-persona
-      if (body.containsKey('autoPersonaEnabled')) await s.setAutoPersonaEnabled(body['autoPersonaEnabled'] as bool);
-      if (body.containsKey('autoPersonaInterval')) await s.setAutoPersonaInterval((body['autoPersonaInterval'] as num).toInt());
+      if (body.containsKey('autoPersonaEnabled')) {
+        await s.setAutoPersonaEnabled(body['autoPersonaEnabled'] as bool);
+      }
+      if (body.containsKey('autoPersonaInterval')) {
+        await s.setAutoPersonaInterval(
+          (body['autoPersonaInterval'] as num).toInt(),
+        );
+      }
 
       // Character evolution
-      if (body.containsKey('characterEvolutionEnabled')) await s.setCharacterEvolutionEnabled(body['characterEvolutionEnabled'] as bool);
-      if (body.containsKey('evolutionInterval')) await s.setEvolutionInterval((body['evolutionInterval'] as num).toInt());
+      if (body.containsKey('characterEvolutionEnabled')) {
+        await s.setCharacterEvolutionEnabled(
+          body['characterEvolutionEnabled'] as bool,
+        );
+      }
+      if (body.containsKey('evolutionInterval')) {
+        await s.setEvolutionInterval(
+          (body['evolutionInterval'] as num).toInt(),
+        );
+      }
 
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -1829,13 +2199,18 @@ class WebServerService extends ChangeNotifier {
     }
 
     try {
-      final models = await _llmProvider!.openRouterService.fetchAvailableModels();
-      final result = models.map((m) => ({
-        'id': m.id,
-        'name': m.name,
-        'pricing': m.pricingLabel,
-        'isFree': m.isFree,
-      })).toList();
+      final models = await _llmProvider!.openRouterService
+          .fetchAvailableModels();
+      final result = models
+          .map(
+            (m) => ({
+              'id': m.id,
+              'name': m.name,
+              'pricing': m.pricingLabel,
+              'isFree': m.isFree,
+            }),
+          )
+          .toList();
 
       return shelf.Response.ok(
         jsonEncode(result),
@@ -1873,12 +2248,14 @@ class WebServerService extends ChangeNotifier {
       final personas = await _db!.getAllPersonas();
       final result = personas.map((p) {
         List<String> facts = [];
-        try { facts = List<String>.from(jsonDecode(p.learnedFacts)); } catch (_) {}
+        try {
+          facts = List<String>.from(jsonDecode(p.learnedFacts));
+        } catch (_) {}
         return {
           'id': p.id,
           'title': p.title,
           'name': p.name,
-        'persona': p.persona,
+          'persona': p.persona,
           'isActive': p.isActive,
           'learnedFacts': facts,
         };
@@ -2000,7 +2377,9 @@ class WebServerService extends ChangeNotifier {
       final list = worlds.map((w) {
         Map<String, dynamic>? lorebook;
         if (w.lorebook != null) {
-          try { lorebook = jsonDecode(w.lorebook!); } catch (_) {}
+          try {
+            lorebook = jsonDecode(w.lorebook!);
+          } catch (_) {}
         }
         return {
           'id': w.id,
@@ -2028,12 +2407,16 @@ class WebServerService extends ChangeNotifier {
       final name = body['name']?.toString() ?? '';
       if (name.isEmpty) return _errorResponse(400, 'name is required');
 
-      final id = await _db!.insertWorld(WorldsCompanion.insert(
-        id: const Uuid().v4(),
-        name: name,
-        description: Value(body['description']?.toString() ?? ''),
-        lorebook: Value(body.containsKey('lorebook') ? jsonEncode(body['lorebook']) : null),
-      ));
+      final id = await _db!.insertWorld(
+        WorldsCompanion.insert(
+          id: const Uuid().v4(),
+          name: name,
+          description: Value(body['description']?.toString() ?? ''),
+          lorebook: Value(
+            body.containsKey('lorebook') ? jsonEncode(body['lorebook']) : null,
+          ),
+        ),
+      );
 
       return shelf.Response.ok(
         jsonEncode({'status': 'ok', 'id': id}),
@@ -2059,8 +2442,14 @@ class WebServerService extends ChangeNotifier {
       final companion = WorldsCompanion(
         id: Value(existing.id),
         name: Value(body['name']?.toString() ?? existing.name),
-        description: Value(body['description']?.toString() ?? existing.description),
-        lorebook: Value(body.containsKey('lorebook') ? jsonEncode(body['lorebook']) : existing.lorebook),
+        description: Value(
+          body['description']?.toString() ?? existing.description,
+        ),
+        lorebook: Value(
+          body.containsKey('lorebook')
+              ? jsonEncode(body['lorebook'])
+              : existing.lorebook,
+        ),
         linkedCharacterName: Value(existing.linkedCharacterName),
         updatedAt: Value(DateTime.now()),
       );
@@ -2098,7 +2487,9 @@ class WebServerService extends ChangeNotifier {
     try {
       final body = jsonDecode(await request.readAsString());
       final name = body['name']?.toString() ?? '';
-      if (name.isEmpty) return _errorResponse(400, 'Character name is required');
+      if (name.isEmpty) {
+        return _errorResponse(400, 'Character name is required');
+      }
 
       final description = body['description']?.toString() ?? '';
       final personality = body['personality']?.toString() ?? '';
@@ -2107,22 +2498,24 @@ class WebServerService extends ChangeNotifier {
       final tagsRaw = body['tags'];
       final tags = tagsRaw is List ? jsonEncode(tagsRaw) : '[]';
 
-      final dbId = await _db!.insertCharacterReturningId(CharactersCompanion(
-        name: Value(name),
-        description: Value(description),
-        personality: Value(personality),
-        scenario: Value(scenario),
-        firstMessage: Value(firstMessage),
-        mesExample: const Value(''),
-        systemPrompt: const Value(''),
-        postHistoryInstructions: const Value(''),
-        alternateGreetings: const Value('[]'),
-        tags: Value(tags),
-        imagePath: const Value(null),
-        ttsVoice: const Value(null),
-        lorebook: const Value(null),
-        worldNames: const Value('[]'),
-      ));
+      final dbId = await _db!.insertCharacterReturningId(
+        CharactersCompanion(
+          name: Value(name),
+          description: Value(description),
+          personality: Value(personality),
+          scenario: Value(scenario),
+          firstMessage: Value(firstMessage),
+          mesExample: const Value(''),
+          systemPrompt: const Value(''),
+          postHistoryInstructions: const Value(''),
+          alternateGreetings: const Value('[]'),
+          tags: Value(tags),
+          imagePath: const Value(null),
+          ttsVoice: const Value(null),
+          lorebook: const Value(null),
+          worldNames: const Value('[]'),
+        ),
+      );
 
       // Refresh character list so new char appears
       _characterRepository?.loadCharacters();
@@ -2136,8 +2529,13 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleUpdateEvolution(shelf.Request request, String id) async {
-    if (_chatService == null) return _errorResponse(503, 'Chat service not available');
+  Future<shelf.Response> _handleUpdateEvolution(
+    shelf.Request request,
+    String id,
+  ) async {
+    if (_chatService == null) {
+      return _errorResponse(503, 'Chat service not available');
+    }
 
     try {
       final bodyStr = await request.readAsString();
@@ -2164,22 +2562,29 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleDeleteCharacter(shelf.Request request, String id) async {
-    if (_characterRepository == null) return _errorResponse(503, 'Character repository not available');
+  Future<shelf.Response> _handleDeleteCharacter(
+    shelf.Request request,
+    String id,
+  ) async {
+    if (_characterRepository == null) {
+      return _errorResponse(503, 'Character repository not available');
+    }
 
     try {
       final dbId = int.tryParse(id);
       if (dbId == null) return _errorResponse(400, 'Invalid character ID');
 
-      // Find the character in the repository  
+      // Find the character in the repository
       final character = _characterRepository!.characters.firstWhere(
-        (c) => c.dbId == dbId,
+        (c) => c.dbId == id,
         orElse: () => throw Exception('Character not found'),
       );
 
       await _characterRepository!.deleteCharacter(
         character,
         chatsDir: _storageService.chatsDir,
+        cloudSyncService:
+            _cloudSyncService, // enables soft-delete flag + reconcile-driven remote cleanup
       );
 
       return shelf.Response.ok(
@@ -2192,39 +2597,60 @@ class WebServerService extends ChangeNotifier {
   }
 
   /// GET /api/characters/:id/export.png — Export character as PNG with embedded card data.
-  Future<shelf.Response> _handleExportCharacterPng(shelf.Request request, String id) async {
+  /// Uses the proper CharacterCard model so that baked-in lorebooks (character_book),
+  /// V2.5 extensions, and all fields are serialized in standard portable form.
+  Future<shelf.Response> _handleExportCharacterPng(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_db == null) return _errorResponse(503, 'Database not available');
     try {
-      final character = await _db!.getCharacterById(id);
+      // Prefer the repository path — this guarantees correct V2 shape + lorebook export
+      CharacterCard? card;
+      if (_characterRepository != null) {
+        card = await _characterRepository!.getCharacterCardById(id);
+      }
 
-      // Build V2 character card JSON
+      // Fallback to raw DB row only if repository is unavailable (still better than 500)
+      final dbCharacter = card == null ? await _db!.getCharacterById(id) : null;
+
+      // Build V2 character card JSON in the canonical portable shape
+      final Map<String, dynamic> data = card != null
+          ? card.toJson()
+          : dbCharacter!.toJson(); // raw shape is wrong but keeps server alive
+
       final v2Card = {
         'spec': 'chara_card_v2',
         'spec_version': '2.0',
-        'data': character.toJson(),
+        'data': data,
       };
       final charaJson = jsonEncode(v2Card);
       final charaB64 = base64Encode(utf8.encode(charaJson));
 
-      // Load avatar PNG or create placeholder
+      // Load avatar PNG or create placeholder (use whichever source we have)
+      final String displayName = card?.name ?? dbCharacter!.name;
+      final String? imagePath = card?.imagePath ?? dbCharacter!.imagePath;
+
       Uint8List pngBytes;
-      if (character.imagePath != null && character.imagePath!.isNotEmpty) {
-        // DB stores basename only — resolve to full local path
-        final imgBasename = p.basename(character.imagePath!);
-        final imgFullPath = p.join(_storageService.charactersDir.path, imgBasename);
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final imgBasename = p.basename(imagePath);
+        final imgFullPath = p.join(
+          _storageService.charactersDir.path,
+          imgBasename,
+        );
         final file = File(imgFullPath);
         if (file.existsSync()) {
           pngBytes = file.readAsBytesSync();
         } else {
-          pngBytes = _createPlaceholderPng(character.name);
+          pngBytes = _createPlaceholderPng(displayName);
         }
       } else {
-        pngBytes = _createPlaceholderPng(character.name);
+        pngBytes = _createPlaceholderPng(displayName);
       }
 
       // Embed character data as tEXt chunk
       final resultPng = _embedPngTextChunk(pngBytes, 'chara', charaB64);
-      final safeName = character.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final safeName = displayName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
 
       return shelf.Response.ok(
         resultPng,
@@ -2252,7 +2678,18 @@ class WebServerService extends ChangeNotifier {
       0x90, 0x77, 0x53, 0xDE, // CRC
       0x00, 0x00, 0x00, 0x0C, // IDAT length
       0x49, 0x44, 0x41, 0x54, // IDAT type
-      0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, // compressed pixel
+      0x08,
+      0xD7,
+      0x63,
+      0xF8,
+      0xCF,
+      0xC0,
+      0x00,
+      0x00,
+      0x00,
+      0x02,
+      0x00,
+      0x01, // compressed pixel
       0xE2, 0x21, 0xBC, 0x33, // CRC
       0x00, 0x00, 0x00, 0x00, // IEND length
       0x49, 0x45, 0x4E, 0x44, // IEND type
@@ -2261,12 +2698,18 @@ class WebServerService extends ChangeNotifier {
   }
 
   /// Embed a tEXt chunk into a PNG before the IEND chunk.
-  Uint8List _embedPngTextChunk(Uint8List pngBytes, String keyword, String text) {
+  Uint8List _embedPngTextChunk(
+    Uint8List pngBytes,
+    String keyword,
+    String text,
+  ) {
     // Find IEND offset
     int iendPos = -1;
     for (int i = pngBytes.length - 12; i >= 8; i--) {
-      if (pngBytes[i + 4] == 0x49 && pngBytes[i + 5] == 0x45 &&
-          pngBytes[i + 6] == 0x4E && pngBytes[i + 7] == 0x44) {
+      if (pngBytes[i + 4] == 0x49 &&
+          pngBytes[i + 5] == 0x45 &&
+          pngBytes[i + 6] == 0x4E &&
+          pngBytes[i + 7] == 0x44) {
         iendPos = i;
         break;
       }
@@ -2308,7 +2751,11 @@ class WebServerService extends ChangeNotifier {
     final result = Uint8List(pngBytes.length + chunk.length);
     result.setRange(0, iendPos, pngBytes);
     result.setRange(iendPos, iendPos + chunk.length, chunk);
-    result.setRange(iendPos + chunk.length, result.length, pngBytes.sublist(iendPos));
+    result.setRange(
+      iendPos + chunk.length,
+      result.length,
+      pngBytes.sublist(iendPos),
+    );
     return result;
   }
 
@@ -2335,7 +2782,11 @@ class WebServerService extends ChangeNotifier {
       // Convert 'key' (string) → 'keys' (array) and 'name' → 'comment'
       final keyStr = e['key']?.toString() ?? '';
       final keys = keyStr.isNotEmpty
-          ? keyStr.split(',').map((k) => k.trim()).where((k) => k.isNotEmpty).toList()
+          ? keyStr
+                .split(',')
+                .map((k) => k.trim())
+                .where((k) => k.isNotEmpty)
+                .toList()
           : (e['keys'] is List ? e['keys'] : <String>[]);
       return {
         'keys': keys,
@@ -2343,7 +2794,8 @@ class WebServerService extends ChangeNotifier {
         'comment': e['name']?.toString() ?? e['comment']?.toString() ?? '',
         'enabled': e['enabled'] ?? true,
         'constant': e['constant'] ?? false,
-        'sticky_depth': e['stickyDepth'] ?? e['sticky_depth'] ?? e['insertion_order'] ?? 4,
+        'sticky_depth':
+            e['stickyDepth'] ?? e['sticky_depth'] ?? e['insertion_order'] ?? 4,
         'insertion_order': e['insertion_order'] ?? 0,
       };
     }).toList();
@@ -2386,22 +2838,30 @@ class WebServerService extends ChangeNotifier {
           card.imagePath = savedPath;
 
           // Insert into database
-          final dbId = await _db!.insertCharacterReturningId(CharactersCompanion(
-            name: Value(card.name),
-            description: Value(card.description),
-            personality: Value(card.personality),
-            scenario: Value(card.scenario),
-            firstMessage: Value(card.firstMessage),
-            mesExample: Value(card.mesExample),
-            systemPrompt: Value(card.systemPrompt),
-            postHistoryInstructions: Value(card.postHistoryInstructions),
-            alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-            tags: Value(jsonEncode(card.tags)),
-            imagePath: Value(card.imagePath != null ? p.basename(card.imagePath!) : null),
-            ttsVoice: Value(card.ttsVoice),
-            lorebook: Value(card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null),
-            worldNames: Value(jsonEncode(card.worldNames)),
-          ));
+          final dbId = await _db!.insertCharacterReturningId(
+            CharactersCompanion(
+              name: Value(card.name),
+              description: Value(card.description),
+              personality: Value(card.personality),
+              scenario: Value(card.scenario),
+              firstMessage: Value(card.firstMessage),
+              mesExample: Value(card.mesExample),
+              systemPrompt: Value(card.systemPrompt),
+              postHistoryInstructions: Value(card.postHistoryInstructions),
+              alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+              tags: Value(jsonEncode(card.tags)),
+              imagePath: Value(
+                card.imagePath != null ? p.basename(card.imagePath!) : null,
+              ),
+              ttsVoice: Value(card.ttsVoice),
+              lorebook: Value(
+                card.lorebook != null
+                    ? jsonEncode(card.lorebook!.toJson())
+                    : null,
+              ),
+              worldNames: Value(jsonEncode(card.worldNames)),
+            ),
+          );
           card.dbId = dbId;
 
           // Import chat history if available
@@ -2430,7 +2890,9 @@ class WebServerService extends ChangeNotifier {
         }
       } finally {
         // Clean up temp directory
-        try { await tempDir.delete(recursive: true); } catch (_) {}
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
       }
     } catch (e) {
       return _errorResponse(500, 'Failed to import character: $e');
@@ -2442,9 +2904,13 @@ class WebServerService extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────────────
 
   Future<shelf.Response> _handleGetGroups(shelf.Request request) async {
-    if (_groupChatRepository == null) return _errorResponse(503, 'Group chat not available');
+    if (_groupChatRepository == null) {
+      return _errorResponse(503, 'Group chat not available');
+    }
     try {
-      final groups = _groupChatRepository!.groups.map((g) => g.toJson()).toList();
+      final groups = _groupChatRepository!.groups
+          .map((g) => g.toJson())
+          .toList();
       return shelf.Response.ok(
         jsonEncode(groups),
         headers: {'Content-Type': 'application/json'},
@@ -2455,13 +2921,17 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleCreateGroup(shelf.Request request) async {
-    if (_groupChatRepository == null) return _errorResponse(503, 'Group chat not available');
+    if (_groupChatRepository == null) {
+      return _errorResponse(503, 'Group chat not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final group = GroupChat(
         id: 'group_${DateTime.now().millisecondsSinceEpoch}',
         name: body['name']?.toString() ?? 'Group Chat',
-        characterIds: List<String>.from(body['character_ids'] ?? []),
+        // character_ids from API ignored (clean-break decoupling; members live in group_members).
+        // External tools will be notified post-completion. New groups via API start memberless
+        // until dedicated member endpoints or UI flows are used.
         turnOrder: TurnOrder.values.firstWhere(
           (e) => e.name == (body['turn_order'] ?? 'roundRobin'),
           orElse: () => TurnOrder.roundRobin,
@@ -2471,6 +2941,8 @@ class WebServerService extends ChangeNotifier {
         firstMessage: body['first_message']?.toString() ?? '',
         scenario: body['scenario']?.toString() ?? '',
         systemPrompt: body['system_prompt']?.toString() ?? '',
+        // v31 columns — web API creations start clean.
+        baselineRealismState: '{}',
       );
       await _groupChatRepository!.save(group);
       return shelf.Response.ok(
@@ -2483,7 +2955,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleUpdateGroup(shelf.Request request) async {
-    if (_groupChatRepository == null) return _errorResponse(503, 'Group chat not available');
+    if (_groupChatRepository == null) {
+      return _errorResponse(503, 'Group chat not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final id = body['id']?.toString() ?? '';
@@ -2492,18 +2966,28 @@ class WebServerService extends ChangeNotifier {
       if (existing == null) return _errorResponse(404, 'Group not found');
 
       existing.name = body['name']?.toString() ?? existing.name;
-      if (body['character_ids'] != null) existing.characterIds = List<String>.from(body['character_ids']);
+      // character_ids updates from API ignored (decoupled; no legacy field on GroupChat).
       if (body['turn_order'] != null) {
         existing.turnOrder = TurnOrder.values.firstWhere(
           (e) => e.name == body['turn_order'],
           orElse: () => existing.turnOrder,
         );
       }
-      if (body['auto_advance'] != null) existing.autoAdvance = body['auto_advance'];
-      if (body['director_mode'] != null) existing.directorMode = body['director_mode'];
-      if (body['first_message'] != null) existing.firstMessage = body['first_message'].toString();
-      if (body['scenario'] != null) existing.scenario = body['scenario'].toString();
-      if (body['system_prompt'] != null) existing.systemPrompt = body['system_prompt'].toString();
+      if (body['auto_advance'] != null) {
+        existing.autoAdvance = body['auto_advance'];
+      }
+      if (body['director_mode'] != null) {
+        existing.directorMode = body['director_mode'];
+      }
+      if (body['first_message'] != null) {
+        existing.firstMessage = body['first_message'].toString();
+      }
+      if (body['scenario'] != null) {
+        existing.scenario = body['scenario'].toString();
+      }
+      if (body['system_prompt'] != null) {
+        existing.systemPrompt = body['system_prompt'].toString();
+      }
 
       await _groupChatRepository!.save(existing);
       return shelf.Response.ok(
@@ -2516,12 +3000,17 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleDeleteGroup(shelf.Request request) async {
-    if (_groupChatRepository == null) return _errorResponse(503, 'Group chat not available');
+    if (_groupChatRepository == null) {
+      return _errorResponse(503, 'Group chat not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final id = body['id']?.toString() ?? '';
       if (id.isEmpty) return _errorResponse(400, 'Group id is required');
-      await _groupChatRepository!.delete(id);
+      await _groupChatRepository!.delete(
+        id,
+        cloudSyncService: _cloudSyncService,
+      ); // enables deletion propagation via soft flag + reconcile
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
         headers: {'Content-Type': 'application/json'},
@@ -2556,7 +3045,9 @@ class WebServerService extends ChangeNotifier {
   /// POST /api/groups/fork — Fork the current 1:1 chat into a new group.
   /// Body: { character_ids: [...], group_name?, scenario?, turn_order? }
   Future<shelf.Response> _handleForkToGroup(shelf.Request request) async {
-    if (_chatService == null || _groupChatRepository == null || _characterRepository == null) {
+    if (_chatService == null ||
+        _groupChatRepository == null ||
+        _characterRepository == null) {
       return _errorResponse(503, 'Services not available');
     }
     try {
@@ -2576,7 +3067,9 @@ class WebServerService extends ChangeNotifier {
         if (match != null) additionalChars.add(match);
       }
 
-      if (additionalChars.isEmpty) return _errorResponse(400, 'No valid characters found');
+      if (additionalChars.isEmpty) {
+        return _errorResponse(400, 'No valid characters found');
+      }
 
       final turnOrder = TurnOrder.values.firstWhere(
         (e) => e.name == (body['turn_order'] ?? 'roundRobin'),
@@ -2590,6 +3083,56 @@ class WebServerService extends ChangeNotifier {
         scenario: body['scenario']?.toString(),
         turnOrder: turnOrder,
       );
+
+      // Post-fork private materialization for the additional members (extends this handler).
+      // Uses real group.id from fork result + generalized duplicate + row insert. Functional decoupled fork.
+      if (group != null) {
+        final db = await AppDatabase.instance();
+        for (final ch in additionalChars) {
+          final mid = const Uuid().v4();
+          final avDir = Directory(
+            p.join(_storageService.groupsDir.path, group.id, 'avatars'),
+          );
+          await avDir.create(recursive: true);
+          await _characterRepository!.duplicateCharacter(
+            ch,
+            targetDirOverride: avDir.path,
+            forcedBasename: mid,
+            skipLibraryInsert: true,
+          );
+          await db.insertGroupMember(
+            GroupMembersCompanion(
+              id: Value(mid),
+              groupId: Value(group.id),
+              name: Value(ch.name),
+              description: Value(ch.description),
+              personality: Value(ch.personality),
+              scenario: Value(ch.scenario),
+              firstMessage: Value(ch.firstMessage),
+              mesExample: Value(ch.mesExample),
+              systemPrompt: Value(ch.systemPrompt),
+              postHistoryInstructions: Value(ch.postHistoryInstructions),
+              alternateGreetings: Value(jsonEncode(ch.alternateGreetings)),
+              tags: Value(jsonEncode(ch.tags)),
+              avatarFilename: Value('$mid.png'),
+              ttsVoice: Value(ch.ttsVoice),
+              lorebook: Value(
+                ch.lorebook != null ? jsonEncode(ch.lorebook!.toJson()) : null,
+              ),
+              worldNames: Value(jsonEncode(ch.worldNames)),
+              frontPorchExtensions: Value(
+                ch.frontPorchExtensions != null
+                    ? jsonEncode(ch.frontPorchExtensions!.toJson())
+                    : null,
+              ),
+              rawExtensions: Value(
+                ch.rawExtensions != null ? jsonEncode(ch.rawExtensions!) : null,
+              ),
+              memberState: Value('{}'),
+            ),
+          );
+        }
+      }
 
       if (group == null) return _errorResponse(500, 'Fork failed');
 
@@ -2605,7 +3148,9 @@ class WebServerService extends ChangeNotifier {
   /// POST /api/groups/add-character — Add a character to the active group.
   /// Body: { character_id: "..." }
   Future<shelf.Response> _handleGroupAddCharacter(shelf.Request request) async {
-    if (_chatService == null || _groupChatRepository == null || _characterRepository == null) {
+    if (_chatService == null ||
+        _groupChatRepository == null ||
+        _characterRepository == null) {
       return _errorResponse(503, 'Services not available');
     }
     try {
@@ -2622,8 +3167,16 @@ class WebServerService extends ChangeNotifier {
 
       if (match == null) return _errorResponse(404, 'Character not found');
 
-      final ok = await _chatService!.addCharacterToGroup(match, _groupChatRepository!);
-      if (!ok) return _errorResponse(400, 'Could not add character (already in group or not in group mode)');
+      final ok = await _chatService!.addCharacterToGroup(
+        match,
+        _groupChatRepository!,
+      );
+      if (!ok) {
+        return _errorResponse(
+          400,
+          'Could not add character (already in group or not in group mode)',
+        );
+      }
 
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -2636,8 +3189,12 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/groups/remove-character — Remove a character from the active group.
   /// Body: { character_id: "..." }
-  Future<shelf.Response> _handleGroupRemoveCharacter(shelf.Request request) async {
-    if (_chatService == null || _groupChatRepository == null || _characterRepository == null) {
+  Future<shelf.Response> _handleGroupRemoveCharacter(
+    shelf.Request request,
+  ) async {
+    if (_chatService == null ||
+        _groupChatRepository == null ||
+        _characterRepository == null) {
       return _errorResponse(503, 'Services not available');
     }
     try {
@@ -2654,8 +3211,16 @@ class WebServerService extends ChangeNotifier {
 
       if (match == null) return _errorResponse(404, 'Character not found');
 
-      final ok = await _chatService!.removeCharacterFromGroup(match, _groupChatRepository!);
-      if (!ok) return _errorResponse(400, 'Could not remove character (min 2 required or not in group mode)');
+      final ok = await _chatService!.removeCharacterFromGroup(
+        match,
+        _groupChatRepository!,
+      );
+      if (!ok) {
+        return _errorResponse(
+          400,
+          'Could not remove character (min 2 required or not in group mode)',
+        );
+      }
 
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -2669,7 +3234,9 @@ class WebServerService extends ChangeNotifier {
   /// POST /api/groups/set-next — Set the next character to speak in a group.
   /// Body: { character_name: "..." }
   Future<shelf.Response> _handleGroupSetNext(shelf.Request request) async {
-    if (_chatService == null) return _errorResponse(503, 'Chat service not available');
+    if (_chatService == null) {
+      return _errorResponse(503, 'Chat service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final name = body['character_name']?.toString() ?? '';
@@ -2679,7 +3246,9 @@ class WebServerService extends ChangeNotifier {
           .where((c) => c.name == name)
           .firstOrNull;
 
-      if (match == null) return _errorResponse(404, 'Character not found in group');
+      if (match == null) {
+        return _errorResponse(404, 'Character not found in group');
+      }
 
       _chatService!.setNextCharacter(match);
 
@@ -2697,9 +3266,13 @@ class WebServerService extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────────────
 
   Future<shelf.Response> _handleGenerate(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
     final service = _llmProvider!.activeService;
-    if (!service.isReady) return _errorResponse(503, 'LLM backend is not ready');
+    if (!service.isReady) {
+      return _errorResponse(503, 'LLM backend is not ready');
+    }
 
     try {
       final body = jsonDecode(await request.readAsString());
@@ -2745,12 +3318,16 @@ class WebServerService extends ChangeNotifier {
     try {
       final folders = _folderService!.folders;
 
-      final result = folders.map((f) => ({
-        'id': f.id,
-        'name': f.name,
-        'parentId': f.parentId,
-        'characterCount': f.characterPaths.length,
-      })).toList();
+      final result = folders
+          .map(
+            (f) => ({
+              'id': f.id,
+              'name': f.name,
+              'parentId': f.parentId,
+              'characterCount': f.characterPaths.length,
+            }),
+          )
+          .toList();
 
       return shelf.Response.ok(
         jsonEncode(result),
@@ -2762,13 +3339,18 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleCreateFolder(shelf.Request request) async {
-    if (_folderService == null) return _errorResponse(503, 'Folder service not available');
+    if (_folderService == null) {
+      return _errorResponse(503, 'Folder service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final name = body['name']?.toString() ?? '';
       if (name.isEmpty) return _errorResponse(400, 'Folder name is required');
       final parentId = body['parentId']?.toString();
-      final folder = await _folderService!.createFolder(name, parentId: parentId);
+      final folder = await _folderService!.createFolder(
+        name,
+        parentId: parentId,
+      );
       return shelf.Response.ok(
         jsonEncode({'status': 'ok', 'id': folder.id, 'name': folder.name}),
         headers: {'Content-Type': 'application/json'},
@@ -2779,12 +3361,16 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleRenameFolder(shelf.Request request) async {
-    if (_folderService == null) return _errorResponse(503, 'Folder service not available');
+    if (_folderService == null) {
+      return _errorResponse(503, 'Folder service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final id = body['id']?.toString() ?? '';
       final name = body['name']?.toString() ?? '';
-      if (id.isEmpty || name.isEmpty) return _errorResponse(400, 'Folder id and name are required');
+      if (id.isEmpty || name.isEmpty) {
+        return _errorResponse(400, 'Folder id and name are required');
+      }
       await _folderService!.renameFolder(id, name);
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -2796,7 +3382,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleDeleteFolder(shelf.Request request) async {
-    if (_folderService == null) return _errorResponse(503, 'Folder service not available');
+    if (_folderService == null) {
+      return _errorResponse(503, 'Folder service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final id = body['id']?.toString() ?? '';
@@ -2812,12 +3400,16 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleAddCharToFolder(shelf.Request request) async {
-    if (_folderService == null) return _errorResponse(503, 'Folder service not available');
+    if (_folderService == null) {
+      return _errorResponse(503, 'Folder service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final folderId = body['folderId']?.toString() ?? '';
       final characterPath = body['characterPath']?.toString() ?? '';
-      if (folderId.isEmpty || characterPath.isEmpty) return _errorResponse(400, 'folderId and characterPath required');
+      if (folderId.isEmpty || characterPath.isEmpty) {
+        return _errorResponse(400, 'folderId and characterPath required');
+      }
       await _folderService!.addToFolder(folderId, characterPath);
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -2828,13 +3420,19 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleRemoveCharFromFolder(shelf.Request request) async {
-    if (_folderService == null) return _errorResponse(503, 'Folder service not available');
+  Future<shelf.Response> _handleRemoveCharFromFolder(
+    shelf.Request request,
+  ) async {
+    if (_folderService == null) {
+      return _errorResponse(503, 'Folder service not available');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final folderId = body['folderId']?.toString() ?? '';
       final characterPath = body['characterPath']?.toString() ?? '';
-      if (folderId.isEmpty || characterPath.isEmpty) return _errorResponse(400, 'folderId and characterPath required');
+      if (folderId.isEmpty || characterPath.isEmpty) {
+        return _errorResponse(400, 'folderId and characterPath required');
+      }
       await _folderService!.removeFromFolder(folderId, characterPath);
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -2851,7 +3449,9 @@ class WebServerService extends ChangeNotifier {
 
   /// Returns the image_cache directory path.
   Future<Directory> _getImageCacheDir() async {
-    final root = _storageService.rootPath ?? (await getApplicationDocumentsDirectory()).path;
+    final root =
+        _storageService.rootPath ??
+        (await getApplicationDocumentsDirectory()).path;
     final dir = Directory(p.join(root, 'system', 'image_cache'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
@@ -2864,7 +3464,14 @@ class WebServerService extends ChangeNotifier {
     String ext = '.png';
     if (uri != null && uri.pathSegments.isNotEmpty) {
       final seg = uri.pathSegments.last.split('.').last.split('?').first;
-      if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].contains(seg.toLowerCase())) {
+      if ([
+        'png',
+        'jpg',
+        'jpeg',
+        'gif',
+        'webp',
+        'svg',
+      ].contains(seg.toLowerCase())) {
         ext = '.$seg';
       }
     }
@@ -2922,8 +3529,8 @@ class WebServerService extends ChangeNotifier {
     );
   }
 
-  /// GET /api/image-cache/check?url=<encoded_url>
-  /// Returns { cached: bool } — checks if URL is already in local image cache.
+  /// GET `/api/image-cache/check?url=<encoded_url>`
+  /// Returns `{ cached: bool }` — checks if URL is already in local image cache.
   Future<shelf.Response> _handleImageCacheCheck(shelf.Request request) async {
     final url = request.url.queryParameters['url'];
     if (url == null || url.isEmpty) {
@@ -2942,7 +3549,7 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// GET /api/image-cache/serve?url=<encoded_url>
+  /// GET `/api/image-cache/serve?url=<encoded_url>`
   /// Serves image from cache, downloading and caching first if needed.
   Future<shelf.Response> _handleImageCacheServe(shelf.Request request) async {
     final url = request.url.queryParameters['url'];
@@ -2957,13 +3564,22 @@ class WebServerService extends ChangeNotifier {
       // Serve from cache if available
       if (await file.exists()) {
         final ext = filename.split('.').last.toLowerCase();
-        final mime = {
-          'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-          'gif': 'image/gif', 'webp': 'image/webp', 'svg': 'image/svg+xml',
-        }[ext] ?? 'image/png';
+        final mime =
+            {
+              'png': 'image/png',
+              'jpg': 'image/jpeg',
+              'jpeg': 'image/jpeg',
+              'gif': 'image/gif',
+              'webp': 'image/webp',
+              'svg': 'image/svg+xml',
+            }[ext] ??
+            'image/png';
         return shelf.Response.ok(
           await file.readAsBytes(),
-          headers: {'Content-Type': mime, 'Cache-Control': 'public, max-age=86400'},
+          headers: {
+            'Content-Type': mime,
+            'Cache-Control': 'public, max-age=86400',
+          },
         );
       }
 
@@ -2973,16 +3589,24 @@ class WebServerService extends ChangeNotifier {
         final req = await httpClient.getUrl(Uri.parse(url));
         final response = await req.close();
         if (response.statusCode != 200) {
-          return _errorResponse(502, 'Upstream returned ${response.statusCode}');
+          return _errorResponse(
+            502,
+            'Upstream returned ${response.statusCode}',
+          );
         }
         final bytes = await consolidateHttpClientResponseBytes(response);
         await file.writeAsBytes(bytes);
 
         final contentType = response.headers.contentType;
-        final mime = contentType != null ? '${contentType.primaryType}/${contentType.subType}' : 'image/png';
+        final mime = contentType != null
+            ? '${contentType.primaryType}/${contentType.subType}'
+            : 'image/png';
         return shelf.Response.ok(
           bytes,
-          headers: {'Content-Type': mime, 'Cache-Control': 'public, max-age=86400'},
+          headers: {
+            'Content-Type': mime,
+            'Cache-Control': 'public, max-age=86400',
+          },
         );
       } finally {
         httpClient.close();
@@ -3055,7 +3679,10 @@ class WebServerService extends ChangeNotifier {
 
   Future<shelf.Response> _handleSetSyncConfig(shelf.Request request) async {
     if (isPreRelease) {
-      return _errorResponse(403, 'Cloud Sync is disabled in pre-release builds to prevent database incompatibility with the stable release.');
+      return _errorResponse(
+        403,
+        'Cloud Sync is disabled in pre-release builds to prevent database incompatibility with the stable release.',
+      );
     }
     try {
       final body = jsonDecode(await request.readAsString());
@@ -3086,9 +3713,14 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleSyncTestConnection(shelf.Request request) async {
+  Future<shelf.Response> _handleSyncTestConnection(
+    shelf.Request request,
+  ) async {
     if (isPreRelease) {
-      return _errorResponse(403, 'Cloud Sync is disabled in pre-release builds.');
+      return _errorResponse(
+        403,
+        'Cloud Sync is disabled in pre-release builds.',
+      );
     }
     if (_cloudSyncService == null) {
       return _errorResponse(503, 'Cloud sync service not available');
@@ -3098,7 +3730,10 @@ class WebServerService extends ChangeNotifier {
       final provider = await _ensureSyncProvider();
       if (provider == null) {
         return shelf.Response.ok(
-          jsonEncode({'ok': false, 'error': 'Could not connect to provider. Check credentials.'}),
+          jsonEncode({
+            'ok': false,
+            'error': 'Could not connect to provider. Check credentials.',
+          }),
           headers: {'Content-Type': 'application/json'},
         );
       }
@@ -3107,7 +3742,9 @@ class WebServerService extends ChangeNotifier {
       return shelf.Response.ok(
         jsonEncode({
           'ok': ok,
-          'error': ok ? null : (_cloudSyncService!.lastError ?? 'Connection test failed'),
+          'error': ok
+              ? null
+              : (_cloudSyncService!.lastError ?? 'Connection test failed'),
         }),
         headers: {'Content-Type': 'application/json'},
       );
@@ -3121,7 +3758,10 @@ class WebServerService extends ChangeNotifier {
 
   Future<shelf.Response> _handleSyncNow(shelf.Request request) async {
     if (isPreRelease) {
-      return _errorResponse(403, 'Cloud Sync is disabled in pre-release builds.');
+      return _errorResponse(
+        403,
+        'Cloud Sync is disabled in pre-release builds.',
+      );
     }
     if (_cloudSyncService == null) {
       return _errorResponse(503, 'Cloud sync service not available');
@@ -3135,12 +3775,15 @@ class WebServerService extends ChangeNotifier {
 
       final chatsPath = _storageService.chatsDir.path;
       final rootPath = _storageService.rootPath ?? chatsPath;
-      final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+      final charactersPath =
+          '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
       // Fire-and-forget — client polls /api/sync/status for progress
       _cloudSyncService!.fullSync(chatsPath, charactersPath).then((_) async {
         if (_cloudSyncService!.status == SyncStatus.success) {
-          await _storageService.setCloudSyncLastTime(DateTime.now().toIso8601String());
+          await _storageService.setCloudSyncLastTime(
+            DateTime.now().toIso8601String(),
+          );
           // Reload characters so newly downloaded PNGs appear
           await _characterRepository?.loadCharacters();
         }
@@ -3157,7 +3800,10 @@ class WebServerService extends ChangeNotifier {
 
   Future<shelf.Response> _handleSyncForceUpload(shelf.Request request) async {
     if (isPreRelease) {
-      return _errorResponse(403, 'Cloud Sync is disabled in pre-release builds.');
+      return _errorResponse(
+        403,
+        'Cloud Sync is disabled in pre-release builds.',
+      );
     }
     if (_cloudSyncService == null) {
       return _errorResponse(503, 'Cloud sync service not available');
@@ -3170,7 +3816,9 @@ class WebServerService extends ChangeNotifier {
       }
 
       await _cloudSyncService!.forceUploadDatabase();
-      await _storageService.setCloudSyncLastTime(DateTime.now().toIso8601String());
+      await _storageService.setCloudSyncLastTime(
+        DateTime.now().toIso8601String(),
+      );
 
       return shelf.Response.ok(
         jsonEncode({'status': 'ok'}),
@@ -3183,7 +3831,10 @@ class WebServerService extends ChangeNotifier {
 
   Future<shelf.Response> _handleSyncPurge(shelf.Request request) async {
     if (isPreRelease) {
-      return _errorResponse(403, 'Cloud Sync is disabled in pre-release builds.');
+      return _errorResponse(
+        403,
+        'Cloud Sync is disabled in pre-release builds.',
+      );
     }
     if (_cloudSyncService == null) {
       return _errorResponse(503, 'Cloud sync service not available');
@@ -3206,7 +3857,9 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleListCloudCharacters(shelf.Request request) async {
+  Future<shelf.Response> _handleListCloudCharacters(
+    shelf.Request request,
+  ) async {
     if (_cloudSyncService == null) {
       return _errorResponse(503, 'Cloud sync service not available');
     }
@@ -3217,14 +3870,17 @@ class WebServerService extends ChangeNotifier {
         return _errorResponse(400, 'Could not connect to cloud provider');
       }
 
-      final rootPath = _storageService.rootPath ?? _storageService.chatsDir.path;
-      final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+      final rootPath =
+          _storageService.rootPath ?? _storageService.chatsDir.path;
+      final charactersPath =
+          '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
-      final chars = await _cloudSyncService!.listAllRemoteCharacters(charactersPath);
-      final result = chars.map((c) => {
-        'name': c.name,
-        'existsLocally': c.existsLocally,
-      }).toList();
+      final chars = await _cloudSyncService!.listAllRemoteCharacters(
+        charactersPath,
+      );
+      final result = chars
+          .map((c) => {'name': c.name, 'existsLocally': c.existsLocally})
+          .toList();
 
       return shelf.Response.ok(
         jsonEncode(result),
@@ -3235,7 +3891,9 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  Future<shelf.Response> _handleDownloadCloudCharacters(shelf.Request request) async {
+  Future<shelf.Response> _handleDownloadCloudCharacters(
+    shelf.Request request,
+  ) async {
     if (_cloudSyncService == null) {
       return _errorResponse(503, 'Cloud sync service not available');
     }
@@ -3252,10 +3910,15 @@ class WebServerService extends ChangeNotifier {
         return _errorResponse(400, 'Could not connect to cloud provider');
       }
 
-      final rootPath = _storageService.rootPath ?? _storageService.chatsDir.path;
-      final charactersPath = '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
+      final rootPath =
+          _storageService.rootPath ?? _storageService.chatsDir.path;
+      final charactersPath =
+          '$rootPath${Platform.pathSeparator}KoboldManager${Platform.pathSeparator}Characters';
 
-      final downloaded = await _cloudSyncService!.downloadCharacters(charactersPath, filenames);
+      final downloaded = await _cloudSyncService!.downloadCharacters(
+        charactersPath,
+        filenames,
+      );
 
       // Reload characters so new PNGs appear in the UI
       await _characterRepository?.loadCharacters();
@@ -3274,7 +3937,9 @@ class WebServerService extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────────────
 
   Future<shelf.Response> _handleGetBackups(shelf.Request request) async {
-    if (isPreRelease) return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    if (isPreRelease) {
+      return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    }
     try {
       final backups = await BackupService.listBackups();
       final result = backups.map((f) {
@@ -3298,11 +3963,16 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleCreateBackup(shelf.Request request) async {
-    if (isPreRelease) return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    if (isPreRelease) {
+      return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    }
     try {
       final backupPath = await BackupService.createBackup();
       return shelf.Response.ok(
-        jsonEncode({'status': backupPath != null ? 'ok' : 'no_db', 'path': backupPath}),
+        jsonEncode({
+          'status': backupPath != null ? 'ok' : 'no_db',
+          'path': backupPath,
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -3311,7 +3981,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleRestoreBackup(shelf.Request request) async {
-    if (isPreRelease) return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    if (isPreRelease) {
+      return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final backupPath = body['path']?.toString();
@@ -3322,7 +3994,10 @@ class WebServerService extends ChangeNotifier {
       await BackupService.restoreBackup(backupPath);
 
       return shelf.Response.ok(
-        jsonEncode({'status': 'ok', 'message': 'Backup restored. App may need restart.'}),
+        jsonEncode({
+          'status': 'ok',
+          'message': 'Backup restored. App may need restart.',
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -3331,7 +4006,9 @@ class WebServerService extends ChangeNotifier {
   }
 
   Future<shelf.Response> _handleDeleteBackup(shelf.Request request) async {
-    if (isPreRelease) return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    if (isPreRelease) {
+      return _errorResponse(403, 'Backups are disabled in pre-release builds.');
+    }
     try {
       final body = jsonDecode(await request.readAsString());
       final backupPath = body['path']?.toString();
@@ -3353,208 +4030,17 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Static asset serving
-  // ─────────────────────────────────────────────────────────────────────
+  // _serveWebAsset + _resolveWebAssetPath + client tracker remnant + _parseUserAgent excised (Stage 6; deletion part of task + security hardening in web_asset_server lift). See prior deletion comments for auth/middleware. Live helpers (_errorResponse, _tryParseJsonList, _basename, disconnectClient, stop, broadcasts) remain below for the not-yet-lifted route groups.
 
-  shelf.Response _serveWebAsset(String filePath) {
-    final assetPath = _resolveWebAssetPath(filePath);
-    final file = File(assetPath);
-    if (!file.existsSync()) {
-      debugPrint('[WebServer] ERROR: web asset not found: $filePath');
-      debugPrint('[WebServer]   looked at: $assetPath');
-      debugPrint('[WebServer]   resolvedExecutable: ${Platform.resolvedExecutable}');
-      debugPrint('[WebServer]   Platform.isMacOS: ${Platform.isMacOS}');
-      return shelf.Response.notFound('File not found: $filePath (tried $assetPath)');
-    }
-
-    String contentType = 'text/plain';
-    if (filePath.endsWith('.html')) contentType = 'text/html; charset=utf-8';
-    if (filePath.endsWith('.css')) contentType = 'text/css; charset=utf-8';
-    if (filePath.endsWith('.js')) contentType = 'application/javascript; charset=utf-8';
-    if (filePath.endsWith('.json')) contentType = 'application/json; charset=utf-8';
-    if (filePath.endsWith('.png')) contentType = 'image/png';
-    if (filePath.endsWith('.svg')) contentType = 'image/svg+xml';
-
-    return shelf.Response.ok(
-      file.readAsBytesSync(),
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
-    );
-  }
-
-  String _resolveWebAssetPath(String relativePath) {
-    final exeFile = File(Platform.resolvedExecutable);
-    final exeDir = exeFile.parent; // on macOS: .../Contents/MacOS
-
-    // 1. Development: walk upward from the executable until we find pubspec.yaml.
-    // This works for `flutter run`, running the binary from the project root, etc.
-    Directory dir = exeDir;
-    for (int i = 0; i < 12; i++) {
-      final pubspecPath = p.join(dir.path, 'pubspec.yaml');
-      if (File(pubspecPath).existsSync()) {
-        final candidate = p.join(dir.path, 'assets', 'web', relativePath);
-        if (File(candidate).existsSync()) {
-          debugPrint('[WebServer] Serving web asset from source tree: $candidate');
-          return candidate;
-        }
-      }
-      final parent = dir.parent;
-      if (parent.path == dir.path) break;
-      dir = parent;
-    }
-
-    // 2. macOS release bundle: assets live inside the App.framework
-    // Typical layout:
-    //   .../FrontPorchAI.app/Contents/MacOS/FrontPorchAI   (exe)
-    //   .../FrontPorchAI.app/Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/assets/web/...
-    if (Platform.isMacOS) {
-      final contentsDir = exeDir.parent; // .../Contents
-      // Preferred location in modern Flutter macOS builds
-      final appFrameworkFlutterAssets = p.join(
-        contentsDir.path,
-        'Frameworks',
-        'App.framework',
-        'Versions',
-        'A',
-        'Resources',
-        'flutter_assets',
-      );
-      final appFrameworkAssets = Directory(appFrameworkFlutterAssets);
-      if (appFrameworkAssets.existsSync()) {
-        final candidate = p.join(appFrameworkAssets.path, 'assets', 'web', relativePath);
-        debugPrint('[WebServer] macOS: trying App.framework path: $candidate');
-        return candidate;
-      }
-      // Fallback for some bundle layouts that copy assets under Resources/
-      final resourcesFlutterAssets = p.join(contentsDir.path, 'Resources', 'flutter_assets');
-      final resourcesAssets = Directory(resourcesFlutterAssets);
-      if (resourcesAssets.existsSync()) {
-        final candidate = p.join(resourcesAssets.path, 'assets', 'web', relativePath);
-        debugPrint('[WebServer] macOS: trying Contents/Resources path: $candidate');
-        return candidate;
-      }
-    }
-
-    // 3. Linux / Windows / generic Flutter desktop release layout
-    // The executable sits next to a "data/flutter_assets" folder.
-    final dataFlutterPath = p.join(exeDir.path, 'data', 'flutter_assets');
-    final dataFlutter = Directory(dataFlutterPath);
-    if (dataFlutter.existsSync()) {
-      final candidate = p.join(dataFlutter.path, 'assets', 'web', relativePath);
-      debugPrint('[WebServer] Using data/flutter_assets path: $candidate');
-      return candidate;
-    }
-
-    // 4. Last-ditch fallback (old behavior) — will produce a clear 404 + debug log above.
-    final fallback = p.join(exeDir.path, 'data', 'flutter_assets', 'assets', 'web', relativePath);
-    debugPrint('[WebServer] Using last-ditch fallback path: $fallback');
-    return fallback;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────
-  // Middleware
-  // ─────────────────────────────────────────────────────────────────────
-
-  /// Track active client when any authenticated API request arrives.
-  shelf.Middleware _clientTrackingMiddleware() {
-    return (shelf.Handler innerHandler) {
-      return (shelf.Request request) async {
-        if (request.url.path.startsWith('api/') &&
-            request.url.path != 'api/health' &&
-            request.url.path != 'api/auth/login' &&
-            request.url.path != 'api/disconnect') {
-          if (!_hasActiveClient) {
-            _hasActiveClient = true;
-            final forwardedFor = request.headers['x-forwarded-for'];
-            _connectedClientIp = forwardedFor ??
-                request.headers['x-real-ip'] ??
-                (request.context['shelf.io.connection_info'] != null
-                    ? (request.context['shelf.io.connection_info'] as HttpConnectionInfo?)?.remoteAddress.address
-                    : null);
-            final ua = request.headers['user-agent'] ?? '';
-            _connectedClientInfo = _parseUserAgent(ua, _connectedClientIp);
-            debugPrint('[WebServer] Remote client connected: $_connectedClientInfo');
-            notifyListeners();
-          }
-        }
-        return innerHandler(request);
-      };
-    };
-  }
-
-  /// Parse User-Agent string into a human-readable browser + OS description.
-  String _parseUserAgent(String ua, String? ip) {
-    if (ua.isEmpty) return ip ?? 'Unknown';
-
-    // Detect browser (order matters — check specific before generic)
-    String browser;
-    if (ua.contains('Edg/') || ua.contains('Edge/')) {
-      browser = 'Edge';
-    } else if (ua.contains('OPR/') || ua.contains('Opera')) {
-      browser = 'Opera';
-    } else if (ua.contains('Vivaldi/')) {
-      browser = 'Vivaldi';
-    } else if (ua.contains('Brave')) {
-      browser = 'Brave';
-    } else if (ua.contains('Firefox/')) {
-      browser = 'Firefox';
-    } else if (ua.contains('Chrome/') && ua.contains('Safari/')) {
-      browser = 'Chrome';
-    } else if (ua.contains('Safari/') && !ua.contains('Chrome/')) {
-      browser = 'Safari';
-    } else {
-      browser = 'Browser';
-    }
-
-    // Detect OS
-    String os;
-    if (ua.contains('Windows')) {
-      os = 'Windows';
-    } else if (ua.contains('Macintosh') || ua.contains('Mac OS')) {
-      os = 'macOS';
-    } else if (ua.contains('Android')) {
-      os = 'Android';
-    } else if (ua.contains('iPhone') || ua.contains('iPad')) {
-      os = 'iOS';
-    } else if (ua.contains('Linux')) {
-      os = 'Linux';
-    } else if (ua.contains('CrOS')) {
-      os = 'ChromeOS';
-    } else {
-      os = 'Unknown OS';
-    }
-
-    final ipPart = ip != null ? ' ($ip)' : '';
-    return '$browser on $os$ipPart';
-  }
-
-  shelf.Middleware _corsMiddleware() {
-    return (shelf.Handler innerHandler) {
-      return (shelf.Request request) async {
-        if (request.method == 'OPTIONS') {
-          return shelf.Response.ok('', headers: _corsHeaders);
-        }
-        final response = await innerHandler(request);
-        return response.change(headers: _corsHeaders);
-      };
-    };
-  }
-
-  static const _corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+  // _corsMiddleware + _corsHeaders extracted to middleware/cors_middleware.dart (Stage 6; deletion part of task). Old body removed; wired via CorsMiddleware().middleware in start().
 
   // ─────────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────────
 
   shelf.Response _errorResponse(int status, String message) {
-    return shelf.Response(status,
+    return shelf.Response(
+      status,
       body: jsonEncode({'error': message}),
       headers: {'Content-Type': 'application/json'},
     );
@@ -3604,17 +4090,25 @@ class WebServerService extends ChangeNotifier {
   void _chargenBroadcast(Map<String, dynamic> eventData) {
     // Also store state for polling fallback
     final eventType = eventData['event']?.toString() ?? '';
-    if (eventType == 'status') _chargenStatus = eventData['text']?.toString() ?? '';
-    if (eventType == 'preview') _chargenPreview = eventData['text']?.toString() ?? '';
+    if (eventType == 'status') {
+      _chargenStatus = eventData['text']?.toString() ?? '';
+    }
+    if (eventType == 'preview') {
+      _chargenPreview = eventData['text']?.toString() ?? '';
+    }
     if (eventType == 'complete') {
       _chargenCompletedCard = eventData['card'] as Map<String, dynamic>?;
       _chargenError = null;
     }
-    if (eventType == 'error') _chargenError = eventData['text']?.toString() ?? 'Unknown error';
+    if (eventType == 'error') {
+      _chargenError = eventData['text']?.toString() ?? 'Unknown error';
+    }
 
     _chargenSseClients.removeWhere((c) => c.isClosed);
     if (_chargenSseClients.isEmpty) {
-      debugPrint('[SSE] No chargen clients connected, dropping $eventType event');
+      debugPrint(
+        '[SSE] No chargen clients connected, dropping $eventType event',
+      );
       return;
     }
     int sent = 0;
@@ -3628,7 +4122,9 @@ class WebServerService extends ChangeNotifier {
       }
     }
     if (eventType != 'preview') {
-      debugPrint('[SSE] Broadcast $eventType to $sent/${_chargenSseClients.length} clients');
+      debugPrint(
+        '[SSE] Broadcast $eventType to $sent/${_chargenSseClients.length} clients',
+      );
     }
   }
 
@@ -3656,17 +4152,24 @@ class WebServerService extends ChangeNotifier {
   Future<shelf.Response> _handleChargenStream(shelf.Request request) async {
     final controller = StreamController<List<int>>();
     _chargenSseClients.add(controller);
-    debugPrint('[WebServer] Chargen SSE client connected (${_chargenSseClients.length} total)');
+    debugPrint(
+      '[WebServer] Chargen SSE client connected (${_chargenSseClients.length} total)',
+    );
 
     // Send initial state
     try {
-      final jsonStr = jsonEncode({'event': 'connected', 'isGenerating': _isChargenRunning});
+      final jsonStr = jsonEncode({
+        'event': 'connected',
+        'isGenerating': _isChargenRunning,
+      });
       controller.add(utf8.encode('data: $jsonStr\n\n'));
     } catch (_) {}
 
     controller.onCancel = () {
       _chargenSseClients.remove(controller);
-      debugPrint('[WebServer] Chargen SSE client disconnected (${_chargenSseClients.length} remaining)');
+      debugPrint(
+        '[WebServer] Chargen SSE client disconnected (${_chargenSseClients.length} remaining)',
+      );
     };
 
     return shelf.Response.ok(
@@ -3700,21 +4203,30 @@ class WebServerService extends ChangeNotifier {
       String accumulated = '';
       bool inThinking = false;
       try {
-        await for (final token in llmService.generateStream(params).timeout(timeout)) {
+        await for (final token
+            in llmService.generateStream(params).timeout(timeout)) {
           accumulated += token;
           // Filter thinking tokens
-          if (token.contains('<think>')) { inThinking = true; continue; }
-          if (token.contains('</think>')) { inThinking = false; continue; }
+          if (token.contains('<think>')) {
+            inThinking = true;
+            continue;
+          }
+          if (token.contains('</think>')) {
+            inThinking = false;
+            continue;
+          }
           if (inThinking) continue;
           sse('token', token);
         }
 
         // Parse JSON and extract result
-        String cleaned = accumulated.replaceAll(
-          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '',
-        ).replaceAll(
-          RegExp(r'<think>[\s\S]*$', caseSensitive: false), '',
-        ).trim();
+        String cleaned = accumulated
+            .replaceAll(
+              RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+              '',
+            )
+            .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+            .trim();
 
         // Strip markdown code fences (common with local models)
         cleaned = cleaned
@@ -3738,19 +4250,39 @@ class WebServerService extends ChangeNotifier {
           // Strategy 2: Fix literal newlines inside JSON strings
           if (!parsed) {
             try {
-              String fixed = jsonStr.replaceAll('\r\n', '\\n').replaceAll('\r', '\\n');
+              String fixed = jsonStr
+                  .replaceAll('\r\n', '\\n')
+                  .replaceAll('\r', '\\n');
               final sb = StringBuffer();
               bool inStr = false;
               bool esc = false;
               for (int i = 0; i < fixed.length; i++) {
                 final ch = fixed[i];
-                if (esc) { sb.write(ch); esc = false; continue; }
-                if (ch == '\\') { sb.write(ch); esc = true; continue; }
-                if (ch == '"') { inStr = !inStr; sb.write(ch); continue; }
-                if (ch == '\n' && inStr) { sb.write('\\n'); continue; }
+                if (esc) {
+                  sb.write(ch);
+                  esc = false;
+                  continue;
+                }
+                if (ch == '\\') {
+                  sb.write(ch);
+                  esc = true;
+                  continue;
+                }
+                if (ch == '"') {
+                  inStr = !inStr;
+                  sb.write(ch);
+                  continue;
+                }
+                if (ch == '\n' && inStr) {
+                  sb.write('\\n');
+                  continue;
+                }
                 sb.write(ch);
               }
-              fixed = sb.toString().replaceAll(RegExp(r',\s*}'), '}').replaceAll(RegExp(r',\s*]'), ']');
+              fixed = sb
+                  .toString()
+                  .replaceAll(RegExp(r',\s*}'), '}')
+                  .replaceAll(RegExp(r',\s*]'), ']');
               final data = jsonDecode(fixed) as Map<String, dynamic>;
               result = data[resultKey]?.toString() ?? result;
               parsed = true;
@@ -3759,18 +4291,30 @@ class WebServerService extends ChangeNotifier {
 
           // Strategy 3: Regex fallback
           if (!parsed) {
-            final pattern = RegExp('"$resultKey"\\s*:\\s*"', caseSensitive: false);
+            final pattern = RegExp(
+              '"$resultKey"\\s*:\\s*"',
+              caseSensitive: false,
+            );
             final match = pattern.firstMatch(jsonStr);
             if (match != null) {
               final valueStart = match.end;
               bool esc = false;
               for (int i = valueStart; i < jsonStr.length; i++) {
                 final ch = jsonStr[i];
-                if (esc) { esc = false; continue; }
-                if (ch == '\\') { esc = true; continue; }
+                if (esc) {
+                  esc = false;
+                  continue;
+                }
+                if (ch == '\\') {
+                  esc = true;
+                  continue;
+                }
                 if (ch == '"') {
-                  result = jsonStr.substring(valueStart, i)
-                      .replaceAll('\\n', '\n').replaceAll('\\t', '\t').replaceAll('\\"', '"');
+                  result = jsonStr
+                      .substring(valueStart, i)
+                      .replaceAll('\\n', '\n')
+                      .replaceAll('\\t', '\t')
+                      .replaceAll('\\"', '"');
                   break;
                 }
               }
@@ -3799,29 +4343,39 @@ class WebServerService extends ChangeNotifier {
   /// when a specific modelId is provided.
   LLMService? _resolveChargenLlm(String modelId, String debugLabel) {
     if (modelId.isNotEmpty) {
-      debugPrint('$debugLabel: Using model=$modelId via ${_storageService.remoteApiUrl}');
+      debugPrint(
+        '$debugLabel: Using model=$modelId via ${_storageService.remoteApiUrl}',
+      );
       return OpenRouterService(
         apiUrl: _storageService.remoteApiUrl,
         apiKey: _storageService.remoteApiKey,
         modelName: modelId,
       );
     } else {
-      debugPrint('$debugLabel: Using active service: ${_llmProvider!.activeService.runtimeType}');
+      debugPrint(
+        '$debugLabel: Using active service: ${_llmProvider!.activeService.runtimeType}',
+      );
       return _llmProvider!.activeService;
     }
   }
 
   /// POST /api/chargen/randomname — Stream a random character name generation.
   Future<shelf.Response> _handleChargenRandomName(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final archetype = body['selectedArchetype']?.toString() ?? '';
       final modelId = body['modelId']?.toString() ?? '';
 
       final llmService = _resolveChargenLlm(modelId, 'ChargenRandomName');
       if (llmService == null || !llmService.isReady) {
-        return _errorResponse(503, 'LLM service is not ready. Select a model first.');
+        return _errorResponse(
+          503,
+          'LLM service is not ready. Select a model first.',
+        );
       }
 
       final archetypeHint = archetype.isNotEmpty
@@ -3831,7 +4385,8 @@ class WebServerService extends ChangeNotifier {
       return _streamingLlmResponse(
         llmService,
         GenerationParams(
-          prompt: 'Generate ONE unique, creative character name for a roleplay character.$archetypeHint Output ONLY a JSON object with exactly one key: "name". No markdown, no explanation, just the JSON:',
+          prompt:
+              'Generate ONE unique, creative character name for a roleplay character.$archetypeHint Output ONLY a JSON object with exactly one key: "name". No markdown, no explanation, just the JSON:',
           maxLength: 128,
           minLength: 16,
           temperature: 1.2,
@@ -3851,9 +4406,12 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/chargen/describe — Stream a character description generation.
   Future<shelf.Response> _handleChargenDescribe(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
 
       // Build context from all selections (mirrors Flutter _randomizeConcept)
       final contextParts = <String>[];
@@ -3868,21 +4426,29 @@ class WebServerService extends ChangeNotifier {
       final sex = body['sex']?.toString() ?? '';
       if (sex.isNotEmpty) contextParts.add('Sex: $sex');
       final customRace = body['customRace']?.toString() ?? '';
-      final race = customRace.isNotEmpty ? customRace : (body['race']?.toString() ?? '');
+      final race = customRace.isNotEmpty
+          ? customRace
+          : (body['race']?.toString() ?? '');
       if (race.isNotEmpty) contextParts.add('Race/species: $race');
       final bodyType = body['bodyType']?.toString() ?? '';
       if (bodyType.isNotEmpty) contextParts.add('Body type: $bodyType');
       final hairLen = body['hairLength']?.toString() ?? '';
       final hairSty = body['hairStyle']?.toString() ?? '';
       if (hairLen.isNotEmpty || hairSty.isNotEmpty) {
-        contextParts.add('Hair: ${[if (hairLen.isNotEmpty) hairLen, if (hairSty.isNotEmpty) hairSty].join(", ")}');
+        contextParts.add(
+          'Hair: ${[if (hairLen.isNotEmpty) hairLen, if (hairSty.isNotEmpty) hairSty].join(", ")}',
+        );
       }
       final skinTone = body['skinTone']?.toString() ?? '';
       if (skinTone.isNotEmpty) contextParts.add('Skin tone: $skinTone');
       final features = (body['notableFeatures'] as List?)?.cast<String>() ?? [];
-      if (features.isNotEmpty) contextParts.add('Notable features: ${features.join(", ")}');
+      if (features.isNotEmpty) {
+        contextParts.add('Notable features: ${features.join(", ")}');
+      }
       final relationship = body['relationship']?.toString() ?? '';
-      if (relationship.isNotEmpty) contextParts.add('Relationship to user: $relationship');
+      if (relationship.isNotEmpty) {
+        contextParts.add('Relationship to user: $relationship');
+      }
       final bsOrigin = body['backstoryOrigin']?.toString() ?? '';
       if (bsOrigin.isNotEmpty) contextParts.add('Backstory origin: $bsOrigin');
       final bsTone = body['backstoryTone']?.toString() ?? '';
@@ -3913,7 +4479,12 @@ class WebServerService extends ChangeNotifier {
         'Detailed': '3-4 rich paragraphs',
         'Comprehensive': '5-6 detailed paragraphs with extensive backstory',
       };
-      final maxTokenMap = {'Brief': 256, 'Standard': 512, 'Detailed': 1024, 'Comprehensive': 2048};
+      final maxTokenMap = {
+        'Brief': 256,
+        'Standard': 512,
+        'Detailed': 1024,
+        'Comprehensive': 2048,
+      };
       final detail = body['generationDetail']?.toString() ?? 'Standard';
       final descLength = detailMap[detail] ?? '2-3 paragraphs';
       final maxTokens = maxTokenMap[detail] ?? 512;
@@ -3921,10 +4492,14 @@ class WebServerService extends ChangeNotifier {
       final modelId = body['modelId']?.toString() ?? '';
       final llmService = _resolveChargenLlm(modelId, 'ChargenDescribe');
       if (llmService == null || !llmService.isReady) {
-        return _errorResponse(503, 'LLM service is not ready. Select a model first.');
+        return _errorResponse(
+          503,
+          'LLM service is not ready. Select a model first.',
+        );
       }
 
-      final prompt = 'Generate a creative character description ($descLength) for a roleplay character.$contextStr Write in third person. Include physical appearance, personality hints, and backstory elements. Output ONLY a JSON object with exactly one key: "concept". Be vivid and detailed. No markdown, no explanation, just the JSON:';
+      final prompt =
+          'Generate a creative character description ($descLength) for a roleplay character.$contextStr Write in third person. Include physical appearance, personality hints, and backstory elements. Output ONLY a JSON object with exactly one key: "concept". Be vivid and detailed. No markdown, no explanation, just the JSON:';
 
       return _streamingLlmResponse(
         llmService,
@@ -3951,14 +4526,20 @@ class WebServerService extends ChangeNotifier {
   /// into a cohesive 2-3 paragraph character description (mirrors Flutter
   /// _expandNarrative).
   Future<shelf.Response> _handleChargenExpand(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final modelId = body['modelId']?.toString() ?? '';
 
       final llmService = _resolveChargenLlm(modelId, 'ChargenExpand');
       if (llmService == null || !llmService.isReady) {
-        return _errorResponse(503, 'LLM service is not ready. Select a model first.');
+        return _errorResponse(
+          503,
+          'LLM service is not ready. Select a model first.',
+        );
       }
 
       // Gather all filled-in fields (mirrors Flutter _expandNarrative)
@@ -3967,6 +4548,7 @@ class WebServerService extends ChangeNotifier {
         final v = body[key]?.toString() ?? '';
         if (v.isNotEmpty) details.add('$label: $v');
       }
+
       addIfPresent('name', 'Name');
       addIfPresent('age', 'Age');
       addIfPresent('sex', 'Sex');
@@ -3994,7 +4576,10 @@ class WebServerService extends ChangeNotifier {
 
       final userVision = body['guidedVision']?.toString() ?? '';
       if (details.length <= 1 && userVision.isEmpty) {
-        return _errorResponse(400, 'Please fill in at least a few fields before generating.');
+        return _errorResponse(
+          400,
+          'Please fill in at least a few fields before generating.',
+        );
       }
 
       final detailsBlock = details.join('\n');
@@ -4002,7 +4587,8 @@ class WebServerService extends ChangeNotifier {
           ? '\n\nUser\'s additional notes/vision:\n"$userVision"'
           : '';
 
-      final prompt = 'A user is creating a roleplay character using a guided form. They filled in '
+      final prompt =
+          'A user is creating a roleplay character using a guided form. They filled in '
           'various fields with details about the character. Generate a vivid, cohesive character '
           'description that weaves ALL of these details together into 2-3 flowing paragraphs. '
           'PRESERVE the user\'s creative intent — do not override their ideas with generic tropes. '
@@ -4033,27 +4619,37 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/chargen/generate — Start multi-step character generation.
   Future<shelf.Response> _handleChargenGenerate(shelf.Request request) async {
-    if (_llmProvider == null) return _errorResponse(503, 'LLM provider not available');
-    if (_isChargenRunning) return _errorResponse(409, 'Generation already in progress');
+    if (_llmProvider == null) {
+      return _errorResponse(503, 'LLM provider not available');
+    }
+    if (_isChargenRunning) {
+      return _errorResponse(409, 'Generation already in progress');
+    }
 
     try {
       final body = jsonDecode(await request.readAsString());
       final name = body['name']?.toString() ?? '';
-      if (name.isEmpty) return _errorResponse(400, 'Character name is required');
+      if (name.isEmpty) {
+        return _errorResponse(400, 'Character name is required');
+      }
 
       final concept = body['concept']?.toString() ?? '';
       final keywords = body['keywords']?.toString() ?? '';
       final age = body['age']?.toString() ?? '';
       final sex = body['sex']?.toString() ?? '';
       final relationship = body['relationship']?.toString() ?? '';
-      final greetingLength = body['greetingLength']?.toString() ?? 'Medium (2-4 paragraphs)';
+      final greetingLength =
+          body['greetingLength']?.toString() ?? 'Medium (2-4 paragraphs)';
       final altGreetingCount = body['altGreetingCount'] as int? ?? 2;
-      final greetingTones = List<String>.from(body['greetingTones'] ?? ['Neutral']);
+      final greetingTones = List<String>.from(
+        body['greetingTones'] ?? ['Neutral'],
+      );
       final generateLorebook = body['generateLorebook'] as bool? ?? true;
       final loreCategories = List<String>.from(body['loreCategories'] ?? []);
       final loreDepth = body['loreDepth']?.toString() ?? 'Standard';
       final nsfwEnabled = body['nsfwEnabled'] as bool? ?? false;
-      final generationDetail = body['generationDetail']?.toString() ?? 'Standard';
+      final generationDetail =
+          body['generationDetail']?.toString() ?? 'Standard';
       final backstoryNotes = body['backstoryNotes']?.toString() ?? '';
       final artStyle = body['artStyle']?.toString() ?? 'Anime';
       final selectedPersonaId = body['personaId']?.toString() ?? '';
@@ -4062,10 +4658,18 @@ class WebServerService extends ChangeNotifier {
       // Build description detail from generationDetail
       String descriptionDetail;
       switch (generationDetail) {
-        case 'Brief': descriptionDetail = '1 short paragraph'; break;
-        case 'Detailed': descriptionDetail = '3-4 rich paragraphs'; break;
-        case 'Comprehensive': descriptionDetail = '5-6 detailed paragraphs with extensive backstory'; break;
-        default: descriptionDetail = '2-3 paragraphs';
+        case 'Brief':
+          descriptionDetail = '1 short paragraph';
+          break;
+        case 'Detailed':
+          descriptionDetail = '3-4 rich paragraphs';
+          break;
+        case 'Comprehensive':
+          descriptionDetail =
+              '5-6 detailed paragraphs with extensive backstory';
+          break;
+        default:
+          descriptionDetail = '2-3 paragraphs';
       }
 
       // Build character context from appearance + NSFW + backstory
@@ -4086,21 +4690,30 @@ class WebServerService extends ChangeNotifier {
       final waist = body['waist']?.toString() ?? '';
 
       final effectiveRace = customRace.isNotEmpty ? customRace : race;
-      if (effectiveRace.isNotEmpty) contextParts.add('Race/Species: $effectiveRace');
+      if (effectiveRace.isNotEmpty) {
+        contextParts.add('Race/Species: $effectiveRace');
+      }
       if (bodyType.isNotEmpty) contextParts.add('Body type: $bodyType');
       if (hairLength.isNotEmpty || hairStyle.isNotEmpty) {
-        final hair = [hairLength, hairStyle].where((s) => s.isNotEmpty).join(' ');
+        final hair = [
+          hairLength,
+          hairStyle,
+        ].where((s) => s.isNotEmpty).join(' ');
         contextParts.add('Hair: $hair');
       }
       if (skinTone.isNotEmpty) contextParts.add('Skin: $skinTone');
-      if (notableFeatures.isNotEmpty) contextParts.add('Notable features: ${notableFeatures.join(", ")}');
+      if (notableFeatures.isNotEmpty) {
+        contextParts.add('Notable features: ${notableFeatures.join(", ")}');
+      }
       final bodyParts = <String>[];
       if (absCore.isNotEmpty) bodyParts.add('abs/core: $absCore');
       if (thighs.isNotEmpty) bodyParts.add('thighs: $thighs');
       if (hips.isNotEmpty) bodyParts.add('hips: $hips');
       if (shoulders.isNotEmpty) bodyParts.add('shoulders: $shoulders');
       if (waist.isNotEmpty) bodyParts.add('waist: $waist');
-      if (bodyParts.isNotEmpty) contextParts.add('Build: ${bodyParts.join(", ")}');
+      if (bodyParts.isNotEmpty) {
+        contextParts.add('Build: ${bodyParts.join(", ")}');
+      }
 
       // NSFW appearance
       if (nsfwEnabled) {
@@ -4114,11 +4727,15 @@ class WebServerService extends ChangeNotifier {
 
         if (chestSize.isNotEmpty) contextParts.add('Chest: $chestSize');
         if (buttSize.isNotEmpty) contextParts.add('Butt: $buttSize');
-        if (experience.isNotEmpty) contextParts.add('Experience level: $experience');
+        if (experience.isNotEmpty) {
+          contextParts.add('Experience level: $experience');
+        }
         if (dominance.isNotEmpty) contextParts.add('Dominance: $dominance');
         final allKinks = [...kinks];
         if (customKinks.isNotEmpty) allKinks.add(customKinks);
-        if (allKinks.isNotEmpty) contextParts.add('Kinks: ${allKinks.join(", ")}');
+        if (allKinks.isNotEmpty) {
+          contextParts.add('Kinks: ${allKinks.join(", ")}');
+        }
         if (outfitVibe.isNotEmpty) contextParts.add('Outfit vibe: $outfitVibe');
       }
 
@@ -4127,7 +4744,9 @@ class WebServerService extends ChangeNotifier {
       final backstoryTone = body['backstoryTone']?.toString() ?? '';
       final backstoryEra = body['backstoryEra']?.toString() ?? '';
       final backstoryParts = <String>[];
-      if (backstoryOrigin.isNotEmpty) backstoryParts.add('Origin: $backstoryOrigin');
+      if (backstoryOrigin.isNotEmpty) {
+        backstoryParts.add('Origin: $backstoryOrigin');
+      }
       if (backstoryTone.isNotEmpty) backstoryParts.add('Tone: $backstoryTone');
       if (backstoryEra.isNotEmpty) backstoryParts.add('Era: $backstoryEra');
       if (backstoryNotes.isNotEmpty) backstoryParts.add(backstoryNotes);
@@ -4141,7 +4760,9 @@ class WebServerService extends ChangeNotifier {
         final persona = _userPersonaService!.persona;
         if (persona.name.isNotEmpty) {
           userPersonaContext = 'Name: ${persona.name}';
-          if (persona.persona.isNotEmpty) userPersonaContext += '\n${persona.persona}';
+          if (persona.persona.isNotEmpty) {
+            userPersonaContext += '\n${persona.persona}';
+          }
         }
       }
 
@@ -4247,20 +4868,32 @@ class WebServerService extends ChangeNotifier {
       );
 
       if (card == null) {
-        _chargenBroadcast({'event': 'error', 'text': 'Generation failed — LLM did not produce valid output.'});
+        _chargenBroadcast({
+          'event': 'error',
+          'text': 'Generation failed — LLM did not produce valid output.',
+        });
         _isChargenRunning = false;
         return;
       }
 
       // Completion pass on greetings (check for truncation)
-      final allGreetings = <String>[card.firstMessage, ...card.alternateGreetings];
+      final allGreetings = <String>[
+        card.firstMessage,
+        ...card.alternateGreetings,
+      ];
       for (int gi = 0; gi < allGreetings.length; gi++) {
         String greeting = allGreetings[gi];
         final label = gi == 0 ? 'first message' : 'alt greeting $gi';
-        _chargenBroadcast({'event': 'status', 'text': 'Checking $label for truncation...'});
-        final completed = await genService.editorCompletionPass(greeting, onProgress: (p) {
-          _chargenBroadcast({'event': 'preview', 'text': p});
+        _chargenBroadcast({
+          'event': 'status',
+          'text': 'Checking $label for truncation...',
         });
+        final completed = await genService.editorCompletionPass(
+          greeting,
+          onProgress: (p) {
+            _chargenBroadcast({'event': 'preview', 'text': p});
+          },
+        );
         if (completed != null) greeting = completed;
         allGreetings[gi] = greeting;
       }
@@ -4279,7 +4912,7 @@ class WebServerService extends ChangeNotifier {
 
       // Extract image prompt from the generation service (matches Flutter app)
       String imagePrompt = genService.generatedImagePrompt ?? '';
-      
+
       if (imagePrompt.isEmpty && card.description.isNotEmpty) {
         // Fallback: build from description
         final desc = card.description.length > 400
@@ -4304,12 +4937,16 @@ class WebServerService extends ChangeNotifier {
 
       // Add lorebook if present
       if (card.lorebook != null) {
-        result['lorebook'] = card.lorebook!.entries.map((e) => {
-          'name': e.name,
-          'key': e.key,
-          'content': e.content,
-          'enabled': e.enabled,
-        }).toList();
+        result['lorebook'] = card.lorebook!.entries
+            .map(
+              (e) => {
+                'name': e.name,
+                'key': e.key,
+                'content': e.content,
+                'enabled': e.enabled,
+              },
+            )
+            .toList();
       }
 
       _chargenBroadcast({'event': 'complete', 'card': result});
@@ -4327,7 +4964,10 @@ class WebServerService extends ChangeNotifier {
       return _errorResponse(503, 'Image generation service not available');
     }
     if (!_imageGenService!.isConfigured) {
-      return _errorResponse(503, 'Image generation not configured — set API key and image model in Settings');
+      return _errorResponse(
+        503,
+        'Image generation not configured — set API key and image model in Settings',
+      );
     }
 
     try {
@@ -4342,14 +4982,14 @@ class WebServerService extends ChangeNotifier {
       );
 
       if (imageBytes == null) {
-        return _errorResponse(500, 'Image generation failed: ${_imageGenService!.statusMessage}');
+        return _errorResponse(
+          500,
+          'Image generation failed: ${_imageGenService!.statusMessage}',
+        );
       }
 
       return shelf.Response.ok(
-        jsonEncode({
-          'status': 'ok',
-          'image': base64Encode(imageBytes),
-        }),
+        jsonEncode({'status': 'ok', 'image': base64Encode(imageBytes)}),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -4366,7 +5006,9 @@ class WebServerService extends ChangeNotifier {
     try {
       final body = jsonDecode(await request.readAsString());
       final name = body['name']?.toString() ?? '';
-      if (name.isEmpty) return _errorResponse(400, 'Character name is required');
+      if (name.isEmpty) {
+        return _errorResponse(400, 'Character name is required');
+      }
 
       final description = body['description']?.toString() ?? '';
       final personality = body['personality']?.toString() ?? '';
@@ -4381,14 +5023,20 @@ class WebServerService extends ChangeNotifier {
       // Parse lorebook
       String? lorebookJson;
       final lorebookData = body['lorebook'];
-      if (lorebookData != null && lorebookData is List && lorebookData.isNotEmpty) {
+      if (lorebookData != null &&
+          lorebookData is List &&
+          lorebookData.isNotEmpty) {
         final entries = <Map<String, dynamic>>[];
         for (final entry in lorebookData) {
           if (entry is Map<String, dynamic>) {
             final enabled = entry['enabled'] as bool? ?? true;
             if (enabled) {
               entries.add({
-                'keys': (entry['key']?.toString() ?? '').split(',').map((k) => k.trim()).where((k) => k.isNotEmpty).toList(),
+                'keys': (entry['key']?.toString() ?? '')
+                    .split(',')
+                    .map((k) => k.trim())
+                    .where((k) => k.isNotEmpty)
+                    .toList(),
                 'content': entry['content']?.toString() ?? '',
                 'comment': entry['name']?.toString() ?? '',
                 'enabled': true,
@@ -4412,7 +5060,9 @@ class WebServerService extends ChangeNotifier {
           if (!charDir.existsSync()) charDir.createSync(recursive: true);
 
           final epoch = DateTime.now().millisecondsSinceEpoch;
-          final safeName = name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+          final safeName = name
+              .replaceAll(RegExp(r'[^\w\s]'), '')
+              .replaceAll(' ', '_');
           imagePath = p.join(charDir.path, '${safeName}_$epoch.png');
           await File(imagePath).writeAsBytes(avatarBytes);
         } catch (e) {
@@ -4421,22 +5071,24 @@ class WebServerService extends ChangeNotifier {
         }
       }
 
-      final dbId = await _db!.insertCharacterReturningId(CharactersCompanion(
-        name: Value(name),
-        description: Value(description),
-        personality: Value(personality),
-        scenario: Value(scenario),
-        firstMessage: Value(firstMessage),
-        mesExample: Value(mesExample),
-        systemPrompt: Value(systemPrompt),
-        postHistoryInstructions: const Value(''),
-        alternateGreetings: Value(jsonEncode(altGreetings)),
-        tags: Value(jsonEncode(tags)),
-        imagePath: Value(imagePath != null ? p.basename(imagePath) : null),
-        ttsVoice: const Value(null),
-        lorebook: Value(lorebookJson),
-        worldNames: const Value('[]'),
-      ));
+      final dbId = await _db!.insertCharacterReturningId(
+        CharactersCompanion(
+          name: Value(name),
+          description: Value(description),
+          personality: Value(personality),
+          scenario: Value(scenario),
+          firstMessage: Value(firstMessage),
+          mesExample: Value(mesExample),
+          systemPrompt: Value(systemPrompt),
+          postHistoryInstructions: const Value(''),
+          alternateGreetings: Value(jsonEncode(altGreetings)),
+          tags: Value(jsonEncode(tags)),
+          imagePath: Value(imagePath != null ? p.basename(imagePath) : null),
+          ttsVoice: const Value(null),
+          lorebook: Value(lorebookJson),
+          worldNames: const Value('[]'),
+        ),
+      );
 
       // Refresh character list
       _characterRepository?.loadCharacters();
@@ -4455,14 +5107,26 @@ class WebServerService extends ChangeNotifier {
   // ══════════════════════════════════════════════════════════════════════
 
   /// POST /api/image-gen/test-connection — Test a local SD server connection.
-  Future<shelf.Response> _handleImgenTestConnection(shelf.Request request) async {
+  Future<shelf.Response> _handleImgenTestConnection(
+    shelf.Request request,
+  ) async {
     if (_imageGenService == null) {
       return _errorResponse(503, 'Image gen service not available');
     }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final url = body['url']?.toString() ?? '';
       if (url.isEmpty) return _errorResponse(400, 'url is required');
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenTestConnection',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final ok = await _imageGenService!.testLocalConnection(url);
       return shelf.Response.ok(
         jsonEncode({'ok': ok}),
@@ -4479,9 +5143,20 @@ class WebServerService extends ChangeNotifier {
       return _errorResponse(503, 'Image gen service not available');
     }
     try {
-      final url     = request.url.queryParameters['url'] ?? '';
+      final url = request.url.queryParameters['url'] ?? '';
       final backend = request.url.queryParameters['backend'] ?? '';
-      if (url.isEmpty) return _errorResponse(400, 'url query param is required');
+      if (url.isEmpty) {
+        return _errorResponse(400, 'url query param is required');
+      }
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenLocalModels',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
 
       final List<String> models;
       if (backend == 'drawthings') {
@@ -4505,7 +5180,16 @@ class WebServerService extends ChangeNotifier {
     }
     try {
       final url = request.url.queryParameters['url'] ?? '';
-      if (url.isEmpty) return _errorResponse(400, 'url query param is required');
+      if (url.isEmpty) {
+        return _errorResponse(400, 'url query param is required');
+      }
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint('[WebServer] rejected non-local url in _handleImgenLoras');
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final loras = await _imageGenService!.fetchA1111Loras(url);
       return shelf.Response.ok(
         jsonEncode({'loras': loras}),
@@ -4522,12 +5206,25 @@ class WebServerService extends ChangeNotifier {
       return _errorResponse(503, 'Image gen service not available');
     }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final url = body['url']?.toString() ?? '';
       if (url.isEmpty) return _errorResponse(400, 'url is required');
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenUnloadModel',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final ok = await _imageGenService!.unloadLocalModel(url);
       return shelf.Response.ok(
-        jsonEncode({'ok': ok, 'message': ok ? 'Model unloaded' : 'Unload not supported by server'}),
+        jsonEncode({
+          'ok': ok,
+          'message': ok ? 'Model unloaded' : 'Unload not supported by server',
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -4541,14 +5238,27 @@ class WebServerService extends ChangeNotifier {
       return _errorResponse(503, 'Image gen service not available');
     }
     try {
-      final body  = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
-      final url   = body['url']?.toString() ?? '';
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final url = body['url']?.toString() ?? '';
       final model = body['model']?.toString() ?? '';
-      if (url.isEmpty)   return _errorResponse(400, 'url is required');
+      if (url.isEmpty) return _errorResponse(400, 'url is required');
       if (model.isEmpty) return _errorResponse(400, 'model is required');
+      if (url.isNotEmpty &&
+          !url.startsWith('http://127.0.0.1') &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('http://[::1]')) {
+        debugPrint(
+          '[WebServer] rejected non-local url in _handleImgenSwitchModel',
+        );
+        return _errorResponse(400, 'local urls only (127.0.0.1/localhost)');
+      }
       final ok = await _imageGenService!.switchLocalModel(url, model);
       return shelf.Response.ok(
-        jsonEncode({'ok': ok, 'message': ok ? 'Switched to $model' : 'Switch failed'}),
+        jsonEncode({
+          'ok': ok,
+          'message': ok ? 'Switched to $model' : 'Switch failed',
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
@@ -4563,9 +5273,15 @@ class WebServerService extends ChangeNotifier {
   /// Broadcast an SSE event to all connected story pipeline clients.
   void _storyBroadcast(Map<String, dynamic> eventData) {
     final eventType = eventData['event']?.toString() ?? 'message';
-    if (eventType == 'status') _storyStatus = eventData['text']?.toString() ?? '';
-    if (eventType == 'token') _storyStreamingText += eventData['text']?.toString() ?? '';
-    if (eventType == 'complete' || eventType == 'error') _storyPipelineRunning = false;
+    if (eventType == 'status') {
+      _storyStatus = eventData['text']?.toString() ?? '';
+    }
+    if (eventType == 'token') {
+      _storyStreamingText += eventData['text']?.toString() ?? '';
+    }
+    if (eventType == 'complete' || eventType == 'error') {
+      _storyPipelineRunning = false;
+    }
 
     _storySseClients.removeWhere((c) => c.isClosed);
     if (_storySseClients.isEmpty) return;
@@ -4577,17 +5293,25 @@ class WebServerService extends ChangeNotifier {
 
   /// GET /api/stories — List all story projects (summary only).
   Future<shelf.Response> _handleGetStories(shelf.Request request) async {
-    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    if (_storyRepository == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
     try {
       await _storyRepository!.loadProjects();
-      final list = _storyRepository!.projects.map((p) => {
-        'id': p.dbId,
-        'title': p.title,
-        'concept': p.concept.length > 120 ? '${p.concept.substring(0, 120)}...' : p.concept,
-        'actCount': p.actCount,
-        'updatedAt': p.updatedAt.toIso8601String(),
-        'wordCount': _countWords(p),
-      }).toList();
+      final list = _storyRepository!.projects
+          .map(
+            (p) => {
+              'id': p.dbId,
+              'title': p.title,
+              'concept': p.concept.length > 120
+                  ? '${p.concept.substring(0, 120)}...'
+                  : p.concept,
+              'actCount': p.actCount,
+              'updatedAt': p.updatedAt.toIso8601String(),
+              'wordCount': _countWords(p),
+            },
+          )
+          .toList();
       return shelf.Response.ok(
         jsonEncode(list),
         headers: {'Content-Type': 'application/json'},
@@ -4608,30 +5332,56 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/stories/create — Create a new empty story project.
   Future<shelf.Response> _handleCreateStory(shelf.Request request) async {
-    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    if (_storyRepository == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final title = body['title']?.toString() ?? 'Untitled Story';
       final project = await _storyRepository!.createProject(title: title);
       // Apply any additional fields from body
-      if (body.containsKey('concept')) project.concept = body['concept'].toString();
-      if (body['actCount'] != null) project.actCount = (body['actCount'] as num).toInt();
+      if (body.containsKey('concept')) {
+        project.concept = body['concept'].toString();
+      }
+      if (body['actCount'] != null) {
+        project.actCount = (body['actCount'] as num).toInt();
+      }
       if (body['pov'] != null) project.pov = body['pov'].toString();
-      if (body['maturityRating'] != null) project.maturityRating = body['maturityRating'].toString();
-      if (body['proseLength'] != null) project.proseLength = body['proseLength'].toString();
-      if (body['narrativePace'] != null) project.narrativePace = body['narrativePace'].toString();
-      if (body['dialogueDensity'] != null) project.dialogueDensity = body['dialogueDensity'].toString();
-      if (body['writingStyle'] != null) project.writingStyle = body['writingStyle'].toString();
+      if (body['maturityRating'] != null) {
+        project.maturityRating = body['maturityRating'].toString();
+      }
+      if (body['proseLength'] != null) {
+        project.proseLength = body['proseLength'].toString();
+      }
+      if (body['narrativePace'] != null) {
+        project.narrativePace = body['narrativePace'].toString();
+      }
+      if (body['dialogueDensity'] != null) {
+        project.dialogueDensity = body['dialogueDensity'].toString();
+      }
+      if (body['writingStyle'] != null) {
+        project.writingStyle = body['writingStyle'].toString();
+      }
       if (body['selectedGenres'] != null) {
-        project.selectedGenres = List<String>.from(body['selectedGenres'] as List);
+        project.selectedGenres = List<String>.from(
+          body['selectedGenres'] as List,
+        );
       }
       if (body['selectedMoods'] != null) {
-        project.selectedMoods = List<String>.from(body['selectedMoods'] as List);
+        project.selectedMoods = List<String>.from(
+          body['selectedMoods'] as List,
+        );
       }
       if (body['characterCardSnapshots'] != null) {
-        project.characterCardSnapshots = (body['characterCardSnapshots'] as List)
-            .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v.toString())))
-            .toList();
+        project.characterCardSnapshots =
+            (body['characterCardSnapshots'] as List)
+                .map(
+                  (e) => (e as Map<String, dynamic>).map(
+                    (k, v) => MapEntry(k, v.toString()),
+                  ),
+                )
+                .toList();
       }
       await _storyRepository!.saveProject(project);
       return shelf.Response.ok(
@@ -4645,16 +5395,21 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/stories/update — Update an existing story project (full overwrite).
   Future<shelf.Response> _handleUpdateStory(shelf.Request request) async {
-    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    if (_storyRepository == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final id = body['id']?.toString() ?? '';
       if (id.isEmpty) return _errorResponse(400, 'id is required');
       await _storyRepository!.loadProjects();
       final existing = _storyRepository!.getById(id);
       if (existing == null) return _errorResponse(404, 'Story not found');
       // Deserialize the incoming project JSON
-      final updated = story_model.StoryProject.fromJson(body['project'] as Map<String, dynamic>);
+      final updated = story_model.StoryProject.fromJson(
+        body['project'] as Map<String, dynamic>,
+      );
       updated.dbId = id;
       await _storyRepository!.saveProject(updated);
       return shelf.Response.ok(
@@ -4668,9 +5423,12 @@ class WebServerService extends ChangeNotifier {
 
   /// POST /api/stories/delete — Delete a story project.
   Future<shelf.Response> _handleDeleteStory(shelf.Request request) async {
-    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+    if (_storyRepository == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final id = body['id']?.toString() ?? '';
       if (id.isEmpty) return _errorResponse(400, 'id is required');
       await _storyRepository!.deleteProject(id);
@@ -4683,9 +5441,14 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// GET /api/stories/<id> — Get a full story project.
-  Future<shelf.Response> _handleGetStory(shelf.Request request, String id) async {
-    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+  /// GET `/api/stories/<id>` — Get a full story project.
+  Future<shelf.Response> _handleGetStory(
+    shelf.Request request,
+    String id,
+  ) async {
+    if (_storyRepository == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
     try {
       await _storyRepository!.loadProjects();
       final project = _storyRepository!.getById(id);
@@ -4699,11 +5462,16 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// GET /api/stories/<id>/pipeline/stream — SSE stream for pipeline progress.
-  Future<shelf.Response> _handlePipelineStream(shelf.Request request, String id) async {
+  /// GET `/api/stories/<id>/pipeline/stream` — SSE stream for pipeline progress.
+  Future<shelf.Response> _handlePipelineStream(
+    shelf.Request request,
+    String id,
+  ) async {
     final controller = StreamController<List<int>>();
     _storySseClients.add(controller);
-    debugPrint('[WebServer] Story SSE client connected (${_storySseClients.length} total)');
+    debugPrint(
+      '[WebServer] Story SSE client connected (${_storySseClients.length} total)',
+    );
 
     controller.onCancel = () {
       _storySseClients.remove(controller);
@@ -4721,8 +5489,11 @@ class WebServerService extends ChangeNotifier {
     );
   }
 
-  /// GET /api/stories/<id>/pipeline/status — Polling fallback for pipeline state.
-  Future<shelf.Response> _handlePipelineStatus(shelf.Request request, String id) async {
+  /// GET `/api/stories/<id>/pipeline/status` — Polling fallback for pipeline state.
+  Future<shelf.Response> _handlePipelineStatus(
+    shelf.Request request,
+    String id,
+  ) async {
     return shelf.Response.ok(
       jsonEncode({
         'running': _storyPipelineRunning,
@@ -4734,15 +5505,21 @@ class WebServerService extends ChangeNotifier {
     );
   }
 
-  /// POST /api/stories/<id>/pipeline/run — Start an async pipeline stage.
-  Future<shelf.Response> _handleRunPipelineStage(shelf.Request request, String id) async {
+  /// POST `/api/stories/<id>/pipeline/run` — Start an async pipeline stage.
+  Future<shelf.Response> _handleRunPipelineStage(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_storyRepository == null || _storyPipelineService == null) {
       return _errorResponse(503, 'Story service not available');
     }
-    if (_storyPipelineRunning) return _errorResponse(409, 'Pipeline already running');
+    if (_storyPipelineRunning) {
+      return _errorResponse(409, 'Pipeline already running');
+    }
 
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final stage = body['stage']?.toString() ?? '';
       if (stage.isEmpty) return _errorResponse(400, 'stage is required');
 
@@ -4776,13 +5553,26 @@ class WebServerService extends ChangeNotifier {
               await _storyPipelineService!.runSceneWeaver(project, actIdx);
               break;
             case 'beats':
-              await _storyPipelineService!.runBeatDirector(project, actIdx, sceneIdx);
+              await _storyPipelineService!.runBeatDirector(
+                project,
+                actIdx,
+                sceneIdx,
+              );
               break;
             case 'prose':
-              await _storyPipelineService!.runDraftAndEdit(project, actIdx, sceneIdx, beatIdx);
+              await _storyPipelineService!.runDraftAndEdit(
+                project,
+                actIdx,
+                sceneIdx,
+                beatIdx,
+              );
               break;
             case 'archivist':
-              await _storyPipelineService!.runArchivist(project, actIdx, sceneIdx);
+              await _storyPipelineService!.runArchivist(
+                project,
+                actIdx,
+                sceneIdx,
+              );
               break;
             default:
               throw Exception('Unknown stage: $stage');
@@ -4818,17 +5608,27 @@ class WebServerService extends ChangeNotifier {
     _storyStatus = svc.statusMessage;
     // Forward streaming tokens
     if (svc.streamingText.isNotEmpty) {
-      _storyBroadcast({'event': 'token', 'text': svc.streamingText, 'status': svc.statusMessage});
+      _storyBroadcast({
+        'event': 'token',
+        'text': svc.streamingText,
+        'status': svc.statusMessage,
+      });
     } else {
       _storyBroadcast({'event': 'status', 'text': svc.statusMessage});
     }
   }
 
-  /// POST /api/stories/<id>/prose/edit — Save hand-edited prose for a beat.
-  Future<shelf.Response> _handleProseEdit(shelf.Request request, String id) async {
-    if (_storyRepository == null) return _errorResponse(503, 'Story service not available');
+  /// POST `/api/stories/<id>/prose/edit` — Save hand-edited prose for a beat.
+  Future<shelf.Response> _handleProseEdit(
+    shelf.Request request,
+    String id,
+  ) async {
+    if (_storyRepository == null) {
+      return _errorResponse(503, 'Story service not available');
+    }
     try {
-      final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await request.readAsString()) as Map<String, dynamic>;
       final actIdx = (body['actIdx'] as num?)?.toInt() ?? 0;
       final sceneIdx = (body['sceneIdx'] as num?)?.toInt() ?? 0;
       final beatIdx = (body['beatIdx'] as num?)?.toInt() ?? 0;
@@ -4855,12 +5655,17 @@ class WebServerService extends ChangeNotifier {
     }
   }
 
-  /// POST /api/stories/<id>/distill — Run the chat history distiller.
-  Future<shelf.Response> _handleDistillChatHistory(shelf.Request request, String id) async {
+  /// POST `/api/stories/<id>/distill` — Run the chat history distiller.
+  Future<shelf.Response> _handleDistillChatHistory(
+    shelf.Request request,
+    String id,
+  ) async {
     if (_storyRepository == null || _storyPipelineService == null) {
       return _errorResponse(503, 'Story service not available');
     }
-    if (_storyPipelineRunning) return _errorResponse(409, 'Pipeline already running');
+    if (_storyPipelineRunning) {
+      return _errorResponse(409, 'Pipeline already running');
+    }
 
     try {
       await _storyRepository!.loadProjects();
@@ -4878,7 +5683,10 @@ class WebServerService extends ChangeNotifier {
           pj['id'] = id;
           _storyBroadcast({'event': 'complete', 'project': pj});
         } catch (e) {
-          _storyBroadcast({'event': 'error', 'text': 'Distillation failed: $e'});
+          _storyBroadcast({
+            'event': 'error',
+            'text': 'Distillation failed: $e',
+          });
         } finally {
           _storyPipelineService!.removeListener(_onStoryPipelineUpdate);
           _storyPipelineRunning = false;
@@ -4901,4 +5709,3 @@ class WebServerService extends ChangeNotifier {
     super.dispose();
   }
 }
-

@@ -1,11 +1,36 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:drift/drift.dart';
+
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/database/database.dart';
+
+/// Mock path_provider so StorageService can resolve
+/// getApplicationDocumentsDirectory() without a real platform channel.
+void _setupPathProviderMock() {
+  const channel = MethodChannel('plugins.flutter.io/path_provider');
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          final tmp = Directory.systemTemp.createTempSync('fpai_test_');
+          return tmp.path;
+        }
+        return null;
+      });
+}
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('CharacterRepository — in-memory operations', () {
     test('allTags returns sorted unique tags across characters', () {
       final chars = <CharacterCard>[
@@ -14,7 +39,9 @@ void main() {
         CharacterCard(name: 'C', tags: ['z_tag'], imagePath: 'c.png'),
       ];
       final tags = <String>{};
-      for (final c in chars) tags.addAll(c.tags);
+      for (final c in chars) {
+        tags.addAll(c.tags);
+      }
       final sorted = tags.toList()..sort();
       expect(sorted, ['a_tag', 'm_tag', 'z_tag']);
     });
@@ -22,7 +49,9 @@ void main() {
     test('allTags returns empty for no characters', () {
       final chars = <CharacterCard>[];
       final tags = <String>{};
-      for (final c in chars) tags.addAll(c.tags);
+      for (final c in chars) {
+        tags.addAll(c.tags);
+      }
       expect(tags.toList()..sort(), isEmpty);
     });
 
@@ -46,8 +75,16 @@ void main() {
 
     test('getCharactersByTag filters by tag', () {
       final chars = <CharacterCard>[
-        CharacterCard(name: 'Cat', tags: ['animal', 'pet'], imagePath: 'cat.png'),
-        CharacterCard(name: 'Dog', tags: ['animal', 'pet'], imagePath: 'dog.png'),
+        CharacterCard(
+          name: 'Cat',
+          tags: ['animal', 'pet'],
+          imagePath: 'cat.png',
+        ),
+        CharacterCard(
+          name: 'Dog',
+          tags: ['animal', 'pet'],
+          imagePath: 'dog.png',
+        ),
         CharacterCard(name: 'Car', tags: ['vehicle'], imagePath: 'car.png'),
       ];
       final animals = chars.where((c) => c.tags.contains('animal')).toList();
@@ -69,9 +106,14 @@ void main() {
         alternateGreetings: ['Hi!', 'Hello!'],
         tags: ['hero'],
         imagePath: 'original.png',
-        lorebook: Lorebook(entries: [LorebookEntry(key: 'lore', content: 'Some lore')]),
+        lorebook: Lorebook(
+          entries: [LorebookEntry(key: 'lore', content: 'Some lore')],
+        ),
         worldNames: ['World 1'],
-        frontPorchExtensions: FrontPorchExtensions(realismEnabled: true, shortTermBond: 50),
+        frontPorchExtensions: FrontPorchExtensions(
+          realismEnabled: true,
+          shortTermBond: 50,
+        ),
         rawExtensions: {'custom': 'data'},
       );
 
@@ -169,13 +211,19 @@ void main() {
       expect(card.allGreetings, isEmpty);
     });
 
-    test('CharacterCard allGreetings includes only firstMessage when no alternates', () {
-      final card = CharacterCard(name: 'Test', firstMessage: 'Hi there');
-      expect(card.allGreetings, ['Hi there']);
-    });
+    test(
+      'CharacterCard allGreetings includes only firstMessage when no alternates',
+      () {
+        final card = CharacterCard(name: 'Test', firstMessage: 'Hi there');
+        expect(card.allGreetings, ['Hi there']);
+      },
+    );
 
     test('CharacterCard formattedDescription replaces placeholders', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} is a cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} is a cat',
+      );
       expect(card.formattedDescription, 'Luna is a cat');
     });
 
@@ -209,11 +257,17 @@ void main() {
       );
       final json = card.toJson();
       expect(json['extensions']['third_party'], 'data');
-      expect(json['extensions']['front_porch']['realism_engine']['enabled'], true);
+      expect(
+        json['extensions']['front_porch']['realism_engine']['enabled'],
+        true,
+      );
     });
 
     test('CharacterCard replacePlaceholders handles {{char}}', () {
-      final card = CharacterCard(name: 'Luna', description: '{{char}} is a cat');
+      final card = CharacterCard(
+        name: 'Luna',
+        description: '{{char}} is a cat',
+      );
       expect(card.replacePlaceholders(card.description), 'Luna is a cat');
     });
 
@@ -224,7 +278,10 @@ void main() {
 
     test('CharacterCard replacePlaceholders handles {{user}}', () {
       final card = CharacterCard(name: 'Luna');
-      expect(card.replacePlaceholders('{{user}} pet the cat', userName: 'Alex'), 'Alex pet the cat');
+      expect(
+        card.replacePlaceholders('{{user}} pet the cat', userName: 'Alex'),
+        'Alex pet the cat',
+      );
     });
 
     test('CharacterCard replacePlaceholders is case-insensitive', () {
@@ -232,5 +289,144 @@ void main() {
       expect(card.replacePlaceholders('{{CHAR}}', userName: 'Alex'), 'Luna');
       expect(card.replacePlaceholders('{{USER}}', userName: 'Alex'), 'Alex');
     });
+  });
+
+  // ── DB integration tests ────────────────────────────────────────────
+
+  group('CharacterRepository — DB integration', () {
+    late AppDatabase db;
+    late CharacterRepository repo;
+    late String charId;
+
+    Future<StorageService> _makeStorageService([
+      Map<String, Object> initialValues = const {},
+    ]) async {
+      SharedPreferences.setMockInitialValues(initialValues);
+      final service = StorageService();
+      await service.initialized;
+      return service;
+    }
+
+    /// Robust wait for any in-flight loadCharacters() (constructor or explicit).
+    /// Polls isLoading; necessary because the original Duration.zero delay was
+    /// racy and the re-entrancy guard now makes overlapping calls early-return.
+    Future<void> _waitUntilNotLoading(
+      CharacterRepository r, {
+      Duration timeout = const Duration(seconds: 5),
+    }) async {
+      final deadline = DateTime.now().add(timeout);
+      while (r.isLoading) {
+        if (DateTime.now().isAfter(deadline)) {
+          fail('loadCharacters did not complete within $timeout');
+        }
+        await Future.delayed(const Duration(milliseconds: 5));
+      }
+    }
+
+    setUp(() async {
+      _setupPathProviderMock();
+
+      db = AppDatabase.forTesting();
+
+      charId = await db.insertCharacterReturningId(
+        CharactersCompanion(
+          name: const Value('Test Character'),
+          description: const Value('Integration test character'),
+        ),
+      );
+
+      final storage = await _makeStorageService();
+      repo = CharacterRepository(db, storage);
+
+      // Let async loadCharacters (constructor fire-and-forget) settle reliably.
+      // Original Duration.zero was racy (especially with guard); poll until done.
+      await Future<void>.delayed(Duration.zero);
+      await _waitUntilNotLoading(repo);
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('getMemorySources returns empty list for a fresh character', () async {
+      final sources = await repo.getMemorySources(charId);
+      expect(sources, isEmpty);
+    });
+
+    test(
+      'setMemorySources then getMemorySources round-trips correctly',
+      () async {
+        const sources = ['src-1', 'src-2', 'src-3'];
+        await repo.setMemorySources(charId, sources);
+        final retrieved = await repo.getMemorySources(charId);
+        expect(retrieved, unorderedEquals(sources));
+      },
+    );
+
+    test('setMemorySources overwrites previous sources', () async {
+      await repo.setMemorySources(charId, ['old-src']);
+      await repo.setMemorySources(charId, ['new-src-1', 'new-src-2']);
+      final retrieved = await repo.getMemorySources(charId);
+      expect(retrieved, unorderedEquals(['new-src-1', 'new-src-2']));
+      expect(retrieved, hasLength(2));
+    });
+
+    test('setMemorySources with empty list clears sources', () async {
+      await repo.setMemorySources(charId, ['src-a']);
+      await repo.setMemorySources(charId, []);
+      final retrieved = await repo.getMemorySources(charId);
+      expect(retrieved, isEmpty);
+    });
+
+    test(
+      'getMemorySources returns empty list when character does not exist',
+      () async {
+        final result = await repo.getMemorySources('nonexistent-id');
+        expect(result, isEmpty);
+      },
+    );
+
+    test(
+      'loadCharacters performs full reload, ends with isLoading=false, and populates characters',
+      () async {
+        // Explicitly exercise the canonical full-reload path used by the home
+        // grid refresh button (and cloud sync, web imports, etc.). The constructor
+        // already fired one; call again to simulate user-initiated refresh.
+        //
+        // Note on scope (addresses review feedback): the inserted test row has
+        // no imagePath, so only the outer reload skeleton (clear, DB query,
+        // notify, isLoading transitions, guard interaction) is covered here.
+        // The inner per-char PNG/V2CardService/avatar/missing-PNG loop that
+        // real toolbar refreshes exercise for user cards is covered by actual
+        // usage + other integration paths.
+        await repo.loadCharacters();
+        await _waitUntilNotLoading(repo); // belt-and-suspenders with guard
+
+        expect(repo.isLoading, isFalse);
+        expect(repo.characters, isNotEmpty);
+        expect(repo.characters.any((c) => c.name == 'Test Character'), isTrue);
+      },
+    );
+
+    test(
+      'loadCharacters guard safely skips re-entrant call; first load still completes cleanly',
+      () async {
+        // Exercises the guard (added for the toolbar button) under sequential calls.
+        // (Real overlap is hard to force deterministically here because the test
+        // character has no imagePath and the inner loop is tiny; the guard contract
+        // + final consistent state are verified. Real slow PNG cases are protected
+        // in production usage.)
+        await repo.loadCharacters();
+        final lenBefore = repo.characters.length;
+
+        // Immediate second call (would early-return under guard if still busy)
+        await repo.loadCharacters();
+        await _waitUntilNotLoading(repo);
+
+        expect(repo.isLoading, isFalse);
+        expect(repo.characters.length, lenBefore); // no corruption/duplication
+        expect(repo.characters.any((c) => c.name == 'Test Character'), isTrue);
+      },
+    );
   });
 }

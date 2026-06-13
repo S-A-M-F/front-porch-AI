@@ -100,31 +100,45 @@ class DataMigrationService {
     final v2Service = V2CardService();
 
     await for (final entity in charDir.list()) {
-      if (entity is! File || !entity.path.toLowerCase().endsWith('.png')) continue;
+      if (entity is! File || !entity.path.toLowerCase().endsWith('.png')) {
+        continue;
+      }
 
       try {
         final card = await v2Service.readCard(entity.path);
         if (card == null) continue;
 
-        await _db.insertCharacter(CharactersCompanion(
-          name: Value(card.name),
-          description: Value(card.description),
-          personality: Value(card.personality),
-          scenario: Value(card.scenario),
-          firstMessage: Value(card.firstMessage),
-          mesExample: Value(card.mesExample),
-          systemPrompt: Value(card.systemPrompt),
-          postHistoryInstructions: Value(card.postHistoryInstructions),
-          alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-          tags: Value(jsonEncode(card.tags)),
-          imagePath: Value(card.imagePath != null ? card.imagePath!.split(RegExp(r'[/\\]')).last : null),
-          ttsVoice: Value(card.ttsVoice),
-          lorebook: Value(card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null),
-          worldNames: Value(jsonEncode(card.worldNames)),
-        ));
+        await _db.insertCharacter(
+          CharactersCompanion(
+            name: Value(card.name),
+            description: Value(card.description),
+            personality: Value(card.personality),
+            scenario: Value(card.scenario),
+            firstMessage: Value(card.firstMessage),
+            mesExample: Value(card.mesExample),
+            systemPrompt: Value(card.systemPrompt),
+            postHistoryInstructions: Value(card.postHistoryInstructions),
+            alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+            tags: Value(jsonEncode(card.tags)),
+            imagePath: Value(
+              card.imagePath != null
+                  ? card.imagePath!.split(RegExp(r'[/\\]')).last
+                  : null,
+            ),
+            ttsVoice: Value(card.ttsVoice),
+            lorebook: Value(
+              card.lorebook != null
+                  ? jsonEncode(card.lorebook!.toJson())
+                  : null,
+            ),
+            worldNames: Value(jsonEncode(card.worldNames)),
+          ),
+        );
         debugPrint('DB_MIGRATION: Imported character: ${card.name}');
       } catch (e) {
-        debugPrint('DB_MIGRATION: Failed to import character ${entity.path}: $e');
+        debugPrint(
+          'DB_MIGRATION: Failed to import character ${entity.path}: $e',
+        );
       }
     }
   }
@@ -168,7 +182,9 @@ class DataMigrationService {
         for (final c in allChars) {
           if (c.imagePath != null) {
             final basename = c.imagePath!.split(Platform.pathSeparator).last;
-            final nameNoExt = basename.replaceAll('.png', '').replaceAll('.PNG', '');
+            final nameNoExt = basename
+                .replaceAll('.png', '')
+                .replaceAll('.PNG', '');
             if (nameNoExt == charId) {
               dbCharacterId = c.id;
               break;
@@ -223,19 +239,21 @@ class DataMigrationService {
           final createdAt = DateTime.fromMillisecondsSinceEpoch(timestamp);
 
           // Insert session
-          await _db.insertSession(SessionsCompanion.insert(
-            id: sessionId,
-            characterId: Value(dbCharacterId),
-            groupId: Value(groupId),
-            name: Value(sessionName),
-            description: Value(sessionDescription),
-            authorNote: Value(authorNote),
-            authorNoteDepth: Value(authorNoteDepth),
-            parentSession: Value(parentSession),
-            forkIndex: Value(forkIndex),
-            createdAt: Value(createdAt),
-            updatedAt: Value(createdAt),
-          ));
+          await _db.insertSession(
+            SessionsCompanion.insert(
+              id: sessionId,
+              characterId: Value(dbCharacterId),
+              groupId: Value(groupId),
+              name: Value(sessionName),
+              description: Value(sessionDescription),
+              authorNote: Value(authorNote),
+              authorNoteDepth: Value(authorNoteDepth),
+              parentSession: Value(parentSession),
+              forkIndex: Value(forkIndex),
+              createdAt: Value(createdAt),
+              updatedAt: Value(createdAt),
+            ),
+          );
 
           // Insert messages in batch
           final messageBatch = <MessagesCompanion>[];
@@ -244,24 +262,30 @@ class DataMigrationService {
             final swipes = m['swipes'] as List<dynamic>?;
             final swipeDurations = m['swipe_durations'] as List<dynamic>?;
 
-            messageBatch.add(MessagesCompanion(
-              sessionId: Value(sessionId),
-              position: Value(i),
-              sender: Value(m['sender'] ?? ''),
-              isUser: Value(m['is_user'] ?? false),
-              characterId: Value(m['character_id']),
-              swipes: Value(jsonEncode(swipes ?? [m['text'] ?? ''])),
-              swipeIndex: Value(m['swipe_index'] ?? 0),
-              swipeDurations: Value(jsonEncode(swipeDurations ?? [0])),
-            ));
+            messageBatch.add(
+              MessagesCompanion(
+                sessionId: Value(sessionId),
+                position: Value(i),
+                sender: Value(m['sender'] ?? ''),
+                isUser: Value(m['is_user'] ?? false),
+                characterId: Value(m['character_id']),
+                swipes: Value(jsonEncode(swipes ?? [m['text'] ?? ''])),
+                swipeIndex: Value(m['swipe_index'] ?? 0),
+                swipeDurations: Value(jsonEncode(swipeDurations ?? [0])),
+              ),
+            );
           }
           if (messageBatch.isNotEmpty) {
             await _db.insertMessages(messageBatch);
           }
 
-          debugPrint('DB_MIGRATION: Imported session $sessionId with ${msgList.length} messages');
+          debugPrint(
+            'DB_MIGRATION: Imported session $sessionId with ${msgList.length} messages',
+          );
         } catch (e) {
-          debugPrint('DB_MIGRATION: Failed to import session ${entity.path}: $e');
+          debugPrint(
+            'DB_MIGRATION: Failed to import session ${entity.path}: $e',
+          );
         }
       }
     }
@@ -285,17 +309,22 @@ class DataMigrationService {
 
       try {
         final json = jsonDecode(await entity.readAsString());
-        await _db.insertGroup(GroupsCompanion.insert(
-          id: json['id'] ?? '',
-          name: json['name'] ?? 'Group Chat',
-          characterIds: Value(jsonEncode(json['character_ids'] ?? [])),
-          turnOrder: Value(json['turn_order'] ?? 'roundRobin'),
-          autoAdvance: Value(json['auto_advance'] ?? false),
-          directorMode: Value(json['director_mode'] ?? false),
-          firstMessage: Value(json['first_message'] ?? ''),
-          scenario: Value(json['scenario'] ?? ''),
-          systemPrompt: Value(json['system_prompt'] ?? ''),
-        ));
+        await _db.insertGroup(
+          GroupsCompanion.insert(
+            id: json['id'] ?? '',
+            name: json['name'] ?? 'Group Chat',
+            // Legacy JSON groups predate decoupled group_members. Write dead '[]'.
+            // Members (if any) would have referenced library; clean break means these
+            // ancient groups import as empty-member shells (user re-creates via modern UI).
+            characterIds: const Value('[]'),
+            turnOrder: Value(json['turn_order'] ?? 'roundRobin'),
+            autoAdvance: Value(json['auto_advance'] ?? false),
+            directorMode: Value(json['director_mode'] ?? false),
+            firstMessage: Value(json['first_message'] ?? ''),
+            scenario: Value(json['scenario'] ?? ''),
+            systemPrompt: Value(json['system_prompt'] ?? ''),
+          ),
+        );
         debugPrint('DB_MIGRATION: Imported group: ${json['name']}');
       } catch (e) {
         debugPrint('DB_MIGRATION: Failed to import group ${entity.path}: $e');
@@ -317,16 +346,22 @@ class DataMigrationService {
     if (!await worldsDir.exists()) return;
 
     await for (final entity in worldsDir.list()) {
-      if (entity is! File || !entity.path.toLowerCase().endsWith('.json')) continue;
+      if (entity is! File || !entity.path.toLowerCase().endsWith('.json')) {
+        continue;
+      }
 
       try {
         final json = jsonDecode(await entity.readAsString());
-        await _db.insertWorld(WorldsCompanion(
-          name: Value(json['name'] ?? 'New World'),
-          description: Value(json['description'] ?? ''),
-          lorebook: Value(json['lorebook'] != null ? jsonEncode(json['lorebook']) : null),
-          linkedCharacterName: Value(json['linked_character_name']),
-        ));
+        await _db.insertWorld(
+          WorldsCompanion(
+            name: Value(json['name'] ?? 'New World'),
+            description: Value(json['description'] ?? ''),
+            lorebook: Value(
+              json['lorebook'] != null ? jsonEncode(json['lorebook']) : null,
+            ),
+            linkedCharacterName: Value(json['linked_character_name']),
+          ),
+        );
         debugPrint('DB_MIGRATION: Imported world: ${json['name']}');
       } catch (e) {
         debugPrint('DB_MIGRATION: Failed to import world ${entity.path}: $e');
@@ -354,9 +389,9 @@ class DataMigrationService {
       // First pass: insert top-level folders (no parentId)
       for (final f in foldersList) {
         if (f['parentId'] != null) continue;
-        final newId = await _db.insertFolder(FoldersCompanion(
-          name: Value(f['name'] ?? ''),
-        ));
+        final newId = await _db.insertFolder(
+          FoldersCompanion(name: Value(f['name'] ?? '')),
+        );
         idMap[f['id']] = newId;
       }
 
@@ -364,10 +399,12 @@ class DataMigrationService {
       for (final f in foldersList) {
         if (f['parentId'] == null) continue;
         final parentId = idMap[f['parentId']];
-        final newId = await _db.insertFolder(FoldersCompanion(
-          name: Value(f['name'] ?? ''),
-          parentId: Value(parentId),
-        ));
+        final newId = await _db.insertFolder(
+          FoldersCompanion(
+            name: Value(f['name'] ?? ''),
+            parentId: Value(parentId),
+          ),
+        );
         idMap[f['id']] = newId;
       }
 
@@ -382,12 +419,14 @@ class DataMigrationService {
           final allChars = await _db.getAllCharacters();
           for (final c in allChars) {
             if (c.imagePath != null && c.imagePath!.endsWith(charPath)) {
-              await _db.updateCharacter(CharactersCompanion(
-                id: Value(c.id),
-                name: Value(c.name),
-                folderId: Value(folderId),
-                updatedAt: Value(DateTime.now()),
-              ));
+              await _db.updateCharacter(
+                CharactersCompanion(
+                  id: Value(c.id),
+                  name: Value(c.name),
+                  folderId: Value(folderId),
+                  updatedAt: Value(DateTime.now()),
+                ),
+              );
               break;
             }
           }
@@ -409,27 +448,32 @@ class DataMigrationService {
 
     if (jsonList == null || jsonList.isEmpty) {
       // Create default persona
-      await _db.insertPersona(PersonasCompanion.insert(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: Value(prefs.getString('user_name') ?? 'User'),
-        persona: Value(prefs.getString('user_persona') ?? ''),
-        isActive: const Value(true),
-      ));
+      await _db.insertPersona(
+        PersonasCompanion.insert(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: Value(prefs.getString('user_name') ?? 'User'),
+          persona: Value(prefs.getString('user_persona') ?? ''),
+          isActive: const Value(true),
+        ),
+      );
       return;
     }
 
     for (final str in jsonList) {
       try {
         final json = jsonDecode(str);
-        final id = json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString();
-        await _db.insertPersona(PersonasCompanion.insert(
-          id: id,
-          title: Value(json['title'] ?? ''),
-          name: Value(json['name'] ?? 'User'),
-          persona: Value(json['persona'] ?? ''),
-          avatarPath: Value(json['avatar_path']),
-          isActive: Value(id == activeId),
-        ));
+        final id =
+            json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString();
+        await _db.insertPersona(
+          PersonasCompanion.insert(
+            id: id,
+            title: Value(json['title'] ?? ''),
+            name: Value(json['name'] ?? 'User'),
+            persona: Value(json['persona'] ?? ''),
+            avatarPath: Value(json['avatar_path']),
+            isActive: Value(id == activeId),
+          ),
+        );
         debugPrint('DB_MIGRATION: Imported persona: ${json['name']}');
       } catch (e) {
         debugPrint('DB_MIGRATION: Failed to import persona: $e');

@@ -19,8 +19,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
-import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
@@ -37,6 +35,20 @@ class UiSettingsDialog extends StatefulWidget {
 }
 
 class _UiSettingsDialogState extends State<UiSettingsDialog> {
+  late ValueNotifier<CharacterCard?> _characterNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _characterNotifier = ValueNotifier<CharacterCard?>(widget.character);
+  }
+
+  @override
+  void dispose() {
+    _characterNotifier.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
@@ -52,103 +64,144 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            // ── Header ──────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  widget.character != null 
-                    ? '${widget.character!.name} - UI Settings'
-                    : 'UI Settings',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                IconButton(icon: const Icon(Icons.close, color: Colors.white70), onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            const SizedBox(height: 20),
+              // ── Header ──────────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _characterNotifier.value != null
+                        ? '${_characterNotifier.value!.name} - UI Settings'
+                        : 'UI Settings',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
 
-            // ── Appearance ──────────────────────────────────────────────
-            const Text('Appearance', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 12),
-            _buildSlider(
-              'Bubble Opacity',
-              storageService.bubbleOpacity,
-              0.1, 1.0,
-              (val) => storageService.setBubbleOpacity(val),
-              divisions: 18,
-            ),
-            const SizedBox(height: 4),
-            _buildSlider(
-              'Chat Text Size',
-              storageService.textScale,
-              0.5, 2.0,
-              (val) => storageService.setTextScale(val),
-              divisions: 30,
-            ),
-            const SizedBox(height: 20),
-
-            // ── Chat Colors ─────────────────────────────────────────────
-            const Text('Chat Colors', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 12),
-            _buildColorRow(
-              context,
-              'User Bubble',
-              widget.character?.frontPorchExtensions?.userBubbleColor ?? storageService.globalUserBubbleColor,
-              (color) => _updateUserBubbleColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'User Text',
-              widget.character?.frontPorchExtensions?.userTextColor ?? storageService.globalUserTextColor,
-              (color) => _updateUserTextColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'AI Bubble',
-              widget.character?.frontPorchExtensions?.aiBubbleColor ?? storageService.globalAiBubbleColor,
-              (color) => _updateAiBubbleColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'AI Text',
-              widget.character?.frontPorchExtensions?.aiTextColor ?? storageService.globalAiTextColor,
-              (color) => _updateAiTextColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'Dialogue (Quoted)',
-              widget.character?.frontPorchExtensions?.dialogueColor ?? storageService.globalDialogueColor,
-              (color) => _updateDialogueColor(context, color),
-            ),
-            _buildColorRow(
-              context,
-              'Actions (*text*)',
-              widget.character?.frontPorchExtensions?.actionColor ?? storageService.globalActionColor,
-              (color) => _updateActionColor(context, color),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Chat Background ─────────────────────────────────────────
-            const Text('Chat Background', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => showDialog(
-                  context: context,
-                  builder: (ctx) => const BackgroundSettingsDialog(),
+              // ── Appearance ──────────────────────────────────────────────
+              const Text(
+                'Appearance',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
                 ),
-                icon: const Icon(Icons.image, size: 18),
-                label: const Text('Manage Chat Backgrounds'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white24),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              ),
+              const SizedBox(height: 12),
+              _buildSlider(
+                'Bubble Opacity',
+                storageService.bubbleOpacity,
+                0.1,
+                1.0,
+                (val) => storageService.setBubbleOpacity(val),
+                divisions: 18,
+              ),
+              const SizedBox(height: 4),
+              _buildSlider(
+                'Chat Text Size',
+                storageService.textScale,
+                0.5,
+                2.0,
+                (val) => storageService.setTextScale(val),
+                divisions: 30,
+              ),
+              if (_characterNotifier.value != null) ...[
+                const SizedBox(height: 8),
+                _buildAvatarLockedToggle(context),
+              ],
+              const SizedBox(height: 20),
+
+              // ── Chat Colors ─────────────────────────────────────────────
+              const Text(
+                'Chat Colors',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildColorRow(
+                context,
+                'User Bubble',
+                _characterNotifier
+                        .value
+                        ?.frontPorchExtensions
+                        ?.userBubbleColor ??
+                    storageService.globalUserBubbleColor,
+                (color) => _updateUserBubbleColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'User Text',
+                _characterNotifier.value?.frontPorchExtensions?.userTextColor ??
+                    storageService.globalUserTextColor,
+                (color) => _updateUserTextColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'AI Bubble',
+                _characterNotifier.value?.frontPorchExtensions?.aiBubbleColor ??
+                    storageService.globalAiBubbleColor,
+                (color) => _updateAiBubbleColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'AI Text',
+                _characterNotifier.value?.frontPorchExtensions?.aiTextColor ??
+                    storageService.globalAiTextColor,
+                (color) => _updateAiTextColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'Dialogue (Quoted)',
+                _characterNotifier.value?.frontPorchExtensions?.dialogueColor ??
+                    storageService.globalDialogueColor,
+                (color) => _updateDialogueColor(context, color),
+              ),
+              _buildColorRow(
+                context,
+                'Actions (*text*)',
+                _characterNotifier.value?.frontPorchExtensions?.actionColor ??
+                    storageService.globalActionColor,
+                (color) => _updateActionColor(context, color),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Chat Background ─────────────────────────────────────────
+              const Text(
+                'Chat Background',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (ctx) => const BackgroundSettingsDialog(),
+                  ),
+                  icon: const Icon(Icons.image, size: 18),
+                  label: const Text('Manage Chat Backgrounds'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
-            ),
             ],
           ),
         ),
@@ -156,7 +209,50 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max, ValueChanged<double> onChanged, {int? divisions}) {
+  Widget _buildAvatarLockedToggle(BuildContext context) {
+    final character = _characterNotifier.value!;
+    final locked = character.frontPorchExtensions?.avatarLocked ?? false;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Lock Avatar Size',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              Text(
+                'Avatar won\'t grow past default size when sidebar is wider',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: locked,
+          onChanged: (val) async {
+            _updateAvatarLocked(context, val);
+          },
+          activeTrackColor: Colors.blueAccent,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSlider(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged, {
+    int? divisions,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -164,7 +260,13 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: const TextStyle(color: Colors.white70)),
-            Text(value.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            Text(
+              value.toStringAsFixed(2),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ],
         ),
         Slider(
@@ -190,7 +292,10 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
           const Spacer(),
           Container(
             width: 40,
@@ -263,30 +368,34 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: presetColors.map((color) => GestureDetector(
-                        onTap: () => Navigator.pop(context, color),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: color == selectedColor
-                                  ? Colors.blueAccent
-                                  : Colors.white24,
-                              width: 2,
+                      children: presetColors
+                          .map(
+                            (color) => GestureDetector(
+                              onTap: () => Navigator.pop(context, color),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: color == selectedColor
+                                        ? Colors.blueAccent
+                                        : Colors.white24,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: color == selectedColor
+                                    ? const Icon(
+                                        Icons.check,
+                                        size: 18,
+                                        color: Colors.white,
+                                      )
+                                    : null,
+                              ),
                             ),
-                          ),
-                          child: color == selectedColor
-                              ? const Icon(
-                                  Icons.check,
-                                  size: 18,
-                                  color: Colors.white,
-                                )
-                              : null,
-                        ),
-                      )).toList(),
+                          )
+                          .toList(),
                     ),
                     const SizedBox(height: 12),
                     // Color picker - use wheel picker for full color spectrum
@@ -340,11 +449,11 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
 
   Future<void> _updateUserBubbleColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      // Update per-character setting (create extensions if null)
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         userBubbleColor: color,
       );
@@ -373,30 +482,24 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         avatarImages: character.avatarImages != null
             ? List.from(character.avatarImages!)
             : null,
-      );
-      // Save to database
+      )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      // Reload from PNG to ensure extensions are persisted
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter(reloaded ?? updatedCharacter);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
-      // Update global setting (no character selected)
       await storage.setGlobalUserBubbleColor(color);
-    }
-    // Refresh UI
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateUserTextColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         userTextColor: color,
       );
@@ -425,26 +528,24 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         avatarImages: character.avatarImages != null
             ? List.from(character.avatarImages!)
             : null,
-      );
+      )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter(reloaded ?? updatedCharacter);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalUserTextColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateAiBubbleColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         aiBubbleColor: color,
       );
@@ -473,29 +574,25 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         avatarImages: character.avatarImages != null
             ? List.from(character.avatarImages!)
             : null,
-      );
+      )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter(reloaded ?? updatedCharacter);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalAiBubbleColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateAiTextColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
-      final updatedExtensions = currentExtensions.copyWith(
-        aiTextColor: color,
-      );
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
+      final updatedExtensions = currentExtensions.copyWith(aiTextColor: color);
       final updatedCharacter = CharacterCard(
         name: character.name,
         description: character.description,
@@ -521,26 +618,24 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         avatarImages: character.avatarImages != null
             ? List.from(character.avatarImages!)
             : null,
-      );
+      )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter(reloaded ?? updatedCharacter);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalAiTextColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateDialogueColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
       final updatedExtensions = currentExtensions.copyWith(
         dialogueColor: color,
       );
@@ -569,29 +664,25 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         avatarImages: character.avatarImages != null
             ? List.from(character.avatarImages!)
             : null,
-      );
+      )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter(reloaded ?? updatedCharacter);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalDialogueColor(color);
-    }
-    if (context.mounted) {
-      Navigator.pop(context);
     }
   }
 
   Future<void> _updateActionColor(BuildContext context, Color color) async {
     final storage = Provider.of<StorageService>(context, listen: false);
-    final character = widget.character;
+    final character = _characterNotifier.value;
 
     if (character != null) {
-      final currentExtensions = character.frontPorchExtensions ?? FrontPorchExtensions();
-      final updatedExtensions = currentExtensions.copyWith(
-        actionColor: color,
-      );
+      final currentExtensions =
+          character.frontPorchExtensions ?? FrontPorchExtensions();
+      final updatedExtensions = currentExtensions.copyWith(actionColor: color);
       final updatedCharacter = CharacterCard(
         name: character.name,
         description: character.description,
@@ -617,17 +708,54 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
         avatarImages: character.avatarImages != null
             ? List.from(character.avatarImages!)
             : null,
-      );
+      )..dbId = character.dbId;
       final charRepo = Provider.of<CharacterRepository>(context, listen: false);
       await charRepo.updateCharacter(updatedCharacter);
-      final reloaded = await V2CardService().readCard(character.imagePath!);
-      final chatService = Provider.of<ChatService>(context, listen: false);
-      await chatService.setActiveCharacter(reloaded ?? updatedCharacter);
+      setState(() {
+        _characterNotifier.value = updatedCharacter;
+      });
     } else {
       await storage.setGlobalActionColor(color);
     }
-    if (context.mounted) {
-      Navigator.pop(context);
-    }
+  }
+
+  Future<void> _updateAvatarLocked(BuildContext context, bool locked) async {
+    final character = _characterNotifier.value;
+    if (character == null) return;
+
+    final currentExtensions =
+        character.frontPorchExtensions ?? FrontPorchExtensions();
+    final updatedExtensions = currentExtensions.copyWith(avatarLocked: locked);
+    final updatedCharacter = CharacterCard(
+      name: character.name,
+      description: character.description,
+      personality: character.personality,
+      scenario: character.scenario,
+      firstMessage: character.firstMessage,
+      mesExample: character.mesExample,
+      systemPrompt: character.systemPrompt,
+      postHistoryInstructions: character.postHistoryInstructions,
+      alternateGreetings: List.from(character.alternateGreetings),
+      tags: List.from(character.tags),
+      imagePath: character.imagePath,
+      folderId: character.folderId,
+      lorebook: character.lorebook != null
+          ? Lorebook(entries: List.from(character.lorebook!.entries))
+          : null,
+      worldNames: List.from(character.worldNames),
+      ttsVoice: character.ttsVoice,
+      frontPorchExtensions: updatedExtensions,
+      rawExtensions: character.rawExtensions != null
+          ? Map<String, dynamic>.from(character.rawExtensions!)
+          : null,
+      avatarImages: character.avatarImages != null
+          ? List.from(character.avatarImages!)
+          : null,
+    )..dbId = character.dbId;
+    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+    await charRepo.updateCharacter(updatedCharacter);
+    setState(() {
+      _characterNotifier.value = updatedCharacter;
+    });
   }
 }

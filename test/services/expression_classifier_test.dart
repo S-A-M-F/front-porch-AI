@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
-import 'package:front_porch_ai/utils/emotion_labels.dart';
 
 /// Mock the path_provider plugin so StorageService._init() can resolve
 /// getApplicationDocumentsDirectory() without a real platform channel.
@@ -19,12 +18,12 @@ void setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      final tmp = Directory.systemTemp.createTempSync('fpai_expr_test_');
-      return tmp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          final tmp = Directory.systemTemp.createTempSync('fpai_expr_test_');
+          return tmp.path;
+        }
+        return null;
+      });
 }
 
 /// Helper: create a StorageService backed by in-memory SharedPreferences.
@@ -100,10 +99,7 @@ void main() {
     });
 
     test('fromJson handles missing top_3', () {
-      final json = {
-        'emotion': 'sadness',
-        'confidence': 0.85,
-      };
+      final json = {'emotion': 'sadness', 'confidence': 0.85};
       final result = EmotionResult.fromJson(json);
 
       expect(result.emotion, equals('sadness'));
@@ -202,15 +198,18 @@ void main() {
       expect(result.confidence, equals(0.5));
     });
 
-    test('falls back to neutral when reclassify returns invalid label', () async {
-      final classifier = LLMExpressionClassifier(
-        getCurrentEmotion: () => 'blorp',
-        reclassify: (e) async => 'not_a_valid_label',
-      );
-      final result = await classifier.classify('test');
-      expect(result.emotion, equals('neutral'));
-      expect(result.confidence, equals(0.8));
-    });
+    test(
+      'falls back to neutral when reclassify returns invalid label',
+      () async {
+        final classifier = LLMExpressionClassifier(
+          getCurrentEmotion: () => 'blorp',
+          reclassify: (e) async => 'not_a_valid_label',
+        );
+        final result = await classifier.classify('test');
+        expect(result.emotion, equals('neutral'));
+        expect(result.confidence, equals(0.8));
+      },
+    );
 
     test('isAvailable always returns true', () async {
       final classifier = LLMExpressionClassifier(
@@ -223,20 +222,29 @@ void main() {
 
   group('ONNXExpressionClassifier', () {
     test('classify returns neutral when script is not found', () async {
-      final storage = await createStorageService();
-      final classifier = ONNXExpressionClassifier(storage: storage);
-      final result = await classifier.classify('I am happy');
-      expect(result.emotion, equals('neutral'));
-      expect(result.confidence, equals(0.0));
+      final originalCwd = Directory.current;
+      final tempNoScript = Directory.systemTemp.createTempSync('fpai_no_script_');
+      try {
+        Directory.current = tempNoScript; // ensure devScript check and relative fallback won't find sentiment_classifier.py
+        final storage = await createStorageService();
+        final classifier = ONNXExpressionClassifier(storage: storage);
+        final result = await classifier.classify('I am happy');
+        expect(result.emotion, equals('neutral'));
+        expect(result.confidence, equals(0.0));
+      } finally {
+        Directory.current = originalCwd;
+        if (tempNoScript.existsSync()) {
+          tempNoScript.deleteSync(recursive: true);
+        }
+      }
     });
 
     test('onProgress callback is captured when provided', () async {
       final storage = await createStorageService();
-      var progressEmitted = false;
       final classifier = ONNXExpressionClassifier(
         storage: storage,
         onProgress: (progress) {
-          progressEmitted = true;
+          // callback wired (test only verifies construction, not firing in this env)
         },
       );
       // Script may exist but Python deps missing — classify() returns neutral.

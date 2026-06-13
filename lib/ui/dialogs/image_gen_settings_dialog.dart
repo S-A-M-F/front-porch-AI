@@ -20,6 +20,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+
+/// DT-native samplers (exact mapping from tools/dt-grpc-python/client.py Sampler enum).
+/// Friendly labels for the dropdown; values are the ints sent to the CLI.
+const List<({String label, int value})> _drawThingsSamplers = [
+  (label: 'DDIM Trailing', value: 16),
+  (label: 'UniPC Trailing', value: 17),
+  (label: 'Euler a Trailing', value: 10),
+  (label: 'DPM++ 2M Trailing', value: 15),
+  (label: 'DPM++ SDE Trailing', value: 11),
+  (label: 'UniPC AYS', value: 18),
+  (label: 'Euler a AYS', value: 13),
+  (label: 'DPM++ 2M AYS', value: 12),
+  (label: 'DPM++ SDE AYS', value: 14),
+  (label: 'DPM++ 2M Karras', value: 0),
+  (label: 'DPM++ SDE Karras', value: 4),
+  (label: 'Euler a', value: 1),
+  (label: 'UniPC', value: 5),
+  (label: 'DDIM', value: 2),
+  (label: 'PLMS', value: 3),
+  (label: 'LCM', value: 6),
+  (label: 'TCD', value: 9),
+  (label: 'Euler a Substep', value: 7),
+  (label: 'DPM++ SDE Substep', value: 8),
+];
 
 /// Dialog for configuring image generation settings.
 class ImageGenSettingsDialog extends StatefulWidget {
@@ -38,10 +63,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   final _localUrlController = TextEditingController();
   List<String> _localModels = [];
   bool _loadingLocalModels = false;
-  bool? _connectionOk;      // null = untested, true = ok, false = failed
+  bool? _connectionOk; // null = untested, true = ok, false = failed
   bool _testingConnection = false;
-  bool _unloadingModel    = false;
-  bool _switchingModel    = false;
+  bool _unloadingModel = false;
+  bool _switchingModel = false;
   String _modelActionStatus = ''; // feedback message for unload/switch
 
   // LoRA state (A1111/Forge/SDNext only)
@@ -52,6 +77,11 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   List<String> _localSamplers = [];
   bool _loadingSamplers = false;
   final _seedController = TextEditingController();
+
+  // Slider drag tracking
+  double? _dragLoraWeight;
+  double? _dragSteps;
+  double? _dragCfgScale;
 
   @override
   void initState() {
@@ -141,25 +171,34 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   }
 
   Future<void> _testConnection() async {
-    final url = _localUrlController.text.trim();
-    if (url.isEmpty) return;
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final isDT = storage.imageGenBackend == 'drawthings';
+
+    String effectiveUrl = _localUrlController.text.trim();
+    if (isDT) {
+      // For Draw Things we use the dedicated host/port fields (the grpc service reads them from storage).
+      // We still need a non-empty string to pass the early return, but the value is ignored for DT.
+      effectiveUrl = effectiveUrl.isNotEmpty ? effectiveUrl : '127.0.0.1:7859';
+    }
+
+    if (effectiveUrl.isEmpty) return;
+
     setState(() {
       _testingConnection = true;
       _connectionOk = null;
     });
     final service = Provider.of<ImageGenService>(context, listen: false);
-    final ok = await service.testLocalConnection(url);
+    final ok = await service.testLocalConnection(effectiveUrl);
     if (mounted) {
       setState(() {
         _connectionOk = ok;
         _testingConnection = false;
       });
       if (ok) {
-        _fetchLocalModels(url);
-        _fetchLocalSamplers(url);
+        _fetchLocalModels(effectiveUrl);
+        _fetchLocalSamplers(effectiveUrl);
         // Fetch LoRAs for A1111-compatible backends (not Draw Things)
-        final storage = Provider.of<StorageService>(context, listen: false);
-        if (storage.imageGenBackend != 'drawthings') _fetchLocalLoras(url);
+        if (!isDT) _fetchLocalLoras(effectiveUrl);
       }
     }
   }
@@ -167,7 +206,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
   Future<void> _unloadModel() async {
     final url = _localUrlController.text.trim();
     if (url.isEmpty) return;
-    setState(() { _unloadingModel = true; _modelActionStatus = ''; });
+    setState(() {
+      _unloadingModel = true;
+      _modelActionStatus = '';
+    });
     final service = Provider.of<ImageGenService>(context, listen: false);
     final ok = await service.unloadLocalModel(url);
     if (mounted) {
@@ -185,7 +227,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
     final storage = Provider.of<StorageService>(context, listen: false);
     final model = storage.imageGenModel;
     if (url.isEmpty || model.isEmpty) return;
-    setState(() { _switchingModel = true; _modelActionStatus = 'Unloading current model…'; });
+    setState(() {
+      _switchingModel = true;
+      _modelActionStatus = 'Unloading current model…';
+    });
     final service = Provider.of<ImageGenService>(context, listen: false);
     final isDrawThings = storage.imageGenBackend == 'drawthings';
     late bool ok;
@@ -201,7 +246,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       setState(() {
         _switchingModel = false;
         _modelActionStatus = ok
-            ? (isDrawThings ? '✓ Model will be loaded during generation' : '✓ Switched to: $model')
+            ? (isDrawThings
+                  ? '✓ Model will be loaded during generation'
+                  : '✓ Switched to: $model')
             : '✗ Failed to switch — check the server logs';
       });
     }
@@ -213,8 +260,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       builder: (context, storage, _) {
         return Dialog(
           backgroundColor: const Color(0xFF1F2937),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
             width: 540,
             constraints: const BoxConstraints(maxHeight: 640),
@@ -223,20 +271,28 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               children: [
                 // Header
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
                   decoration: const BoxDecoration(
                     border: Border(bottom: BorderSide(color: Colors.white10)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.auto_awesome, color: Colors.purpleAccent),
+                      const Icon(
+                        Icons.auto_awesome,
+                        color: Colors.purpleAccent,
+                      ),
                       const SizedBox(width: 12),
-                      const Text('Image Generation Settings',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                      const Text(
+                        'Image Generation Settings',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                       const Spacer(),
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white54),
@@ -254,12 +310,17 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       children: [
                         // ── Enable toggle ─────────────────────────────
                         SwitchListTile(
-                          title: const Text('Enable Image Generation',
-                              style: TextStyle(color: Colors.white)),
+                          title: const Text(
+                            'Enable Image Generation',
+                            style: TextStyle(color: Colors.white),
+                          ),
                           subtitle: const Text(
-                              'Add image generation button to chat toolbar',
-                              style: TextStyle(
-                                  color: Colors.white54, fontSize: 12)),
+                            'Add image generation button to chat toolbar',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
                           value: storage.imageGenEnabled,
                           activeTrackColor: Colors.purpleAccent,
                           contentPadding: EdgeInsets.zero,
@@ -269,11 +330,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                         const SizedBox(height: 16),
 
                         // ── Backend selector ──────────────────────────
-                        const Text('Image Source',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
+                        const Text(
+                          'Image Source',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         _buildBackendSelector(storage),
 
@@ -305,8 +369,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         final isSelected = storage.imageGenBackend == b.key;
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(
-                right: b == backends.last ? 0 : 8),
+            padding: EdgeInsets.only(right: b == backends.last ? 0 : 8),
             child: GestureDetector(
               onTap: () {
                 storage.setImageGenBackend(b.key);
@@ -324,9 +387,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       : Colors.black26,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isSelected
-                        ? Colors.purpleAccent
-                        : Colors.white10,
+                    color: isSelected ? Colors.purpleAccent : Colors.white10,
                     width: isSelected ? 1.5 : 1,
                   ),
                 ),
@@ -336,12 +397,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       b == ImageGenBackend.remote
                           ? Icons.cloud_outlined
                           : b == ImageGenBackend.drawThings
-                              ? Icons.apple
-                              : Icons.computer_outlined,
+                          ? Icons.apple
+                          : Icons.computer_outlined,
                       size: 18,
-                      color: isSelected
-                          ? Colors.purpleAccent
-                          : Colors.white38,
+                      color: isSelected ? Colors.purpleAccent : Colors.white38,
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -412,18 +471,20 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         const SizedBox(height: 20),
 
         // Image Model selector
-        const Text('Image Model',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Image Model',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                initialValue: _models
-                        .any((m) => m.id == storage.imageGenModel)
+                initialValue: _models.any((m) => m.id == storage.imageGenModel)
                     ? storage.imageGenModel
                     : null,
                 dropdownColor: const Color(0xFF374151),
@@ -434,8 +495,8 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                   hintText: _loadingModels
                       ? 'Loading models...'
                       : _models.isEmpty
-                          ? 'No image models found'
-                          : 'Select a model',
+                      ? 'No image models found'
+                      : 'Select a model',
                   hintStyle: const TextStyle(color: Colors.white30),
                   filled: true,
                   fillColor: Colors.black26,
@@ -444,7 +505,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                 ),
                 items: _buildGroupedModelItems(),
                 onChanged: (val) {
@@ -459,8 +522,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.purpleAccent))
+                        strokeWidth: 2,
+                        color: Colors.purpleAccent,
+                      ),
+                    )
                   : const Icon(Icons.refresh, color: Colors.white54),
               tooltip: 'Refresh models',
               onPressed: _loadingModels ? null : _fetchModels,
@@ -482,7 +547,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
             isDense: true,
           ),
           controller: TextEditingController(text: storage.imageGenModel),
@@ -509,12 +576,22 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: isDrawThings
-                ? Colors.purple.withValues(alpha: 0.08)
-                : Colors.black26,
+                ? AppColors.resolve(
+                    context,
+                    const Color(0xFF3B2A5A),
+                    const Color(0xFFEDE7F6),
+                  ) // subtle purple tint (dark/light)
+                : AppColors.surfaceContainerOf(context),
             borderRadius: BorderRadius.circular(8),
             border: Border(
               left: BorderSide(
-                color: isDrawThings ? Colors.purpleAccent : Colors.blue,
+                color: isDrawThings
+                    ? AppColors.resolve(
+                        context,
+                        const Color(0xFF9C27B0),
+                        const Color(0xFF7B1FA2),
+                      )
+                    : Colors.blue, // legacy accent kept for non-DT
                 width: 3,
               ),
             ),
@@ -524,22 +601,27 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             children: [
               Icon(
                 isDrawThings ? Icons.apple : Icons.info_outline,
-                color: isDrawThings ? Colors.purpleAccent : Colors.blue,
+                color: isDrawThings
+                    ? AppColors.resolve(
+                        context,
+                        const Color(0xFFCE93D8),
+                        const Color(0xFF7B1FA2),
+                      )
+                    : Colors.blue,
                 size: 16,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   isDrawThings
-                      ? 'Open Draw Things → Settings → Advanced → enable HTTP API Server. '
-                        'If models load below, selecting one will switch Draw Things to it '
-                        'before each generation — a fresh "project" every time. '
-                        'If no models appear, select your model in Draw Things directly.'
+                      ? 'Open Draw Things → Settings → Developer → enable gRPC Server (default port 7859). '
+                            'The connection uses Draw Things\' private gRPC+FlatBuffer protocol (not the HTTP API). '
+                            'Models are listed from the gRPC file list; select one to use it for generation.'
                       : 'Start AUTOMATIC1111 with the --api flag (e.g. python launch.py --api). '
-                        'Selecting a checkpoint below will switch models before each generation '
-                        'via POST /sdapi/v1/options.',
+                            'Selecting a checkpoint below will switch models before each generation '
+                            'via POST /sdapi/v1/options.',
                   style: TextStyle(
-                    color: isDrawThings ? Colors.white54 : Colors.white54,
+                    color: AppColors.textSecondary(context),
                     fontSize: 11,
                   ),
                 ),
@@ -550,210 +632,463 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
         const SizedBox(height: 16),
 
-        // Server URL + test button
-        const Text('Server URL',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _localUrlController,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: isDrawThings
-                      ? 'http://127.0.0.1:7860'
-                      : 'http://127.0.0.1:7860',
-                  hintStyle: const TextStyle(color: Colors.white24),
-                  filled: true,
-                  fillColor: Colors.black26,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
-                  isDense: true,
-                  suffixIcon: _connectionOk == null
-                      ? null
-                      : Icon(
-                          _connectionOk!
-                              ? Icons.check_circle
-                              : Icons.cancel,
-                          color: _connectionOk!
-                              ? Colors.green
-                              : Colors.redAccent,
-                          size: 18,
-                        ),
-                ),
-                onChanged: (val) {
-                  storage.setLocalImageGenUrl(val.trim());
-                  // Reset connection indicator on edit
-                  setState(() => _connectionOk = null);
-                },
-                onSubmitted: (_) => _testConnection(),
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: _testingConnection ? null : _testConnection,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white10,
-                foregroundColor: Colors.white70,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
-              ),
-              child: _testingConnection
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Test', style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 16),
-
-        // Checkpoint / model selector
-        const Text('Checkpoint Model',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        const Text(
-          'Fetched from the local server after pressing Test.',
-          style: TextStyle(color: Colors.white24, fontSize: 10),
-        ),
-        const SizedBox(height: 8),
-        if (_loadingLocalModels)
-          const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.purpleAccent),
-            ),
-          )
-        else if (_localModels.isEmpty)
+        // Address fields — DT gets its own dedicated gRPC host/port (wired to the new storage keys)
+        if (isDrawThings) ...[
           Text(
-            isDrawThings
-                ? 'No models listed via API — switch the model directly in Draw Things, then press "Load Selected Model" to apply it.'
-                : 'No models found — test the connection above to fetch them.',
-            style: const TextStyle(color: Colors.white38, fontSize: 11),
-          )
-        else
-          DropdownButtonFormField<String>(
-            initialValue: _localModels.contains(storage.imageGenModel)
-                ? storage.imageGenModel
-                : null,
-            dropdownColor: const Color(0xFF374151),
-            style: const TextStyle(color: Colors.white),
-            isExpanded: true,
-            menuMaxHeight: 300,
+            'Draw Things gRPC Host',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: TextEditingController(text: storage.drawThingsGrpcHost),
+            style: TextStyle(
+              color: AppColors.textPrimary(context),
+              fontSize: 13,
+            ),
             decoration: InputDecoration(
-              hintText: 'Select a checkpoint',
-              hintStyle: const TextStyle(color: Colors.white30),
+              hintText: '127.0.0.1',
+              hintStyle: TextStyle(color: AppColors.textTertiary(context)),
               filled: true,
-              fillColor: Colors.black26,
+              fillColor: AppColors.surfaceContainerOf(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
+                horizontal: 12,
+                vertical: 10,
+              ),
+              isDense: true,
             ),
-            items: _localModels
-                .map((m) => DropdownMenuItem(
-                    value: m,
-                    child: Text(m,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white))))
-                .toList(),
             onChanged: (val) {
-              if (val != null) storage.setImageGenModel(val);
+              storage.setDrawThingsGrpcHost(val.trim());
+              setState(() {
+                _connectionOk = null;
+                _localModels = [];
+              });
             },
           ),
-
-        const SizedBox(height: 16),
-
-        // Model action buttons.
-        // Draw Things does NOT support /sdapi/v1/unload-checkpoint —
-        // it manages memory itself when a new model is loaded.
-        // Show a single "Load Selected" button for Draw Things;
-        // show Unload + Switch for A1111 which supports both.
-        if (isDrawThings) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Port',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: _switchingModel
-                  ? const SizedBox(width: 14, height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.swap_horiz, size: 16),
-              label: const Text('Load Selected Model in Draw Things',
-                  style: TextStyle(fontSize: 12)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.purpleAccent),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+            width: 120,
+            child: TextField(
+              controller: TextEditingController(
+                text: storage.drawThingsGrpcPort.toString(),
               ),
-              onPressed: (_switchingModel || storage.imageGenModel.isEmpty)
-                  ? null
-                  : _switchModel,
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
+                fontSize: 13,
+              ),
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppColors.surfaceContainerOf(context),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                isDense: true,
+              ),
+              onChanged: (val) {
+                final p = int.tryParse(val) ?? 7859;
+                storage.setDrawThingsGrpcPort(p);
+                setState(() {
+                  _connectionOk = null;
+                  _localModels = [];
+                });
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed: _testingConnection ? null : _testConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white10,
+                  foregroundColor: Colors.white70,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                ),
+                child: _testingConnection
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Test Connection',
+                        style: TextStyle(fontSize: 12),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              if (_connectionOk != null)
+                Icon(
+                  _connectionOk! ? Icons.check_circle : Icons.cancel,
+                  color: _connectionOk! ? Colors.green : Colors.redAccent,
+                  size: 20,
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Checkpoint / model selector (shown for Draw Things after address fields)
+          const Text(
+            'Checkpoint Model',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 4),
           const Text(
-            'Sends the selected checkpoint to Draw Things via POST /sdapi/v1/options. '
-            'Draw Things will replace the current model automatically.',
+            'Fetched from Draw Things via gRPC after pressing Test Connection.',
             style: TextStyle(color: Colors.white24, fontSize: 10),
           ),
+          const SizedBox(height: 8),
+          if (_loadingLocalModels)
+            const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.purpleAccent,
+                ),
+              ),
+            )
+          else if (_localModels.isEmpty)
+            Text(
+              'No models fetched yet. Press "Test Connection" above to list models from this Draw Things instance.',
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _localModels.contains(storage.imageGenModel)
+                  ? storage.imageGenModel
+                  : null,
+              dropdownColor: const Color(0xFF374151),
+              style: const TextStyle(color: Colors.white),
+              isExpanded: true,
+              menuMaxHeight: 300,
+              decoration: InputDecoration(
+                hintText: 'Select a checkpoint',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.black26,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              items: _localModels
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) storage.setImageGenModel(val);
+              },
+            ),
         ] else ...[
+          // A1111 and other HTTP local backends keep the original URL field
+          const Text(
+            'Server URL',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  icon: _unloadingModel
-                      ? const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
-                      : const Icon(Icons.memory, size: 16, color: Colors.redAccent),
-                  label: const Text('Unload Model',
-                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.redAccent),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                child: TextField(
+                  controller: _localUrlController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'http://127.0.0.1:7860',
+                    hintStyle: const TextStyle(color: Colors.white24),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    isDense: true,
+                    suffixIcon: _connectionOk == null
+                        ? null
+                        : Icon(
+                            _connectionOk! ? Icons.check_circle : Icons.cancel,
+                            color: _connectionOk!
+                                ? Colors.green
+                                : Colors.redAccent,
+                            size: 18,
+                          ),
                   ),
-                  onPressed: (_unloadingModel || _switchingModel) ? null : _unloadModel,
+                  onChanged: (val) {
+                    storage.setLocalImageGenUrl(val.trim());
+                    setState(() => _connectionOk = null);
+                  },
+                  onSubmitted: (_) => _testConnection(),
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  icon: _switchingModel
-                      ? const SizedBox(width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.swap_horiz, size: 16),
-                  label: const Text('Switch to Selected',
-                      style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purpleAccent.withValues(alpha: 0.25),
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.purpleAccent),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+              ElevatedButton(
+                onPressed: _testingConnection ? null : _testConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white10,
+                  foregroundColor: Colors.white70,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
                   ),
-                  onPressed: (_unloadingModel || _switchingModel || storage.imageGenModel.isEmpty)
-                      ? null
-                      : _switchModel,
                 ),
+                child: _testingConnection
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Test', style: TextStyle(fontSize: 12)),
               ),
             ],
           ),
+
+          const SizedBox(height: 16),
+
+          // Checkpoint / model selector
+          const Text(
+            'Checkpoint Model',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Fetched from the local server after pressing Test.',
+            style: TextStyle(color: Colors.white24, fontSize: 10),
+          ),
+          const SizedBox(height: 8),
+          if (_loadingLocalModels)
+            const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.purpleAccent,
+                ),
+              ),
+            )
+          else if (_localModels.isEmpty)
+            Text(
+              isDrawThings
+                  ? 'No models fetched yet. Use the "Test Connection" button next to your Draw Things gRPC host/port above.'
+                  : 'No models found — test the connection above to fetch them.',
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _localModels.contains(storage.imageGenModel)
+                  ? storage.imageGenModel
+                  : null,
+              dropdownColor: const Color(0xFF374151),
+              style: const TextStyle(color: Colors.white),
+              isExpanded: true,
+              menuMaxHeight: 300,
+              decoration: InputDecoration(
+                hintText: 'Select a checkpoint',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.black26,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              items: _localModels
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) storage.setImageGenModel(val);
+              },
+            ),
+
+          const SizedBox(height: 16),
+
+          // Model action buttons.
+          // Draw Things does NOT support /sdapi/v1/unload-checkpoint —
+          // it manages memory itself when a new model is loaded.
+          // Show a single "Load Selected" button for Draw Things;
+          // show Unload + Switch for A1111 which supports both.
+          if (isDrawThings)
+            Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: _switchingModel
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.swap_horiz, size: 16),
+                    label: const Text(
+                      'Load Selected Model in Draw Things',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purpleAccent.withValues(
+                        alpha: 0.25,
+                      ),
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.purpleAccent),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed:
+                        (_switchingModel || storage.imageGenModel.isEmpty)
+                        ? null
+                        : _switchModel,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Sends the selected checkpoint to Draw Things via POST /sdapi/v1/options. '
+                  'Draw Things will replace the current model automatically.',
+                  style: TextStyle(color: Colors.white24, fontSize: 10),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: _unloadingModel
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.redAccent,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.memory,
+                            size: 16,
+                            color: Colors.redAccent,
+                          ),
+                    label: const Text(
+                      'Unload Model',
+                      style: TextStyle(color: Colors.redAccent, fontSize: 12),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.redAccent),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: (_unloadingModel || _switchingModel)
+                        ? null
+                        : _unloadModel,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: _switchingModel
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.swap_horiz, size: 16),
+                    label: const Text(
+                      'Switch to Selected',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purpleAccent.withValues(
+                        alpha: 0.25,
+                      ),
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.purpleAccent),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed:
+                        (_unloadingModel ||
+                            _switchingModel ||
+                            storage.imageGenModel.isEmpty)
+                        ? null
+                        : _switchModel,
+                  ),
+                ),
+              ],
+            ),
         ],
 
         if (_modelActionStatus.isNotEmpty) ...[
@@ -765,8 +1100,8 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               color: _modelActionStatus.startsWith('✓')
                   ? Colors.greenAccent
                   : _modelActionStatus.startsWith('⚠')
-                      ? Colors.amber
-                      : Colors.redAccent,
+                  ? Colors.amber
+                  : Colors.redAccent,
             ),
           ),
         ],
@@ -777,11 +1112,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         if (!isDrawThings) ...[
           const Divider(color: Colors.white12),
           const SizedBox(height: 8),
-          const Text('LoRA',
-              style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
+          const Text(
+            'LoRA',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
           const Text(
             'Applied to every generation via <lora:name:weight> in the prompt.',
@@ -790,12 +1128,16 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           const SizedBox(height: 8),
           if (_loadingLoras)
             const SizedBox(
-              height: 20, width: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purpleAccent),
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.purpleAccent,
+              ),
             )
           else
             DropdownButtonFormField<String>(
-              value: _localLoras.contains(storage.imageGenLora)
+              initialValue: _localLoras.contains(storage.imageGenLora)
                   ? storage.imageGenLora
                   : (storage.imageGenLora.isEmpty ? '' : null),
               dropdownColor: const Color(0xFF374151),
@@ -814,16 +1156,28 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
               items: [
-                const DropdownMenuItem(value: '', child: Text('\u2014 None \u2014',
-                    style: TextStyle(color: Colors.white54))),
-                ..._localLoras.map((l) => DropdownMenuItem(
+                const DropdownMenuItem(
+                  value: '',
+                  child: Text(
+                    '\u2014 None \u2014',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                ..._localLoras.map(
+                  (l) => DropdownMenuItem(
                     value: l,
-                    child: Text(l,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white)))),
+                    child: Text(
+                      l,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
               ],
               onChanged: (val) {
                 if (val != null) storage.setImageGenLora(val);
@@ -835,23 +1189,31 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Text('Weight', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                const Text(
+                  'Weight',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Slider(
-                    value: storage.imageGenLoraWeight,
+                    value: _dragLoraWeight ?? storage.imageGenLoraWeight,
                     min: 0.0,
                     max: 1.0,
                     divisions: 20,
                     activeColor: Colors.purpleAccent,
                     inactiveColor: Colors.white12,
-                    onChanged: (val) => storage.setImageGenLoraWeight(val),
+                    onChanged: (val) => setState(() => _dragLoraWeight = val),
+                    onChangeEnd: (val) {
+                      _dragLoraWeight = null;
+                      storage.setImageGenLoraWeight(val);
+                    },
                   ),
                 ),
                 SizedBox(
                   width: 36,
                   child: Text(
-                    storage.imageGenLoraWeight.toStringAsFixed(2),
+                    (_dragLoraWeight ?? storage.imageGenLoraWeight)
+                        .toStringAsFixed(2),
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                     textAlign: TextAlign.end,
                   ),
@@ -863,8 +1225,6 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ],
 
         _buildSharedFields(storage),
-
-
       ],
     );
   }
@@ -876,28 +1236,34 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Image Size
-        const Text('Image Size',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Image Size',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         _buildSizeSelector(storage),
 
         const SizedBox(height: 20),
 
         // Default Style
-        const Text('Default Style',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Default Style',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue:
               ImageGenService.styleLabels.containsKey(storage.imageGenStyle)
-                  ? storage.imageGenStyle
-                  : 'photorealistic',
+              ? storage.imageGenStyle
+              : 'photorealistic',
           dropdownColor: const Color(0xFF374151),
           style: const TextStyle(color: Colors.white),
           isExpanded: true,
@@ -909,13 +1275,12 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
           items: ImageGenService.styleLabels.entries.map((e) {
-            return DropdownMenuItem(
-              value: e.key,
-              child: Text(e.value),
-            );
+            return DropdownMenuItem(value: e.key, child: Text(e.value));
           }).toList(),
           onChanged: (val) {
             if (val != null) storage.setImageGenStyle(val);
@@ -931,11 +1296,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ),
 
         const SizedBox(height: 20),
-        const Text('Prompt Format',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Prompt Format',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: storage.imageGenPromptParadigm,
@@ -950,7 +1318,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
           items: const [
             DropdownMenuItem(
@@ -976,11 +1346,14 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         ),
 
         const SizedBox(height: 20),
-        const Text('Default Negative Prompt',
-            style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        const Text(
+          'Default Negative Prompt',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _negativePromptController,
@@ -996,7 +1369,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
               borderSide: BorderSide.none,
             ),
             contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
           onChanged: (val) => storage.setImageGenNegativePrompt(val),
         ),
@@ -1016,19 +1391,36 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           builder: (context, storage, _) {
             final isLocal = storage.imageGenBackend != 'remote';
             return ExpansionTile(
-              title: const Text('Advanced Generation Settings',
-                  style: TextStyle(color: Colors.white54, fontSize: 13)),
-              subtitle: Text(isLocal ? 'Applied to local A1111/Draw Things generations' : 'Configure your local server first',
-                  style: TextStyle(color: Colors.white24, fontSize: 10)),
+              title: const Text(
+                'Advanced Generation Settings',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              subtitle: Text(
+                isLocal
+                    ? 'Applied to local A1111/Draw Things generations'
+                    : 'Configure your local server first',
+                style: TextStyle(color: Colors.white24, fontSize: 10),
+              ),
               tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(left: 8, top: 8, bottom: 8),
-              children: isLocal ? _buildAdvancedFields(storage) : [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('Select a local backend (A1111 or Draw Things) above to configure generation parameters.',
-                      style: TextStyle(color: Colors.white24, fontSize: 11)),
-                ),
-              ],
+              childrenPadding: const EdgeInsets.only(
+                left: 8,
+                top: 8,
+                bottom: 8,
+              ),
+              children: isLocal
+                  ? _buildAdvancedFields(
+                      storage,
+                      isDrawThings: storage.imageGenBackend == 'drawthings',
+                    )
+                  : [
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text(
+                          'Select a local backend (A1111 or Draw Things) above to configure generation parameters.',
+                          style: TextStyle(color: Colors.white24, fontSize: 11),
+                        ),
+                      ),
+                    ],
             );
           },
         ),
@@ -1046,65 +1438,89 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
     // ── Free models section ──
     if (freeModels.isNotEmpty) {
-      items.add(DropdownMenuItem<String>(
-        enabled: false,
-        value: '__header_free__',
-        child: Text('── Included with Pro Subscription ──',
+      items.add(
+        DropdownMenuItem<String>(
+          enabled: false,
+          value: '__header_free__',
+          child: Text(
+            '── Included with Pro Subscription ──',
             style: TextStyle(
-                color: Colors.green.shade300,
-                fontSize: 11,
-                fontWeight: FontWeight.bold)),
-      ));
-      for (final m in freeModels) {
-        items.add(DropdownMenuItem(
-          value: m.id,
-          child: Row(
-            children: [
-              const Icon(Icons.check_circle, size: 14, color: Colors.green),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  m.pricingInfo != null ? '${m.displayName} — ${m.pricingInfo}' : m.displayName,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-              Text('Free', style: TextStyle(color: Colors.green.shade300, fontSize: 10)),
-            ],
+              color: Colors.green.shade300,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ));
+        ),
+      );
+      for (final m in freeModels) {
+        items.add(
+          DropdownMenuItem(
+            value: m.id,
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    m.pricingInfo != null
+                        ? '${m.displayName} — ${m.pricingInfo}'
+                        : m.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+                Text(
+                  'Free',
+                  style: TextStyle(color: Colors.green.shade300, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     }
 
     // ── Paid models section ──
     if (paidModels.isNotEmpty) {
-      items.add(DropdownMenuItem<String>(
-        enabled: false,
-        value: '__header_paid__',
-        child: Text('── Pay Per Prompt (Check OpenRouter for Credit Requirements) ──',
+      items.add(
+        DropdownMenuItem<String>(
+          enabled: false,
+          value: '__header_paid__',
+          child: Text(
+            '── Pay Per Prompt (Check OpenRouter for Credit Requirements) ──',
             style: TextStyle(
-                color: Colors.amber.shade300,
-                fontSize: 11,
-                fontWeight: FontWeight.bold)),
-      ));
-      for (final m in paidModels) {
-        items.add(DropdownMenuItem(
-          value: m.id,
-          child: Row(
-            children: [
-              const Icon(Icons.attach_money, size: 14, color: Colors.amber),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  m.pricingInfo != null ? '${m.displayName} — ${m.pricingInfo}' : m.displayName,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-              Text('Paid', style: TextStyle(color: Colors.amber.shade300, fontSize: 10)),
-            ],
+              color: Colors.amber.shade300,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ));
+        ),
+      );
+      for (final m in paidModels) {
+        items.add(
+          DropdownMenuItem(
+            value: m.id,
+            child: Row(
+              children: [
+                const Icon(Icons.attach_money, size: 14, color: Colors.amber),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    m.pricingInfo != null
+                        ? '${m.displayName} — ${m.pricingInfo}'
+                        : m.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+                Text(
+                  'Paid',
+                  style: TextStyle(color: Colors.amber.shade300, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        );
       }
     }
 
@@ -1113,9 +1529,9 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
   /// Size selector — chip-style buttons.
   Widget _buildSizeSelector(StorageService storage) {
-    const sizes        = ['512x512', '768x768', '1024x1024', '1536x1024', '1024x1536'];
-    const labels       = ['512²',   '768²',    '1024²',     '1536×1024', '1024×1536'];
-    const descriptions = ['Small',  'Medium',  'Square',    'Landscape', 'Portrait'];
+    const sizes = ['512x512', '768x768', '1024x1024', '1536x1024', '1024x1536'];
+    const labels = ['512²', '768²', '1024²', '1536×1024', '1024×1536'];
+    const descriptions = ['Small', 'Medium', 'Square', 'Landscape', 'Portrait'];
 
     return Wrap(
       spacing: 8,
@@ -1125,8 +1541,7 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         return GestureDetector(
           onTap: () => storage.setImageGenSize(sizes[i]),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: selected
                   ? Colors.purpleAccent.withValues(alpha: 0.3)
@@ -1138,19 +1553,22 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
             ),
             child: Column(
               children: [
-                Text(labels[i],
-                    style: TextStyle(
-                      color: selected ? Colors.purpleAccent : Colors.white54,
-                      fontSize: 12,
-                      fontWeight:
-                          selected ? FontWeight.bold : FontWeight.normal,
-                    )),
+                Text(
+                  labels[i],
+                  style: TextStyle(
+                    color: selected ? Colors.purpleAccent : Colors.white54,
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(descriptions[i],
-                    style: TextStyle(
-                      color: selected ? Colors.white38 : Colors.white24,
-                      fontSize: 9,
-                    )),
+                Text(
+                  descriptions[i],
+                  style: TextStyle(
+                    color: selected ? Colors.white38 : Colors.white24,
+                    fontSize: 9,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1161,30 +1579,44 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
 
   // ── Advanced generation fields ──────────────────────────────────────
 
-  List<Widget> _buildAdvancedFields(StorageService storage) {
+  List<Widget> _buildAdvancedFields(
+    StorageService storage, {
+    required bool isDrawThings,
+  }) {
     return [
       // Steps slider
       const SizedBox(height: 8),
       Row(
         children: [
-          const Text('Steps', style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'Steps',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Slider(
-              value: storage.imageGenSteps.toDouble(),
+              value: _dragSteps ?? storage.imageGenSteps.toDouble(),
               min: 5,
               max: 50,
               divisions: 45,
               activeColor: Colors.purpleAccent,
               inactiveColor: Colors.white12,
-              onChanged: (val) => storage.setImageGenSteps(val.round()),
+              onChanged: (val) => setState(() => _dragSteps = val),
+              onChangeEnd: (val) {
+                _dragSteps = null;
+                storage.setImageGenSteps(val.round());
+              },
             ),
           ),
           SizedBox(
             width: 32,
-            child: Text(storage.imageGenSteps.toString(),
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-                textAlign: TextAlign.end),
+            child: Text(
+              (_dragSteps ?? storage.imageGenSteps.toDouble())
+                  .round()
+                  .toString(),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              textAlign: TextAlign.end,
+            ),
           ),
         ],
       ),
@@ -1192,66 +1624,135 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
       // CFG Scale slider
       Row(
         children: [
-          const Text('CFG Scale', style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const Text(
+            'CFG Scale',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Slider(
-              value: storage.imageGenCfgScale,
+              value: _dragCfgScale ?? storage.imageGenCfgScale,
               min: 1.0,
               max: 20.0,
               divisions: 190,
               activeColor: Colors.purpleAccent,
               inactiveColor: Colors.white12,
-              onChanged: (val) => storage.setImageGenCfgScale(val),
+              onChanged: (val) => setState(() => _dragCfgScale = val),
+              onChangeEnd: (val) {
+                _dragCfgScale = null;
+                storage.setImageGenCfgScale(val);
+              },
             ),
           ),
           SizedBox(
             width: 36,
-            child: Text(storage.imageGenCfgScale.toStringAsFixed(1),
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-                textAlign: TextAlign.end),
+            child: Text(
+              (_dragCfgScale ?? storage.imageGenCfgScale).toStringAsFixed(1),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              textAlign: TextAlign.end,
+            ),
           ),
         ],
       ),
 
-      // Sampler dropdown
+      // Sampler dropdown — DT uses its own native 19-value list + dedicated storage
       const SizedBox(height: 8),
       Row(
         children: [
           const Expanded(
             flex: 2,
-            child: Text('Sampler', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Text(
+              'Sampler',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
             flex: 3,
-            child: DropdownButtonFormField<String>(
-              value: _localSamplers.contains(storage.imageGenSampler)
-                  ? storage.imageGenSampler
-                  : (storage.imageGenSampler.isNotEmpty ? null : 'Euler a'),
-              dropdownColor: const Color(0xFF374151),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              isExpanded: true,
-              decoration: InputDecoration(
-                hintText: _loadingSamplers ? 'Loading...' : 'Select sampler',
-                hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
-                filled: true,
-                fillColor: Colors.black26,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                isDense: true,
-              ),
-              items: _localSamplers.map((s) => DropdownMenuItem(
-                value: s,
-                child: Text(s, overflow: TextOverflow.ellipsis),
-              )).toList(),
-              onChanged: (val) {
-                if (val != null) storage.setImageGenSampler(val);
-              },
-            ),
+            child: isDrawThings
+                ? DropdownButtonFormField<int>(
+                    initialValue: storage.drawThingsSampler,
+                    dropdownColor: AppColors.surfaceContainerOf(context),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 12,
+                    ),
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      hintText: 'Select DT sampler',
+                      hintStyle: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surfaceContainerOf(context),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      isDense: true,
+                    ),
+                    items: _drawThingsSamplers
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s.value,
+                            child: Text(
+                              s.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) storage.setDrawThingsSampler(val);
+                    },
+                  )
+                : DropdownButtonFormField<String>(
+                    initialValue:
+                        _localSamplers.contains(storage.imageGenSampler)
+                        ? storage.imageGenSampler
+                        : (storage.imageGenSampler.isNotEmpty
+                              ? null
+                              : 'Euler a'),
+                    dropdownColor: const Color(0xFF374151),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      hintText: _loadingSamplers
+                          ? 'Loading...'
+                          : 'Select sampler',
+                      hintStyle: const TextStyle(
+                        color: Colors.white24,
+                        fontSize: 11,
+                      ),
+                      filled: true,
+                      fillColor: Colors.black26,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      isDense: true,
+                    ),
+                    items: _localSamplers
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(s, overflow: TextOverflow.ellipsis),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) storage.setImageGenSampler(val);
+                    },
+                  ),
           ),
         ],
       ),
@@ -1262,7 +1763,10 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
         children: [
           const Expanded(
             flex: 2,
-            child: Text('Seed', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Text(
+              'Seed',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1276,14 +1780,20 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                       hintText: '-1 = random',
-                      hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+                      hintStyle: const TextStyle(
+                        color: Colors.white24,
+                        fontSize: 10,
+                      ),
                       filled: true,
                       fillColor: Colors.black26,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       isDense: true,
                     ),
                     onChanged: (val) {
@@ -1294,7 +1804,11 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.casino_outlined, size: 18, color: Colors.purpleAccent),
+                  icon: const Icon(
+                    Icons.casino_outlined,
+                    size: 18,
+                    color: Colors.purpleAccent,
+                  ),
                   tooltip: 'Randomize seed',
                   onPressed: _randomizeSeed,
                 ),
@@ -1303,6 +1817,146 @@ class _ImageGenSettingsDialogState extends State<ImageGenSettingsDialog> {
           ),
         ],
       ),
+
+      // Draw Things Advanced subsection (plan deliverable — only when DT backend)
+      if (isDrawThings) ...[
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerOf(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.borderOf(context)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Draw Things Advanced',
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Shift
+              Row(
+                children: [
+                  Text(
+                    'Shift',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Slider(
+                      value: storage.drawThingsShift.clamp(0.5, 10.0),
+                      min: 0.5,
+                      max: 10.0,
+                      divisions: 95,
+                      activeColor: AppColors.userBubble,
+                      inactiveColor: AppColors.resolve(
+                        context,
+                        const Color(0xFF374151),
+                        const Color(0xFFE5E7EB),
+                      ),
+                      onChanged: (v) => storage.setDrawThingsShift(v),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      storage.drawThingsShift.toStringAsFixed(1),
+                      style: TextStyle(
+                        color: AppColors.textSecondary(context),
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.end,
+                    ),
+                  ),
+                ],
+              ),
+              // Strength
+              Row(
+                children: [
+                  Text(
+                    'Strength',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Slider(
+                      value: storage.drawThingsStrength,
+                      min: 0.0,
+                      max: 1.0,
+                      divisions: 20,
+                      activeColor: AppColors.userBubble,
+                      inactiveColor: AppColors.resolve(
+                        context,
+                        const Color(0xFF374151),
+                        const Color(0xFFE5E7EB),
+                      ),
+                      onChanged: (v) => storage.setDrawThingsStrength(v),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      storage.drawThingsStrength.toStringAsFixed(2),
+                      style: TextStyle(
+                        color: AppColors.textSecondary(context),
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.end,
+                    ),
+                  ),
+                ],
+              ),
+              // TeaCache (checkbox only — threshold uses sensible CLI default)
+              Row(
+                children: [
+                  Checkbox(
+                    value: storage.drawThingsTeaCache,
+                    onChanged: (v) => storage.setDrawThingsTeaCache(v ?? false),
+                    activeColor: AppColors.userBubble,
+                  ),
+                  Text(
+                    'TeaCache',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+              // CFG Zero Star
+              Row(
+                children: [
+                  Checkbox(
+                    value: storage.drawThingsCfgZeroStar,
+                    onChanged: (v) =>
+                        storage.setDrawThingsCfgZeroStar(v ?? false),
+                    activeColor: AppColors.userBubble,
+                  ),
+                  Text(
+                    'CFG Zero Star',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     ];
   }
 }

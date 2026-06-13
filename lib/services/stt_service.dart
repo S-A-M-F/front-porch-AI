@@ -27,13 +27,7 @@ import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
 
 /// Call status phases for the voice call loop.
-enum CallStatus {
-  idle,
-  listening,
-  transcribing,
-  thinking,
-  speaking,
-}
+enum CallStatus { idle, listening, transcribing, thinking, speaking }
 
 /// Speech-to-text service using Whisper (faster-whisper) via Python subprocess.
 ///
@@ -73,8 +67,11 @@ class SttService extends ChangeNotifier {
   bool _isCalibrating = false;
   final List<double> _calibrationSamples = [];
   bool _speechDetected = false; // true once user starts talking
-  static const double _silenceThresholdMultiplier = 1.8; // above noise floor = speech
-  static const Duration _silenceDuration = Duration(seconds: 2); // silence before auto-send
+  static const double _silenceThresholdMultiplier =
+      1.8; // above noise floor = speech
+  static const Duration _silenceDuration = Duration(
+    seconds: 2,
+  ); // silence before auto-send
 
   /// Called when a transcription is ready during call mode.
   /// The UI should wire this to chatService.sendMessage().
@@ -170,7 +167,11 @@ class SttService extends ChangeNotifier {
   }
 
   bool get _hasWrapper {
-    try { return File(_wrapperPath).existsSync(); } catch (_) { return false; }
+    try {
+      return File(_wrapperPath).existsSync();
+    } catch (_) {
+      return false;
+    }
   }
 
   String? get _helperScriptPath {
@@ -213,7 +214,9 @@ class SttService extends ChangeNotifier {
 
     try {
       final modelSize = _storageService.whisperModel;
-      final root = _storageService.rootPath ?? (await getApplicationDocumentsDirectory()).path;
+      final root =
+          _storageService.rootPath ??
+          (await getApplicationDocumentsDirectory()).path;
       final modelDir = p.join(root, 'system', 'whisper_models');
       await Directory(modelDir).create(recursive: true);
 
@@ -300,8 +303,10 @@ class SttService extends ChangeNotifier {
 
     try {
       final tempDir = Directory.systemTemp;
-      _recordingPath = p.join(tempDir.path,
-          'stt_recording_${DateTime.now().millisecondsSinceEpoch}.wav');
+      _recordingPath = p.join(
+        tempDir.path,
+        'stt_recording_${DateTime.now().millisecondsSinceEpoch}.wav',
+      );
 
       await _recorder.start(
         RecordConfig(
@@ -436,7 +441,9 @@ class SttService extends ChangeNotifier {
       // Use the 75th percentile as the noise floor
       final idx = (_calibrationSamples.length * 0.75).floor();
       _noiseFloor = _calibrationSamples[idx].clamp(0.05, 0.5);
-      debugPrint('STT: noise floor calibrated to $_noiseFloor from ${_calibrationSamples.length} samples');
+      debugPrint(
+        'STT: noise floor calibrated to $_noiseFloor from ${_calibrationSamples.length} samples',
+      );
     } else {
       _noiseFloor = 0.15;
       debugPrint('STT: no calibration samples, using default noise floor');
@@ -582,7 +589,9 @@ class SttService extends ChangeNotifier {
 
   void _startAmplitudeMonitor() {
     _stopAmplitudeMonitor();
-    _amplitudeTimer = Timer.periodic(const Duration(milliseconds: 100), (_) async {
+    _amplitudeTimer = Timer.periodic(const Duration(milliseconds: 100), (
+      _,
+    ) async {
       if (!_isRecording) return;
       // During calibration, just collect samples
       if (_isCalibrating) {
@@ -610,7 +619,10 @@ class SttService extends ChangeNotifier {
           } else if (_speechDetected && _silenceTimer == null) {
             // Speech was detected but now it's silent — start countdown
             _silenceTimer = Timer(_silenceDuration, () {
-              if (_isInCall && _isRecording && _callStatus == CallStatus.listening && _speechDetected) {
+              if (_isInCall &&
+                  _isRecording &&
+                  _callStatus == CallStatus.listening &&
+                  _speechDetected) {
                 debugPrint('STT: silence detected, auto-sending');
                 _speechDetected = false;
                 stopAndSendCallTranscription();
@@ -635,7 +647,9 @@ class SttService extends ChangeNotifier {
     try {
       final modelSize = _storageService.whisperModel;
 
-      final root = _storageService.rootPath ?? (await getApplicationDocumentsDirectory()).path;
+      final root =
+          _storageService.rootPath ??
+          (await getApplicationDocumentsDirectory()).path;
       final modelDir = p.join(root, 'system', 'whisper_models');
       await Directory(modelDir).create(recursive: true);
 
@@ -657,11 +671,9 @@ class SttService extends ChangeNotifier {
           return null;
         }
         final pythonCmd = Platform.isWindows ? 'python' : 'python3';
-        process = await Process.start(
-          pythonCmd,
-          [helperPath],
-          includeParentEnvironment: true,
-        );
+        process = await Process.start(pythonCmd, [
+          helperPath,
+        ], includeParentEnvironment: true);
       }
 
       process.stdin.writeln(request);
@@ -698,7 +710,9 @@ class SttService extends ChangeNotifier {
           return null;
         }
         final text = (json['text'] as String? ?? '').trim();
-        debugPrint('STT: transcribed "${text.length > 60 ? '${text.substring(0, 60)}...' : text}"');
+        debugPrint(
+          'STT: transcribed "${text.length > 60 ? '${text.substring(0, 60)}...' : text}"',
+        );
         return text.isEmpty ? null : text;
       } catch (e) {
         _lastError = 'Failed to parse Whisper output';
@@ -715,7 +729,9 @@ class SttService extends ChangeNotifier {
   // ---- Utilities ----
 
   void _cleanupRecording(String path) {
-    try { File(path).deleteSync(); } catch (_) {}
+    try {
+      File(path).deleteSync();
+    } catch (_) {}
   }
 
   @override

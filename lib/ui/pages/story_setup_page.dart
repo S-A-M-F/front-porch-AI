@@ -79,21 +79,50 @@ class _StorySetupPageState extends State<StorySetupPage> {
   ];
 
   static const _genreOptions = [
-    'Fantasy', 'Sci-Fi', 'Romance', 'Thriller', 'Horror',
-    'Literary Fiction', 'Mystery', 'Historical', 'Comedy', 'Drama',
-    'Adventure', 'Dystopian', 'Paranormal', 'Western', 'Slice of Life',
+    'Fantasy',
+    'Sci-Fi',
+    'Romance',
+    'Thriller',
+    'Horror',
+    'Literary Fiction',
+    'Mystery',
+    'Historical',
+    'Comedy',
+    'Drama',
+    'Adventure',
+    'Dystopian',
+    'Paranormal',
+    'Western',
+    'Slice of Life',
   ];
 
   static const _moodOptions = [
-    'Dark', 'Light', 'Gritty', 'Whimsical', 'Melancholy',
-    'Tense', 'Hopeful', 'Bittersweet', 'Eerie', 'Nostalgic',
-    'Epic', 'Intimate', 'Satirical',
+    'Dark',
+    'Light',
+    'Gritty',
+    'Whimsical',
+    'Melancholy',
+    'Tense',
+    'Hopeful',
+    'Bittersweet',
+    'Eerie',
+    'Nostalgic',
+    'Epic',
+    'Intimate',
+    'Satirical',
   ];
 
   static const _writingStyles = [
-    'Minimalist', 'Lyrical/Poetic', 'Pulpy/Action', 'Literary',
-    'Conversational', 'Gothic', 'Hardboiled', 'Philosophical',
-    'Cinematic', 'Fairy-Tale',
+    'Minimalist',
+    'Lyrical/Poetic',
+    'Pulpy/Action',
+    'Literary',
+    'Conversational',
+    'Gothic',
+    'Hardboiled',
+    'Philosophical',
+    'Cinematic',
+    'Fairy-Tale',
   ];
 
   static const _proseLengths = {
@@ -149,9 +178,14 @@ class _StorySetupPageState extends State<StorySetupPage> {
         final name = snap['name'] ?? '';
         final role = snap['role'] ?? 'Supporting';
         // Find the character ID by name
-        final charRepo = Provider.of<CharacterRepository>(context, listen: false);
+        final charRepo = Provider.of<CharacterRepository>(
+          context,
+          listen: false,
+        );
         for (final c in charRepo.characters) {
-          if (c.dbId != null && c.name == name && _selectedCharacterIds.contains(c.dbId)) {
+          if (c.dbId != null &&
+              c.name == name &&
+              _selectedCharacterIds.contains(c.dbId)) {
             _characterRoles[c.dbId!] = role;
           }
         }
@@ -216,24 +250,44 @@ class _StorySetupPageState extends State<StorySetupPage> {
                   maxLines: 5,
                 ),
                 const SizedBox(height: 8),
-                Text('Quick concepts:', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+                Text(
+                  'Quick concepts:',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    ..._archetypes.map((a) => _chipButton(
-                      a['label']!,
-                      isSelected: false,
-                      onTap: () => setState(() => _conceptController.text = a['value']!),
-                      color: Colors.amber,
-                    )),
+                    ..._archetypes.map(
+                      (a) => _chipButton(
+                        a['label']!,
+                        isSelected: false,
+                        onTap: () => setState(
+                          () => _conceptController.text = a['value']!,
+                        ),
+                        color: Colors.amber,
+                      ),
+                    ),
                     ActionChip(
-                      avatar: const Icon(Icons.refresh, size: 14, color: Colors.white54),
-                      label: const Text('Refresh', style: TextStyle(fontSize: 11, color: Colors.white54)),
+                      avatar: const Icon(
+                        Icons.refresh,
+                        size: 14,
+                        color: Colors.white54,
+                      ),
+                      label: const Text(
+                        'Refresh',
+                        style: TextStyle(fontSize: 11, color: Colors.white54),
+                      ),
                       backgroundColor: Colors.transparent,
                       side: BorderSide.none,
-                      onPressed: () => setState(() => _archetypes = StoryPipelineService.generateArchetypes(count: 6)),
+                      onPressed: () => setState(
+                        () => _archetypes =
+                            StoryPipelineService.generateArchetypes(count: 6),
+                      ),
                     ),
                   ],
                 ),
@@ -246,18 +300,25 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 const SizedBox(height: 8),
                 Text(
                   'Choose who narrates the story',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: _povOptions.map((pov) => _radioChip(
-                    pov,
-                    isSelected: _pov == pov,
-                    onTap: () => setState(() => _pov = pov),
-                    color: Colors.cyan,
-                  )).toList(),
+                  children: _povOptions
+                      .map(
+                        (pov) => _radioChip(
+                          pov,
+                          isSelected: _pov == pov,
+                          onTap: () => setState(() => _pov = pov),
+                          color: Colors.cyan,
+                        ),
+                      )
+                      .toList(),
                 ),
                 _sectionDivider(),
 
@@ -268,48 +329,62 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 const SizedBox(height: 8),
                 Text(
                   'Select one or more genres to blend',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _genreOptions.map((g) => _chipButton(
-                    g,
-                    isSelected: _selectedGenres.contains(g),
-                    onTap: () => setState(() {
-                      if (_selectedGenres.contains(g)) {
-                        _selectedGenres.remove(g);
-                      } else {
-                        _selectedGenres.add(g);
-                      }
-                    }),
-                    color: Colors.purple,
-                  )).toList(),
+                  children: _genreOptions
+                      .map(
+                        (g) => _chipButton(
+                          g,
+                          isSelected: _selectedGenres.contains(g),
+                          onTap: () => setState(() {
+                            if (_selectedGenres.contains(g)) {
+                              _selectedGenres.remove(g);
+                            } else {
+                              _selectedGenres.add(g);
+                            }
+                          }),
+                          color: Colors.purple,
+                        ),
+                      )
+                      .toList(),
                 ),
                 const SizedBox(height: 20),
                 _sectionHeader('Mood', Icons.palette),
                 const SizedBox(height: 8),
                 Text(
                   'Set the emotional atmosphere',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _moodOptions.map((m) => _chipButton(
-                    m,
-                    isSelected: _selectedMoods.contains(m),
-                    onTap: () => setState(() {
-                      if (_selectedMoods.contains(m)) {
-                        _selectedMoods.remove(m);
-                      } else {
-                        _selectedMoods.add(m);
-                      }
-                    }),
-                    color: Colors.teal,
-                  )).toList(),
+                  children: _moodOptions
+                      .map(
+                        (m) => _chipButton(
+                          m,
+                          isSelected: _selectedMoods.contains(m),
+                          onTap: () => setState(() {
+                            if (_selectedMoods.contains(m)) {
+                              _selectedMoods.remove(m);
+                            } else {
+                              _selectedMoods.add(m);
+                            }
+                          }),
+                          color: Colors.teal,
+                        ),
+                      )
+                      .toList(),
                 ),
                 _sectionDivider(),
 
@@ -321,35 +396,48 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _writingStyles.map((s) => _radioChip(
-                    s,
-                    isSelected: _writingStyle == s,
-                    onTap: () => setState(() => _writingStyle = _writingStyle == s ? '' : s),
-                    color: Colors.deepOrange,
-                  )).toList(),
+                  children: _writingStyles
+                      .map(
+                        (s) => _radioChip(
+                          s,
+                          isSelected: _writingStyle == s,
+                          onTap: () => setState(
+                            () => _writingStyle = _writingStyle == s ? '' : s,
+                          ),
+                          color: Colors.deepOrange,
+                        ),
+                      )
+                      .toList(),
                 ),
                 const SizedBox(height: 20),
                 _sectionHeader('Prose Length', Icons.format_size),
                 const SizedBox(height: 10),
-                ..._proseLengths.entries.map((e) => _radioTile(
-                  e.key, e.value,
-                  isSelected: _proseLength == e.key,
-                  onTap: () => setState(() => _proseLength = e.key),
-                  color: Colors.indigo,
-                )),
+                ..._proseLengths.entries.map(
+                  (e) => _radioTile(
+                    e.key,
+                    e.value,
+                    isSelected: _proseLength == e.key,
+                    onTap: () => setState(() => _proseLength = e.key),
+                    color: Colors.indigo,
+                  ),
+                ),
                 const SizedBox(height: 20),
                 _sectionHeader('Narrative Pace', Icons.speed),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: _paceOptions.entries.map((e) => _radioChip(
-                    e.key,
-                    isSelected: _narrativePace == e.key,
-                    onTap: () => setState(() => _narrativePace = e.key),
-                    color: Colors.amber,
-                    subtitle: e.value,
-                  )).toList(),
+                  children: _paceOptions.entries
+                      .map(
+                        (e) => _radioChip(
+                          e.key,
+                          isSelected: _narrativePace == e.key,
+                          onTap: () => setState(() => _narrativePace = e.key),
+                          color: Colors.amber,
+                          subtitle: e.value,
+                        ),
+                      )
+                      .toList(),
                 ),
                 const SizedBox(height: 20),
                 _sectionHeader('Dialogue Density', Icons.chat_bubble_outline),
@@ -357,13 +445,17 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: _dialogueOptions.entries.map((e) => _radioChip(
-                    e.key,
-                    isSelected: _dialogueDensity == e.key,
-                    onTap: () => setState(() => _dialogueDensity = e.key),
-                    color: Colors.lightBlue,
-                    subtitle: e.value,
-                  )).toList(),
+                  children: _dialogueOptions.entries
+                      .map(
+                        (e) => _radioChip(
+                          e.key,
+                          isSelected: _dialogueDensity == e.key,
+                          onTap: () => setState(() => _dialogueDensity = e.key),
+                          color: Colors.lightBlue,
+                          subtitle: e.value,
+                        ),
+                      )
+                      .toList(),
                 ),
                 _sectionDivider(),
 
@@ -376,14 +468,19 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 const SizedBox(height: 20),
                 _sectionHeader('Maturity Rating', Icons.shield_outlined),
                 const SizedBox(height: 10),
-                ..._maturityOptions.entries.map((e) => _radioTile(
-                  e.key, e.value,
-                  isSelected: _maturityRating == e.key,
-                  onTap: () => setState(() => _maturityRating = e.key),
-                  color: e.key == 'Clean' ? Colors.green
-                       : e.key == 'Mature' ? Colors.orange
-                       : Colors.red,
-                )),
+                ..._maturityOptions.entries.map(
+                  (e) => _radioTile(
+                    e.key,
+                    e.value,
+                    isSelected: _maturityRating == e.key,
+                    onTap: () => setState(() => _maturityRating = e.key),
+                    color: e.key == 'Clean'
+                        ? Colors.green
+                        : e.key == 'Mature'
+                        ? Colors.orange
+                        : Colors.red,
+                  ),
+                ),
                 _sectionDivider(),
 
                 // ═══════════════════════════════════════
@@ -422,19 +519,26 @@ class _StorySetupPageState extends State<StorySetupPage> {
                   children: [
                     OutlinedButton(
                       onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white54),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white54,
+                      ),
                       child: const Text('Cancel'),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton.icon(
-                      onPressed: _conceptController.text.trim().isEmpty ? null : _startGeneration,
+                      onPressed: _conceptController.text.trim().isEmpty
+                          ? null
+                          : _startGeneration,
                       icon: const Icon(Icons.auto_awesome),
                       label: const Text('Generate Story Bible'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _accentAmber.shade800,
                         foregroundColor: Colors.white,
                         disabledBackgroundColor: Colors.white10,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
                       ),
                     ),
                   ],
@@ -476,7 +580,11 @@ class _StorySetupPageState extends State<StorySetupPage> {
     );
   }
 
-  Widget _buildTextField(TextEditingController ctrl, String hint, {int maxLines = 1}) {
+  Widget _buildTextField(
+    TextEditingController ctrl,
+    String hint, {
+    int maxLines = 1,
+  }) {
     return AppTextField(
       controller: ctrl,
       maxLines: maxLines,
@@ -497,7 +605,12 @@ class _StorySetupPageState extends State<StorySetupPage> {
   }
 
   /// A selectable chip for multi-select options (genre, mood, features).
-  Widget _chipButton(String label, {required bool isSelected, required VoidCallback onTap, required MaterialColor color}) {
+  Widget _chipButton(
+    String label, {
+    required bool isSelected,
+    required VoidCallback onTap,
+    required MaterialColor color,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -524,7 +637,8 @@ class _StorySetupPageState extends State<StorySetupPage> {
   }
 
   /// A radio-style chip for single-select options (POV, pace, dialogue, style).
-  Widget _radioChip(String label, {
+  Widget _radioChip(
+    String label, {
     required bool isSelected,
     required VoidCallback onTap,
     required Color color,
@@ -551,7 +665,9 @@ class _StorySetupPageState extends State<StorySetupPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
                   size: 16,
                   color: isSelected ? chipColor : Colors.white30,
                 ),
@@ -570,7 +686,10 @@ class _StorySetupPageState extends State<StorySetupPage> {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 10,
+                ),
               ),
             ],
           ],
@@ -580,7 +699,9 @@ class _StorySetupPageState extends State<StorySetupPage> {
   }
 
   /// A radio-style tile for single-select options with descriptions (prose length, maturity).
-  Widget _radioTile(String label, String description, {
+  Widget _radioTile(
+    String label,
+    String description, {
     required bool isSelected,
     required VoidCallback onTap,
     required Color color,
@@ -604,7 +725,9 @@ class _StorySetupPageState extends State<StorySetupPage> {
           child: Row(
             children: [
               Icon(
-                isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                isSelected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
                 color: isSelected ? tileColor : Colors.white38,
                 size: 20,
               ),
@@ -622,7 +745,10 @@ class _StorySetupPageState extends State<StorySetupPage> {
                     ),
                     Text(
                       description,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -649,11 +775,17 @@ class _StorySetupPageState extends State<StorySetupPage> {
             children: [
               const Text(
                 'Number of Acts',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.amber.shade800.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
@@ -691,9 +823,27 @@ class _StorySetupPageState extends State<StorySetupPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('1 (Short story)', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10)),
-              Text('3 (Classic)', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10)),
-              Text('5 (Epic)', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 10)),
+              Text(
+                '1 (Short story)',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 10,
+                ),
+              ),
+              Text(
+                '3 (Classic)',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 10,
+                ),
+              ),
+              Text(
+                '5 (Epic)',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 10,
+                ),
+              ),
             ],
           ),
         ],
@@ -725,7 +875,9 @@ class _StorySetupPageState extends State<StorySetupPage> {
               child: Row(
                 children: [
                   Icon(
-                    isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
                     color: isSelected ? Colors.amber.shade600 : Colors.white38,
                     size: 20,
                   ),
@@ -743,14 +895,20 @@ class _StorySetupPageState extends State<StorySetupPage> {
                         ),
                         Text(
                           _tierDescription(tier),
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   if (tier == PromptTier.smallLocal)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.orange.shade900.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(8),
@@ -758,9 +916,19 @@ class _StorySetupPageState extends State<StorySetupPage> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.warning_amber, size: 14, color: Colors.orange.shade400),
+                          Icon(
+                            Icons.warning_amber,
+                            size: 14,
+                            color: Colors.orange.shade400,
+                          ),
                           const SizedBox(width: 4),
-                          Text('Low quality', style: TextStyle(color: Colors.orange.shade400, fontSize: 11)),
+                          Text(
+                            'Low quality',
+                            style: TextStyle(
+                              color: Colors.orange.shade400,
+                              fontSize: 11,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -775,27 +943,42 @@ class _StorySetupPageState extends State<StorySetupPage> {
 
   String _tierName(PromptTier tier) {
     switch (tier) {
-      case PromptTier.frontier: return 'Frontier API Models';
-      case PromptTier.largLocal: return 'Large Local Models (70B+)';
-      case PromptTier.smallLocal: return 'Small/Mid Local Models (7-34B)';
+      case PromptTier.frontier:
+        return 'Frontier API Models';
+      case PromptTier.largLocal:
+        return 'Large Local Models (70B+)';
+      case PromptTier.smallLocal:
+        return 'Small/Mid Local Models (7-34B)';
     }
   }
 
   String _tierDescription(PromptTier tier) {
     switch (tier) {
-      case PromptTier.frontier: return 'GPT-4, Claude, Gemini -- best quality, requires internet';
-      case PromptTier.largLocal: return 'Locally run large models -- good quality, fully offline';
-      case PromptTier.smallLocal: return 'Locally run small/mid models -- fast but output may vary';
+      case PromptTier.frontier:
+        return 'GPT-4, Claude, Gemini -- best quality, requires internet';
+      case PromptTier.largLocal:
+        return 'Locally run large models -- good quality, fully offline';
+      case PromptTier.smallLocal:
+        return 'Locally run small/mid models -- fast but output may vary';
     }
   }
 
-  Widget _buildToggleTile(String title, String subtitle, IconData icon, bool value, Color color, ValueChanged<bool> onChanged) {
+  Widget _buildToggleTile(
+    String title,
+    String subtitle,
+    IconData icon,
+    bool value,
+    Color color,
+    ValueChanged<bool> onChanged,
+  ) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _bgCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: value ? color.withValues(alpha: 0.5) : Colors.white10),
+        border: Border.all(
+          color: value ? color.withValues(alpha: 0.5) : Colors.white10,
+        ),
       ),
       child: Row(
         children: [
@@ -805,16 +988,24 @@ class _StorySetupPageState extends State<StorySetupPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
           ),
-          Switch(
-            value: value,
-            activeColor: color,
-            onChanged: onChanged,
-          ),
+          Switch(value: value, activeThumbColor: color, onChanged: onChanged),
         ],
       ),
     );
@@ -834,13 +1025,18 @@ class _StorySetupPageState extends State<StorySetupPage> {
         children: [
           Text(
             'Select characters whose chat history to include:',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: charRepo.characters.where((c) => c.dbId != null).map((char) {
+            children: charRepo.characters.where((c) => c.dbId != null).map((
+              char,
+            ) {
               final charDbId = char.dbId!;
               final isSelected = _selectedCharacterIds.contains(charDbId);
               return FilterChip(
@@ -848,9 +1044,14 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 label: Text(char.name),
                 selectedColor: Colors.blueAccent.withValues(alpha: 0.3),
                 checkmarkColor: Colors.blueAccent,
-                labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 12),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white54,
+                  fontSize: 12,
+                ),
                 backgroundColor: _bgDark,
-                side: BorderSide(color: isSelected ? Colors.blueAccent : Colors.white12),
+                side: BorderSide(
+                  color: isSelected ? Colors.blueAccent : Colors.white12,
+                ),
                 onSelected: (selected) {
                   setState(() {
                     if (selected) {
@@ -859,7 +1060,10 @@ class _StorySetupPageState extends State<StorySetupPage> {
                       if (_selectedCharacterIds.length == 1) {
                         _characterRoles[charDbId] = 'Protagonist';
                       } else {
-                        _characterRoles.putIfAbsent(charDbId, () => 'Supporting');
+                        _characterRoles.putIfAbsent(
+                          charDbId,
+                          () => 'Supporting',
+                        );
                       }
                     } else {
                       _selectedCharacterIds.remove(charDbId);
@@ -889,71 +1093,129 @@ class _StorySetupPageState extends State<StorySetupPage> {
         children: [
           Row(
             children: [
-              Icon(Icons.theater_comedy, size: 16, color: Colors.purple.shade300),
+              Icon(
+                Icons.theater_comedy,
+                size: 16,
+                color: Colors.purple.shade300,
+              ),
               const SizedBox(width: 8),
-              Text('Assign Roles', style: TextStyle(color: Colors.purple.shade200, fontSize: 13, fontWeight: FontWeight.w600)),
+              Text(
+                'Assign Roles',
+                style: TextStyle(
+                  color: Colors.purple.shade200,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
-          ...charRepo.characters.where((c) => c.dbId != null && _selectedCharacterIds.contains(c.dbId)).map((char) {
-            final charDbId = char.dbId!;
-            final currentRole = _characterRoles[charDbId] ?? 'Supporting';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.purple.shade900.withValues(alpha: 0.4),
-                    child: Text(char.name[0], style: TextStyle(color: Colors.purple.shade200, fontSize: 12)),
+          ...charRepo.characters
+              .where(
+                (c) => c.dbId != null && _selectedCharacterIds.contains(c.dbId),
+              )
+              .map((char) {
+                final charDbId = char.dbId!;
+                final currentRole = _characterRoles[charDbId] ?? 'Supporting';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: Colors.purple.shade900.withValues(
+                          alpha: 0.4,
+                        ),
+                        child: Text(
+                          char.name[0],
+                          style: TextStyle(
+                            color: Colors.purple.shade200,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          char.name,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      DropdownButton<String>(
+                        value: currentRole,
+                        dropdownColor: const Color(0xFF1E293B),
+                        underline: Container(height: 1, color: Colors.white12),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                        items: _roleOptions
+                            .map(
+                              (r) => DropdownMenuItem(
+                                value: r,
+                                child: Text(
+                                  r,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(
+                          () => _characterRoles[charDbId] = v ?? 'Supporting',
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(char.name, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                  ),
-                  DropdownButton<String>(
-                    value: currentRole,
-                    dropdownColor: const Color(0xFF1E293B),
-                    underline: Container(height: 1, color: Colors.white12),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),
-                    onChanged: (v) => setState(() => _characterRoles[charDbId] = v ?? 'Supporting'),
-                  ),
-                ],
-              ),
-            );
-          }),
+                );
+              }),
         ],
       ),
     );
   }
 
   Widget _buildUserPersonaToggle() {
-    final personaService = Provider.of<UserPersonaService>(context, listen: false);
+    final personaService = Provider.of<UserPersonaService>(
+      context,
+      listen: false,
+    );
     final persona = personaService.persona;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _bgCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _includeUserPersona ? Colors.amber.withValues(alpha: 0.4) : Colors.white12),
+        border: Border.all(
+          color: _includeUserPersona
+              ? Colors.amber.withValues(alpha: 0.4)
+              : Colors.white12,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.person_pin, size: 18, color: _includeUserPersona ? Colors.amber : Colors.white38),
+              Icon(
+                Icons.person_pin,
+                size: 18,
+                color: _includeUserPersona ? Colors.amber : Colors.white38,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Play as a character?',
-                  style: TextStyle(color: _includeUserPersona ? Colors.amber : Colors.white60, fontSize: 13),
+                  style: TextStyle(
+                    color: _includeUserPersona ? Colors.amber : Colors.white60,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               Switch(
                 value: _includeUserPersona,
-                activeColor: Colors.amber,
+                activeThumbColor: Colors.amber,
                 onChanged: (v) => setState(() => _includeUserPersona = v),
               ),
             ],
@@ -965,16 +1227,37 @@ class _StorySetupPageState extends State<StorySetupPage> {
                 CircleAvatar(
                   radius: 14,
                   backgroundColor: Colors.amber.shade900.withValues(alpha: 0.4),
-                  child: Text(persona.name[0], style: TextStyle(color: Colors.amber.shade200, fontSize: 12)),
+                  child: Text(
+                    persona.name[0],
+                    style: TextStyle(
+                      color: Colors.amber.shade200,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(persona.name, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-          if (persona.persona.isNotEmpty)
-              Text(persona.persona, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        persona.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (persona.persona.isNotEmpty)
+                        Text(
+                          persona.persona,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
                   ),
                 ),
@@ -983,8 +1266,16 @@ class _StorySetupPageState extends State<StorySetupPage> {
                   dropdownColor: const Color(0xFF1E293B),
                   underline: Container(height: 1, color: Colors.white12),
                   style: const TextStyle(color: Colors.amber, fontSize: 12),
-                  items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),
-                  onChanged: (v) => setState(() => _userPersonaRole = v ?? 'Protagonist'),
+                  items: _roleOptions
+                      .map(
+                        (r) => DropdownMenuItem(
+                          value: r,
+                          child: Text(r, style: const TextStyle(fontSize: 12)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) =>
+                      setState(() => _userPersonaRole = v ?? 'Protagonist'),
                 ),
               ],
             ),
@@ -995,6 +1286,7 @@ class _StorySetupPageState extends State<StorySetupPage> {
   }
 
   /// Match the same character ID format used by ChatService for RAG embeddings.
+  // ignore: unused_element
   String _getCharacterEmbedId(CharacterCard card) {
     if (card.imagePath != null) {
       return p.basenameWithoutExtension(card.imagePath!);
@@ -1009,7 +1301,9 @@ class _StorySetupPageState extends State<StorySetupPage> {
     if (project == null) return;
 
     // Save all fields
-    project.title = _titleController.text.trim().isEmpty ? 'Untitled Story' : _titleController.text.trim();
+    project.title = _titleController.text.trim().isEmpty
+        ? 'Untitled Story'
+        : _titleController.text.trim();
     project.concept = _conceptController.text.trim();
     project.promptTier = _selectedTier;
     project.useChatHistory = _useChatHistory;
@@ -1049,11 +1343,14 @@ class _StorySetupPageState extends State<StorySetupPage> {
 
     // Add user persona as a character snapshot if enabled
     if (_includeUserPersona) {
-      final personaService = Provider.of<UserPersonaService>(context, listen: false);
+      final personaService = Provider.of<UserPersonaService>(
+        context,
+        listen: false,
+      );
       final persona = personaService.persona;
       snapshots.add({
         'name': persona.name,
-          'personality': persona.persona,
+        'personality': persona.persona,
         'scenario': '',
         'first_message': '',
         'system_prompt': '',

@@ -20,8 +20,8 @@ import 'dart:convert';
 
 /// Prompt complexity tier for story generation.
 enum PromptTier {
-  frontier,   // Cloud APIs — full complex JSON
-  largLocal,  // 70B+ local — simplified JSON
+  frontier, // Cloud APIs — full complex JSON
+  largLocal, // 70B+ local — simplified JSON
   smallLocal, // 7-13B local — minimal JSON, quality warning
 }
 
@@ -31,9 +31,17 @@ class StoryThread {
   String name;
   String description;
 
-  StoryThread({required this.id, required this.name, required this.description});
+  StoryThread({
+    required this.id,
+    required this.name,
+    required this.description,
+  });
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'description': description};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'description': description,
+  };
 
   factory StoryThread.fromJson(Map<String, dynamic> json) => StoryThread(
     id: json['id'] ?? '',
@@ -49,7 +57,8 @@ class StoryCastMember {
   String description;
   String? voiceSample;
   String? voiceModel; // TTS voice model ID for read-along narration
-  Map<String, String> details; // history, story_events, goals, evolution, deep_profile
+  Map<String, String>
+  details; // history, story_events, goals, evolution, deep_profile
 
   StoryCastMember({
     required this.name,
@@ -69,15 +78,19 @@ class StoryCastMember {
     'details': details,
   };
 
-  factory StoryCastMember.fromJson(Map<String, dynamic> json) => StoryCastMember(
-    name: json['name'] ?? '',
-    role: json['role'] ?? '',
-    description: json['description'] ?? '',
-    voiceSample: json['voice_sample'],
-    voiceModel: json['voice_model'],
-    details: (json['details'] as Map<String, dynamic>?)
-        ?.map((k, v) => MapEntry(k, v.toString())) ?? {},
-  );
+  factory StoryCastMember.fromJson(Map<String, dynamic> json) =>
+      StoryCastMember(
+        name: json['name'] ?? '',
+        role: json['role'] ?? '',
+        description: json['description'] ?? '',
+        voiceSample: json['voice_sample'],
+        voiceModel: json['voice_model'],
+        details:
+            (json['details'] as Map<String, dynamic>?)?.map(
+              (k, v) => MapEntry(k, v.toString()),
+            ) ??
+            {},
+      );
 }
 
 /// A lore entry within a story.
@@ -107,7 +120,8 @@ class StoryLoreEntry {
   factory StoryLoreEntry.fromJson(Map<String, dynamic> json) => StoryLoreEntry(
     topic: json['topic'] ?? '',
     detail: json['detail'] ?? '',
-    relatedTo: (json['related_to'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    relatedTo:
+        (json['related_to'] as List?)?.map((e) => e.toString()).toList() ?? [],
     validFromAct: (json['valid_from_act'] as num?)?.toInt() ?? 1,
     validFromScene: (json['valid_from_scene'] as num?)?.toInt() ?? 1,
   );
@@ -141,7 +155,10 @@ class StoryKnot {
 
   StoryKnot({required this.description, required this.interaction});
 
-  Map<String, dynamic> toJson() => {'description': description, 'interaction': interaction};
+  Map<String, dynamic> toJson() => {
+    'description': description,
+    'interaction': interaction,
+  };
 
   factory StoryKnot.fromJson(Map<String, dynamic> json) => StoryKnot(
     description: json['description'] ?? '',
@@ -177,8 +194,14 @@ class StoryAct {
     number: (json['number'] as num?)?.toInt() ?? 1,
     title: json['title'] ?? '',
     description: json['description'] ?? '',
-    focusThreadIds: (json['focus_thread_ids'] as List?)?.map((e) => e.toString()).toList() ?? [],
-    knots: (json['knots'] as List?)?.map((e) => StoryKnot.fromJson(e)).toList() ?? [],
+    focusThreadIds:
+        (json['focus_thread_ids'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [],
+    knots:
+        (json['knots'] as List?)?.map((e) => StoryKnot.fromJson(e)).toList() ??
+        [],
   );
 }
 
@@ -237,9 +260,14 @@ class StoryScene {
     number: (json['number'] as num?)?.toInt() ?? 1,
     title: json['title'] ?? '',
     description: json['description'] ?? '',
-    activeThreadIds: (json['active_thread_ids'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    activeThreadIds:
+        (json['active_thread_ids'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [],
     location: json['location'] ?? '',
-    castNames: (json['cast_names'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    castNames:
+        (json['cast_names'] as List?)?.map((e) => e.toString()).toList() ?? [],
     valence: (json['valence'] as num?)?.toInt() ?? 0,
     causality: json['causality'] != null
         ? SceneCausality.fromJson(json['causality'])
@@ -296,10 +324,8 @@ class BeatProse {
     if (final_ != null) 'final': final_,
   };
 
-  factory BeatProse.fromJson(Map<String, dynamic> json) => BeatProse(
-    draft: json['draft'],
-    final_: json['final'],
-  );
+  factory BeatProse.fromJson(Map<String, dynamic> json) =>
+      BeatProse(draft: json['draft'], final_: json['final']);
 }
 
 /// The top-level story project model.
@@ -314,13 +340,18 @@ class StoryProject {
   PromptTier promptTier;
   bool useChatHistory; // Whether to draw from character chat history RAG
   List<String> chatHistoryCharacterIds; // Character embed IDs to pull RAG from
-  List<Map<String, String>> characterCardSnapshots; // Snapshotted character card data
-  bool parallelGeneration; // Whether to run scene generation in parallel (requires compatible backend)
-  bool includeUserPersona; // Whether to include the user's persona as a story character
-  String userPersonaRole; // Role for the user persona: 'Protagonist', 'Supporting', etc.
+  List<Map<String, String>>
+  characterCardSnapshots; // Snapshotted character card data
+  bool
+  parallelGeneration; // Whether to run scene generation in parallel (requires compatible backend)
+  bool
+  includeUserPersona; // Whether to include the user's persona as a story character
+  String
+  userPersonaRole; // Role for the user persona: 'Protagonist', 'Supporting', etc.
 
   // ── Story Customization Options ──
-  String pov; // 'First Person', 'Third Person Limited', 'Third Person Omniscient'
+  String
+  pov; // 'First Person', 'Third Person Limited', 'Third Person Omniscient'
   int actCount; // 1-5
   List<String> selectedGenres; // Multi-select: Fantasy, Sci-Fi, etc.
   List<String> selectedMoods; // Multi-select: Dark, Light, etc.
@@ -384,18 +415,18 @@ class StoryProject {
     Map<String, BeatProse>? prose,
     DateTime? createdAt,
     DateTime? updatedAt,
-  })  : style = style ?? StoryStyle(),
-        selectedGenres = selectedGenres ?? [],
-        selectedMoods = selectedMoods ?? [],
-        cast = cast ?? [],
-        threads = threads ?? [],
-        lore = lore ?? [],
-        acts = acts ?? [],
-        scenes = scenes ?? {},
-        beats = beats ?? {},
-        prose = prose ?? {},
-        createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  }) : style = style ?? StoryStyle(),
+       selectedGenres = selectedGenres ?? [],
+       selectedMoods = selectedMoods ?? [],
+       cast = cast ?? [],
+       threads = threads ?? [],
+       lore = lore ?? [],
+       acts = acts ?? [],
+       scenes = scenes ?? {},
+       beats = beats ?? {},
+       prose = prose ?? {},
+       createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 
   /// Serialize the entire project to JSON string for database storage.
   String toJsonString() => jsonEncode(toJson());
@@ -429,8 +460,12 @@ class StoryProject {
     'threads': threads.map((t) => t.toJson()).toList(),
     'lore': lore.map((l) => l.toJson()).toList(),
     'acts': acts.map((a) => a.toJson()).toList(),
-    'scenes': scenes.map((k, v) => MapEntry(k.toString(), v.map((s) => s.toJson()).toList())),
-    'beats': beats.map((k, v) => MapEntry(k, v.map((b) => b.toJson()).toList())),
+    'scenes': scenes.map(
+      (k, v) => MapEntry(k.toString(), v.map((s) => s.toJson()).toList()),
+    ),
+    'beats': beats.map(
+      (k, v) => MapEntry(k, v.map((b) => b.toJson()).toList()),
+    ),
     'prose': prose.map((k, v) => MapEntry(k, v.toJson())),
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
@@ -443,7 +478,9 @@ class StoryProject {
     final scenesMap = <int, List<StoryScene>>{};
     if (json['scenes'] != null) {
       (json['scenes'] as Map<String, dynamic>).forEach((k, v) {
-        scenesMap[int.parse(k)] = (v as List).map((s) => StoryScene.fromJson(s)).toList();
+        scenesMap[int.parse(k)] = (v as List)
+            .map((s) => StoryScene.fromJson(s))
+            .toList();
       });
     }
 
@@ -473,18 +510,31 @@ class StoryProject {
         orElse: () => PromptTier.frontier,
       ),
       useChatHistory: json['use_chat_history'] ?? false,
-      chatHistoryCharacterIds: (json['chat_history_character_ids'] as List?)
-          ?.map((e) => e.toString()).toList() ?? [],
-      characterCardSnapshots: (json['character_card_snapshots'] as List?)
-          ?.map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v.toString())))
-          .toList() ?? [],
+      chatHistoryCharacterIds:
+          (json['chat_history_character_ids'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      characterCardSnapshots:
+          (json['character_card_snapshots'] as List?)
+              ?.map(
+                (e) => (e as Map<String, dynamic>).map(
+                  (k, v) => MapEntry(k, v.toString()),
+                ),
+              )
+              .toList() ??
+          [],
       parallelGeneration: json['parallel_generation'] ?? false,
       includeUserPersona: json['include_user_persona'] ?? false,
       userPersonaRole: json['user_persona_role'] ?? 'Protagonist',
       pov: json['pov'] ?? 'Third Person Limited',
       actCount: (json['act_count'] as num?)?.toInt() ?? 3,
-      selectedGenres: (json['selected_genres'] as List?)?.map((e) => e.toString()).toList(),
-      selectedMoods: (json['selected_moods'] as List?)?.map((e) => e.toString()).toList(),
+      selectedGenres: (json['selected_genres'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
+      selectedMoods: (json['selected_moods'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
       writingStyle: json['writing_style'] ?? '',
       proseLength: json['prose_length'] ?? 'Standard',
       narrativePace: json['narrative_pace'] ?? 'Balanced',
@@ -492,15 +542,25 @@ class StoryProject {
       maturityRating: json['maturity_rating'] ?? 'Mature',
       distilledTimeline: json['distilled_timeline'] ?? '',
       lastReadPageIndex: (json['last_read_page_index'] as num?)?.toInt() ?? 0,
-      cast: (json['cast'] as List?)?.map((c) => StoryCastMember.fromJson(c)).toList(),
-      threads: (json['threads'] as List?)?.map((t) => StoryThread.fromJson(t)).toList(),
-      lore: (json['lore'] as List?)?.map((l) => StoryLoreEntry.fromJson(l)).toList(),
+      cast: (json['cast'] as List?)
+          ?.map((c) => StoryCastMember.fromJson(c))
+          .toList(),
+      threads: (json['threads'] as List?)
+          ?.map((t) => StoryThread.fromJson(t))
+          .toList(),
+      lore: (json['lore'] as List?)
+          ?.map((l) => StoryLoreEntry.fromJson(l))
+          .toList(),
       acts: (json['acts'] as List?)?.map((a) => StoryAct.fromJson(a)).toList(),
       scenes: scenesMap,
       beats: beatsMap,
       prose: proseMap,
-      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : null,
-      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
     );
   }
 }

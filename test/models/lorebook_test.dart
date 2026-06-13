@@ -7,12 +7,20 @@ import 'package:front_porch_ai/models/lorebook.dart';
 void main() {
   group('LorebookEntry', () {
     test('displayName returns name when available', () {
-      final entry = LorebookEntry(name: 'My Entry', key: 'test', content: 'some content');
+      final entry = LorebookEntry(
+        name: 'My Entry',
+        key: 'test',
+        content: 'some content',
+      );
       expect(entry.displayName, 'My Entry');
     });
 
     test('displayName returns key when name is empty', () {
-      final entry = LorebookEntry(name: '', key: 'test-key', content: 'some content');
+      final entry = LorebookEntry(
+        name: '',
+        key: 'test-key',
+        content: 'some content',
+      );
       expect(entry.displayName, 'test-key');
     });
 
@@ -41,7 +49,10 @@ void main() {
     });
 
     test('toJson trims and filters empty keys', () {
-      final entry = LorebookEntry(key: 'hello, , world , ', content: 'some content');
+      final entry = LorebookEntry(
+        key: 'hello, , world , ',
+        content: 'some content',
+      );
       final json = entry.toJson();
       expect(json['keys'], ['hello', 'world']);
     });
@@ -89,11 +100,7 @@ void main() {
     });
 
     test('fromJson handles insertion_order fallback for stickyDepth', () {
-      final json = {
-        'key': 'test',
-        'content': 'content',
-        'insertion_order': 5,
-      };
+      final json = {'key': 'test', 'content': 'content', 'insertion_order': 5};
       final entry = LorebookEntry.fromJson(json);
       expect(entry.stickyDepth, 5);
     });
@@ -151,10 +158,12 @@ void main() {
     });
 
     test('toJson includes all entries', () {
-      final lorebook = Lorebook(entries: [
-        LorebookEntry(key: 'a', content: 'Content A'),
-        LorebookEntry(key: 'b', content: 'Content B'),
-      ]);
+      final lorebook = Lorebook(
+        entries: [
+          LorebookEntry(key: 'a', content: 'Content A'),
+          LorebookEntry(key: 'b', content: 'Content B'),
+        ],
+      );
       final json = lorebook.toJson();
       expect(json['entries'], isA<List>());
       expect(json['entries'].length, 2);
@@ -167,10 +176,22 @@ void main() {
     });
 
     test('round-trip preserves all entries', () {
-      final original = Lorebook(entries: [
-        LorebookEntry(name: 'Entry 1', key: 'trigger1', content: 'Content 1', constant: true),
-        LorebookEntry(name: 'Entry 2', key: 'trigger2, trigger3', content: 'Content 2', stickyDepth: 3),
-      ]);
+      final original = Lorebook(
+        entries: [
+          LorebookEntry(
+            name: 'Entry 1',
+            key: 'trigger1',
+            content: 'Content 1',
+            constant: true,
+          ),
+          LorebookEntry(
+            name: 'Entry 2',
+            key: 'trigger2, trigger3',
+            content: 'Content 2',
+            stickyDepth: 3,
+          ),
+        ],
+      );
       final json = original.toJson();
       final restored = Lorebook.fromJson(json);
       expect(restored.entries.length, 2);
@@ -267,89 +288,92 @@ void main() {
       expect(lorebook.entries[1].enabled, true);
     });
 
-    test('fromJson handles Chub.ai format (entries as Map with extra fields)', () {
-      // Chub exports entries as {"1": {...}, "2": {...}} with extra metadata
-      final json = {
-        'name': 'Genshin Impact all characters and locations',
-        'description': 'Contains every character and location from Genshin Impact',
-        'is_creation': false,
-        'scan_depth': 4,
-        'token_budget': 530,
-        'recursive_scanning': true,
-        'extensions': {
-          'chub': {
-            'id': 2677342,
-            'full_path': 'lorebooks/Legodude/genshin-impact-all-characters-and-locations-0a988c0432cd',
-          },
-        },
-        'entries': {
-          '1': {
-            'uid': 1,
-            'key': ['Teyvat'],
-            'keysecondary': ['Continent', 'Place'],
-            'comment': '',
-            'content': 'The continent on which {{user}} finds themself.',
-            'constant': false,
-            'selective': false,
-            'selectiveLogic': 0,
-            'order': 10,
-            'position': 1,
-            'disable': false,
-            'addMemo': true,
-            'excludeRecursion': true,
-            'probability': 100,
-            'displayIndex': 1,
-            'useProbability': true,
-            'secondary_keys': ['Continent', 'Place'],
-            'keys': ['Teyvat'],
-            'id': 1,
-            'priority': 3,
-            'insertion_order': 10,
-            'enabled': true,
-            'name': 'Teyvat',
-            'extensions': {
-              'depth': 4,
-              'weight': 10,
+    test(
+      'fromJson handles Chub.ai format (entries as Map with extra fields)',
+      () {
+        // Chub exports entries as {"1": {...}, "2": {...}} with extra metadata
+        final json = {
+          'name': 'Genshin Impact all characters and locations',
+          'description':
+              'Contains every character and location from Genshin Impact',
+          'is_creation': false,
+          'scan_depth': 4,
+          'token_budget': 530,
+          'recursive_scanning': true,
+          'extensions': {
+            'chub': {
+              'id': 2677342,
+              'full_path':
+                  'lorebooks/Legodude/genshin-impact-all-characters-and-locations-0a988c0432cd',
             },
-            'case_sensitive': false,
-            'depth': 4,
           },
-          '2': {
-            'uid': 2,
-            'key': ['Mora'],
-            'keysecondary': ['trade', 'barter', 'Money', 'currency'],
-            'comment': '',
-            'content': 'Mora is the currency that is accepted worldwide in Teyvat.',
-            'constant': false,
-            'disable': false,
-            'enabled': true,
-            'name': 'Mora',
-            'keys': ['Mora'],
-            'secondary_keys': ['trade', 'barter', 'Money', 'currency'],
-            'id': 2,
-            'depth': 4,
+          'entries': {
+            '1': {
+              'uid': 1,
+              'key': ['Teyvat'],
+              'keysecondary': ['Continent', 'Place'],
+              'comment': '',
+              'content': 'The continent on which {{user}} finds themself.',
+              'constant': false,
+              'selective': false,
+              'selectiveLogic': 0,
+              'order': 10,
+              'position': 1,
+              'disable': false,
+              'addMemo': true,
+              'excludeRecursion': true,
+              'probability': 100,
+              'displayIndex': 1,
+              'useProbability': true,
+              'secondary_keys': ['Continent', 'Place'],
+              'keys': ['Teyvat'],
+              'id': 1,
+              'priority': 3,
+              'insertion_order': 10,
+              'enabled': true,
+              'name': 'Teyvat',
+              'extensions': {'depth': 4, 'weight': 10},
+              'case_sensitive': false,
+              'depth': 4,
+            },
+            '2': {
+              'uid': 2,
+              'key': ['Mora'],
+              'keysecondary': ['trade', 'barter', 'Money', 'currency'],
+              'comment': '',
+              'content':
+                  'Mora is the currency that is accepted worldwide in Teyvat.',
+              'constant': false,
+              'disable': false,
+              'enabled': true,
+              'name': 'Mora',
+              'keys': ['Mora'],
+              'secondary_keys': ['trade', 'barter', 'Money', 'currency'],
+              'id': 2,
+              'depth': 4,
+            },
           },
-        },
-      };
-      final lorebook = Lorebook.fromJson(json);
-      expect(lorebook.entries.length, 2);
+        };
+        final lorebook = Lorebook.fromJson(json);
+        expect(lorebook.entries.length, 2);
 
-      // Entry 1: Teyvat
-      expect(lorebook.entries[0].name, 'Teyvat');
-      expect(lorebook.entries[0].key.contains('Teyvat'), true);
-      expect(lorebook.entries[0].key.contains('Continent'), true);
-      expect(lorebook.entries[0].key.contains('Place'), true);
-      expect(lorebook.entries[0].content.contains('continent'), true);
-      expect(lorebook.entries[0].enabled, true);
-      expect(lorebook.entries[0].constant, false);
+        // Entry 1: Teyvat
+        expect(lorebook.entries[0].name, 'Teyvat');
+        expect(lorebook.entries[0].key.contains('Teyvat'), true);
+        expect(lorebook.entries[0].key.contains('Continent'), true);
+        expect(lorebook.entries[0].key.contains('Place'), true);
+        expect(lorebook.entries[0].content.contains('continent'), true);
+        expect(lorebook.entries[0].enabled, true);
+        expect(lorebook.entries[0].constant, false);
 
-      // Entry 2: Mora
-      expect(lorebook.entries[1].name, 'Mora');
-      expect(lorebook.entries[1].key.contains('Mora'), true);
-      expect(lorebook.entries[1].key.contains('trade'), true);
-      expect(lorebook.entries[1].key.contains('currency'), true);
-      expect(lorebook.entries[1].enabled, true);
-    });
+        // Entry 2: Mora
+        expect(lorebook.entries[1].name, 'Mora');
+        expect(lorebook.entries[1].key.contains('Mora'), true);
+        expect(lorebook.entries[1].key.contains('trade'), true);
+        expect(lorebook.entries[1].key.contains('currency'), true);
+        expect(lorebook.entries[1].enabled, true);
+      },
+    );
 
     test('fromJson handles disabled entries (SillyTavern disable field)', () {
       final json = {
@@ -419,30 +443,20 @@ void main() {
 
   group('LorebookEntry cross-format compatibility', () {
     test('handles key as empty array (SillyTavern)', () {
-      final json = {
-        'key': [],
-        'comment': 'Empty keys',
-        'content': 'Content',
-      };
+      final json = {'key': [], 'comment': 'Empty keys', 'content': 'Content'};
       final entry = LorebookEntry.fromJson(json);
       expect(entry.key, '');
       expect(entry.name, 'Empty keys');
     });
 
     test('handles key as single string', () {
-      final json = {
-        'key': 'single-key',
-        'content': 'Content',
-      };
+      final json = {'key': 'single-key', 'content': 'Content'};
       final entry = LorebookEntry.fromJson(json);
       expect(entry.key, 'single-key');
     });
 
     test('handles key as comma-separated string', () {
-      final json = {
-        'key': 'key1, key2, key3',
-        'content': 'Content',
-      };
+      final json = {'key': 'key1, key2, key3', 'content': 'Content'};
       final entry = LorebookEntry.fromJson(json);
       expect(entry.key, 'key1, key2, key3');
     });

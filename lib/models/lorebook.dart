@@ -48,7 +48,11 @@ class LorebookEntry {
     return {
       'name': name,
       'key': key,
-      'keys': key.split(',').map((k) => k.trim()).where((k) => k.isNotEmpty).toList(),
+      'keys': key
+          .split(',')
+          .map((k) => k.trim())
+          .where((k) => k.isNotEmpty)
+          .toList(),
       'content': content,
       'enabled': enabled,
       'constant': constant,
@@ -84,9 +88,8 @@ class LorebookEntry {
     // Chub: 'name' field
     // SillyTavern: 'comment' field
     // Front Porch: 'name' field
-    final String name = json['name']?.toString() ??
-        json['comment']?.toString() ??
-        '';
+    final String name =
+        json['name']?.toString() ?? json['comment']?.toString() ?? '';
 
     // ── Extract enabled state ─────────────────────────────────────────────
     // Chub: 'enabled' (true = enabled)
@@ -164,9 +167,7 @@ class Lorebook {
   Lorebook({required this.entries});
 
   Map<String, dynamic> toJson() {
-    return {
-      'entries': entries.map((e) => e.toJson()).toList(),
-    };
+    return {'entries': entries.map((e) => e.toJson()).toList()};
   }
 
   factory Lorebook.fromJson(Map<String, dynamic> json) {
@@ -204,6 +205,48 @@ class Lorebook {
       'name': name,
       'description': description,
       'lorebook': Lorebook.fromJson(json).toJson(),
+    };
+  }
+
+  /// Serialize as a full SillyTavern / V2 "character_book" object.
+  /// This is the format written into exported PNG/JSON character cards so that
+  /// baked-in lorebooks round-trip correctly to other frontends (ST, Risu, etc).
+  /// Includes all standard fields + our extensions for perfect fidelity.
+  Map<String, dynamic> toCharacterBook() {
+    return {
+      'entries': entries.asMap().entries.map((mapEntry) {
+        final int i = mapEntry.key;
+        final LorebookEntry e = mapEntry.value;
+        final List<String> keysList = e.key
+            .split(',')
+            .map((k) => k.trim())
+            .where((k) => k.isNotEmpty)
+            .toList();
+        return {
+          'keys': keysList,
+          'content': e.content,
+          'extensions': <String, dynamic>{},
+          'enabled': e.enabled,
+          'insertion_order': e.stickyDepth > 0 ? e.stickyDepth : i,
+          'name': e.name,
+          'priority': 10,
+          'id': i,
+          'comment': e.name,
+          'selective': false,
+          'secondary_keys': <String>[],
+          'constant': e.constant,
+          'position': 'before_char',
+          // Front Porch extras for round-trip
+          'sticky_depth': e.stickyDepth,
+          'key': e.key, // comma form for our editor
+        };
+      }).toList(),
+      'name': '',
+      'description': '',
+      'scan_depth': 4,
+      'token_budget': 500,
+      'recursive_scanning': false,
+      'extensions': <String, dynamic>{},
     };
   }
 }

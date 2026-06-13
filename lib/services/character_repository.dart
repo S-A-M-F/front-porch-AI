@@ -29,7 +29,9 @@ import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
-import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/models/avatar_image.dart';
+import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
+import 'package:image/image.dart' as img;
 
 class CharacterRepository extends ChangeNotifier {
   AppDatabase _db;
@@ -48,6 +50,22 @@ class CharacterRepository extends ChangeNotifier {
     }
     final sorted = tags.toList()..sort();
     return sorted;
+  }
+
+  /// Returns a CharacterCard by DB UUID (prefers in-memory list for freshness,
+  /// falls back to DB query + parse). Used by export flows.
+  Future<CharacterCard?> getCharacterCardById(String id) async {
+    // Prefer in-memory (may have unsaved edits in edge cases, though normally DB is authoritative)
+    for (final c in _characters) {
+      if (c.dbId == id) return c;
+    }
+    // Fallback: query DB and parse (keeps export working even during partial loads)
+    try {
+      final row = await _db.getCharacterById(id);
+      return _characterFromRow(row);
+    } catch (_) {
+      return null;
+    }
   }
 
   CharacterRepository(this._db, this._storage) {
@@ -72,6 +90,14 @@ class CharacterRepository extends ChangeNotifier {
   }
 
   Future<void> loadCharacters() async {
+    // Re-entrancy guard: the toolbar refresh button (and other callers) can trigger
+    // rapid or concurrent calls. Skip redundant work while a load is already in flight.
+    // This prevents interleaved _characters mutations and flickering isLoading state.
+    // A skipped call also skips the initial _isLoading=true/notify (no spurious flicker for that caller).
+    // Fire-and-forget callers (e.g. some web_server_service paths) may be dropped when busy;
+    // the in-flight load will still deliver the final update to listeners.
+    if (_isLoading) return;
+
     _isLoading = true;
     notifyListeners();
 
@@ -79,6 +105,8 @@ class CharacterRepository extends ChangeNotifier {
       final dbChars = await _db.getAllCharacters();
 
       _characters.clear();
+
+      final missingPngNames = <String>[];
 
       for (final c in dbChars) {
         final card = _characterFromRow(c);
@@ -117,20 +145,38 @@ class CharacterRepository extends ChangeNotifier {
               );
             }
           } catch (e) {
-            debugPrint(
-              '[CharacterRepository] Failed to load PNG for ${card.name}: $e',
-            );
+            if (e is PathNotFoundException ||
+                e.toString().contains('No such file')) {
+              missingPngNames.add(card.name);
+            } else {
+              debugPrint(
+                '[CharacterRepository] Failed to load PNG for ${card.name}: $e',
+              );
+            }
           }
         }
 
         // Load avatar images from DB so they survive hot reloads
         if (card.dbId != null) {
           try {
-            final avatars = await _db.getAvatarImagesByCharacterId(card.dbId!);
-            if (avatars.isNotEmpty) {
-              card.avatarImages = avatars;
+            final driftAvatars = await _db.getAvatarImagesByCharacterId(
+              card.dbId!,
+            );
+            if (driftAvatars.isNotEmpty) {
+              card.avatarImages = driftAvatars
+                  .map(
+                    (a) => AvatarImage(
+                      id: a.id,
+                      characterId: a.characterId,
+                      filename: a.filename,
+                      label: a.label,
+                      displayOrder: a.displayOrder,
+                      createdAt: a.createdAt,
+                    ),
+                  )
+                  .toList();
               debugPrint(
-                '[CharacterRepository] Loaded ${avatars.length} avatar images for ${card.name}',
+                '[CharacterRepository] Loaded ${card.avatarImages!.length} avatar images for ${card.name}',
               );
             }
           } catch (e) {
@@ -142,8 +188,16 @@ class CharacterRepository extends ChangeNotifier {
 
         _characters.add(card);
       }
+
+      // Summarize missing PNGs once (common when developing from source or after cloud deletes)
+      if (missingPngNames.isNotEmpty) {
+        debugPrint(
+          '[CharacterRepository] ${missingPngNames.length} characters have missing local PNG files '
+          '(they can be restored via Cloud Sync): ${missingPngNames.join(", ")}',
+        );
+      }
     } catch (e) {
-      print('Error loading characters from DB: $e');
+      debugPrint('[CharacterRepository] Error loading characters from DB: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -283,9 +337,10 @@ class CharacterRepository extends ChangeNotifier {
     _characters.remove(character);
     notifyListeners();
 
-    // Delete from database
+    // Delete from database (soft-delete the character row so the deletion flag
+    // propagates through cloud DB sync + merge and prevents resurrection).
     if (character.dbId != null) {
-      await _db.deleteCharacterById(character.dbId!);
+      await _db.softDeleteCharacterById(character.dbId!);
     }
 
     // Delete the PNG file from disk
@@ -314,11 +369,13 @@ class CharacterRepository extends ChangeNotifier {
         }
       }
 
-      // Delete from cloud storage
+      // Delete from cloud storage (best-effort immediate cleanup while online).
+      // The authoritative cleanup happens later in CloudSyncService._reconcileDeletedAssets
+      // during the next fullSync, using the DB as source of truth.
       if (cloudSyncService != null) {
         final charId = p.basenameWithoutExtension(character.imagePath!);
         final pngName = p.basename(character.imagePath!);
-        cloudSyncService.deleteRemoteCharacter(charId, pngName);
+        await cloudSyncService.deleteRemoteCharacter(charId, pngName);
       }
     }
 
@@ -355,87 +412,11 @@ class CharacterRepository extends ChangeNotifier {
         );
       }
 
-      // Copy the file to the app's characters directory
-      final charDir = _storage.charactersDir;
-      if (!await charDir.exists()) {
-        await charDir.create(recursive: true);
-      }
-
-      // Use the character name for the filename, sanitized
-      final safeName = card.name
-          .replaceAll(RegExp(r'[^\w\s\-]'), '')
-          .replaceAll(' ', '_');
-
-      // Remove old PNG for same-named character to prevent duplicates
-      final cardName = card.name;
-      final existing = _characters.where((c) => c.name == cardName).toList();
-      for (final oldChar in existing) {
-        if (oldChar.imagePath != null) {
-          try {
-            final oldFile = File(oldChar.imagePath!);
-            if (await oldFile.exists()) {
-              await oldFile.delete();
-              debugPrint(
-                '[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}',
-              );
-            }
-          } catch (e) {
-            debugPrint('[Import] Could not delete old PNG: $e');
-          }
-        }
-      }
-
-      final destPath =
-          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
-      await file.copy(destPath);
-
-      // Update the imagePath to point to the local copy
-      card.imagePath = destPath;
-
-      // Insert into database
-      // Store basename only in DB for cross-platform portability
-      final dbImagePath = card.imagePath != null
-          ? _toBasename(card.imagePath!)
-          : null;
-      final dbId = await _db.insertCharacterReturningId(
-        CharactersCompanion(
-          name: Value(card.name),
-          description: Value(card.description),
-          personality: Value(card.personality),
-          scenario: Value(card.scenario),
-          firstMessage: Value(card.firstMessage),
-          mesExample: Value(card.mesExample),
-          systemPrompt: Value(card.systemPrompt),
-          postHistoryInstructions: Value(card.postHistoryInstructions),
-          alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-          tags: Value(jsonEncode(card.tags)),
-          imagePath: Value(dbImagePath),
-          ttsVoice: Value(card.ttsVoice),
-          lorebook: Value(
-            card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
-          ),
-          worldNames: Value(jsonEncode(card.worldNames)),
-        ),
+      return await _persistImportedCharacterCard(
+        card,
+        sourceFileForCopy: file,
+        worldRepo: worldRepo,
       );
-      card.dbId = dbId;
-
-      // Auto-create a linked world if the card has a lorebook
-      if (card.lorebook != null &&
-          card.lorebook!.entries.isNotEmpty &&
-          worldRepo != null) {
-        final world = world_model.World(
-          avatarPath: card.imagePath,
-          name: "${card.name}'s world lore",
-          description: 'Auto-imported from character card: ${card.name}',
-          lorebook: Lorebook(entries: List.from(card.lorebook!.entries)),
-          linkedCharacterName: card.name,
-        );
-        await worldRepo.saveWorld(world);
-      }
-
-      // Add to in-memory list (already inserted into DB above — do NOT call addCharacter() which would insert again)
-      _characters.add(card);
-      return card;
     } catch (e) {
       rethrow;
     } finally {
@@ -444,9 +425,129 @@ class CharacterRepository extends ChangeNotifier {
     }
   }
 
+  /// Internal helper that persists an already-parsed CharacterCard (from file or from
+  /// embedded group card data). Handles collision soft-delete, PNG copy, DB insert,
+  /// linked world creation, and in-memory list update.
+  ///
+  /// When [sourceFileForCopy] is provided we copy from that file. Otherwise we expect
+  /// [card.imagePath] to already point at a valid PNG we can copy (used by group import).
+  Future<CharacterCard?> _persistImportedCharacterCard(
+    CharacterCard card, {
+    File? sourceFileForCopy,
+    WorldRepository? worldRepo,
+  }) async {
+    final charDir = _storage.charactersDir;
+    if (!await charDir.exists()) {
+      await charDir.create(recursive: true);
+    }
+
+    final safeName = card.name
+        .replaceAll(RegExp(r'[^\w\s\-]'), '')
+        .replaceAll(' ', '_');
+
+    // Collision handling (same logic as before)
+    final cardName = card.name;
+    final existing = _characters.where((c) => c.name == cardName).toList();
+    for (final oldChar in existing) {
+      if (oldChar.dbId != null) {
+        try {
+          await _db.softDeleteCharacterById(oldChar.dbId!);
+          debugPrint(
+            '[Import] Soft-deleted old character row for name collision: ${oldChar.name} (id=${oldChar.dbId})',
+          );
+        } catch (e) {
+          debugPrint('[Import] Could not soft-delete old character row: $e');
+        }
+      }
+      if (oldChar.imagePath != null) {
+        try {
+          final oldFile = File(oldChar.imagePath!);
+          if (await oldFile.exists()) {
+            await oldFile.delete();
+            debugPrint(
+              '[Import] Deleted old PNG for ${card.name}: ${p.basename(oldChar.imagePath!)}',
+            );
+          }
+        } catch (e) {
+          debugPrint('[Import] Could not delete old PNG: $e');
+        }
+      }
+      _characters.remove(oldChar);
+    }
+
+    String destPath;
+    if (sourceFileForCopy != null) {
+      destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await sourceFileForCopy.copy(destPath);
+    } else if (card.imagePath != null) {
+      // Already have a file (e.g. from group card member extraction)
+      final src = File(card.imagePath!);
+      destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await src.copy(destPath);
+    } else {
+      // No image at all — create a tiny placeholder
+      final placeholder = img.Image(width: 400, height: 600);
+      img.fill(placeholder, color: img.ColorRgb8(50, 50, 50));
+      destPath =
+          '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+      await File(destPath).writeAsBytes(img.encodePng(placeholder));
+    }
+
+    final destFile = File(destPath);
+    if (!destFile.existsSync() || destFile.lengthSync() == 0) {
+      debugPrint('[Import] Copied file missing or empty: $destPath');
+    }
+
+    card.imagePath = destPath;
+
+    final dbImagePath = card.imagePath != null
+        ? _toBasename(card.imagePath!)
+        : null;
+
+    final dbId = await _db.insertCharacterReturningId(
+      CharactersCompanion(
+        name: Value(card.name),
+        description: Value(card.description),
+        personality: Value(card.personality),
+        scenario: Value(card.scenario),
+        firstMessage: Value(card.firstMessage),
+        mesExample: Value(card.mesExample),
+        systemPrompt: Value(card.systemPrompt),
+        postHistoryInstructions: Value(card.postHistoryInstructions),
+        alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+        tags: Value(jsonEncode(card.tags)),
+        imagePath: Value(dbImagePath),
+        ttsVoice: Value(card.ttsVoice),
+        lorebook: Value(
+          card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
+        ),
+        worldNames: Value(jsonEncode(card.worldNames)),
+      ),
+    );
+    card.dbId = dbId;
+
+    if (card.lorebook != null &&
+        card.lorebook!.entries.isNotEmpty &&
+        worldRepo != null) {
+      final world = world_model.World(
+        avatarPath: card.imagePath,
+        name: "${card.name}'s world lore",
+        description: 'Auto-imported from character card: ${card.name}',
+        lorebook: Lorebook(entries: List.from(card.lorebook!.entries)),
+        linkedCharacterName: card.name,
+      );
+      await worldRepo.saveWorld(world);
+    }
+
+    _characters.add(card);
+    return card;
+  }
+
   /// Bulk import multiple character PNG files.
   /// [onProgress] is called after each file with (current, total, cardName, error).
-  /// Returns a summary map: {imported: int, failed: int, errors: List<String>}.
+  /// Returns a summary map: `{imported: int, failed: int, errors: List<String>}`.
   Future<Map<String, dynamic>> importCharacters(
     List<File> files, {
     WorldRepository? worldRepo,
@@ -553,8 +654,9 @@ class CharacterRepository extends ChangeNotifier {
             .where((w) => w.linkedCharacterName == card.name)
             .firstOrNull;
         if (linkedWorld != null) {
-          linkedWorld.lorebook =
-              Lorebook(entries: List.from(card.lorebook!.entries));
+          linkedWorld.lorebook = Lorebook(
+            entries: List.from(card.lorebook!.entries),
+          );
           await worldRepo.saveWorld(linkedWorld);
         }
       }
@@ -576,7 +678,15 @@ class CharacterRepository extends ChangeNotifier {
     }
   }
 
-  Future<CharacterCard?> duplicateCharacter(CharacterCard card) async {
+  Future<CharacterCard?> duplicateCharacter(
+    CharacterCard card, {
+    // Generalized for decoupled group private copies (per plan "reuse duplicateCharacter pattern").
+    // When targetDirOverride provided + skipLibraryInsert, performs clone + file copy + V2 re-embed
+    // into the caller's dir (e.g. groups/<gid>/avatars/) without touching library DB or _characters list.
+    String? targetDirOverride,
+    String? forcedBasename,
+    bool skipLibraryInsert = false,
+  }) async {
     _isLoading = true;
     notifyListeners();
     try {
@@ -608,60 +718,95 @@ class CharacterRepository extends ChangeNotifier {
             : null,
       );
 
-      // Handle image file duplication if exists
+      // Handle image file duplication if exists (generalized target)
       if (card.imagePath != null) {
         final originalFile = File(card.imagePath!);
         if (await originalFile.exists()) {
-          final charDir = _storage.charactersDir;
+          final charDir = targetDirOverride != null
+              ? Directory(targetDirOverride)
+              : _storage.charactersDir;
           if (!await charDir.exists()) {
             await charDir.create(recursive: true);
           }
-          final safeName = newName
+          final baseForName = forcedBasename ?? newName;
+          final safeName = baseForName
               .replaceAll(RegExp(r'[^\w\s\-]'), '')
               .replaceAll(' ', '_');
-          final destPath =
-              '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
+          final destPath = targetDirOverride != null
+              ? '${charDir.path}/$safeName.png' // caller controls exact name (e.g. uuid)
+              : '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
           await originalFile.copy(destPath);
           clonedCard.imagePath = destPath;
 
-           // Now write the V2 card data to the *new* PNG
-           final v2Service = V2CardService();
-           debugPrint(
-             '[Duplicate] Saving PNG with extensions: ${clonedCard.frontPorchExtensions != null ? 'realism=${clonedCard.frontPorchExtensions!.realismEnabled}, bond=${clonedCard.frontPorchExtensions!.shortTermBond}' : 'none'}',
-           );
-           await v2Service.saveCardAsPng(clonedCard, destPath, destPath);
+          // Now write the V2 card data to the *new* PNG (always, for fidelity on extract)
+          final v2Service = V2CardService();
+          debugPrint(
+            '[Duplicate] Saving PNG with extensions: ${clonedCard.frontPorchExtensions != null ? 'realism=${clonedCard.frontPorchExtensions!.realismEnabled}, bond=${clonedCard.frontPorchExtensions!.shortTermBond}' : 'none'}',
+          );
+          await v2Service.saveCardAsPng(clonedCard, destPath, destPath);
         }
       }
 
-      // Insert into database
-      final dbImagePath = clonedCard.imagePath != null
-          ? _toBasename(clonedCard.imagePath!)
-          : null;
-      final dbId = await _db.insertCharacterReturningId(
-        CharactersCompanion(
-          name: Value(clonedCard.name),
-          description: Value(clonedCard.description),
-          personality: Value(clonedCard.personality),
-          scenario: Value(clonedCard.scenario),
-          firstMessage: Value(clonedCard.firstMessage),
-          mesExample: Value(clonedCard.mesExample),
-          systemPrompt: Value(clonedCard.systemPrompt),
-          postHistoryInstructions: Value(clonedCard.postHistoryInstructions),
-          alternateGreetings: Value(jsonEncode(clonedCard.alternateGreetings)),
-          tags: Value(jsonEncode(clonedCard.tags)),
-          imagePath: Value(dbImagePath),
-          ttsVoice: Value(clonedCard.ttsVoice),
-          lorebook: Value(
-            clonedCard.lorebook != null
-                ? jsonEncode(clonedCard.lorebook!.toJson())
-                : null,
-          ),
-          worldNames: Value(jsonEncode(clonedCard.worldNames)),
-        ),
-      );
-      clonedCard.dbId = dbId;
+      // Guarantee a valid PNG always exists for the duplicate (protection for source
+      // characters that have no avatar at all — common with older imports or stripped cards).
+      // This ensures private group members are never dropped at load time and always
+      // have something displayable (the V2CardService placeholder + full embedded metadata).
+      if (clonedCard.imagePath == null) {
+        final charDir = targetDirOverride != null
+            ? Directory(targetDirOverride)
+            : _storage.charactersDir;
+        if (!await charDir.exists()) {
+          await charDir.create(recursive: true);
+        }
+        final baseForName = forcedBasename ?? newName;
+        final safeName = baseForName
+            .replaceAll(RegExp(r'[^\w\s\-]'), '')
+            .replaceAll(' ', '_');
+        final destPath = targetDirOverride != null
+            ? '${charDir.path}/$safeName.png'
+            : '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
 
-      _characters.add(clonedCard);
+        final v2Service = V2CardService();
+        debugPrint(
+          '[Duplicate] Source had no usable avatar — generating placeholder PNG for $newName at $destPath',
+        );
+        await v2Service.saveCardAsPng(clonedCard, destPath, null);
+        clonedCard.imagePath = destPath;
+      }
+
+      if (!skipLibraryInsert) {
+        // Insert into database (library path only)
+        final dbImagePath = clonedCard.imagePath != null
+            ? _toBasename(clonedCard.imagePath!)
+            : null;
+        final dbId = await _db.insertCharacterReturningId(
+          CharactersCompanion(
+            name: Value(clonedCard.name),
+            description: Value(clonedCard.description),
+            personality: Value(clonedCard.personality),
+            scenario: Value(clonedCard.scenario),
+            firstMessage: Value(clonedCard.firstMessage),
+            mesExample: Value(clonedCard.mesExample),
+            systemPrompt: Value(clonedCard.systemPrompt),
+            postHistoryInstructions: Value(clonedCard.postHistoryInstructions),
+            alternateGreetings: Value(
+              jsonEncode(clonedCard.alternateGreetings),
+            ),
+            tags: Value(jsonEncode(clonedCard.tags)),
+            imagePath: Value(dbImagePath),
+            ttsVoice: Value(clonedCard.ttsVoice),
+            lorebook: Value(
+              clonedCard.lorebook != null
+                  ? jsonEncode(clonedCard.lorebook!.toJson())
+                  : null,
+            ),
+            worldNames: Value(jsonEncode(clonedCard.worldNames)),
+          ),
+        );
+        clonedCard.dbId = dbId;
+
+        _characters.add(clonedCard);
+      }
       return clonedCard;
     } catch (e) {
       debugPrint('[Duplicate] Error duplicating character: $e');
@@ -675,7 +820,19 @@ class CharacterRepository extends ChangeNotifier {
   /// Get all avatar images for a character from the database.
   Future<List<AvatarImage>> getAvatarImages(String characterId) async {
     try {
-      return await _db.getAvatarImagesByCharacterId(characterId);
+      final driftAvatars = await _db.getAvatarImagesByCharacterId(characterId);
+      return driftAvatars
+          .map(
+            (a) => AvatarImage(
+              id: a.id,
+              characterId: a.characterId,
+              filename: a.filename,
+              label: a.label,
+              displayOrder: a.displayOrder,
+              createdAt: a.createdAt,
+            ),
+          )
+          .toList();
     } catch (e) {
       debugPrint('[CharacterRepository] Failed to get avatar images: $e');
       return [];
@@ -690,7 +847,9 @@ class CharacterRepository extends ChangeNotifier {
     String? label,
   ) async {
     try {
-      debugPrint('[CharacterRepository] addAvatar: started, characterId=$characterId, label=$label');
+      debugPrint(
+        '[CharacterRepository] addAvatar: started, characterId=$characterId, label=$label',
+      );
       final safeName = characterName
           .replaceAll(RegExp(r'[^\w\s\-]'), '')
           .replaceAll(' ', '_');
@@ -708,7 +867,9 @@ class CharacterRepository extends ChangeNotifier {
 
       final displayOrder = await _db.countAvatarsForCharacter(characterId);
       final avatarId = const Uuid().v4();
-      debugPrint('[CharacterRepository] addAvatar: inserting DB record, filename=$filename, displayOrder=$displayOrder');
+      debugPrint(
+        '[CharacterRepository] addAvatar: inserting DB record, filename=$filename, displayOrder=$displayOrder',
+      );
       await _db.insertAvatar(
         AvatarImagesCompanion(
           id: Value(avatarId),
@@ -730,7 +891,9 @@ class CharacterRepository extends ChangeNotifier {
     try {
       final avatar = await _db.getAvatarById(avatarId);
       if (avatar != null) {
-        final char = _characters.where((c) => c.dbId == characterId).firstOrNull;
+        final char = _characters
+            .where((c) => c.dbId == characterId)
+            .firstOrNull;
         if (char != null && char.name.isNotEmpty) {
           final safeName = char.name
               .replaceAll(RegExp(r'[^\w\s\-]'), '')
@@ -769,5 +932,53 @@ class CharacterRepository extends ChangeNotifier {
       debugPrint('[CharacterRepository] Failed to update avatar label: $e');
       rethrow;
     }
+  }
+
+  /// Read the JSON-encoded [memorySources] list for a character.
+  Future<List<String>> getMemorySources(String characterDbId) async {
+    try {
+      final dbChar = await _db.getCharacterById(characterDbId);
+      final ms = dbChar.memorySources;
+      if (ms.isEmpty || ms == '[]') return [];
+      return List<String>.from(
+        (jsonDecode(ms) as List).map((e) => e.toString()),
+      );
+    } catch (e) {
+      debugPrint('[CharacterRepository] Failed to get memorySources: $e');
+      return [];
+    }
+  }
+
+  /// Write memorySources for a character (JSON-encoded list of character IDs).
+  Future<void> setMemorySources(
+    String characterDbId,
+    List<String> sources,
+  ) async {
+    try {
+      await _db.updateCharacter(
+        CharactersCompanion(
+          id: Value(characterDbId),
+          memorySources: Value(jsonEncode(sources)),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[CharacterRepository] Failed to set memorySources: $e');
+      rethrow;
+    }
+  }
+
+  /// Update a character's image path and persist to DB + PNG.
+  Future<void> setCharacterImagePath(
+    CharacterCard card,
+    String imagePath,
+  ) async {
+    card.imagePath = imagePath;
+    await updateCharacter(card);
+  }
+
+  /// Set the character's TTS voice (null = global default) and persist.
+  Future<void> setTtsVoice(CharacterCard card, String? voiceId) async {
+    card.ttsVoice = voiceId;
+    await updateCharacter(card);
   }
 }

@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Hermes JS engine (React Native / build cache)
+.hermes/
+
 # Symbolication related
 app.*.symbols
 
@@ -96,7 +99,7 @@ front_porch_ai.png
 .sandbox-*/
 .opencode/
 .sisyphus/
-CLAUDE.md
+
 aur/src/
 aur/pkg/
 aur/*.pkg.tar*
@@ -112,7 +115,14 @@ aur_key.pub
 tools/embed_server/target/
 *.png
 
+# Allow DMG background image (the *.png rule above would otherwise block it)
+!assets/macos/dmg-background.png
+
 # Testing
 .llm_context/
 bug_triage.md
 *.backup
+
+# Build/release scripts and docs
+create-dmg.sh
+docs/Newsletter-Since-March-28-2026.md

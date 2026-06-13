@@ -74,13 +74,15 @@ class UserPersona {
 
   factory UserPersona.fromJson(Map<String, dynamic> json) {
     // Support legacy JSON that may have 'description' instead of 'persona'
-    final personaText = (json['persona'] as String?) ?? (json['description'] as String?) ?? '';
+    final personaText =
+        (json['persona'] as String?) ?? (json['description'] as String?) ?? '';
     return UserPersona(
       id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
       title: json['title'] ?? '',
       name: json['name'] ?? 'User',
       persona: personaText,
-      learnedFacts: (json['learned_facts'] as List?)?.cast<String>() ?? const [],
+      learnedFacts:
+          (json['learned_facts'] as List?)?.cast<String>() ?? const [],
       avatarPath: json['avatar_path'],
     );
   }
@@ -100,14 +102,14 @@ class UserPersonaService extends ChangeNotifier {
   static const double _dedupThreshold = 0.75;
 
   List<UserPersona> get personas => List.unmodifiable(_personas);
-  
+
   UserPersona get persona {
     if (_personas.isEmpty) {
       return UserPersona(id: 'default', name: 'User');
     }
     return _personas.firstWhere(
-      (p) => p.id == _activePersonaId, 
-      orElse: () => _personas.first
+      (p) => p.id == _activePersonaId,
+      orElse: () => _personas.first,
     );
   }
 
@@ -116,7 +118,9 @@ class UserPersonaService extends ChangeNotifier {
   }
 
   /// Update the database reference (e.g. after cloud sync replaces the DB file).
-  void updateDatabase(AppDatabase db) { _db = db; }
+  void updateDatabase(AppDatabase db) {
+    _db = db;
+  }
 
   Future<void> _loadPersonas() async {
     try {
@@ -125,22 +129,28 @@ class UserPersonaService extends ChangeNotifier {
       if (dbPersonas.isEmpty) {
         // Create default persona
         final defaultId = DateTime.now().millisecondsSinceEpoch.toString();
-        await _db.insertPersona(PersonasCompanion.insert(
-          id: defaultId,
-          name: const Value('User'),
-          isActive: const Value(true),
-        ));
+        await _db.insertPersona(
+          PersonasCompanion.insert(
+            id: defaultId,
+            name: const Value('User'),
+            isActive: const Value(true),
+          ),
+        );
         _personas = [UserPersona(id: defaultId, name: 'User')];
         _activePersonaId = defaultId;
       } else {
-        _personas = dbPersonas.map((p) => UserPersona(
-          id: p.id,
-          title: p.title,
-          name: p.name,
-          persona: p.persona,
-          learnedFacts: _parseFactsList(p.learnedFacts),
-          avatarPath: p.avatarPath,
-        )).toList();
+        _personas = dbPersonas
+            .map(
+              (p) => UserPersona(
+                id: p.id,
+                title: p.title,
+                name: p.name,
+                persona: p.persona,
+                learnedFacts: _parseFactsList(p.learnedFacts),
+                avatarPath: p.avatarPath,
+              ),
+            )
+            .toList();
 
         final active = dbPersonas.where((p) => p.isActive).firstOrNull;
         _activePersonaId = active?.id ?? _personas.first.id;
@@ -152,24 +162,33 @@ class UserPersonaService extends ChangeNotifier {
       // One-time garbage cleanup: filter historically polluted facts
       final removed = await cleanupGarbageFacts();
       if (removed > 0) {
-        debugPrint('[RAG:Persona] Startup cleanup: removed $removed garbage fact(s)');
+        debugPrint(
+          '[RAG:Persona] Startup cleanup: removed $removed garbage fact(s)',
+        );
       }
     } catch (e) {
       debugPrint('Error loading personas from DB: $e');
     }
   }
 
-  Future<void> createPersona(String title, String name, String persona, String? avatarPath) async {
+  Future<void> createPersona(
+    String title,
+    String name,
+    String persona,
+    String? avatarPath,
+  ) async {
     final id = DateTime.now().millisecondsSinceEpoch.toString();
 
-    await _db.insertPersona(PersonasCompanion.insert(
-      id: id,
-      title: Value(title),
-      name: Value(name),
-      persona: Value(persona),
-      avatarPath: Value(avatarPath),
-      isActive: const Value(true),
-    ));
+    await _db.insertPersona(
+      PersonasCompanion.insert(
+        id: id,
+        title: Value(title),
+        name: Value(name),
+        persona: Value(persona),
+        avatarPath: Value(avatarPath),
+        isActive: const Value(true),
+      ),
+    );
 
     // Deactivate others
     await _db.setActivePersona(id);
@@ -191,15 +210,17 @@ class UserPersonaService extends ChangeNotifier {
     if (index != -1) {
       _personas[index] = updatedPersona;
 
-      await _db.updatePersona(PersonasCompanion(
-        id: Value(updatedPersona.id),
-        title: Value(updatedPersona.title),
-        name: Value(updatedPersona.name),
-        persona: Value(updatedPersona.persona),
-        learnedFacts: Value(jsonEncode(updatedPersona.learnedFacts)),
-        avatarPath: Value(updatedPersona.avatarPath),
-        isActive: Value(updatedPersona.id == _activePersonaId),
-      ));
+      await _db.updatePersona(
+        PersonasCompanion(
+          id: Value(updatedPersona.id),
+          title: Value(updatedPersona.title),
+          name: Value(updatedPersona.name),
+          persona: Value(updatedPersona.persona),
+          learnedFacts: Value(jsonEncode(updatedPersona.learnedFacts)),
+          avatarPath: Value(updatedPersona.avatarPath),
+          isActive: Value(updatedPersona.id == _activePersonaId),
+        ),
+      );
 
       notifyListeners();
     }
@@ -210,13 +231,13 @@ class UserPersonaService extends ChangeNotifier {
 
     _personas.removeWhere((p) => p.id == id);
     await _db.deletePersonaById(id);
-    
+
     // If we deleted the active one, switch to the first one
     if (_activePersonaId == id) {
       _activePersonaId = _personas.first.id;
       await _db.setActivePersona(_activePersonaId);
     }
-    
+
     _factEmbeddings.clear(); // Invalidate cache
     notifyListeners();
   }
@@ -249,7 +270,9 @@ class UserPersonaService extends ChangeNotifier {
     if (!await file.exists()) return;
     final content = await file.readAsString();
     final data = jsonDecode(content) as Map<String, dynamic>;
-    final list = (data['personas'] as List?)?.map((e) => UserPersona.fromJson(e)).toList();
+    final list = (data['personas'] as List?)
+        ?.map((e) => UserPersona.fromJson(e))
+        .toList();
     if (list != null && list.isNotEmpty) {
       // Clear existing personas from DB and re-import
       for (final p in _personas) {
@@ -257,16 +280,18 @@ class UserPersonaService extends ChangeNotifier {
       }
       _personas = list;
       _activePersonaId = data['active_persona_id'] ?? _personas.first.id;
-      
+
       for (final p in _personas) {
-        await _db.insertPersona(PersonasCompanion.insert(
-          id: p.id,
-          title: Value(p.title),
-          name: Value(p.name),
-          persona: Value(p.persona),
-          avatarPath: Value(p.avatarPath),
-          isActive: Value(p.id == _activePersonaId),
-        ));
+        await _db.insertPersona(
+          PersonasCompanion.insert(
+            id: p.id,
+            title: Value(p.title),
+            name: Value(p.name),
+            persona: Value(p.persona),
+            avatarPath: Value(p.avatarPath),
+            isActive: Value(p.id == _activePersonaId),
+          ),
+        );
       }
       _factEmbeddings.clear(); // Invalidate cache
       notifyListeners();
@@ -286,7 +311,10 @@ class UserPersonaService extends ChangeNotifier {
   /// If null, base64 avatars are discarded.
   ///
   /// Returns the first imported [UserPersona], or null on failure.
-  Future<UserPersona?> importFromJsonFile(String filePath, {String? avatarSaveDir}) async {
+  Future<UserPersona?> importFromJsonFile(
+    String filePath, {
+    String? avatarSaveDir,
+  }) async {
     try {
       final file = File(filePath);
       if (!await file.exists()) {
@@ -297,27 +325,34 @@ class UserPersonaService extends ChangeNotifier {
       final data = jsonDecode(content);
 
       if (data is! Map<String, dynamic>) {
-        debugPrint('[Persona:Import] Unexpected JSON root type: ${data.runtimeType}');
+        debugPrint(
+          '[Persona:Import] Unexpected JSON root type: ${data.runtimeType}',
+        );
         return null;
       }
       final json = data;
 
       // ── SillyTavern export format ──
       // { personas: {filename: name}, persona_descriptions: {filename: {description, ...}} }
-      if (json.containsKey('personas') && json['personas'] is Map &&
-          json.containsKey('persona_descriptions') && json['persona_descriptions'] is Map) {
+      if (json.containsKey('personas') &&
+          json['personas'] is Map &&
+          json.containsKey('persona_descriptions') &&
+          json['persona_descriptions'] is Map) {
         debugPrint('[Persona:Import] Detected SillyTavern export format');
         final personasMap = json['personas'] as Map<String, dynamic>;
-        final descriptionsMap = json['persona_descriptions'] as Map<String, dynamic>;
+        final descriptionsMap =
+            json['persona_descriptions'] as Map<String, dynamic>;
 
         UserPersona? firstImported;
         for (final entry in personasMap.entries) {
-          final avatarKey = entry.key;   // e.g. "1766044822296-Linus.png"
+          final avatarKey = entry.key; // e.g. "1766044822296-Linus.png"
           final name = entry.value as String? ?? 'Imported Persona';
 
           // Look up the description entry for this avatar key
           final descEntry = descriptionsMap[avatarKey] as Map<String, dynamic>?;
-          final personaText = descEntry?['description'] as String? ?? ''; // ST uses 'description' as the persona text
+          final personaText =
+              descEntry?['description'] as String? ??
+              ''; // ST uses 'description' as the persona text
           final title = descEntry?['title'] as String? ?? '';
 
           final newPersona = UserPersona(
@@ -337,7 +372,9 @@ class UserPersonaService extends ChangeNotifier {
         }
 
         if (firstImported != null) {
-          debugPrint('[Persona:Import] Imported ${personasMap.length} persona(s) from SillyTavern');
+          debugPrint(
+            '[Persona:Import] Imported ${personasMap.length} persona(s) from SillyTavern',
+          );
         }
         return firstImported;
       }
@@ -351,7 +388,9 @@ class UserPersonaService extends ChangeNotifier {
           for (final p in list) {
             await _addImportedPersona(p);
           }
-          debugPrint('[Persona:Import] Imported ${list.length} persona(s) from Front Porch native format');
+          debugPrint(
+            '[Persona:Import] Imported ${list.length} persona(s) from Front Porch native format',
+          );
           return list.first;
         }
         return null;
@@ -365,23 +404,37 @@ class UserPersonaService extends ChangeNotifier {
       String? avatarPath;
 
       // TavernAI V2 / Backyard AI character card
-      if (json.containsKey('first_mes') || json.containsKey('mes_example') ||
-          json.containsKey('personality') || json.containsKey('scenario')) {
+      if (json.containsKey('first_mes') ||
+          json.containsKey('mes_example') ||
+          json.containsKey('personality') ||
+          json.containsKey('scenario')) {
         name = json['name'] as String? ?? '';
-        personaText = json['user_persona'] as String? ?? json['description'] as String? ?? '';
+        personaText =
+            json['user_persona'] as String? ??
+            json['description'] as String? ??
+            '';
         title = json['creator_notes'] as String? ?? '';
-        debugPrint('[Persona:Import] Detected TavernAI V2 / Backyard AI format');
+        debugPrint(
+          '[Persona:Import] Detected TavernAI V2 / Backyard AI format',
+        );
       }
       // Simple object with name + description
       else if (json.containsKey('name') && json.containsKey('description')) {
         name = json['name'] as String? ?? '';
-        personaText = json['persona'] as String? ?? json['description'] as String? ?? '';
+        personaText =
+            json['persona'] as String? ?? json['description'] as String? ?? '';
         title = json['title'] as String? ?? '';
 
         // Handle base64 avatar
         final avatarData = json['avatar'] as String?;
-        if (avatarData != null && avatarData.length > 200 && avatarSaveDir != null) {
-          avatarPath = await _decodeBase64Avatar(avatarData, name, avatarSaveDir);
+        if (avatarData != null &&
+            avatarData.length > 200 &&
+            avatarSaveDir != null) {
+          avatarPath = await _decodeBase64Avatar(
+            avatarData,
+            name,
+            avatarSaveDir,
+          );
         } else if (avatarData != null && avatarData.length <= 200) {
           avatarPath = avatarData;
         }
@@ -390,16 +443,23 @@ class UserPersonaService extends ChangeNotifier {
       // Minimal fallback
       else if (json.containsKey('name')) {
         name = json['name'] as String? ?? 'Imported Persona';
-        personaText = json['persona'] as String? ?? json['description'] as String? ?? json['bio'] as String? ?? '';
+        personaText =
+            json['persona'] as String? ??
+            json['description'] as String? ??
+            json['bio'] as String? ??
+            '';
         debugPrint('[Persona:Import] Detected minimal format');
       } else {
-        debugPrint('[Persona:Import] Unrecognized format — no parseable keys found');
+        debugPrint(
+          '[Persona:Import] Unrecognized format — no parseable keys found',
+        );
         return null;
       }
 
       if (name.isEmpty) name = 'Imported Persona';
 
-      final learnedFacts = (json['learned_facts'] as List?)?.cast<String>() ?? const <String>[];
+      final learnedFacts =
+          (json['learned_facts'] as List?)?.cast<String>() ?? const <String>[];
 
       final newPersona = UserPersona(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -424,11 +484,7 @@ class UserPersonaService extends ChangeNotifier {
     final existingIds = _personas.map((e) => e.id).toSet();
     UserPersona toInsert = p;
     if (existingIds.contains(p.id)) {
-      toInsert = p.copyWith(
-        title: p.title,
-        name: p.name,
-        persona: p.persona,
-      );
+      toInsert = p.copyWith(title: p.title, name: p.name, persona: p.persona);
       // Generate new ID since copyWith preserves original
       toInsert = UserPersona(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -440,15 +496,17 @@ class UserPersonaService extends ChangeNotifier {
       );
     }
 
-    await _db.insertPersona(PersonasCompanion.insert(
-      id: toInsert.id,
-      title: Value(toInsert.title),
-      name: Value(toInsert.name),
-      persona: Value(toInsert.persona),
-      learnedFacts: Value(jsonEncode(toInsert.learnedFacts)),
-      avatarPath: Value(toInsert.avatarPath),
-      isActive: const Value(true),
-    ));
+    await _db.insertPersona(
+      PersonasCompanion.insert(
+        id: toInsert.id,
+        title: Value(toInsert.title),
+        name: Value(toInsert.name),
+        persona: Value(toInsert.persona),
+        learnedFacts: Value(jsonEncode(toInsert.learnedFacts)),
+        avatarPath: Value(toInsert.avatarPath),
+        isActive: const Value(true),
+      ),
+    );
 
     // Set as active
     await _db.setActivePersona(toInsert.id);
@@ -460,7 +518,11 @@ class UserPersonaService extends ChangeNotifier {
 
   /// Decode a base64-encoded avatar string and save it to disk.
   /// Returns the saved file path, or null on failure.
-  Future<String?> _decodeBase64Avatar(String base64Data, String personaName, String saveDir) async {
+  Future<String?> _decodeBase64Avatar(
+    String base64Data,
+    String personaName,
+    String saveDir,
+  ) async {
     try {
       // Strip data URI prefix if present (e.g. "data:image/png;base64,...")
       String raw = base64Data;
@@ -491,12 +553,39 @@ class UserPersonaService extends ChangeNotifier {
     }
   }
 
-  /// Export a single persona to a JSON file.
-  Future<void> exportPersonaToJson(String personaId, String filePath) async {
-    final p = _personas.firstWhere((e) => e.id == personaId, orElse: () => persona);
+  /// Export multiple personas to a JSON file in SillyTavern compliant format.
+  Future<void> exportPersonasToSTFormat(
+      List<String> personaIds, String filePath) async {
+    final Map<String, String> personasMap = {};
+    final Map<String, dynamic> descriptionsMap = {};
+
+    for (final id in personaIds) {
+      final p = _personas.firstWhere((e) => e.id == id, orElse: () => persona);
+
+      String key = p.avatarPath != null
+          ? p.avatarPath!.split('/').last
+          : '${p.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}.png';
+      
+      if (personasMap.containsKey(key)) {
+        key = '${p.id}_$key';
+      }
+
+      personasMap[key] = p.name;
+      descriptionsMap[key] = {
+        'description': p.persona,
+        'title': p.title,
+        'learned_facts': p.learnedFacts,
+      };
+    }
+
+    final data = {
+      'personas': personasMap,
+      'persona_descriptions': descriptionsMap,
+    };
+
     final file = File(filePath);
     await file.parent.create(recursive: true);
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(p.toJson()));
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
   }
 
   /// Reload personas from DB (e.g. after cloud sync import).
@@ -504,7 +593,7 @@ class UserPersonaService extends ChangeNotifier {
     await _loadPersonas();
   }
 
-  /// Parse a JSON string of facts into a List<String>, handling errors.
+  /// Parse a JSON string of facts into a `List<String>`, handling errors.
   static List<String> _parseFactsList(String json) {
     try {
       if (json.isEmpty || json == '[]') return [];
@@ -520,10 +609,14 @@ class UserPersonaService extends ChangeNotifier {
   /// Only embeds facts that aren't already in the cache.
   Future<void> _ensureFactEmbeddings(EmbeddingService embedService) async {
     final facts = persona.learnedFacts;
-    final uncached = facts.where((f) => !_factEmbeddings.containsKey(f)).toList();
+    final uncached = facts
+        .where((f) => !_factEmbeddings.containsKey(f))
+        .toList();
     if (uncached.isEmpty) return;
 
-    debugPrint('[RAG:Persona] Caching embeddings for ${uncached.length} fact(s)...');
+    debugPrint(
+      '[RAG:Persona] Caching embeddings for ${uncached.length} fact(s)...',
+    );
     for (final fact in uncached) {
       final vec = await embedService.embed(fact);
       if (vec != null) {
@@ -562,7 +655,10 @@ class UserPersonaService extends ChangeNotifier {
   /// - Genuinely unique facts are added normally
   ///
   /// Falls back to exact-string dedup when embeddings are unavailable.
-  Future<void> addLearnedFacts(List<String> newFacts, {EmbeddingService? embedService}) async {
+  Future<void> addLearnedFacts(
+    List<String> newFacts, {
+    EmbeddingService? embedService,
+  }) async {
     final current = persona;
     final facts = List<String>.from(current.learnedFacts);
     bool changed = false;
@@ -582,7 +678,9 @@ class UserPersonaService extends ChangeNotifier {
     }
 
     // Embedding path: semantic dedup
-    debugPrint('[RAG:Persona] Semantic dedup: ${newFacts.length} new fact(s) against ${facts.length} existing');
+    debugPrint(
+      '[RAG:Persona] Semantic dedup: ${newFacts.length} new fact(s) against ${facts.length} existing',
+    );
 
     // Ensure existing facts are embedded
     await _ensureFactEmbeddings(embedService);
@@ -619,18 +717,24 @@ class UserPersonaService extends ChangeNotifier {
         // Semantic duplicate found — keep the more detailed version
         final existing = facts[bestIndex];
         if (newFact.length > existing.length) {
-          debugPrint('[RAG:Persona] ↻ Replacing "$existing" with "$newFact" (score: ${bestScore.toStringAsFixed(3)})');
+          debugPrint(
+            '[RAG:Persona] ↻ Replacing "$existing" with "$newFact" (score: ${bestScore.toStringAsFixed(3)})',
+          );
           // Update cache: remove old, add new
           _factEmbeddings.remove(existing);
           _factEmbeddings[newFact] = newVec;
           facts[bestIndex] = newFact;
           changed = true;
         } else {
-          debugPrint('[RAG:Persona] ≡ Skipping "$newFact" — duplicate of "$existing" (score: ${bestScore.toStringAsFixed(3)})');
+          debugPrint(
+            '[RAG:Persona] ≡ Skipping "$newFact" — duplicate of "$existing" (score: ${bestScore.toStringAsFixed(3)})',
+          );
         }
       } else {
         // Genuinely new fact
-        debugPrint('[RAG:Persona] + Adding new fact: "$newFact" (best existing score: ${bestScore.toStringAsFixed(3)})');
+        debugPrint(
+          '[RAG:Persona] + Adding new fact: "$newFact" (best existing score: ${bestScore.toStringAsFixed(3)})',
+        );
         _factEmbeddings[newFact] = newVec;
         facts.add(newFact);
         changed = true;
@@ -656,7 +760,9 @@ class UserPersonaService extends ChangeNotifier {
     if (facts.isEmpty) return [];
 
     // If no embedding service or few enough facts, return all
-    if (embedService == null || !embedService.isAvailable || facts.length <= maxFacts) {
+    if (embedService == null ||
+        !embedService.isAvailable ||
+        facts.length <= maxFacts) {
       return List<String>.from(facts);
     }
 
@@ -672,7 +778,10 @@ class UserPersonaService extends ChangeNotifier {
     for (final fact in facts) {
       final factVec = _factEmbeddings[fact];
       if (factVec == null) {
-        scored.add((fact: fact, score: 0.0)); // include uncached facts with low priority
+        scored.add((
+          fact: fact,
+          score: 0.0,
+        )); // include uncached facts with low priority
         continue;
       }
       final score = _cosineSimilarity(queryVec, factVec);
@@ -683,7 +792,9 @@ class UserPersonaService extends ChangeNotifier {
     scored.sort((a, b) => b.score.compareTo(a.score));
     final selected = scored.take(maxFacts).map((s) => s.fact).toList();
 
-    debugPrint('[RAG:Persona] Selected ${selected.length}/${facts.length} relevant facts for context');
+    debugPrint(
+      '[RAG:Persona] Selected ${selected.length}/${facts.length} relevant facts for context',
+    );
     return selected;
   }
 
@@ -711,7 +822,9 @@ class UserPersonaService extends ChangeNotifier {
     final removed = originalCount - facts.length;
 
     if (removed > 0) {
-      debugPrint('[RAG:Persona] Garbage cleanup: removed $removed/$originalCount facts');
+      debugPrint(
+        '[RAG:Persona] Garbage cleanup: removed $removed/$originalCount facts',
+      );
       _factEmbeddings.clear(); // Invalidate cache since facts changed
       await updatePersona(current.copyWith(learnedFacts: facts));
     }
@@ -727,17 +840,42 @@ class UserPersonaService extends ChangeNotifier {
     // Contains RP asterisks
     if (f.contains('*')) return true;
     // Starts with action verbs
-    if (RegExp(r'^(walks|runs|looks|says|said|goes|went|came|sat|stood|turned|moved|grabbed|took|pulled|pushed|kissed|hugged|touched|smiled|laughed|nodded|sighed|whispered|moaned|gasped)\b', caseSensitive: false).hasMatch(f)) return true;
+    if (RegExp(
+      r'^(walks|runs|looks|says|said|goes|went|came|sat|stood|turned|moved|grabbed|took|pulled|pushed|kissed|hugged|touched|smiled|laughed|nodded|sighed|whispered|moaned|gasped)\b',
+      caseSensitive: false,
+    ).hasMatch(f)) {
+      return true;
+    }
     // Meta-commentary
-    if (RegExp(r'^(no new facts|none|n/a|nothing|unknown|unclear|not sure|i don.?t know)', caseSensitive: false).hasMatch(f)) return true;
+    if (RegExp(
+      r'^(no new facts|none|n/a|nothing|unknown|unclear|not sure|i don.?t know)',
+      caseSensitive: false,
+    ).hasMatch(f)) {
+      return true;
+    }
     // Too generic
-    if (RegExp(r'^(is nice|is good|is bad|likes things|does stuff|is a person|is human|exists)', caseSensitive: false).hasMatch(f)) return true;
+    if (RegExp(
+      r'^(is nice|is good|is bad|likes things|does stuff|is a person|is human|exists)',
+      caseSensitive: false,
+    ).hasMatch(f)) {
+      return true;
+    }
     // JSON artifacts
     if (RegExp(r'[\[\]{}]').hasMatch(f)) return true;
     // Repeated punctuation / encoding garbage
-    if (RegExp(r'[.!?]{3,}|\\[nrt]|&#|%[0-9a-f]{2}', caseSensitive: false).hasMatch(f)) return true;
+    if (RegExp(
+      r'[.!?]{3,}|\\[nrt]|&#|%[0-9a-f]{2}',
+      caseSensitive: false,
+    ).hasMatch(f)) {
+      return true;
+    }
     // Third-person narrator voice
-    if (RegExp(r'^(the user|the player|they|he|she)\s+(is|was|had|has|did|does|went|walked|said|looked|seemed|appeared)\b', caseSensitive: false).hasMatch(f)) return true;
+    if (RegExp(
+      r'^(the user|the player|they|he|she)\s+(is|was|had|has|did|does|went|walked|said|looked|seemed|appeared)\b',
+      caseSensitive: false,
+    ).hasMatch(f)) {
+      return true;
+    }
     return false;
   }
 }

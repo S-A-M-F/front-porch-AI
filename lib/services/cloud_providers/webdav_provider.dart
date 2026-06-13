@@ -79,15 +79,17 @@ class WebDavProvider extends CloudStorageProvider {
         if (file.isDir == true) {
           // Recurse into subdirectories
           try {
-            final subFiles = await listFiles('${remotePath}/${file.name}');
+            final subFiles = await listFiles('$remotePath/${file.name}');
             result.addAll(subFiles);
           } catch (_) {}
         } else {
-          result.add(RemoteFileInfo(
-            remotePath: file.path ?? '${remotePath}/${file.name}',
-            lastModified: file.mTime,
-            size: file.size,
-          ));
+          result.add(
+            RemoteFileInfo(
+              remotePath: file.path ?? '$remotePath/${file.name}',
+              lastModified: file.mTime,
+              size: file.size,
+            ),
+          );
         }
       }
     } catch (e) {

@@ -1606,6 +1606,18 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _startDayOfWeekMeta = const VerificationMeta(
+    'startDayOfWeek',
+  );
+  @override
+  late final GeneratedColumn<int> startDayOfWeek = GeneratedColumn<int>(
+    'start_day_of_week',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _nsfwCooldownEnabledMeta =
       const VerificationMeta('nsfwCooldownEnabled');
   @override
@@ -1746,6 +1758,32 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _needsSimEnabledMeta = const VerificationMeta(
+    'needsSimEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> needsSimEnabled = GeneratedColumn<bool>(
+    'needs_sim_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("needs_sim_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _needsVectorMeta = const VerificationMeta(
+    'needsVector',
+  );
+  @override
+  late final GeneratedColumn<String> needsVector = GeneratedColumn<String>(
+    'needs_vector',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _evolvedPersonalityMeta =
       const VerificationMeta('evolvedPersonality');
   @override
@@ -1828,6 +1866,19 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _groupRealismStateMeta = const VerificationMeta(
+    'groupRealismState',
+  );
+  @override
+  late final GeneratedColumn<String> groupRealismState =
+      GeneratedColumn<String>(
+        'group_realism_state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1889,6 +1940,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     emotionIntensity,
     timeOfDay,
     dayCount,
+    startDayOfWeek,
     nsfwCooldownEnabled,
     passageOfTimeEnabled,
     arousalLevel,
@@ -1900,6 +1952,8 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     trustRepairPending,
     chaosModeEnabled,
     chaosPressure,
+    needsSimEnabled,
+    needsVector,
     evolvedPersonality,
     evolvedScenario,
     evolutionCount,
@@ -1907,6 +1961,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     groupEvolvedScenarios,
     generationSettings,
     userPersonaId,
+    groupRealismState,
     createdAt,
     updatedAt,
     deletedAt,
@@ -2114,6 +2169,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         dayCount.isAcceptableOrUnknown(data['day_count']!, _dayCountMeta),
       );
     }
+    if (data.containsKey('start_day_of_week')) {
+      context.handle(
+        _startDayOfWeekMeta,
+        startDayOfWeek.isAcceptableOrUnknown(
+          data['start_day_of_week']!,
+          _startDayOfWeekMeta,
+        ),
+      );
+    }
     if (data.containsKey('nsfw_cooldown_enabled')) {
       context.handle(
         _nsfwCooldownEnabledMeta,
@@ -2210,6 +2274,24 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         ),
       );
     }
+    if (data.containsKey('needs_sim_enabled')) {
+      context.handle(
+        _needsSimEnabledMeta,
+        needsSimEnabled.isAcceptableOrUnknown(
+          data['needs_sim_enabled']!,
+          _needsSimEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('needs_vector')) {
+      context.handle(
+        _needsVectorMeta,
+        needsVector.isAcceptableOrUnknown(
+          data['needs_vector']!,
+          _needsVectorMeta,
+        ),
+      );
+    }
     if (data.containsKey('evolved_personality')) {
       context.handle(
         _evolvedPersonalityMeta,
@@ -2270,6 +2352,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         userPersonaId.isAcceptableOrUnknown(
           data['user_persona_id']!,
           _userPersonaIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('group_realism_state')) {
+      context.handle(
+        _groupRealismStateMeta,
+        groupRealismState.isAcceptableOrUnknown(
+          data['group_realism_state']!,
+          _groupRealismStateMeta,
         ),
       );
     }
@@ -2396,6 +2487,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.int,
         data['${effectivePrefix}day_count'],
       )!,
+      startDayOfWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_day_of_week'],
+      )!,
       nsfwCooldownEnabled: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}nsfw_cooldown_enabled'],
@@ -2440,6 +2535,14 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.int,
         data['${effectivePrefix}chaos_pressure'],
       )!,
+      needsSimEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}needs_sim_enabled'],
+      )!,
+      needsVector: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}needs_vector'],
+      ),
       evolvedPersonality: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}evolved_personality'],
@@ -2468,6 +2571,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}user_persona_id'],
       ),
+      groupRealismState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_realism_state'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2514,6 +2621,7 @@ class Session extends DataClass implements Insertable<Session> {
   final String emotionIntensity;
   final String timeOfDay;
   final int dayCount;
+  final int startDayOfWeek;
   final bool nsfwCooldownEnabled;
   final bool passageOfTimeEnabled;
   final int arousalLevel;
@@ -2525,6 +2633,8 @@ class Session extends DataClass implements Insertable<Session> {
   final bool trustRepairPending;
   final bool chaosModeEnabled;
   final int chaosPressure;
+  final bool needsSimEnabled;
+  final String? needsVector;
   final String evolvedPersonality;
   final String evolvedScenario;
   final int evolutionCount;
@@ -2532,6 +2642,12 @@ class Session extends DataClass implements Insertable<Session> {
   final String groupEvolvedScenarios;
   final String? generationSettings;
   final String? userPersonaId;
+
+  /// Live per-character realism/needs state for group sessions.
+  /// JSON map: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Replaces the old hidden __group_state__ checkpoint message system (clean break in v30).
+  /// Only populated for sessions where groupId is not null.
+  final String groupRealismState;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -2560,6 +2676,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.emotionIntensity,
     required this.timeOfDay,
     required this.dayCount,
+    required this.startDayOfWeek,
     required this.nsfwCooldownEnabled,
     required this.passageOfTimeEnabled,
     required this.arousalLevel,
@@ -2571,6 +2688,8 @@ class Session extends DataClass implements Insertable<Session> {
     required this.trustRepairPending,
     required this.chaosModeEnabled,
     required this.chaosPressure,
+    required this.needsSimEnabled,
+    this.needsVector,
     required this.evolvedPersonality,
     required this.evolvedScenario,
     required this.evolutionCount,
@@ -2578,6 +2697,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.groupEvolvedScenarios,
     this.generationSettings,
     this.userPersonaId,
+    required this.groupRealismState,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -2625,6 +2745,7 @@ class Session extends DataClass implements Insertable<Session> {
     map['emotion_intensity'] = Variable<String>(emotionIntensity);
     map['time_of_day'] = Variable<String>(timeOfDay);
     map['day_count'] = Variable<int>(dayCount);
+    map['start_day_of_week'] = Variable<int>(startDayOfWeek);
     map['nsfw_cooldown_enabled'] = Variable<bool>(nsfwCooldownEnabled);
     map['passage_of_time_enabled'] = Variable<bool>(passageOfTimeEnabled);
     map['arousal_level'] = Variable<int>(arousalLevel);
@@ -2636,6 +2757,10 @@ class Session extends DataClass implements Insertable<Session> {
     map['trust_repair_pending'] = Variable<bool>(trustRepairPending);
     map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled);
     map['chaos_pressure'] = Variable<int>(chaosPressure);
+    map['needs_sim_enabled'] = Variable<bool>(needsSimEnabled);
+    if (!nullToAbsent || needsVector != null) {
+      map['needs_vector'] = Variable<String>(needsVector);
+    }
     map['evolved_personality'] = Variable<String>(evolvedPersonality);
     map['evolved_scenario'] = Variable<String>(evolvedScenario);
     map['evolution_count'] = Variable<int>(evolutionCount);
@@ -2649,6 +2774,7 @@ class Session extends DataClass implements Insertable<Session> {
     if (!nullToAbsent || userPersonaId != null) {
       map['user_persona_id'] = Variable<String>(userPersonaId);
     }
+    map['group_realism_state'] = Variable<String>(groupRealismState);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -2697,6 +2823,7 @@ class Session extends DataClass implements Insertable<Session> {
       emotionIntensity: Value(emotionIntensity),
       timeOfDay: Value(timeOfDay),
       dayCount: Value(dayCount),
+      startDayOfWeek: Value(startDayOfWeek),
       nsfwCooldownEnabled: Value(nsfwCooldownEnabled),
       passageOfTimeEnabled: Value(passageOfTimeEnabled),
       arousalLevel: Value(arousalLevel),
@@ -2708,6 +2835,10 @@ class Session extends DataClass implements Insertable<Session> {
       trustRepairPending: Value(trustRepairPending),
       chaosModeEnabled: Value(chaosModeEnabled),
       chaosPressure: Value(chaosPressure),
+      needsSimEnabled: Value(needsSimEnabled),
+      needsVector: needsVector == null && nullToAbsent
+          ? const Value.absent()
+          : Value(needsVector),
       evolvedPersonality: Value(evolvedPersonality),
       evolvedScenario: Value(evolvedScenario),
       evolutionCount: Value(evolutionCount),
@@ -2719,6 +2850,7 @@ class Session extends DataClass implements Insertable<Session> {
       userPersonaId: userPersonaId == null && nullToAbsent
           ? const Value.absent()
           : Value(userPersonaId),
+      groupRealismState: Value(groupRealismState),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -2761,6 +2893,7 @@ class Session extends DataClass implements Insertable<Session> {
       emotionIntensity: serializer.fromJson<String>(json['emotionIntensity']),
       timeOfDay: serializer.fromJson<String>(json['timeOfDay']),
       dayCount: serializer.fromJson<int>(json['dayCount']),
+      startDayOfWeek: serializer.fromJson<int>(json['startDayOfWeek']),
       nsfwCooldownEnabled: serializer.fromJson<bool>(
         json['nsfwCooldownEnabled'],
       ),
@@ -2778,6 +2911,8 @@ class Session extends DataClass implements Insertable<Session> {
       trustRepairPending: serializer.fromJson<bool>(json['trustRepairPending']),
       chaosModeEnabled: serializer.fromJson<bool>(json['chaosModeEnabled']),
       chaosPressure: serializer.fromJson<int>(json['chaosPressure']),
+      needsSimEnabled: serializer.fromJson<bool>(json['needsSimEnabled']),
+      needsVector: serializer.fromJson<String?>(json['needsVector']),
       evolvedPersonality: serializer.fromJson<String>(
         json['evolvedPersonality'],
       ),
@@ -2793,6 +2928,7 @@ class Session extends DataClass implements Insertable<Session> {
         json['generationSettings'],
       ),
       userPersonaId: serializer.fromJson<String?>(json['userPersonaId']),
+      groupRealismState: serializer.fromJson<String>(json['groupRealismState']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -2828,6 +2964,7 @@ class Session extends DataClass implements Insertable<Session> {
       'emotionIntensity': serializer.toJson<String>(emotionIntensity),
       'timeOfDay': serializer.toJson<String>(timeOfDay),
       'dayCount': serializer.toJson<int>(dayCount),
+      'startDayOfWeek': serializer.toJson<int>(startDayOfWeek),
       'nsfwCooldownEnabled': serializer.toJson<bool>(nsfwCooldownEnabled),
       'passageOfTimeEnabled': serializer.toJson<bool>(passageOfTimeEnabled),
       'arousalLevel': serializer.toJson<int>(arousalLevel),
@@ -2839,6 +2976,8 @@ class Session extends DataClass implements Insertable<Session> {
       'trustRepairPending': serializer.toJson<bool>(trustRepairPending),
       'chaosModeEnabled': serializer.toJson<bool>(chaosModeEnabled),
       'chaosPressure': serializer.toJson<int>(chaosPressure),
+      'needsSimEnabled': serializer.toJson<bool>(needsSimEnabled),
+      'needsVector': serializer.toJson<String?>(needsVector),
       'evolvedPersonality': serializer.toJson<String>(evolvedPersonality),
       'evolvedScenario': serializer.toJson<String>(evolvedScenario),
       'evolutionCount': serializer.toJson<int>(evolutionCount),
@@ -2848,6 +2987,7 @@ class Session extends DataClass implements Insertable<Session> {
       'groupEvolvedScenarios': serializer.toJson<String>(groupEvolvedScenarios),
       'generationSettings': serializer.toJson<String?>(generationSettings),
       'userPersonaId': serializer.toJson<String?>(userPersonaId),
+      'groupRealismState': serializer.toJson<String>(groupRealismState),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -2879,6 +3019,7 @@ class Session extends DataClass implements Insertable<Session> {
     String? emotionIntensity,
     String? timeOfDay,
     int? dayCount,
+    int? startDayOfWeek,
     bool? nsfwCooldownEnabled,
     bool? passageOfTimeEnabled,
     int? arousalLevel,
@@ -2890,6 +3031,8 @@ class Session extends DataClass implements Insertable<Session> {
     bool? trustRepairPending,
     bool? chaosModeEnabled,
     int? chaosPressure,
+    bool? needsSimEnabled,
+    Value<String?> needsVector = const Value.absent(),
     String? evolvedPersonality,
     String? evolvedScenario,
     int? evolutionCount,
@@ -2897,6 +3040,7 @@ class Session extends DataClass implements Insertable<Session> {
     String? groupEvolvedScenarios,
     Value<String?> generationSettings = const Value.absent(),
     Value<String?> userPersonaId = const Value.absent(),
+    String? groupRealismState,
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -2931,6 +3075,7 @@ class Session extends DataClass implements Insertable<Session> {
     emotionIntensity: emotionIntensity ?? this.emotionIntensity,
     timeOfDay: timeOfDay ?? this.timeOfDay,
     dayCount: dayCount ?? this.dayCount,
+    startDayOfWeek: startDayOfWeek ?? this.startDayOfWeek,
     nsfwCooldownEnabled: nsfwCooldownEnabled ?? this.nsfwCooldownEnabled,
     passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
     arousalLevel: arousalLevel ?? this.arousalLevel,
@@ -2943,6 +3088,8 @@ class Session extends DataClass implements Insertable<Session> {
     trustRepairPending: trustRepairPending ?? this.trustRepairPending,
     chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
     chaosPressure: chaosPressure ?? this.chaosPressure,
+    needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
+    needsVector: needsVector.present ? needsVector.value : this.needsVector,
     evolvedPersonality: evolvedPersonality ?? this.evolvedPersonality,
     evolvedScenario: evolvedScenario ?? this.evolvedScenario,
     evolutionCount: evolutionCount ?? this.evolutionCount,
@@ -2955,6 +3102,7 @@ class Session extends DataClass implements Insertable<Session> {
     userPersonaId: userPersonaId.present
         ? userPersonaId.value
         : this.userPersonaId,
+    groupRealismState: groupRealismState ?? this.groupRealismState,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -3019,6 +3167,9 @@ class Session extends DataClass implements Insertable<Session> {
           : this.emotionIntensity,
       timeOfDay: data.timeOfDay.present ? data.timeOfDay.value : this.timeOfDay,
       dayCount: data.dayCount.present ? data.dayCount.value : this.dayCount,
+      startDayOfWeek: data.startDayOfWeek.present
+          ? data.startDayOfWeek.value
+          : this.startDayOfWeek,
       nsfwCooldownEnabled: data.nsfwCooldownEnabled.present
           ? data.nsfwCooldownEnabled.value
           : this.nsfwCooldownEnabled,
@@ -3052,6 +3203,12 @@ class Session extends DataClass implements Insertable<Session> {
       chaosPressure: data.chaosPressure.present
           ? data.chaosPressure.value
           : this.chaosPressure,
+      needsSimEnabled: data.needsSimEnabled.present
+          ? data.needsSimEnabled.value
+          : this.needsSimEnabled,
+      needsVector: data.needsVector.present
+          ? data.needsVector.value
+          : this.needsVector,
       evolvedPersonality: data.evolvedPersonality.present
           ? data.evolvedPersonality.value
           : this.evolvedPersonality,
@@ -3073,6 +3230,9 @@ class Session extends DataClass implements Insertable<Session> {
       userPersonaId: data.userPersonaId.present
           ? data.userPersonaId.value
           : this.userPersonaId,
+      groupRealismState: data.groupRealismState.present
+          ? data.groupRealismState.value
+          : this.groupRealismState,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -3106,6 +3266,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('emotionIntensity: $emotionIntensity, ')
           ..write('timeOfDay: $timeOfDay, ')
           ..write('dayCount: $dayCount, ')
+          ..write('startDayOfWeek: $startDayOfWeek, ')
           ..write('nsfwCooldownEnabled: $nsfwCooldownEnabled, ')
           ..write('passageOfTimeEnabled: $passageOfTimeEnabled, ')
           ..write('arousalLevel: $arousalLevel, ')
@@ -3117,6 +3278,8 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('trustRepairPending: $trustRepairPending, ')
           ..write('chaosModeEnabled: $chaosModeEnabled, ')
           ..write('chaosPressure: $chaosPressure, ')
+          ..write('needsSimEnabled: $needsSimEnabled, ')
+          ..write('needsVector: $needsVector, ')
           ..write('evolvedPersonality: $evolvedPersonality, ')
           ..write('evolvedScenario: $evolvedScenario, ')
           ..write('evolutionCount: $evolutionCount, ')
@@ -3124,6 +3287,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('groupEvolvedScenarios: $groupEvolvedScenarios, ')
           ..write('generationSettings: $generationSettings, ')
           ..write('userPersonaId: $userPersonaId, ')
+          ..write('groupRealismState: $groupRealismState, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -3157,6 +3321,7 @@ class Session extends DataClass implements Insertable<Session> {
     emotionIntensity,
     timeOfDay,
     dayCount,
+    startDayOfWeek,
     nsfwCooldownEnabled,
     passageOfTimeEnabled,
     arousalLevel,
@@ -3168,6 +3333,8 @@ class Session extends DataClass implements Insertable<Session> {
     trustRepairPending,
     chaosModeEnabled,
     chaosPressure,
+    needsSimEnabled,
+    needsVector,
     evolvedPersonality,
     evolvedScenario,
     evolutionCount,
@@ -3175,6 +3342,7 @@ class Session extends DataClass implements Insertable<Session> {
     groupEvolvedScenarios,
     generationSettings,
     userPersonaId,
+    groupRealismState,
     createdAt,
     updatedAt,
     deletedAt,
@@ -3207,6 +3375,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.emotionIntensity == this.emotionIntensity &&
           other.timeOfDay == this.timeOfDay &&
           other.dayCount == this.dayCount &&
+          other.startDayOfWeek == this.startDayOfWeek &&
           other.nsfwCooldownEnabled == this.nsfwCooldownEnabled &&
           other.passageOfTimeEnabled == this.passageOfTimeEnabled &&
           other.arousalLevel == this.arousalLevel &&
@@ -3218,6 +3387,8 @@ class Session extends DataClass implements Insertable<Session> {
           other.trustRepairPending == this.trustRepairPending &&
           other.chaosModeEnabled == this.chaosModeEnabled &&
           other.chaosPressure == this.chaosPressure &&
+          other.needsSimEnabled == this.needsSimEnabled &&
+          other.needsVector == this.needsVector &&
           other.evolvedPersonality == this.evolvedPersonality &&
           other.evolvedScenario == this.evolvedScenario &&
           other.evolutionCount == this.evolutionCount &&
@@ -3225,6 +3396,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.groupEvolvedScenarios == this.groupEvolvedScenarios &&
           other.generationSettings == this.generationSettings &&
           other.userPersonaId == this.userPersonaId &&
+          other.groupRealismState == this.groupRealismState &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -3255,6 +3427,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String> emotionIntensity;
   final Value<String> timeOfDay;
   final Value<int> dayCount;
+  final Value<int> startDayOfWeek;
   final Value<bool> nsfwCooldownEnabled;
   final Value<bool> passageOfTimeEnabled;
   final Value<int> arousalLevel;
@@ -3266,6 +3439,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<bool> trustRepairPending;
   final Value<bool> chaosModeEnabled;
   final Value<int> chaosPressure;
+  final Value<bool> needsSimEnabled;
+  final Value<String?> needsVector;
   final Value<String> evolvedPersonality;
   final Value<String> evolvedScenario;
   final Value<int> evolutionCount;
@@ -3273,6 +3448,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String> groupEvolvedScenarios;
   final Value<String?> generationSettings;
   final Value<String?> userPersonaId;
+  final Value<String> groupRealismState;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -3302,6 +3478,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.emotionIntensity = const Value.absent(),
     this.timeOfDay = const Value.absent(),
     this.dayCount = const Value.absent(),
+    this.startDayOfWeek = const Value.absent(),
     this.nsfwCooldownEnabled = const Value.absent(),
     this.passageOfTimeEnabled = const Value.absent(),
     this.arousalLevel = const Value.absent(),
@@ -3313,6 +3490,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.trustRepairPending = const Value.absent(),
     this.chaosModeEnabled = const Value.absent(),
     this.chaosPressure = const Value.absent(),
+    this.needsSimEnabled = const Value.absent(),
+    this.needsVector = const Value.absent(),
     this.evolvedPersonality = const Value.absent(),
     this.evolvedScenario = const Value.absent(),
     this.evolutionCount = const Value.absent(),
@@ -3320,6 +3499,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.groupEvolvedScenarios = const Value.absent(),
     this.generationSettings = const Value.absent(),
     this.userPersonaId = const Value.absent(),
+    this.groupRealismState = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3350,6 +3530,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.emotionIntensity = const Value.absent(),
     this.timeOfDay = const Value.absent(),
     this.dayCount = const Value.absent(),
+    this.startDayOfWeek = const Value.absent(),
     this.nsfwCooldownEnabled = const Value.absent(),
     this.passageOfTimeEnabled = const Value.absent(),
     this.arousalLevel = const Value.absent(),
@@ -3361,6 +3542,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.trustRepairPending = const Value.absent(),
     this.chaosModeEnabled = const Value.absent(),
     this.chaosPressure = const Value.absent(),
+    this.needsSimEnabled = const Value.absent(),
+    this.needsVector = const Value.absent(),
     this.evolvedPersonality = const Value.absent(),
     this.evolvedScenario = const Value.absent(),
     this.evolutionCount = const Value.absent(),
@@ -3368,6 +3551,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.groupEvolvedScenarios = const Value.absent(),
     this.generationSettings = const Value.absent(),
     this.userPersonaId = const Value.absent(),
+    this.groupRealismState = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -3398,6 +3582,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? emotionIntensity,
     Expression<String>? timeOfDay,
     Expression<int>? dayCount,
+    Expression<int>? startDayOfWeek,
     Expression<bool>? nsfwCooldownEnabled,
     Expression<bool>? passageOfTimeEnabled,
     Expression<int>? arousalLevel,
@@ -3409,6 +3594,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<bool>? trustRepairPending,
     Expression<bool>? chaosModeEnabled,
     Expression<int>? chaosPressure,
+    Expression<bool>? needsSimEnabled,
+    Expression<String>? needsVector,
     Expression<String>? evolvedPersonality,
     Expression<String>? evolvedScenario,
     Expression<int>? evolutionCount,
@@ -3416,6 +3603,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? groupEvolvedScenarios,
     Expression<String>? generationSettings,
     Expression<String>? userPersonaId,
+    Expression<String>? groupRealismState,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -3448,6 +3636,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (emotionIntensity != null) 'emotion_intensity': emotionIntensity,
       if (timeOfDay != null) 'time_of_day': timeOfDay,
       if (dayCount != null) 'day_count': dayCount,
+      if (startDayOfWeek != null) 'start_day_of_week': startDayOfWeek,
       if (nsfwCooldownEnabled != null)
         'nsfw_cooldown_enabled': nsfwCooldownEnabled,
       if (passageOfTimeEnabled != null)
@@ -3463,6 +3652,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         'trust_repair_pending': trustRepairPending,
       if (chaosModeEnabled != null) 'chaos_mode_enabled': chaosModeEnabled,
       if (chaosPressure != null) 'chaos_pressure': chaosPressure,
+      if (needsSimEnabled != null) 'needs_sim_enabled': needsSimEnabled,
+      if (needsVector != null) 'needs_vector': needsVector,
       if (evolvedPersonality != null) 'evolved_personality': evolvedPersonality,
       if (evolvedScenario != null) 'evolved_scenario': evolvedScenario,
       if (evolutionCount != null) 'evolution_count': evolutionCount,
@@ -3472,6 +3663,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         'group_evolved_scenarios': groupEvolvedScenarios,
       if (generationSettings != null) 'generation_settings': generationSettings,
       if (userPersonaId != null) 'user_persona_id': userPersonaId,
+      if (groupRealismState != null) 'group_realism_state': groupRealismState,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -3504,6 +3696,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String>? emotionIntensity,
     Value<String>? timeOfDay,
     Value<int>? dayCount,
+    Value<int>? startDayOfWeek,
     Value<bool>? nsfwCooldownEnabled,
     Value<bool>? passageOfTimeEnabled,
     Value<int>? arousalLevel,
@@ -3515,6 +3708,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<bool>? trustRepairPending,
     Value<bool>? chaosModeEnabled,
     Value<int>? chaosPressure,
+    Value<bool>? needsSimEnabled,
+    Value<String?>? needsVector,
     Value<String>? evolvedPersonality,
     Value<String>? evolvedScenario,
     Value<int>? evolutionCount,
@@ -3522,6 +3717,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String>? groupEvolvedScenarios,
     Value<String?>? generationSettings,
     Value<String?>? userPersonaId,
+    Value<String>? groupRealismState,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -3554,6 +3750,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       emotionIntensity: emotionIntensity ?? this.emotionIntensity,
       timeOfDay: timeOfDay ?? this.timeOfDay,
       dayCount: dayCount ?? this.dayCount,
+      startDayOfWeek: startDayOfWeek ?? this.startDayOfWeek,
       nsfwCooldownEnabled: nsfwCooldownEnabled ?? this.nsfwCooldownEnabled,
       passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
       arousalLevel: arousalLevel ?? this.arousalLevel,
@@ -3566,6 +3763,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       trustRepairPending: trustRepairPending ?? this.trustRepairPending,
       chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
       chaosPressure: chaosPressure ?? this.chaosPressure,
+      needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
+      needsVector: needsVector ?? this.needsVector,
       evolvedPersonality: evolvedPersonality ?? this.evolvedPersonality,
       evolvedScenario: evolvedScenario ?? this.evolvedScenario,
       evolutionCount: evolutionCount ?? this.evolutionCount,
@@ -3575,6 +3774,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           groupEvolvedScenarios ?? this.groupEvolvedScenarios,
       generationSettings: generationSettings ?? this.generationSettings,
       userPersonaId: userPersonaId ?? this.userPersonaId,
+      groupRealismState: groupRealismState ?? this.groupRealismState,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -3661,6 +3861,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (dayCount.present) {
       map['day_count'] = Variable<int>(dayCount.value);
     }
+    if (startDayOfWeek.present) {
+      map['start_day_of_week'] = Variable<int>(startDayOfWeek.value);
+    }
     if (nsfwCooldownEnabled.present) {
       map['nsfw_cooldown_enabled'] = Variable<bool>(nsfwCooldownEnabled.value);
     }
@@ -3698,6 +3901,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (chaosPressure.present) {
       map['chaos_pressure'] = Variable<int>(chaosPressure.value);
     }
+    if (needsSimEnabled.present) {
+      map['needs_sim_enabled'] = Variable<bool>(needsSimEnabled.value);
+    }
+    if (needsVector.present) {
+      map['needs_vector'] = Variable<String>(needsVector.value);
+    }
     if (evolvedPersonality.present) {
       map['evolved_personality'] = Variable<String>(evolvedPersonality.value);
     }
@@ -3722,6 +3931,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     }
     if (userPersonaId.present) {
       map['user_persona_id'] = Variable<String>(userPersonaId.value);
+    }
+    if (groupRealismState.present) {
+      map['group_realism_state'] = Variable<String>(groupRealismState.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -3765,6 +3977,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('emotionIntensity: $emotionIntensity, ')
           ..write('timeOfDay: $timeOfDay, ')
           ..write('dayCount: $dayCount, ')
+          ..write('startDayOfWeek: $startDayOfWeek, ')
           ..write('nsfwCooldownEnabled: $nsfwCooldownEnabled, ')
           ..write('passageOfTimeEnabled: $passageOfTimeEnabled, ')
           ..write('arousalLevel: $arousalLevel, ')
@@ -3776,6 +3989,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('trustRepairPending: $trustRepairPending, ')
           ..write('chaosModeEnabled: $chaosModeEnabled, ')
           ..write('chaosPressure: $chaosPressure, ')
+          ..write('needsSimEnabled: $needsSimEnabled, ')
+          ..write('needsVector: $needsVector, ')
           ..write('evolvedPersonality: $evolvedPersonality, ')
           ..write('evolvedScenario: $evolvedScenario, ')
           ..write('evolutionCount: $evolutionCount, ')
@@ -3783,6 +3998,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('groupEvolvedScenarios: $groupEvolvedScenarios, ')
           ..write('generationSettings: $generationSettings, ')
           ..write('userPersonaId: $userPersonaId, ')
+          ..write('groupRealismState: $groupRealismState, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -4668,6 +4884,111 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _defaultMemberRealismStateMeta =
+      const VerificationMeta('defaultMemberRealismState');
+  @override
+  late final GeneratedColumn<String> defaultMemberRealismState =
+      GeneratedColumn<String>(
+        'default_member_realism_state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
+  static const VerificationMeta _chaosModeEnabledMeta = const VerificationMeta(
+    'chaosModeEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> chaosModeEnabled = GeneratedColumn<bool>(
+    'chaos_mode_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("chaos_mode_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _chaosNsfwEnabledMeta = const VerificationMeta(
+    'chaosNsfwEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> chaosNsfwEnabled = GeneratedColumn<bool>(
+    'chaos_nsfw_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("chaos_nsfw_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _groupLorebookMeta = const VerificationMeta(
+    'groupLorebook',
+  );
+  @override
+  late final GeneratedColumn<String> groupLorebook = GeneratedColumn<String>(
+    'group_lorebook',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _worldIdsMeta = const VerificationMeta(
+    'worldIds',
+  );
+  @override
+  late final GeneratedColumn<String> worldIds = GeneratedColumn<String>(
+    'world_ids',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _inheritCharacterLorebooksMeta =
+      const VerificationMeta('inheritCharacterLorebooks');
+  @override
+  late final GeneratedColumn<bool> inheritCharacterLorebooks =
+      GeneratedColumn<bool>(
+        'inherit_character_lorebooks',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("inherit_character_lorebooks" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  static const VerificationMeta _baselineRealismStateMeta =
+      const VerificationMeta('baselineRealismState');
+  @override
+  late final GeneratedColumn<String> baselineRealismState =
+      GeneratedColumn<String>(
+        'baseline_realism_state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
+  static const VerificationMeta _characterSystemPromptsMeta =
+      const VerificationMeta('characterSystemPrompts');
+  @override
+  late final GeneratedColumn<String> characterSystemPrompts =
+      GeneratedColumn<String>(
+        'character_system_prompts',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -4702,6 +5023,14 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
     firstMessage,
     scenario,
     systemPrompt,
+    defaultMemberRealismState,
+    chaosModeEnabled,
+    chaosNsfwEnabled,
+    groupLorebook,
+    worldIds,
+    inheritCharacterLorebooks,
+    baselineRealismState,
+    characterSystemPrompts,
     updatedAt,
     deletedAt,
   ];
@@ -4787,6 +5116,75 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         ),
       );
     }
+    if (data.containsKey('default_member_realism_state')) {
+      context.handle(
+        _defaultMemberRealismStateMeta,
+        defaultMemberRealismState.isAcceptableOrUnknown(
+          data['default_member_realism_state']!,
+          _defaultMemberRealismStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('chaos_mode_enabled')) {
+      context.handle(
+        _chaosModeEnabledMeta,
+        chaosModeEnabled.isAcceptableOrUnknown(
+          data['chaos_mode_enabled']!,
+          _chaosModeEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('chaos_nsfw_enabled')) {
+      context.handle(
+        _chaosNsfwEnabledMeta,
+        chaosNsfwEnabled.isAcceptableOrUnknown(
+          data['chaos_nsfw_enabled']!,
+          _chaosNsfwEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('group_lorebook')) {
+      context.handle(
+        _groupLorebookMeta,
+        groupLorebook.isAcceptableOrUnknown(
+          data['group_lorebook']!,
+          _groupLorebookMeta,
+        ),
+      );
+    }
+    if (data.containsKey('world_ids')) {
+      context.handle(
+        _worldIdsMeta,
+        worldIds.isAcceptableOrUnknown(data['world_ids']!, _worldIdsMeta),
+      );
+    }
+    if (data.containsKey('inherit_character_lorebooks')) {
+      context.handle(
+        _inheritCharacterLorebooksMeta,
+        inheritCharacterLorebooks.isAcceptableOrUnknown(
+          data['inherit_character_lorebooks']!,
+          _inheritCharacterLorebooksMeta,
+        ),
+      );
+    }
+    if (data.containsKey('baseline_realism_state')) {
+      context.handle(
+        _baselineRealismStateMeta,
+        baselineRealismState.isAcceptableOrUnknown(
+          data['baseline_realism_state']!,
+          _baselineRealismStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('character_system_prompts')) {
+      context.handle(
+        _characterSystemPromptsMeta,
+        characterSystemPrompts.isAcceptableOrUnknown(
+          data['character_system_prompts']!,
+          _characterSystemPromptsMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -4844,6 +5242,38 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         DriftSqlType.string,
         data['${effectivePrefix}system_prompt'],
       )!,
+      defaultMemberRealismState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}default_member_realism_state'],
+      )!,
+      chaosModeEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}chaos_mode_enabled'],
+      )!,
+      chaosNsfwEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}chaos_nsfw_enabled'],
+      )!,
+      groupLorebook: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_lorebook'],
+      )!,
+      worldIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}world_ids'],
+      )!,
+      inheritCharacterLorebooks: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}inherit_character_lorebooks'],
+      )!,
+      baselineRealismState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baseline_realism_state'],
+      )!,
+      characterSystemPrompts: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}character_system_prompts'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -4871,6 +5301,39 @@ class Group extends DataClass implements Insertable<Group> {
   final String firstMessage;
   final String scenario;
   final String systemPrompt;
+
+  /// Portable default realism/needs state for this group definition.
+  /// JSON: { charId: { emotion, needs, affection, trust, fixation, relationships, ... } }
+  /// Used for Group Card export/import and as seed when starting new group sessions
+  /// or splitting group members to solo characters.
+  /// Added in schema v30 as part of proper DB-backed group realism (clean break from
+  /// old hidden __group_state__ checkpoint messages).
+  final String defaultMemberRealismState;
+  final bool chaosModeEnabled;
+  final bool chaosNsfwEnabled;
+  final String groupLorebook;
+  final String worldIds;
+  final bool inheritCharacterLorebooks;
+
+  /// Immutable creation-time baseline realism/needs seed for this group definition.
+  /// JSON shape is identical to defaultMemberRealismState and sessions.group_realism_state.
+  /// This is the frozen seed captured at group creation / Group Card import time only.
+  /// Distinct from defaultMemberRealismState (which can be updated later for new sessions).
+  /// Clean column (not a blob) per v30 philosophy of explicit storage — makes the
+  /// immutable-seed contract visible to code and to external direct-SQL tools.
+  /// Added in schema v31.
+  final String baselineRealismState;
+
+  /// Per-character system prompt overrides scoped to this group.
+  /// Stored as a first-class JSON column (Map<String, String> keyed by stable charId).
+  ///
+  /// This was previously the last remaining "Path B" transitional hack stored inside
+  /// the defaultMemberRealismState JSON blob. As of v32 it has its own proper column.
+  /// The old extraction/promotion logic inside the realism blob has been fully removed.
+  ///
+  /// Takes precedence over a character's normal system prompt when that character
+  /// speaks inside this specific group, but sits under the group-level systemPrompt.
+  final String characterSystemPrompts;
   final DateTime updatedAt;
   final DateTime? deletedAt;
   const Group({
@@ -4883,6 +5346,14 @@ class Group extends DataClass implements Insertable<Group> {
     required this.firstMessage,
     required this.scenario,
     required this.systemPrompt,
+    required this.defaultMemberRealismState,
+    required this.chaosModeEnabled,
+    required this.chaosNsfwEnabled,
+    required this.groupLorebook,
+    required this.worldIds,
+    required this.inheritCharacterLorebooks,
+    required this.baselineRealismState,
+    required this.characterSystemPrompts,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -4898,6 +5369,18 @@ class Group extends DataClass implements Insertable<Group> {
     map['first_message'] = Variable<String>(firstMessage);
     map['scenario'] = Variable<String>(scenario);
     map['system_prompt'] = Variable<String>(systemPrompt);
+    map['default_member_realism_state'] = Variable<String>(
+      defaultMemberRealismState,
+    );
+    map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled);
+    map['chaos_nsfw_enabled'] = Variable<bool>(chaosNsfwEnabled);
+    map['group_lorebook'] = Variable<String>(groupLorebook);
+    map['world_ids'] = Variable<String>(worldIds);
+    map['inherit_character_lorebooks'] = Variable<bool>(
+      inheritCharacterLorebooks,
+    );
+    map['baseline_realism_state'] = Variable<String>(baselineRealismState);
+    map['character_system_prompts'] = Variable<String>(characterSystemPrompts);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
@@ -4916,6 +5399,14 @@ class Group extends DataClass implements Insertable<Group> {
       firstMessage: Value(firstMessage),
       scenario: Value(scenario),
       systemPrompt: Value(systemPrompt),
+      defaultMemberRealismState: Value(defaultMemberRealismState),
+      chaosModeEnabled: Value(chaosModeEnabled),
+      chaosNsfwEnabled: Value(chaosNsfwEnabled),
+      groupLorebook: Value(groupLorebook),
+      worldIds: Value(worldIds),
+      inheritCharacterLorebooks: Value(inheritCharacterLorebooks),
+      baselineRealismState: Value(baselineRealismState),
+      characterSystemPrompts: Value(characterSystemPrompts),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
@@ -4938,6 +5429,22 @@ class Group extends DataClass implements Insertable<Group> {
       firstMessage: serializer.fromJson<String>(json['firstMessage']),
       scenario: serializer.fromJson<String>(json['scenario']),
       systemPrompt: serializer.fromJson<String>(json['systemPrompt']),
+      defaultMemberRealismState: serializer.fromJson<String>(
+        json['defaultMemberRealismState'],
+      ),
+      chaosModeEnabled: serializer.fromJson<bool>(json['chaosModeEnabled']),
+      chaosNsfwEnabled: serializer.fromJson<bool>(json['chaosNsfwEnabled']),
+      groupLorebook: serializer.fromJson<String>(json['groupLorebook']),
+      worldIds: serializer.fromJson<String>(json['worldIds']),
+      inheritCharacterLorebooks: serializer.fromJson<bool>(
+        json['inheritCharacterLorebooks'],
+      ),
+      baselineRealismState: serializer.fromJson<String>(
+        json['baselineRealismState'],
+      ),
+      characterSystemPrompts: serializer.fromJson<String>(
+        json['characterSystemPrompts'],
+      ),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
@@ -4955,6 +5462,20 @@ class Group extends DataClass implements Insertable<Group> {
       'firstMessage': serializer.toJson<String>(firstMessage),
       'scenario': serializer.toJson<String>(scenario),
       'systemPrompt': serializer.toJson<String>(systemPrompt),
+      'defaultMemberRealismState': serializer.toJson<String>(
+        defaultMemberRealismState,
+      ),
+      'chaosModeEnabled': serializer.toJson<bool>(chaosModeEnabled),
+      'chaosNsfwEnabled': serializer.toJson<bool>(chaosNsfwEnabled),
+      'groupLorebook': serializer.toJson<String>(groupLorebook),
+      'worldIds': serializer.toJson<String>(worldIds),
+      'inheritCharacterLorebooks': serializer.toJson<bool>(
+        inheritCharacterLorebooks,
+      ),
+      'baselineRealismState': serializer.toJson<String>(baselineRealismState),
+      'characterSystemPrompts': serializer.toJson<String>(
+        characterSystemPrompts,
+      ),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
@@ -4970,6 +5491,14 @@ class Group extends DataClass implements Insertable<Group> {
     String? firstMessage,
     String? scenario,
     String? systemPrompt,
+    String? defaultMemberRealismState,
+    bool? chaosModeEnabled,
+    bool? chaosNsfwEnabled,
+    String? groupLorebook,
+    String? worldIds,
+    bool? inheritCharacterLorebooks,
+    String? baselineRealismState,
+    String? characterSystemPrompts,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
   }) => Group(
@@ -4982,6 +5511,17 @@ class Group extends DataClass implements Insertable<Group> {
     firstMessage: firstMessage ?? this.firstMessage,
     scenario: scenario ?? this.scenario,
     systemPrompt: systemPrompt ?? this.systemPrompt,
+    defaultMemberRealismState:
+        defaultMemberRealismState ?? this.defaultMemberRealismState,
+    chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
+    chaosNsfwEnabled: chaosNsfwEnabled ?? this.chaosNsfwEnabled,
+    groupLorebook: groupLorebook ?? this.groupLorebook,
+    worldIds: worldIds ?? this.worldIds,
+    inheritCharacterLorebooks:
+        inheritCharacterLorebooks ?? this.inheritCharacterLorebooks,
+    baselineRealismState: baselineRealismState ?? this.baselineRealismState,
+    characterSystemPrompts:
+        characterSystemPrompts ?? this.characterSystemPrompts,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
@@ -5006,6 +5546,28 @@ class Group extends DataClass implements Insertable<Group> {
       systemPrompt: data.systemPrompt.present
           ? data.systemPrompt.value
           : this.systemPrompt,
+      defaultMemberRealismState: data.defaultMemberRealismState.present
+          ? data.defaultMemberRealismState.value
+          : this.defaultMemberRealismState,
+      chaosModeEnabled: data.chaosModeEnabled.present
+          ? data.chaosModeEnabled.value
+          : this.chaosModeEnabled,
+      chaosNsfwEnabled: data.chaosNsfwEnabled.present
+          ? data.chaosNsfwEnabled.value
+          : this.chaosNsfwEnabled,
+      groupLorebook: data.groupLorebook.present
+          ? data.groupLorebook.value
+          : this.groupLorebook,
+      worldIds: data.worldIds.present ? data.worldIds.value : this.worldIds,
+      inheritCharacterLorebooks: data.inheritCharacterLorebooks.present
+          ? data.inheritCharacterLorebooks.value
+          : this.inheritCharacterLorebooks,
+      baselineRealismState: data.baselineRealismState.present
+          ? data.baselineRealismState.value
+          : this.baselineRealismState,
+      characterSystemPrompts: data.characterSystemPrompts.present
+          ? data.characterSystemPrompts.value
+          : this.characterSystemPrompts,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
@@ -5023,6 +5585,14 @@ class Group extends DataClass implements Insertable<Group> {
           ..write('firstMessage: $firstMessage, ')
           ..write('scenario: $scenario, ')
           ..write('systemPrompt: $systemPrompt, ')
+          ..write('defaultMemberRealismState: $defaultMemberRealismState, ')
+          ..write('chaosModeEnabled: $chaosModeEnabled, ')
+          ..write('chaosNsfwEnabled: $chaosNsfwEnabled, ')
+          ..write('groupLorebook: $groupLorebook, ')
+          ..write('worldIds: $worldIds, ')
+          ..write('inheritCharacterLorebooks: $inheritCharacterLorebooks, ')
+          ..write('baselineRealismState: $baselineRealismState, ')
+          ..write('characterSystemPrompts: $characterSystemPrompts, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
           ..write(')'))
@@ -5040,6 +5610,14 @@ class Group extends DataClass implements Insertable<Group> {
     firstMessage,
     scenario,
     systemPrompt,
+    defaultMemberRealismState,
+    chaosModeEnabled,
+    chaosNsfwEnabled,
+    groupLorebook,
+    worldIds,
+    inheritCharacterLorebooks,
+    baselineRealismState,
+    characterSystemPrompts,
     updatedAt,
     deletedAt,
   );
@@ -5056,6 +5634,14 @@ class Group extends DataClass implements Insertable<Group> {
           other.firstMessage == this.firstMessage &&
           other.scenario == this.scenario &&
           other.systemPrompt == this.systemPrompt &&
+          other.defaultMemberRealismState == this.defaultMemberRealismState &&
+          other.chaosModeEnabled == this.chaosModeEnabled &&
+          other.chaosNsfwEnabled == this.chaosNsfwEnabled &&
+          other.groupLorebook == this.groupLorebook &&
+          other.worldIds == this.worldIds &&
+          other.inheritCharacterLorebooks == this.inheritCharacterLorebooks &&
+          other.baselineRealismState == this.baselineRealismState &&
+          other.characterSystemPrompts == this.characterSystemPrompts &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
 }
@@ -5070,6 +5656,14 @@ class GroupsCompanion extends UpdateCompanion<Group> {
   final Value<String> firstMessage;
   final Value<String> scenario;
   final Value<String> systemPrompt;
+  final Value<String> defaultMemberRealismState;
+  final Value<bool> chaosModeEnabled;
+  final Value<bool> chaosNsfwEnabled;
+  final Value<String> groupLorebook;
+  final Value<String> worldIds;
+  final Value<bool> inheritCharacterLorebooks;
+  final Value<String> baselineRealismState;
+  final Value<String> characterSystemPrompts;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<int> rowid;
@@ -5083,6 +5677,14 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     this.firstMessage = const Value.absent(),
     this.scenario = const Value.absent(),
     this.systemPrompt = const Value.absent(),
+    this.defaultMemberRealismState = const Value.absent(),
+    this.chaosModeEnabled = const Value.absent(),
+    this.chaosNsfwEnabled = const Value.absent(),
+    this.groupLorebook = const Value.absent(),
+    this.worldIds = const Value.absent(),
+    this.inheritCharacterLorebooks = const Value.absent(),
+    this.baselineRealismState = const Value.absent(),
+    this.characterSystemPrompts = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5097,6 +5699,14 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     this.firstMessage = const Value.absent(),
     this.scenario = const Value.absent(),
     this.systemPrompt = const Value.absent(),
+    this.defaultMemberRealismState = const Value.absent(),
+    this.chaosModeEnabled = const Value.absent(),
+    this.chaosNsfwEnabled = const Value.absent(),
+    this.groupLorebook = const Value.absent(),
+    this.worldIds = const Value.absent(),
+    this.inheritCharacterLorebooks = const Value.absent(),
+    this.baselineRealismState = const Value.absent(),
+    this.characterSystemPrompts = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5112,6 +5722,14 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     Expression<String>? firstMessage,
     Expression<String>? scenario,
     Expression<String>? systemPrompt,
+    Expression<String>? defaultMemberRealismState,
+    Expression<bool>? chaosModeEnabled,
+    Expression<bool>? chaosNsfwEnabled,
+    Expression<String>? groupLorebook,
+    Expression<String>? worldIds,
+    Expression<bool>? inheritCharacterLorebooks,
+    Expression<String>? baselineRealismState,
+    Expression<String>? characterSystemPrompts,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<int>? rowid,
@@ -5126,6 +5744,18 @@ class GroupsCompanion extends UpdateCompanion<Group> {
       if (firstMessage != null) 'first_message': firstMessage,
       if (scenario != null) 'scenario': scenario,
       if (systemPrompt != null) 'system_prompt': systemPrompt,
+      if (defaultMemberRealismState != null)
+        'default_member_realism_state': defaultMemberRealismState,
+      if (chaosModeEnabled != null) 'chaos_mode_enabled': chaosModeEnabled,
+      if (chaosNsfwEnabled != null) 'chaos_nsfw_enabled': chaosNsfwEnabled,
+      if (groupLorebook != null) 'group_lorebook': groupLorebook,
+      if (worldIds != null) 'world_ids': worldIds,
+      if (inheritCharacterLorebooks != null)
+        'inherit_character_lorebooks': inheritCharacterLorebooks,
+      if (baselineRealismState != null)
+        'baseline_realism_state': baselineRealismState,
+      if (characterSystemPrompts != null)
+        'character_system_prompts': characterSystemPrompts,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
@@ -5142,6 +5772,14 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     Value<String>? firstMessage,
     Value<String>? scenario,
     Value<String>? systemPrompt,
+    Value<String>? defaultMemberRealismState,
+    Value<bool>? chaosModeEnabled,
+    Value<bool>? chaosNsfwEnabled,
+    Value<String>? groupLorebook,
+    Value<String>? worldIds,
+    Value<bool>? inheritCharacterLorebooks,
+    Value<String>? baselineRealismState,
+    Value<String>? characterSystemPrompts,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<int>? rowid,
@@ -5156,6 +5794,17 @@ class GroupsCompanion extends UpdateCompanion<Group> {
       firstMessage: firstMessage ?? this.firstMessage,
       scenario: scenario ?? this.scenario,
       systemPrompt: systemPrompt ?? this.systemPrompt,
+      defaultMemberRealismState:
+          defaultMemberRealismState ?? this.defaultMemberRealismState,
+      chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
+      chaosNsfwEnabled: chaosNsfwEnabled ?? this.chaosNsfwEnabled,
+      groupLorebook: groupLorebook ?? this.groupLorebook,
+      worldIds: worldIds ?? this.worldIds,
+      inheritCharacterLorebooks:
+          inheritCharacterLorebooks ?? this.inheritCharacterLorebooks,
+      baselineRealismState: baselineRealismState ?? this.baselineRealismState,
+      characterSystemPrompts:
+          characterSystemPrompts ?? this.characterSystemPrompts,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
@@ -5192,6 +5841,38 @@ class GroupsCompanion extends UpdateCompanion<Group> {
     if (systemPrompt.present) {
       map['system_prompt'] = Variable<String>(systemPrompt.value);
     }
+    if (defaultMemberRealismState.present) {
+      map['default_member_realism_state'] = Variable<String>(
+        defaultMemberRealismState.value,
+      );
+    }
+    if (chaosModeEnabled.present) {
+      map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled.value);
+    }
+    if (chaosNsfwEnabled.present) {
+      map['chaos_nsfw_enabled'] = Variable<bool>(chaosNsfwEnabled.value);
+    }
+    if (groupLorebook.present) {
+      map['group_lorebook'] = Variable<String>(groupLorebook.value);
+    }
+    if (worldIds.present) {
+      map['world_ids'] = Variable<String>(worldIds.value);
+    }
+    if (inheritCharacterLorebooks.present) {
+      map['inherit_character_lorebooks'] = Variable<bool>(
+        inheritCharacterLorebooks.value,
+      );
+    }
+    if (baselineRealismState.present) {
+      map['baseline_realism_state'] = Variable<String>(
+        baselineRealismState.value,
+      );
+    }
+    if (characterSystemPrompts.present) {
+      map['character_system_prompts'] = Variable<String>(
+        characterSystemPrompts.value,
+      );
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -5216,6 +5897,14 @@ class GroupsCompanion extends UpdateCompanion<Group> {
           ..write('firstMessage: $firstMessage, ')
           ..write('scenario: $scenario, ')
           ..write('systemPrompt: $systemPrompt, ')
+          ..write('defaultMemberRealismState: $defaultMemberRealismState, ')
+          ..write('chaosModeEnabled: $chaosModeEnabled, ')
+          ..write('chaosNsfwEnabled: $chaosNsfwEnabled, ')
+          ..write('groupLorebook: $groupLorebook, ')
+          ..write('worldIds: $worldIds, ')
+          ..write('inheritCharacterLorebooks: $inheritCharacterLorebooks, ')
+          ..write('baselineRealismState: $baselineRealismState, ')
+          ..write('characterSystemPrompts: $characterSystemPrompts, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
@@ -6720,6 +7409,29 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _memoryTypeMeta = const VerificationMeta(
+    'memoryType',
+  );
+  @override
+  late final GeneratedColumn<String> memoryType = GeneratedColumn<String>(
+    'memory_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('message'),
+  );
+  static const VerificationMeta _metadataMeta = const VerificationMeta(
+    'metadata',
+  );
+  @override
+  late final GeneratedColumn<String> metadata = GeneratedColumn<String>(
+    'metadata',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6731,6 +7443,8 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
     embedding,
     dimensions,
     createdAt,
+    memoryType,
+    metadata,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6818,6 +7532,18 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('memory_type')) {
+      context.handle(
+        _memoryTypeMeta,
+        memoryType.isAcceptableOrUnknown(data['memory_type']!, _memoryTypeMeta),
+      );
+    }
+    if (data.containsKey('metadata')) {
+      context.handle(
+        _metadataMeta,
+        metadata.isAcceptableOrUnknown(data['metadata']!, _metadataMeta),
+      );
+    }
     return context;
   }
 
@@ -6863,6 +7589,14 @@ class $MessageEmbeddingsTable extends MessageEmbeddings
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      memoryType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memory_type'],
+      )!,
+      metadata: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}metadata'],
+      ),
     );
   }
 
@@ -6883,6 +7617,14 @@ class MessageEmbedding extends DataClass
   final Uint8List embedding;
   final int dimensions;
   final DateTime createdAt;
+
+  /// 'message' for normal RAG windows (default), 'needs_event' for long-term
+  /// salient Needs simulation events (high-magnitude pleasure/embarrassment etc.).
+  final String memoryType;
+
+  /// Optional JSON blob for event details (e.g. {"category":"pleasure","magnitude":8,"..."}).
+  /// Null for ordinary message embeddings.
+  final String? metadata;
   const MessageEmbedding({
     required this.id,
     required this.sessionId,
@@ -6893,6 +7635,8 @@ class MessageEmbedding extends DataClass
     required this.embedding,
     required this.dimensions,
     required this.createdAt,
+    required this.memoryType,
+    this.metadata,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6908,6 +7652,10 @@ class MessageEmbedding extends DataClass
     map['embedding'] = Variable<Uint8List>(embedding);
     map['dimensions'] = Variable<int>(dimensions);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['memory_type'] = Variable<String>(memoryType);
+    if (!nullToAbsent || metadata != null) {
+      map['metadata'] = Variable<String>(metadata);
+    }
     return map;
   }
 
@@ -6924,6 +7672,10 @@ class MessageEmbedding extends DataClass
       embedding: Value(embedding),
       dimensions: Value(dimensions),
       createdAt: Value(createdAt),
+      memoryType: Value(memoryType),
+      metadata: metadata == null && nullToAbsent
+          ? const Value.absent()
+          : Value(metadata),
     );
   }
 
@@ -6942,6 +7694,8 @@ class MessageEmbedding extends DataClass
       embedding: serializer.fromJson<Uint8List>(json['embedding']),
       dimensions: serializer.fromJson<int>(json['dimensions']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      memoryType: serializer.fromJson<String>(json['memoryType']),
+      metadata: serializer.fromJson<String?>(json['metadata']),
     );
   }
   @override
@@ -6957,6 +7711,8 @@ class MessageEmbedding extends DataClass
       'embedding': serializer.toJson<Uint8List>(embedding),
       'dimensions': serializer.toJson<int>(dimensions),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'memoryType': serializer.toJson<String>(memoryType),
+      'metadata': serializer.toJson<String?>(metadata),
     };
   }
 
@@ -6970,6 +7726,8 @@ class MessageEmbedding extends DataClass
     Uint8List? embedding,
     int? dimensions,
     DateTime? createdAt,
+    String? memoryType,
+    Value<String?> metadata = const Value.absent(),
   }) => MessageEmbedding(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -6980,6 +7738,8 @@ class MessageEmbedding extends DataClass
     embedding: embedding ?? this.embedding,
     dimensions: dimensions ?? this.dimensions,
     createdAt: createdAt ?? this.createdAt,
+    memoryType: memoryType ?? this.memoryType,
+    metadata: metadata.present ? metadata.value : this.metadata,
   );
   MessageEmbedding copyWithCompanion(MessageEmbeddingsCompanion data) {
     return MessageEmbedding(
@@ -7000,6 +7760,10 @@ class MessageEmbedding extends DataClass
           ? data.dimensions.value
           : this.dimensions,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      memoryType: data.memoryType.present
+          ? data.memoryType.value
+          : this.memoryType,
+      metadata: data.metadata.present ? data.metadata.value : this.metadata,
     );
   }
 
@@ -7014,7 +7778,9 @@ class MessageEmbedding extends DataClass
           ..write('content: $content, ')
           ..write('embedding: $embedding, ')
           ..write('dimensions: $dimensions, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('memoryType: $memoryType, ')
+          ..write('metadata: $metadata')
           ..write(')'))
         .toString();
   }
@@ -7030,6 +7796,8 @@ class MessageEmbedding extends DataClass
     $driftBlobEquality.hash(embedding),
     dimensions,
     createdAt,
+    memoryType,
+    metadata,
   );
   @override
   bool operator ==(Object other) =>
@@ -7043,7 +7811,9 @@ class MessageEmbedding extends DataClass
           other.content == this.content &&
           $driftBlobEquality.equals(other.embedding, this.embedding) &&
           other.dimensions == this.dimensions &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.memoryType == this.memoryType &&
+          other.metadata == this.metadata);
 }
 
 class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
@@ -7056,6 +7826,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
   final Value<Uint8List> embedding;
   final Value<int> dimensions;
   final Value<DateTime> createdAt;
+  final Value<String> memoryType;
+  final Value<String?> metadata;
   final Value<int> rowid;
   const MessageEmbeddingsCompanion({
     this.id = const Value.absent(),
@@ -7067,6 +7839,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     this.embedding = const Value.absent(),
     this.dimensions = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.memoryType = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessageEmbeddingsCompanion.insert({
@@ -7079,6 +7853,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     required Uint8List embedding,
     required int dimensions,
     this.createdAt = const Value.absent(),
+    this.memoryType = const Value.absent(),
+    this.metadata = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        sessionId = Value(sessionId),
@@ -7097,6 +7873,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     Expression<Uint8List>? embedding,
     Expression<int>? dimensions,
     Expression<DateTime>? createdAt,
+    Expression<String>? memoryType,
+    Expression<String>? metadata,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7109,6 +7887,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
       if (embedding != null) 'embedding': embedding,
       if (dimensions != null) 'dimensions': dimensions,
       if (createdAt != null) 'created_at': createdAt,
+      if (memoryType != null) 'memory_type': memoryType,
+      if (metadata != null) 'metadata': metadata,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7123,6 +7903,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     Value<Uint8List>? embedding,
     Value<int>? dimensions,
     Value<DateTime>? createdAt,
+    Value<String>? memoryType,
+    Value<String?>? metadata,
     Value<int>? rowid,
   }) {
     return MessageEmbeddingsCompanion(
@@ -7135,6 +7917,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
       embedding: embedding ?? this.embedding,
       dimensions: dimensions ?? this.dimensions,
       createdAt: createdAt ?? this.createdAt,
+      memoryType: memoryType ?? this.memoryType,
+      metadata: metadata ?? this.metadata,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7169,6 +7953,12 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (memoryType.present) {
+      map['memory_type'] = Variable<String>(memoryType.value);
+    }
+    if (metadata.present) {
+      map['metadata'] = Variable<String>(metadata.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7187,6 +7977,8 @@ class MessageEmbeddingsCompanion extends UpdateCompanion<MessageEmbedding> {
           ..write('embedding: $embedding, ')
           ..write('dimensions: $dimensions, ')
           ..write('createdAt: $createdAt, ')
+          ..write('memoryType: $memoryType, ')
+          ..write('metadata: $metadata, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7685,6 +8477,15 @@ class $ObjectivesTable extends Objectives
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _chatIdMeta = const VerificationMeta('chatId');
+  @override
+  late final GeneratedColumn<String> chatId = GeneratedColumn<String>(
+    'chat_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _objectiveMeta = const VerificationMeta(
     'objective',
   );
@@ -7774,6 +8575,7 @@ class $ObjectivesTable extends Objectives
   List<GeneratedColumn> get $columns => [
     id,
     characterId,
+    chatId,
     objective,
     tasks,
     active,
@@ -7809,6 +8611,12 @@ class $ObjectivesTable extends Objectives
       );
     } else if (isInserting) {
       context.missing(_characterIdMeta);
+    }
+    if (data.containsKey('chat_id')) {
+      context.handle(
+        _chatIdMeta,
+        chatId.isAcceptableOrUnknown(data['chat_id']!, _chatIdMeta),
+      );
     }
     if (data.containsKey('objective')) {
       context.handle(
@@ -7877,6 +8685,10 @@ class $ObjectivesTable extends Objectives
         DriftSqlType.string,
         data['${effectivePrefix}character_id'],
       )!,
+      chatId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_id'],
+      ),
       objective: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}objective'],
@@ -7917,6 +8729,7 @@ class $ObjectivesTable extends Objectives
 class Objective extends DataClass implements Insertable<Objective> {
   final String id;
   final String characterId;
+  final String? chatId;
   final String objective;
   final String tasks;
   final bool active;
@@ -7927,6 +8740,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   const Objective({
     required this.id,
     required this.characterId,
+    this.chatId,
     required this.objective,
     required this.tasks,
     required this.active,
@@ -7940,6 +8754,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['character_id'] = Variable<String>(characterId);
+    if (!nullToAbsent || chatId != null) {
+      map['chat_id'] = Variable<String>(chatId);
+    }
     map['objective'] = Variable<String>(objective);
     map['tasks'] = Variable<String>(tasks);
     map['active'] = Variable<bool>(active);
@@ -7954,6 +8771,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     return ObjectivesCompanion(
       id: Value(id),
       characterId: Value(characterId),
+      chatId: chatId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chatId),
       objective: Value(objective),
       tasks: Value(tasks),
       active: Value(active),
@@ -7972,6 +8792,7 @@ class Objective extends DataClass implements Insertable<Objective> {
     return Objective(
       id: serializer.fromJson<String>(json['id']),
       characterId: serializer.fromJson<String>(json['characterId']),
+      chatId: serializer.fromJson<String?>(json['chatId']),
       objective: serializer.fromJson<String>(json['objective']),
       tasks: serializer.fromJson<String>(json['tasks']),
       active: serializer.fromJson<bool>(json['active']),
@@ -7987,6 +8808,7 @@ class Objective extends DataClass implements Insertable<Objective> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'characterId': serializer.toJson<String>(characterId),
+      'chatId': serializer.toJson<String?>(chatId),
       'objective': serializer.toJson<String>(objective),
       'tasks': serializer.toJson<String>(tasks),
       'active': serializer.toJson<bool>(active),
@@ -8000,6 +8822,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   Objective copyWith({
     String? id,
     String? characterId,
+    Value<String?> chatId = const Value.absent(),
     String? objective,
     String? tasks,
     bool? active,
@@ -8010,6 +8833,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   }) => Objective(
     id: id ?? this.id,
     characterId: characterId ?? this.characterId,
+    chatId: chatId.present ? chatId.value : this.chatId,
     objective: objective ?? this.objective,
     tasks: tasks ?? this.tasks,
     active: active ?? this.active,
@@ -8024,6 +8848,7 @@ class Objective extends DataClass implements Insertable<Objective> {
       characterId: data.characterId.present
           ? data.characterId.value
           : this.characterId,
+      chatId: data.chatId.present ? data.chatId.value : this.chatId,
       objective: data.objective.present ? data.objective.value : this.objective,
       tasks: data.tasks.present ? data.tasks.value : this.tasks,
       active: data.active.present ? data.active.value : this.active,
@@ -8043,6 +8868,7 @@ class Objective extends DataClass implements Insertable<Objective> {
     return (StringBuffer('Objective(')
           ..write('id: $id, ')
           ..write('characterId: $characterId, ')
+          ..write('chatId: $chatId, ')
           ..write('objective: $objective, ')
           ..write('tasks: $tasks, ')
           ..write('active: $active, ')
@@ -8058,6 +8884,7 @@ class Objective extends DataClass implements Insertable<Objective> {
   int get hashCode => Object.hash(
     id,
     characterId,
+    chatId,
     objective,
     tasks,
     active,
@@ -8072,6 +8899,7 @@ class Objective extends DataClass implements Insertable<Objective> {
       (other is Objective &&
           other.id == this.id &&
           other.characterId == this.characterId &&
+          other.chatId == this.chatId &&
           other.objective == this.objective &&
           other.tasks == this.tasks &&
           other.active == this.active &&
@@ -8084,6 +8912,7 @@ class Objective extends DataClass implements Insertable<Objective> {
 class ObjectivesCompanion extends UpdateCompanion<Objective> {
   final Value<String> id;
   final Value<String> characterId;
+  final Value<String?> chatId;
   final Value<String> objective;
   final Value<String> tasks;
   final Value<bool> active;
@@ -8095,6 +8924,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   const ObjectivesCompanion({
     this.id = const Value.absent(),
     this.characterId = const Value.absent(),
+    this.chatId = const Value.absent(),
     this.objective = const Value.absent(),
     this.tasks = const Value.absent(),
     this.active = const Value.absent(),
@@ -8107,6 +8937,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   ObjectivesCompanion.insert({
     required String id,
     required String characterId,
+    this.chatId = const Value.absent(),
     required String objective,
     this.tasks = const Value.absent(),
     this.active = const Value.absent(),
@@ -8121,6 +8952,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   static Insertable<Objective> custom({
     Expression<String>? id,
     Expression<String>? characterId,
+    Expression<String>? chatId,
     Expression<String>? objective,
     Expression<String>? tasks,
     Expression<bool>? active,
@@ -8133,6 +8965,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (characterId != null) 'character_id': characterId,
+      if (chatId != null) 'chat_id': chatId,
       if (objective != null) 'objective': objective,
       if (tasks != null) 'tasks': tasks,
       if (active != null) 'active': active,
@@ -8147,6 +8980,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   ObjectivesCompanion copyWith({
     Value<String>? id,
     Value<String>? characterId,
+    Value<String?>? chatId,
     Value<String>? objective,
     Value<String>? tasks,
     Value<bool>? active,
@@ -8159,6 +8993,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     return ObjectivesCompanion(
       id: id ?? this.id,
       characterId: characterId ?? this.characterId,
+      chatId: chatId ?? this.chatId,
       objective: objective ?? this.objective,
       tasks: tasks ?? this.tasks,
       active: active ?? this.active,
@@ -8178,6 +9013,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     }
     if (characterId.present) {
       map['character_id'] = Variable<String>(characterId.value);
+    }
+    if (chatId.present) {
+      map['chat_id'] = Variable<String>(chatId.value);
     }
     if (objective.present) {
       map['objective'] = Variable<String>(objective.value);
@@ -8211,6 +9049,7 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     return (StringBuffer('ObjectivesCompanion(')
           ..write('id: $id, ')
           ..write('characterId: $characterId, ')
+          ..write('chatId: $chatId, ')
           ..write('objective: $objective, ')
           ..write('tasks: $tasks, ')
           ..write('active: $active, ')
@@ -9291,6 +10130,1161 @@ class AvatarImagesCompanion extends UpdateCompanion<AvatarImage> {
   }
 }
 
+class $GroupMembersTable extends GroupMembers
+    with TableInfo<$GroupMembersTable, GroupMemberRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GroupMembersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _personalityMeta = const VerificationMeta(
+    'personality',
+  );
+  @override
+  late final GeneratedColumn<String> personality = GeneratedColumn<String>(
+    'personality',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _scenarioMeta = const VerificationMeta(
+    'scenario',
+  );
+  @override
+  late final GeneratedColumn<String> scenario = GeneratedColumn<String>(
+    'scenario',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _firstMessageMeta = const VerificationMeta(
+    'firstMessage',
+  );
+  @override
+  late final GeneratedColumn<String> firstMessage = GeneratedColumn<String>(
+    'first_message',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _mesExampleMeta = const VerificationMeta(
+    'mesExample',
+  );
+  @override
+  late final GeneratedColumn<String> mesExample = GeneratedColumn<String>(
+    'mes_example',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _systemPromptMeta = const VerificationMeta(
+    'systemPrompt',
+  );
+  @override
+  late final GeneratedColumn<String> systemPrompt = GeneratedColumn<String>(
+    'system_prompt',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _postHistoryInstructionsMeta =
+      const VerificationMeta('postHistoryInstructions');
+  @override
+  late final GeneratedColumn<String> postHistoryInstructions =
+      GeneratedColumn<String>(
+        'post_history_instructions',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(''),
+      );
+  static const VerificationMeta _alternateGreetingsMeta =
+      const VerificationMeta('alternateGreetings');
+  @override
+  late final GeneratedColumn<String> alternateGreetings =
+      GeneratedColumn<String>(
+        'alternate_greetings',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
+  @override
+  late final GeneratedColumn<String> tags = GeneratedColumn<String>(
+    'tags',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _avatarFilenameMeta = const VerificationMeta(
+    'avatarFilename',
+  );
+  @override
+  late final GeneratedColumn<String> avatarFilename = GeneratedColumn<String>(
+    'avatar_filename',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ttsVoiceMeta = const VerificationMeta(
+    'ttsVoice',
+  );
+  @override
+  late final GeneratedColumn<String> ttsVoice = GeneratedColumn<String>(
+    'tts_voice',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lorebookMeta = const VerificationMeta(
+    'lorebook',
+  );
+  @override
+  late final GeneratedColumn<String> lorebook = GeneratedColumn<String>(
+    'lorebook',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _worldNamesMeta = const VerificationMeta(
+    'worldNames',
+  );
+  @override
+  late final GeneratedColumn<String> worldNames = GeneratedColumn<String>(
+    'world_names',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _frontPorchExtensionsMeta =
+      const VerificationMeta('frontPorchExtensions');
+  @override
+  late final GeneratedColumn<String> frontPorchExtensions =
+      GeneratedColumn<String>(
+        'front_porch_extensions',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _rawExtensionsMeta = const VerificationMeta(
+    'rawExtensions',
+  );
+  @override
+  late final GeneratedColumn<String> rawExtensions = GeneratedColumn<String>(
+    'raw_extensions',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memberStateMeta = const VerificationMeta(
+    'memberState',
+  );
+  @override
+  late final GeneratedColumn<String> memberState = GeneratedColumn<String>(
+    'member_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    groupId,
+    name,
+    description,
+    personality,
+    scenario,
+    firstMessage,
+    mesExample,
+    systemPrompt,
+    postHistoryInstructions,
+    alternateGreetings,
+    tags,
+    avatarFilename,
+    ttsVoice,
+    lorebook,
+    worldNames,
+    frontPorchExtensions,
+    rawExtensions,
+    memberState,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'group_members';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GroupMemberRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_groupIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('personality')) {
+      context.handle(
+        _personalityMeta,
+        personality.isAcceptableOrUnknown(
+          data['personality']!,
+          _personalityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('scenario')) {
+      context.handle(
+        _scenarioMeta,
+        scenario.isAcceptableOrUnknown(data['scenario']!, _scenarioMeta),
+      );
+    }
+    if (data.containsKey('first_message')) {
+      context.handle(
+        _firstMessageMeta,
+        firstMessage.isAcceptableOrUnknown(
+          data['first_message']!,
+          _firstMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('mes_example')) {
+      context.handle(
+        _mesExampleMeta,
+        mesExample.isAcceptableOrUnknown(data['mes_example']!, _mesExampleMeta),
+      );
+    }
+    if (data.containsKey('system_prompt')) {
+      context.handle(
+        _systemPromptMeta,
+        systemPrompt.isAcceptableOrUnknown(
+          data['system_prompt']!,
+          _systemPromptMeta,
+        ),
+      );
+    }
+    if (data.containsKey('post_history_instructions')) {
+      context.handle(
+        _postHistoryInstructionsMeta,
+        postHistoryInstructions.isAcceptableOrUnknown(
+          data['post_history_instructions']!,
+          _postHistoryInstructionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('alternate_greetings')) {
+      context.handle(
+        _alternateGreetingsMeta,
+        alternateGreetings.isAcceptableOrUnknown(
+          data['alternate_greetings']!,
+          _alternateGreetingsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tags')) {
+      context.handle(
+        _tagsMeta,
+        tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta),
+      );
+    }
+    if (data.containsKey('avatar_filename')) {
+      context.handle(
+        _avatarFilenameMeta,
+        avatarFilename.isAcceptableOrUnknown(
+          data['avatar_filename']!,
+          _avatarFilenameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tts_voice')) {
+      context.handle(
+        _ttsVoiceMeta,
+        ttsVoice.isAcceptableOrUnknown(data['tts_voice']!, _ttsVoiceMeta),
+      );
+    }
+    if (data.containsKey('lorebook')) {
+      context.handle(
+        _lorebookMeta,
+        lorebook.isAcceptableOrUnknown(data['lorebook']!, _lorebookMeta),
+      );
+    }
+    if (data.containsKey('world_names')) {
+      context.handle(
+        _worldNamesMeta,
+        worldNames.isAcceptableOrUnknown(data['world_names']!, _worldNamesMeta),
+      );
+    }
+    if (data.containsKey('front_porch_extensions')) {
+      context.handle(
+        _frontPorchExtensionsMeta,
+        frontPorchExtensions.isAcceptableOrUnknown(
+          data['front_porch_extensions']!,
+          _frontPorchExtensionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('raw_extensions')) {
+      context.handle(
+        _rawExtensionsMeta,
+        rawExtensions.isAcceptableOrUnknown(
+          data['raw_extensions']!,
+          _rawExtensionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('member_state')) {
+      context.handle(
+        _memberStateMeta,
+        memberState.isAcceptableOrUnknown(
+          data['member_state']!,
+          _memberStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GroupMemberRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GroupMemberRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      personality: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}personality'],
+      )!,
+      scenario: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scenario'],
+      )!,
+      firstMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}first_message'],
+      )!,
+      mesExample: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mes_example'],
+      )!,
+      systemPrompt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}system_prompt'],
+      )!,
+      postHistoryInstructions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}post_history_instructions'],
+      )!,
+      alternateGreetings: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}alternate_greetings'],
+      )!,
+      tags: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tags'],
+      )!,
+      avatarFilename: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}avatar_filename'],
+      ),
+      ttsVoice: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tts_voice'],
+      ),
+      lorebook: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lorebook'],
+      ),
+      worldNames: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}world_names'],
+      )!,
+      frontPorchExtensions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}front_porch_extensions'],
+      ),
+      rawExtensions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}raw_extensions'],
+      ),
+      memberState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_state'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $GroupMembersTable createAlias(String alias) {
+    return $GroupMembersTable(attachedDatabase, alias);
+  }
+}
+
+class GroupMemberRow extends DataClass implements Insertable<GroupMemberRow> {
+  final String id;
+  final String groupId;
+  final String name;
+  final String description;
+  final String personality;
+  final String scenario;
+  final String firstMessage;
+  final String mesExample;
+  final String systemPrompt;
+  final String postHistoryInstructions;
+  final String alternateGreetings;
+  final String tags;
+
+  /// Basename of the single primary PNG stored in this group's private avatars dir.
+  /// Resolved at runtime via StorageService.groupsDir + groupId + 'avatars' + this filename.
+  /// Never a full path, never an expression list.
+  final String? avatarFilename;
+  final String? ttsVoice;
+  final String? lorebook;
+  final String worldNames;
+
+  /// JSON of FrontPorchExtensions (realism defaults etc.) + any raw third-party extensions.
+  final String? frontPorchExtensions;
+  final String? rawExtensions;
+
+  /// Small JSON for any *group-scoped* per-member state that travels with the group definition
+  /// (e.g. initial realism seed fragments specific to this membership, or future overrides).
+  /// The primary evolving per-char realism + needs lives in sessions.group_realism_state
+  /// (keyed by these member UUIDs) and groups.defaultMemberRealismState (for seeds/export).
+  /// This column keeps the member rows free of "the card" blobs while still self-contained.
+  final String memberState;
+  final DateTime updatedAt;
+  const GroupMemberRow({
+    required this.id,
+    required this.groupId,
+    required this.name,
+    required this.description,
+    required this.personality,
+    required this.scenario,
+    required this.firstMessage,
+    required this.mesExample,
+    required this.systemPrompt,
+    required this.postHistoryInstructions,
+    required this.alternateGreetings,
+    required this.tags,
+    this.avatarFilename,
+    this.ttsVoice,
+    this.lorebook,
+    required this.worldNames,
+    this.frontPorchExtensions,
+    this.rawExtensions,
+    required this.memberState,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['group_id'] = Variable<String>(groupId);
+    map['name'] = Variable<String>(name);
+    map['description'] = Variable<String>(description);
+    map['personality'] = Variable<String>(personality);
+    map['scenario'] = Variable<String>(scenario);
+    map['first_message'] = Variable<String>(firstMessage);
+    map['mes_example'] = Variable<String>(mesExample);
+    map['system_prompt'] = Variable<String>(systemPrompt);
+    map['post_history_instructions'] = Variable<String>(
+      postHistoryInstructions,
+    );
+    map['alternate_greetings'] = Variable<String>(alternateGreetings);
+    map['tags'] = Variable<String>(tags);
+    if (!nullToAbsent || avatarFilename != null) {
+      map['avatar_filename'] = Variable<String>(avatarFilename);
+    }
+    if (!nullToAbsent || ttsVoice != null) {
+      map['tts_voice'] = Variable<String>(ttsVoice);
+    }
+    if (!nullToAbsent || lorebook != null) {
+      map['lorebook'] = Variable<String>(lorebook);
+    }
+    map['world_names'] = Variable<String>(worldNames);
+    if (!nullToAbsent || frontPorchExtensions != null) {
+      map['front_porch_extensions'] = Variable<String>(frontPorchExtensions);
+    }
+    if (!nullToAbsent || rawExtensions != null) {
+      map['raw_extensions'] = Variable<String>(rawExtensions);
+    }
+    map['member_state'] = Variable<String>(memberState);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  GroupMembersCompanion toCompanion(bool nullToAbsent) {
+    return GroupMembersCompanion(
+      id: Value(id),
+      groupId: Value(groupId),
+      name: Value(name),
+      description: Value(description),
+      personality: Value(personality),
+      scenario: Value(scenario),
+      firstMessage: Value(firstMessage),
+      mesExample: Value(mesExample),
+      systemPrompt: Value(systemPrompt),
+      postHistoryInstructions: Value(postHistoryInstructions),
+      alternateGreetings: Value(alternateGreetings),
+      tags: Value(tags),
+      avatarFilename: avatarFilename == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avatarFilename),
+      ttsVoice: ttsVoice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ttsVoice),
+      lorebook: lorebook == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lorebook),
+      worldNames: Value(worldNames),
+      frontPorchExtensions: frontPorchExtensions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(frontPorchExtensions),
+      rawExtensions: rawExtensions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawExtensions),
+      memberState: Value(memberState),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory GroupMemberRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GroupMemberRow(
+      id: serializer.fromJson<String>(json['id']),
+      groupId: serializer.fromJson<String>(json['groupId']),
+      name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String>(json['description']),
+      personality: serializer.fromJson<String>(json['personality']),
+      scenario: serializer.fromJson<String>(json['scenario']),
+      firstMessage: serializer.fromJson<String>(json['firstMessage']),
+      mesExample: serializer.fromJson<String>(json['mesExample']),
+      systemPrompt: serializer.fromJson<String>(json['systemPrompt']),
+      postHistoryInstructions: serializer.fromJson<String>(
+        json['postHistoryInstructions'],
+      ),
+      alternateGreetings: serializer.fromJson<String>(
+        json['alternateGreetings'],
+      ),
+      tags: serializer.fromJson<String>(json['tags']),
+      avatarFilename: serializer.fromJson<String?>(json['avatarFilename']),
+      ttsVoice: serializer.fromJson<String?>(json['ttsVoice']),
+      lorebook: serializer.fromJson<String?>(json['lorebook']),
+      worldNames: serializer.fromJson<String>(json['worldNames']),
+      frontPorchExtensions: serializer.fromJson<String?>(
+        json['frontPorchExtensions'],
+      ),
+      rawExtensions: serializer.fromJson<String?>(json['rawExtensions']),
+      memberState: serializer.fromJson<String>(json['memberState']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'groupId': serializer.toJson<String>(groupId),
+      'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String>(description),
+      'personality': serializer.toJson<String>(personality),
+      'scenario': serializer.toJson<String>(scenario),
+      'firstMessage': serializer.toJson<String>(firstMessage),
+      'mesExample': serializer.toJson<String>(mesExample),
+      'systemPrompt': serializer.toJson<String>(systemPrompt),
+      'postHistoryInstructions': serializer.toJson<String>(
+        postHistoryInstructions,
+      ),
+      'alternateGreetings': serializer.toJson<String>(alternateGreetings),
+      'tags': serializer.toJson<String>(tags),
+      'avatarFilename': serializer.toJson<String?>(avatarFilename),
+      'ttsVoice': serializer.toJson<String?>(ttsVoice),
+      'lorebook': serializer.toJson<String?>(lorebook),
+      'worldNames': serializer.toJson<String>(worldNames),
+      'frontPorchExtensions': serializer.toJson<String?>(frontPorchExtensions),
+      'rawExtensions': serializer.toJson<String?>(rawExtensions),
+      'memberState': serializer.toJson<String>(memberState),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  GroupMemberRow copyWith({
+    String? id,
+    String? groupId,
+    String? name,
+    String? description,
+    String? personality,
+    String? scenario,
+    String? firstMessage,
+    String? mesExample,
+    String? systemPrompt,
+    String? postHistoryInstructions,
+    String? alternateGreetings,
+    String? tags,
+    Value<String?> avatarFilename = const Value.absent(),
+    Value<String?> ttsVoice = const Value.absent(),
+    Value<String?> lorebook = const Value.absent(),
+    String? worldNames,
+    Value<String?> frontPorchExtensions = const Value.absent(),
+    Value<String?> rawExtensions = const Value.absent(),
+    String? memberState,
+    DateTime? updatedAt,
+  }) => GroupMemberRow(
+    id: id ?? this.id,
+    groupId: groupId ?? this.groupId,
+    name: name ?? this.name,
+    description: description ?? this.description,
+    personality: personality ?? this.personality,
+    scenario: scenario ?? this.scenario,
+    firstMessage: firstMessage ?? this.firstMessage,
+    mesExample: mesExample ?? this.mesExample,
+    systemPrompt: systemPrompt ?? this.systemPrompt,
+    postHistoryInstructions:
+        postHistoryInstructions ?? this.postHistoryInstructions,
+    alternateGreetings: alternateGreetings ?? this.alternateGreetings,
+    tags: tags ?? this.tags,
+    avatarFilename: avatarFilename.present
+        ? avatarFilename.value
+        : this.avatarFilename,
+    ttsVoice: ttsVoice.present ? ttsVoice.value : this.ttsVoice,
+    lorebook: lorebook.present ? lorebook.value : this.lorebook,
+    worldNames: worldNames ?? this.worldNames,
+    frontPorchExtensions: frontPorchExtensions.present
+        ? frontPorchExtensions.value
+        : this.frontPorchExtensions,
+    rawExtensions: rawExtensions.present
+        ? rawExtensions.value
+        : this.rawExtensions,
+    memberState: memberState ?? this.memberState,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  GroupMemberRow copyWithCompanion(GroupMembersCompanion data) {
+    return GroupMemberRow(
+      id: data.id.present ? data.id.value : this.id,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      personality: data.personality.present
+          ? data.personality.value
+          : this.personality,
+      scenario: data.scenario.present ? data.scenario.value : this.scenario,
+      firstMessage: data.firstMessage.present
+          ? data.firstMessage.value
+          : this.firstMessage,
+      mesExample: data.mesExample.present
+          ? data.mesExample.value
+          : this.mesExample,
+      systemPrompt: data.systemPrompt.present
+          ? data.systemPrompt.value
+          : this.systemPrompt,
+      postHistoryInstructions: data.postHistoryInstructions.present
+          ? data.postHistoryInstructions.value
+          : this.postHistoryInstructions,
+      alternateGreetings: data.alternateGreetings.present
+          ? data.alternateGreetings.value
+          : this.alternateGreetings,
+      tags: data.tags.present ? data.tags.value : this.tags,
+      avatarFilename: data.avatarFilename.present
+          ? data.avatarFilename.value
+          : this.avatarFilename,
+      ttsVoice: data.ttsVoice.present ? data.ttsVoice.value : this.ttsVoice,
+      lorebook: data.lorebook.present ? data.lorebook.value : this.lorebook,
+      worldNames: data.worldNames.present
+          ? data.worldNames.value
+          : this.worldNames,
+      frontPorchExtensions: data.frontPorchExtensions.present
+          ? data.frontPorchExtensions.value
+          : this.frontPorchExtensions,
+      rawExtensions: data.rawExtensions.present
+          ? data.rawExtensions.value
+          : this.rawExtensions,
+      memberState: data.memberState.present
+          ? data.memberState.value
+          : this.memberState,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupMemberRow(')
+          ..write('id: $id, ')
+          ..write('groupId: $groupId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('personality: $personality, ')
+          ..write('scenario: $scenario, ')
+          ..write('firstMessage: $firstMessage, ')
+          ..write('mesExample: $mesExample, ')
+          ..write('systemPrompt: $systemPrompt, ')
+          ..write('postHistoryInstructions: $postHistoryInstructions, ')
+          ..write('alternateGreetings: $alternateGreetings, ')
+          ..write('tags: $tags, ')
+          ..write('avatarFilename: $avatarFilename, ')
+          ..write('ttsVoice: $ttsVoice, ')
+          ..write('lorebook: $lorebook, ')
+          ..write('worldNames: $worldNames, ')
+          ..write('frontPorchExtensions: $frontPorchExtensions, ')
+          ..write('rawExtensions: $rawExtensions, ')
+          ..write('memberState: $memberState, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    groupId,
+    name,
+    description,
+    personality,
+    scenario,
+    firstMessage,
+    mesExample,
+    systemPrompt,
+    postHistoryInstructions,
+    alternateGreetings,
+    tags,
+    avatarFilename,
+    ttsVoice,
+    lorebook,
+    worldNames,
+    frontPorchExtensions,
+    rawExtensions,
+    memberState,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GroupMemberRow &&
+          other.id == this.id &&
+          other.groupId == this.groupId &&
+          other.name == this.name &&
+          other.description == this.description &&
+          other.personality == this.personality &&
+          other.scenario == this.scenario &&
+          other.firstMessage == this.firstMessage &&
+          other.mesExample == this.mesExample &&
+          other.systemPrompt == this.systemPrompt &&
+          other.postHistoryInstructions == this.postHistoryInstructions &&
+          other.alternateGreetings == this.alternateGreetings &&
+          other.tags == this.tags &&
+          other.avatarFilename == this.avatarFilename &&
+          other.ttsVoice == this.ttsVoice &&
+          other.lorebook == this.lorebook &&
+          other.worldNames == this.worldNames &&
+          other.frontPorchExtensions == this.frontPorchExtensions &&
+          other.rawExtensions == this.rawExtensions &&
+          other.memberState == this.memberState &&
+          other.updatedAt == this.updatedAt);
+}
+
+class GroupMembersCompanion extends UpdateCompanion<GroupMemberRow> {
+  final Value<String> id;
+  final Value<String> groupId;
+  final Value<String> name;
+  final Value<String> description;
+  final Value<String> personality;
+  final Value<String> scenario;
+  final Value<String> firstMessage;
+  final Value<String> mesExample;
+  final Value<String> systemPrompt;
+  final Value<String> postHistoryInstructions;
+  final Value<String> alternateGreetings;
+  final Value<String> tags;
+  final Value<String?> avatarFilename;
+  final Value<String?> ttsVoice;
+  final Value<String?> lorebook;
+  final Value<String> worldNames;
+  final Value<String?> frontPorchExtensions;
+  final Value<String?> rawExtensions;
+  final Value<String> memberState;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const GroupMembersCompanion({
+    this.id = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.personality = const Value.absent(),
+    this.scenario = const Value.absent(),
+    this.firstMessage = const Value.absent(),
+    this.mesExample = const Value.absent(),
+    this.systemPrompt = const Value.absent(),
+    this.postHistoryInstructions = const Value.absent(),
+    this.alternateGreetings = const Value.absent(),
+    this.tags = const Value.absent(),
+    this.avatarFilename = const Value.absent(),
+    this.ttsVoice = const Value.absent(),
+    this.lorebook = const Value.absent(),
+    this.worldNames = const Value.absent(),
+    this.frontPorchExtensions = const Value.absent(),
+    this.rawExtensions = const Value.absent(),
+    this.memberState = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GroupMembersCompanion.insert({
+    required String id,
+    required String groupId,
+    required String name,
+    this.description = const Value.absent(),
+    this.personality = const Value.absent(),
+    this.scenario = const Value.absent(),
+    this.firstMessage = const Value.absent(),
+    this.mesExample = const Value.absent(),
+    this.systemPrompt = const Value.absent(),
+    this.postHistoryInstructions = const Value.absent(),
+    this.alternateGreetings = const Value.absent(),
+    this.tags = const Value.absent(),
+    this.avatarFilename = const Value.absent(),
+    this.ttsVoice = const Value.absent(),
+    this.lorebook = const Value.absent(),
+    this.worldNames = const Value.absent(),
+    this.frontPorchExtensions = const Value.absent(),
+    this.rawExtensions = const Value.absent(),
+    this.memberState = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       groupId = Value(groupId),
+       name = Value(name);
+  static Insertable<GroupMemberRow> custom({
+    Expression<String>? id,
+    Expression<String>? groupId,
+    Expression<String>? name,
+    Expression<String>? description,
+    Expression<String>? personality,
+    Expression<String>? scenario,
+    Expression<String>? firstMessage,
+    Expression<String>? mesExample,
+    Expression<String>? systemPrompt,
+    Expression<String>? postHistoryInstructions,
+    Expression<String>? alternateGreetings,
+    Expression<String>? tags,
+    Expression<String>? avatarFilename,
+    Expression<String>? ttsVoice,
+    Expression<String>? lorebook,
+    Expression<String>? worldNames,
+    Expression<String>? frontPorchExtensions,
+    Expression<String>? rawExtensions,
+    Expression<String>? memberState,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (groupId != null) 'group_id': groupId,
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (personality != null) 'personality': personality,
+      if (scenario != null) 'scenario': scenario,
+      if (firstMessage != null) 'first_message': firstMessage,
+      if (mesExample != null) 'mes_example': mesExample,
+      if (systemPrompt != null) 'system_prompt': systemPrompt,
+      if (postHistoryInstructions != null)
+        'post_history_instructions': postHistoryInstructions,
+      if (alternateGreetings != null) 'alternate_greetings': alternateGreetings,
+      if (tags != null) 'tags': tags,
+      if (avatarFilename != null) 'avatar_filename': avatarFilename,
+      if (ttsVoice != null) 'tts_voice': ttsVoice,
+      if (lorebook != null) 'lorebook': lorebook,
+      if (worldNames != null) 'world_names': worldNames,
+      if (frontPorchExtensions != null)
+        'front_porch_extensions': frontPorchExtensions,
+      if (rawExtensions != null) 'raw_extensions': rawExtensions,
+      if (memberState != null) 'member_state': memberState,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GroupMembersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? groupId,
+    Value<String>? name,
+    Value<String>? description,
+    Value<String>? personality,
+    Value<String>? scenario,
+    Value<String>? firstMessage,
+    Value<String>? mesExample,
+    Value<String>? systemPrompt,
+    Value<String>? postHistoryInstructions,
+    Value<String>? alternateGreetings,
+    Value<String>? tags,
+    Value<String?>? avatarFilename,
+    Value<String?>? ttsVoice,
+    Value<String?>? lorebook,
+    Value<String>? worldNames,
+    Value<String?>? frontPorchExtensions,
+    Value<String?>? rawExtensions,
+    Value<String>? memberState,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return GroupMembersCompanion(
+      id: id ?? this.id,
+      groupId: groupId ?? this.groupId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      personality: personality ?? this.personality,
+      scenario: scenario ?? this.scenario,
+      firstMessage: firstMessage ?? this.firstMessage,
+      mesExample: mesExample ?? this.mesExample,
+      systemPrompt: systemPrompt ?? this.systemPrompt,
+      postHistoryInstructions:
+          postHistoryInstructions ?? this.postHistoryInstructions,
+      alternateGreetings: alternateGreetings ?? this.alternateGreetings,
+      tags: tags ?? this.tags,
+      avatarFilename: avatarFilename ?? this.avatarFilename,
+      ttsVoice: ttsVoice ?? this.ttsVoice,
+      lorebook: lorebook ?? this.lorebook,
+      worldNames: worldNames ?? this.worldNames,
+      frontPorchExtensions: frontPorchExtensions ?? this.frontPorchExtensions,
+      rawExtensions: rawExtensions ?? this.rawExtensions,
+      memberState: memberState ?? this.memberState,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (personality.present) {
+      map['personality'] = Variable<String>(personality.value);
+    }
+    if (scenario.present) {
+      map['scenario'] = Variable<String>(scenario.value);
+    }
+    if (firstMessage.present) {
+      map['first_message'] = Variable<String>(firstMessage.value);
+    }
+    if (mesExample.present) {
+      map['mes_example'] = Variable<String>(mesExample.value);
+    }
+    if (systemPrompt.present) {
+      map['system_prompt'] = Variable<String>(systemPrompt.value);
+    }
+    if (postHistoryInstructions.present) {
+      map['post_history_instructions'] = Variable<String>(
+        postHistoryInstructions.value,
+      );
+    }
+    if (alternateGreetings.present) {
+      map['alternate_greetings'] = Variable<String>(alternateGreetings.value);
+    }
+    if (tags.present) {
+      map['tags'] = Variable<String>(tags.value);
+    }
+    if (avatarFilename.present) {
+      map['avatar_filename'] = Variable<String>(avatarFilename.value);
+    }
+    if (ttsVoice.present) {
+      map['tts_voice'] = Variable<String>(ttsVoice.value);
+    }
+    if (lorebook.present) {
+      map['lorebook'] = Variable<String>(lorebook.value);
+    }
+    if (worldNames.present) {
+      map['world_names'] = Variable<String>(worldNames.value);
+    }
+    if (frontPorchExtensions.present) {
+      map['front_porch_extensions'] = Variable<String>(
+        frontPorchExtensions.value,
+      );
+    }
+    if (rawExtensions.present) {
+      map['raw_extensions'] = Variable<String>(rawExtensions.value);
+    }
+    if (memberState.present) {
+      map['member_state'] = Variable<String>(memberState.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GroupMembersCompanion(')
+          ..write('id: $id, ')
+          ..write('groupId: $groupId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('personality: $personality, ')
+          ..write('scenario: $scenario, ')
+          ..write('firstMessage: $firstMessage, ')
+          ..write('mesExample: $mesExample, ')
+          ..write('systemPrompt: $systemPrompt, ')
+          ..write('postHistoryInstructions: $postHistoryInstructions, ')
+          ..write('alternateGreetings: $alternateGreetings, ')
+          ..write('tags: $tags, ')
+          ..write('avatarFilename: $avatarFilename, ')
+          ..write('ttsVoice: $ttsVoice, ')
+          ..write('lorebook: $lorebook, ')
+          ..write('worldNames: $worldNames, ')
+          ..write('frontPorchExtensions: $frontPorchExtensions, ')
+          ..write('rawExtensions: $rawExtensions, ')
+          ..write('memberState: $memberState, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9310,6 +11304,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $StoryProjectsTable storyProjects = $StoryProjectsTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   late final $AvatarImagesTable avatarImages = $AvatarImagesTable(this);
+  late final $GroupMembersTable groupMembers = $GroupMembersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9328,6 +11323,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     storyProjects,
     syncMeta,
     avatarImages,
+    groupMembers,
   ];
 }
 
@@ -9941,6 +11937,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<String> emotionIntensity,
       Value<String> timeOfDay,
       Value<int> dayCount,
+      Value<int> startDayOfWeek,
       Value<bool> nsfwCooldownEnabled,
       Value<bool> passageOfTimeEnabled,
       Value<int> arousalLevel,
@@ -9952,6 +11949,8 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<bool> trustRepairPending,
       Value<bool> chaosModeEnabled,
       Value<int> chaosPressure,
+      Value<bool> needsSimEnabled,
+      Value<String?> needsVector,
       Value<String> evolvedPersonality,
       Value<String> evolvedScenario,
       Value<int> evolutionCount,
@@ -9959,6 +11958,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<String> groupEvolvedScenarios,
       Value<String?> generationSettings,
       Value<String?> userPersonaId,
+      Value<String> groupRealismState,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -9990,6 +11990,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String> emotionIntensity,
       Value<String> timeOfDay,
       Value<int> dayCount,
+      Value<int> startDayOfWeek,
       Value<bool> nsfwCooldownEnabled,
       Value<bool> passageOfTimeEnabled,
       Value<int> arousalLevel,
@@ -10001,6 +12002,8 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<bool> trustRepairPending,
       Value<bool> chaosModeEnabled,
       Value<int> chaosPressure,
+      Value<bool> needsSimEnabled,
+      Value<String?> needsVector,
       Value<String> evolvedPersonality,
       Value<String> evolvedScenario,
       Value<int> evolutionCount,
@@ -10008,6 +12011,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String> groupEvolvedScenarios,
       Value<String?> generationSettings,
       Value<String?> userPersonaId,
+      Value<String> groupRealismState,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -10143,6 +12147,11 @@ class $$SessionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get startDayOfWeek => $composableBuilder(
+    column: $table.startDayOfWeek,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<bool> get nsfwCooldownEnabled => $composableBuilder(
     column: $table.nsfwCooldownEnabled,
     builder: (column) => ColumnFilters(column),
@@ -10198,6 +12207,16 @@ class $$SessionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get needsSimEnabled => $composableBuilder(
+    column: $table.needsSimEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get needsVector => $composableBuilder(
+    column: $table.needsVector,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get evolvedPersonality => $composableBuilder(
     column: $table.evolvedPersonality,
     builder: (column) => ColumnFilters(column),
@@ -10230,6 +12249,11 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<String> get userPersonaId => $composableBuilder(
     column: $table.userPersonaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupRealismState => $composableBuilder(
+    column: $table.groupRealismState,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10378,6 +12402,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get startDayOfWeek => $composableBuilder(
+    column: $table.startDayOfWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get nsfwCooldownEnabled => $composableBuilder(
     column: $table.nsfwCooldownEnabled,
     builder: (column) => ColumnOrderings(column),
@@ -10433,6 +12462,16 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get needsSimEnabled => $composableBuilder(
+    column: $table.needsSimEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get needsVector => $composableBuilder(
+    column: $table.needsVector,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get evolvedPersonality => $composableBuilder(
     column: $table.evolvedPersonality,
     builder: (column) => ColumnOrderings(column),
@@ -10465,6 +12504,11 @@ class $$SessionsTableOrderingComposer
 
   ColumnOrderings<String> get userPersonaId => $composableBuilder(
     column: $table.userPersonaId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupRealismState => $composableBuilder(
+    column: $table.groupRealismState,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -10599,6 +12643,11 @@ class $$SessionsTableAnnotationComposer
   GeneratedColumn<int> get dayCount =>
       $composableBuilder(column: $table.dayCount, builder: (column) => column);
 
+  GeneratedColumn<int> get startDayOfWeek => $composableBuilder(
+    column: $table.startDayOfWeek,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get nsfwCooldownEnabled => $composableBuilder(
     column: $table.nsfwCooldownEnabled,
     builder: (column) => column,
@@ -10654,6 +12703,16 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get needsSimEnabled => $composableBuilder(
+    column: $table.needsSimEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get needsVector => $composableBuilder(
+    column: $table.needsVector,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get evolvedPersonality => $composableBuilder(
     column: $table.evolvedPersonality,
     builder: (column) => column,
@@ -10686,6 +12745,11 @@ class $$SessionsTableAnnotationComposer
 
   GeneratedColumn<String> get userPersonaId => $composableBuilder(
     column: $table.userPersonaId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get groupRealismState => $composableBuilder(
+    column: $table.groupRealismState,
     builder: (column) => column,
   );
 
@@ -10751,6 +12815,7 @@ class $$SessionsTableTableManager
                 Value<String> emotionIntensity = const Value.absent(),
                 Value<String> timeOfDay = const Value.absent(),
                 Value<int> dayCount = const Value.absent(),
+                Value<int> startDayOfWeek = const Value.absent(),
                 Value<bool> nsfwCooldownEnabled = const Value.absent(),
                 Value<bool> passageOfTimeEnabled = const Value.absent(),
                 Value<int> arousalLevel = const Value.absent(),
@@ -10762,6 +12827,8 @@ class $$SessionsTableTableManager
                 Value<bool> trustRepairPending = const Value.absent(),
                 Value<bool> chaosModeEnabled = const Value.absent(),
                 Value<int> chaosPressure = const Value.absent(),
+                Value<bool> needsSimEnabled = const Value.absent(),
+                Value<String?> needsVector = const Value.absent(),
                 Value<String> evolvedPersonality = const Value.absent(),
                 Value<String> evolvedScenario = const Value.absent(),
                 Value<int> evolutionCount = const Value.absent(),
@@ -10769,6 +12836,7 @@ class $$SessionsTableTableManager
                 Value<String> groupEvolvedScenarios = const Value.absent(),
                 Value<String?> generationSettings = const Value.absent(),
                 Value<String?> userPersonaId = const Value.absent(),
+                Value<String> groupRealismState = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10798,6 +12866,7 @@ class $$SessionsTableTableManager
                 emotionIntensity: emotionIntensity,
                 timeOfDay: timeOfDay,
                 dayCount: dayCount,
+                startDayOfWeek: startDayOfWeek,
                 nsfwCooldownEnabled: nsfwCooldownEnabled,
                 passageOfTimeEnabled: passageOfTimeEnabled,
                 arousalLevel: arousalLevel,
@@ -10809,6 +12878,8 @@ class $$SessionsTableTableManager
                 trustRepairPending: trustRepairPending,
                 chaosModeEnabled: chaosModeEnabled,
                 chaosPressure: chaosPressure,
+                needsSimEnabled: needsSimEnabled,
+                needsVector: needsVector,
                 evolvedPersonality: evolvedPersonality,
                 evolvedScenario: evolvedScenario,
                 evolutionCount: evolutionCount,
@@ -10816,6 +12887,7 @@ class $$SessionsTableTableManager
                 groupEvolvedScenarios: groupEvolvedScenarios,
                 generationSettings: generationSettings,
                 userPersonaId: userPersonaId,
+                groupRealismState: groupRealismState,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -10847,6 +12919,7 @@ class $$SessionsTableTableManager
                 Value<String> emotionIntensity = const Value.absent(),
                 Value<String> timeOfDay = const Value.absent(),
                 Value<int> dayCount = const Value.absent(),
+                Value<int> startDayOfWeek = const Value.absent(),
                 Value<bool> nsfwCooldownEnabled = const Value.absent(),
                 Value<bool> passageOfTimeEnabled = const Value.absent(),
                 Value<int> arousalLevel = const Value.absent(),
@@ -10858,6 +12931,8 @@ class $$SessionsTableTableManager
                 Value<bool> trustRepairPending = const Value.absent(),
                 Value<bool> chaosModeEnabled = const Value.absent(),
                 Value<int> chaosPressure = const Value.absent(),
+                Value<bool> needsSimEnabled = const Value.absent(),
+                Value<String?> needsVector = const Value.absent(),
                 Value<String> evolvedPersonality = const Value.absent(),
                 Value<String> evolvedScenario = const Value.absent(),
                 Value<int> evolutionCount = const Value.absent(),
@@ -10865,6 +12940,7 @@ class $$SessionsTableTableManager
                 Value<String> groupEvolvedScenarios = const Value.absent(),
                 Value<String?> generationSettings = const Value.absent(),
                 Value<String?> userPersonaId = const Value.absent(),
+                Value<String> groupRealismState = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10894,6 +12970,7 @@ class $$SessionsTableTableManager
                 emotionIntensity: emotionIntensity,
                 timeOfDay: timeOfDay,
                 dayCount: dayCount,
+                startDayOfWeek: startDayOfWeek,
                 nsfwCooldownEnabled: nsfwCooldownEnabled,
                 passageOfTimeEnabled: passageOfTimeEnabled,
                 arousalLevel: arousalLevel,
@@ -10905,6 +12982,8 @@ class $$SessionsTableTableManager
                 trustRepairPending: trustRepairPending,
                 chaosModeEnabled: chaosModeEnabled,
                 chaosPressure: chaosPressure,
+                needsSimEnabled: needsSimEnabled,
+                needsVector: needsVector,
                 evolvedPersonality: evolvedPersonality,
                 evolvedScenario: evolvedScenario,
                 evolutionCount: evolutionCount,
@@ -10912,6 +12991,7 @@ class $$SessionsTableTableManager
                 groupEvolvedScenarios: groupEvolvedScenarios,
                 generationSettings: generationSettings,
                 userPersonaId: userPersonaId,
+                groupRealismState: groupRealismState,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -11304,6 +13384,14 @@ typedef $$GroupsTableCreateCompanionBuilder =
       Value<String> firstMessage,
       Value<String> scenario,
       Value<String> systemPrompt,
+      Value<String> defaultMemberRealismState,
+      Value<bool> chaosModeEnabled,
+      Value<bool> chaosNsfwEnabled,
+      Value<String> groupLorebook,
+      Value<String> worldIds,
+      Value<bool> inheritCharacterLorebooks,
+      Value<String> baselineRealismState,
+      Value<String> characterSystemPrompts,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<int> rowid,
@@ -11319,6 +13407,14 @@ typedef $$GroupsTableUpdateCompanionBuilder =
       Value<String> firstMessage,
       Value<String> scenario,
       Value<String> systemPrompt,
+      Value<String> defaultMemberRealismState,
+      Value<bool> chaosModeEnabled,
+      Value<bool> chaosNsfwEnabled,
+      Value<String> groupLorebook,
+      Value<String> worldIds,
+      Value<bool> inheritCharacterLorebooks,
+      Value<String> baselineRealismState,
+      Value<String> characterSystemPrompts,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<int> rowid,
@@ -11375,6 +13471,46 @@ class $$GroupsTableFilterComposer
 
   ColumnFilters<String> get systemPrompt => $composableBuilder(
     column: $table.systemPrompt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get defaultMemberRealismState => $composableBuilder(
+    column: $table.defaultMemberRealismState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get chaosModeEnabled => $composableBuilder(
+    column: $table.chaosModeEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get chaosNsfwEnabled => $composableBuilder(
+    column: $table.chaosNsfwEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupLorebook => $composableBuilder(
+    column: $table.groupLorebook,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get worldIds => $composableBuilder(
+    column: $table.worldIds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get inheritCharacterLorebooks => $composableBuilder(
+    column: $table.inheritCharacterLorebooks,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baselineRealismState => $composableBuilder(
+    column: $table.baselineRealismState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get characterSystemPrompts => $composableBuilder(
+    column: $table.characterSystemPrompts,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11443,6 +13579,46 @@ class $$GroupsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get defaultMemberRealismState => $composableBuilder(
+    column: $table.defaultMemberRealismState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get chaosModeEnabled => $composableBuilder(
+    column: $table.chaosModeEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get chaosNsfwEnabled => $composableBuilder(
+    column: $table.chaosNsfwEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupLorebook => $composableBuilder(
+    column: $table.groupLorebook,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get worldIds => $composableBuilder(
+    column: $table.worldIds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get inheritCharacterLorebooks => $composableBuilder(
+    column: $table.inheritCharacterLorebooks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baselineRealismState => $composableBuilder(
+    column: $table.baselineRealismState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get characterSystemPrompts => $composableBuilder(
+    column: $table.characterSystemPrompts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -11500,6 +13676,44 @@ class $$GroupsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get defaultMemberRealismState => $composableBuilder(
+    column: $table.defaultMemberRealismState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get chaosModeEnabled => $composableBuilder(
+    column: $table.chaosModeEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get chaosNsfwEnabled => $composableBuilder(
+    column: $table.chaosNsfwEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get groupLorebook => $composableBuilder(
+    column: $table.groupLorebook,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get worldIds =>
+      $composableBuilder(column: $table.worldIds, builder: (column) => column);
+
+  GeneratedColumn<bool> get inheritCharacterLorebooks => $composableBuilder(
+    column: $table.inheritCharacterLorebooks,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get baselineRealismState => $composableBuilder(
+    column: $table.baselineRealismState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get characterSystemPrompts => $composableBuilder(
+    column: $table.characterSystemPrompts,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
@@ -11544,6 +13758,14 @@ class $$GroupsTableTableManager
                 Value<String> firstMessage = const Value.absent(),
                 Value<String> scenario = const Value.absent(),
                 Value<String> systemPrompt = const Value.absent(),
+                Value<String> defaultMemberRealismState = const Value.absent(),
+                Value<bool> chaosModeEnabled = const Value.absent(),
+                Value<bool> chaosNsfwEnabled = const Value.absent(),
+                Value<String> groupLorebook = const Value.absent(),
+                Value<String> worldIds = const Value.absent(),
+                Value<bool> inheritCharacterLorebooks = const Value.absent(),
+                Value<String> baselineRealismState = const Value.absent(),
+                Value<String> characterSystemPrompts = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11557,6 +13779,14 @@ class $$GroupsTableTableManager
                 firstMessage: firstMessage,
                 scenario: scenario,
                 systemPrompt: systemPrompt,
+                defaultMemberRealismState: defaultMemberRealismState,
+                chaosModeEnabled: chaosModeEnabled,
+                chaosNsfwEnabled: chaosNsfwEnabled,
+                groupLorebook: groupLorebook,
+                worldIds: worldIds,
+                inheritCharacterLorebooks: inheritCharacterLorebooks,
+                baselineRealismState: baselineRealismState,
+                characterSystemPrompts: characterSystemPrompts,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,
@@ -11572,6 +13802,14 @@ class $$GroupsTableTableManager
                 Value<String> firstMessage = const Value.absent(),
                 Value<String> scenario = const Value.absent(),
                 Value<String> systemPrompt = const Value.absent(),
+                Value<String> defaultMemberRealismState = const Value.absent(),
+                Value<bool> chaosModeEnabled = const Value.absent(),
+                Value<bool> chaosNsfwEnabled = const Value.absent(),
+                Value<String> groupLorebook = const Value.absent(),
+                Value<String> worldIds = const Value.absent(),
+                Value<bool> inheritCharacterLorebooks = const Value.absent(),
+                Value<String> baselineRealismState = const Value.absent(),
+                Value<String> characterSystemPrompts = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11585,6 +13823,14 @@ class $$GroupsTableTableManager
                 firstMessage: firstMessage,
                 scenario: scenario,
                 systemPrompt: systemPrompt,
+                defaultMemberRealismState: defaultMemberRealismState,
+                chaosModeEnabled: chaosModeEnabled,
+                chaosNsfwEnabled: chaosNsfwEnabled,
+                groupLorebook: groupLorebook,
+                worldIds: worldIds,
+                inheritCharacterLorebooks: inheritCharacterLorebooks,
+                baselineRealismState: baselineRealismState,
+                characterSystemPrompts: characterSystemPrompts,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 rowid: rowid,
@@ -12326,6 +14572,8 @@ typedef $$MessageEmbeddingsTableCreateCompanionBuilder =
       required Uint8List embedding,
       required int dimensions,
       Value<DateTime> createdAt,
+      Value<String> memoryType,
+      Value<String?> metadata,
       Value<int> rowid,
     });
 typedef $$MessageEmbeddingsTableUpdateCompanionBuilder =
@@ -12339,6 +14587,8 @@ typedef $$MessageEmbeddingsTableUpdateCompanionBuilder =
       Value<Uint8List> embedding,
       Value<int> dimensions,
       Value<DateTime> createdAt,
+      Value<String> memoryType,
+      Value<String?> metadata,
       Value<int> rowid,
     });
 
@@ -12393,6 +14643,16 @@ class $$MessageEmbeddingsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memoryType => $composableBuilder(
+    column: $table.memoryType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get metadata => $composableBuilder(
+    column: $table.metadata,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12450,6 +14710,16 @@ class $$MessageEmbeddingsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get memoryType => $composableBuilder(
+    column: $table.memoryType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get metadata => $composableBuilder(
+    column: $table.metadata,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MessageEmbeddingsTableAnnotationComposer
@@ -12495,6 +14765,14 @@ class $$MessageEmbeddingsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get memoryType => $composableBuilder(
+    column: $table.memoryType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get metadata =>
+      $composableBuilder(column: $table.metadata, builder: (column) => column);
 }
 
 class $$MessageEmbeddingsTableTableManager
@@ -12546,6 +14824,8 @@ class $$MessageEmbeddingsTableTableManager
                 Value<Uint8List> embedding = const Value.absent(),
                 Value<int> dimensions = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> memoryType = const Value.absent(),
+                Value<String?> metadata = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessageEmbeddingsCompanion(
                 id: id,
@@ -12557,6 +14837,8 @@ class $$MessageEmbeddingsTableTableManager
                 embedding: embedding,
                 dimensions: dimensions,
                 createdAt: createdAt,
+                memoryType: memoryType,
+                metadata: metadata,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12570,6 +14852,8 @@ class $$MessageEmbeddingsTableTableManager
                 required Uint8List embedding,
                 required int dimensions,
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> memoryType = const Value.absent(),
+                Value<String?> metadata = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MessageEmbeddingsCompanion.insert(
                 id: id,
@@ -12581,6 +14865,8 @@ class $$MessageEmbeddingsTableTableManager
                 embedding: embedding,
                 dimensions: dimensions,
                 createdAt: createdAt,
+                memoryType: memoryType,
+                metadata: metadata,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -12860,6 +15146,7 @@ typedef $$ObjectivesTableCreateCompanionBuilder =
     ObjectivesCompanion Function({
       required String id,
       required String characterId,
+      Value<String?> chatId,
       required String objective,
       Value<String> tasks,
       Value<bool> active,
@@ -12873,6 +15160,7 @@ typedef $$ObjectivesTableUpdateCompanionBuilder =
     ObjectivesCompanion Function({
       Value<String> id,
       Value<String> characterId,
+      Value<String?> chatId,
       Value<String> objective,
       Value<String> tasks,
       Value<bool> active,
@@ -12899,6 +15187,11 @@ class $$ObjectivesTableFilterComposer
 
   ColumnFilters<String> get characterId => $composableBuilder(
     column: $table.characterId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chatId => $composableBuilder(
+    column: $table.chatId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12957,6 +15250,11 @@ class $$ObjectivesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get chatId => $composableBuilder(
+    column: $table.chatId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get objective => $composableBuilder(
     column: $table.objective,
     builder: (column) => ColumnOrderings(column),
@@ -13009,6 +15307,9 @@ class $$ObjectivesTableAnnotationComposer
     column: $table.characterId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get chatId =>
+      $composableBuilder(column: $table.chatId, builder: (column) => column);
 
   GeneratedColumn<String> get objective =>
       $composableBuilder(column: $table.objective, builder: (column) => column);
@@ -13069,6 +15370,7 @@ class $$ObjectivesTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> characterId = const Value.absent(),
+                Value<String?> chatId = const Value.absent(),
                 Value<String> objective = const Value.absent(),
                 Value<String> tasks = const Value.absent(),
                 Value<bool> active = const Value.absent(),
@@ -13080,6 +15382,7 @@ class $$ObjectivesTableTableManager
               }) => ObjectivesCompanion(
                 id: id,
                 characterId: characterId,
+                chatId: chatId,
                 objective: objective,
                 tasks: tasks,
                 active: active,
@@ -13093,6 +15396,7 @@ class $$ObjectivesTableTableManager
               ({
                 required String id,
                 required String characterId,
+                Value<String?> chatId = const Value.absent(),
                 required String objective,
                 Value<String> tasks = const Value.absent(),
                 Value<bool> active = const Value.absent(),
@@ -13104,6 +15408,7 @@ class $$ObjectivesTableTableManager
               }) => ObjectivesCompanion.insert(
                 id: id,
                 characterId: characterId,
+                chatId: chatId,
                 objective: objective,
                 tasks: tasks,
                 active: active,
@@ -13735,6 +16040,515 @@ typedef $$AvatarImagesTableProcessedTableManager =
       AvatarImage,
       PrefetchHooks Function()
     >;
+typedef $$GroupMembersTableCreateCompanionBuilder =
+    GroupMembersCompanion Function({
+      required String id,
+      required String groupId,
+      required String name,
+      Value<String> description,
+      Value<String> personality,
+      Value<String> scenario,
+      Value<String> firstMessage,
+      Value<String> mesExample,
+      Value<String> systemPrompt,
+      Value<String> postHistoryInstructions,
+      Value<String> alternateGreetings,
+      Value<String> tags,
+      Value<String?> avatarFilename,
+      Value<String?> ttsVoice,
+      Value<String?> lorebook,
+      Value<String> worldNames,
+      Value<String?> frontPorchExtensions,
+      Value<String?> rawExtensions,
+      Value<String> memberState,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$GroupMembersTableUpdateCompanionBuilder =
+    GroupMembersCompanion Function({
+      Value<String> id,
+      Value<String> groupId,
+      Value<String> name,
+      Value<String> description,
+      Value<String> personality,
+      Value<String> scenario,
+      Value<String> firstMessage,
+      Value<String> mesExample,
+      Value<String> systemPrompt,
+      Value<String> postHistoryInstructions,
+      Value<String> alternateGreetings,
+      Value<String> tags,
+      Value<String?> avatarFilename,
+      Value<String?> ttsVoice,
+      Value<String?> lorebook,
+      Value<String> worldNames,
+      Value<String?> frontPorchExtensions,
+      Value<String?> rawExtensions,
+      Value<String> memberState,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$GroupMembersTableFilterComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get personality => $composableBuilder(
+    column: $table.personality,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scenario => $composableBuilder(
+    column: $table.scenario,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get firstMessage => $composableBuilder(
+    column: $table.firstMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mesExample => $composableBuilder(
+    column: $table.mesExample,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get systemPrompt => $composableBuilder(
+    column: $table.systemPrompt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get postHistoryInstructions => $composableBuilder(
+    column: $table.postHistoryInstructions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get alternateGreetings => $composableBuilder(
+    column: $table.alternateGreetings,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get avatarFilename => $composableBuilder(
+    column: $table.avatarFilename,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ttsVoice => $composableBuilder(
+    column: $table.ttsVoice,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lorebook => $composableBuilder(
+    column: $table.lorebook,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get worldNames => $composableBuilder(
+    column: $table.worldNames,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get frontPorchExtensions => $composableBuilder(
+    column: $table.frontPorchExtensions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rawExtensions => $composableBuilder(
+    column: $table.rawExtensions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberState => $composableBuilder(
+    column: $table.memberState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$GroupMembersTableOrderingComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get personality => $composableBuilder(
+    column: $table.personality,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scenario => $composableBuilder(
+    column: $table.scenario,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get firstMessage => $composableBuilder(
+    column: $table.firstMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mesExample => $composableBuilder(
+    column: $table.mesExample,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get systemPrompt => $composableBuilder(
+    column: $table.systemPrompt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get postHistoryInstructions => $composableBuilder(
+    column: $table.postHistoryInstructions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get alternateGreetings => $composableBuilder(
+    column: $table.alternateGreetings,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get avatarFilename => $composableBuilder(
+    column: $table.avatarFilename,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ttsVoice => $composableBuilder(
+    column: $table.ttsVoice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lorebook => $composableBuilder(
+    column: $table.lorebook,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get worldNames => $composableBuilder(
+    column: $table.worldNames,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get frontPorchExtensions => $composableBuilder(
+    column: $table.frontPorchExtensions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rawExtensions => $composableBuilder(
+    column: $table.rawExtensions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberState => $composableBuilder(
+    column: $table.memberState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$GroupMembersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GroupMembersTable> {
+  $$GroupMembersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get personality => $composableBuilder(
+    column: $table.personality,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get scenario =>
+      $composableBuilder(column: $table.scenario, builder: (column) => column);
+
+  GeneratedColumn<String> get firstMessage => $composableBuilder(
+    column: $table.firstMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mesExample => $composableBuilder(
+    column: $table.mesExample,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get systemPrompt => $composableBuilder(
+    column: $table.systemPrompt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get postHistoryInstructions => $composableBuilder(
+    column: $table.postHistoryInstructions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get alternateGreetings => $composableBuilder(
+    column: $table.alternateGreetings,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tags =>
+      $composableBuilder(column: $table.tags, builder: (column) => column);
+
+  GeneratedColumn<String> get avatarFilename => $composableBuilder(
+    column: $table.avatarFilename,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get ttsVoice =>
+      $composableBuilder(column: $table.ttsVoice, builder: (column) => column);
+
+  GeneratedColumn<String> get lorebook =>
+      $composableBuilder(column: $table.lorebook, builder: (column) => column);
+
+  GeneratedColumn<String> get worldNames => $composableBuilder(
+    column: $table.worldNames,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get frontPorchExtensions => $composableBuilder(
+    column: $table.frontPorchExtensions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get rawExtensions => $composableBuilder(
+    column: $table.rawExtensions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get memberState => $composableBuilder(
+    column: $table.memberState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$GroupMembersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GroupMembersTable,
+          GroupMemberRow,
+          $$GroupMembersTableFilterComposer,
+          $$GroupMembersTableOrderingComposer,
+          $$GroupMembersTableAnnotationComposer,
+          $$GroupMembersTableCreateCompanionBuilder,
+          $$GroupMembersTableUpdateCompanionBuilder,
+          (
+            GroupMemberRow,
+            BaseReferences<_$AppDatabase, $GroupMembersTable, GroupMemberRow>,
+          ),
+          GroupMemberRow,
+          PrefetchHooks Function()
+        > {
+  $$GroupMembersTableTableManager(_$AppDatabase db, $GroupMembersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GroupMembersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GroupMembersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$GroupMembersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> groupId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<String> personality = const Value.absent(),
+                Value<String> scenario = const Value.absent(),
+                Value<String> firstMessage = const Value.absent(),
+                Value<String> mesExample = const Value.absent(),
+                Value<String> systemPrompt = const Value.absent(),
+                Value<String> postHistoryInstructions = const Value.absent(),
+                Value<String> alternateGreetings = const Value.absent(),
+                Value<String> tags = const Value.absent(),
+                Value<String?> avatarFilename = const Value.absent(),
+                Value<String?> ttsVoice = const Value.absent(),
+                Value<String?> lorebook = const Value.absent(),
+                Value<String> worldNames = const Value.absent(),
+                Value<String?> frontPorchExtensions = const Value.absent(),
+                Value<String?> rawExtensions = const Value.absent(),
+                Value<String> memberState = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupMembersCompanion(
+                id: id,
+                groupId: groupId,
+                name: name,
+                description: description,
+                personality: personality,
+                scenario: scenario,
+                firstMessage: firstMessage,
+                mesExample: mesExample,
+                systemPrompt: systemPrompt,
+                postHistoryInstructions: postHistoryInstructions,
+                alternateGreetings: alternateGreetings,
+                tags: tags,
+                avatarFilename: avatarFilename,
+                ttsVoice: ttsVoice,
+                lorebook: lorebook,
+                worldNames: worldNames,
+                frontPorchExtensions: frontPorchExtensions,
+                rawExtensions: rawExtensions,
+                memberState: memberState,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String groupId,
+                required String name,
+                Value<String> description = const Value.absent(),
+                Value<String> personality = const Value.absent(),
+                Value<String> scenario = const Value.absent(),
+                Value<String> firstMessage = const Value.absent(),
+                Value<String> mesExample = const Value.absent(),
+                Value<String> systemPrompt = const Value.absent(),
+                Value<String> postHistoryInstructions = const Value.absent(),
+                Value<String> alternateGreetings = const Value.absent(),
+                Value<String> tags = const Value.absent(),
+                Value<String?> avatarFilename = const Value.absent(),
+                Value<String?> ttsVoice = const Value.absent(),
+                Value<String?> lorebook = const Value.absent(),
+                Value<String> worldNames = const Value.absent(),
+                Value<String?> frontPorchExtensions = const Value.absent(),
+                Value<String?> rawExtensions = const Value.absent(),
+                Value<String> memberState = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GroupMembersCompanion.insert(
+                id: id,
+                groupId: groupId,
+                name: name,
+                description: description,
+                personality: personality,
+                scenario: scenario,
+                firstMessage: firstMessage,
+                mesExample: mesExample,
+                systemPrompt: systemPrompt,
+                postHistoryInstructions: postHistoryInstructions,
+                alternateGreetings: alternateGreetings,
+                tags: tags,
+                avatarFilename: avatarFilename,
+                ttsVoice: ttsVoice,
+                lorebook: lorebook,
+                worldNames: worldNames,
+                frontPorchExtensions: frontPorchExtensions,
+                rawExtensions: rawExtensions,
+                memberState: memberState,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$GroupMembersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GroupMembersTable,
+      GroupMemberRow,
+      $$GroupMembersTableFilterComposer,
+      $$GroupMembersTableOrderingComposer,
+      $$GroupMembersTableAnnotationComposer,
+      $$GroupMembersTableCreateCompanionBuilder,
+      $$GroupMembersTableUpdateCompanionBuilder,
+      (
+        GroupMemberRow,
+        BaseReferences<_$AppDatabase, $GroupMembersTable, GroupMemberRow>,
+      ),
+      GroupMemberRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -13765,4 +16579,6 @@ class $AppDatabaseManager {
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
   $$AvatarImagesTableTableManager get avatarImages =>
       $$AvatarImagesTableTableManager(_db, _db.avatarImages);
+  $$GroupMembersTableTableManager get groupMembers =>
+      $$GroupMembersTableTableManager(_db, _db.groupMembers);
 }

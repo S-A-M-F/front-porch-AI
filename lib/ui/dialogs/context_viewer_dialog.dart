@@ -67,13 +67,27 @@ class ContextViewerDialog extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.analytics_outlined, color: Colors.blueAccent, size: 22),
+                  const Icon(
+                    Icons.analytics_outlined,
+                    color: Colors.blueAccent,
+                    size: 22,
+                  ),
                   const SizedBox(width: 10),
-                  const Text('Context Budget',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const Text(
+                    'Context Budget',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white54,
+                      size: 20,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -88,44 +102,59 @@ class ContextViewerDialog extends StatelessWidget {
                   children: [
                     Icon(Icons.info_outline, color: Colors.white24, size: 32),
                     SizedBox(height: 10),
-                    Text('Send a message to populate the context budget.',
+                    Text(
+                      'Send a message to populate the context budget.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38, fontSize: 13)),
+                      style: TextStyle(color: Colors.white38, fontSize: 13),
+                    ),
                     SizedBox(height: 4),
-                    Text('Budget is captured each time a prompt is assembled.',
+                    Text(
+                      'Budget is captured each time a prompt is assembled.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white24, fontSize: 11)),
+                      style: TextStyle(color: Colors.white24, fontSize: 11),
+                    ),
                   ],
                 ),
               )
             else
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Total: $totalTokens / $contextLimit tokens',
-                        style: TextStyle(color: usageColor, fontSize: 14, fontWeight: FontWeight.w600)),
-                      Text('${(usage * 100).toStringAsFixed(1)}%',
-                        style: TextStyle(color: usageColor, fontSize: 13)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: usage.clamp(0.0, 1.0),
-                      minHeight: 8,
-                      backgroundColor: Colors.white10,
-                      valueColor: AlwaysStoppedAnimation<Color>(usageColor),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total: $totalTokens / $contextLimit tokens',
+                          style: TextStyle(
+                            color: usageColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '${(usage * 100).toStringAsFixed(1)}%',
+                          style: TextStyle(color: usageColor, fontSize: 13),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: usage.clamp(0.0, 1.0),
+                        minHeight: 8,
+                        backgroundColor: Colors.white10,
+                        valueColor: AlwaysStoppedAnimation<Color>(usageColor),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
             // Stacked bar
             if (budget.isNotEmpty)
@@ -137,7 +166,9 @@ class ContextViewerDialog extends StatelessWidget {
                     height: 24,
                     child: Row(
                       children: budget.entries.map((e) {
-                        final frac = totalTokens > 0 ? e.value / totalTokens : 0.0;
+                        final frac = totalTokens > 0
+                            ? e.value / totalTokens
+                            : 0.0;
                         final color = _sectionColors[e.key] ?? Colors.grey;
                         return Expanded(
                           flex: (frac * 1000).round().clamp(1, 1000),
@@ -186,7 +217,7 @@ class ContextViewerDialog extends StatelessWidget {
     // Provide a hint - we don't store individual sections, but we have the full prompt
     final prompt = chatService.lastAssembledPrompt;
     if (prompt.isEmpty) return '(No data — send a message first)';
-    
+
     switch (section) {
       case 'System Prompt':
         final idx = prompt.indexOf('\n');
@@ -239,7 +270,8 @@ class _SectionRowState extends State<_SectionRow> {
             child: Row(
               children: [
                 Container(
-                  width: 12, height: 12,
+                  width: 12,
+                  height: 12,
                   decoration: BoxDecoration(
                     color: widget.color,
                     borderRadius: BorderRadius.circular(3),
@@ -247,22 +279,33 @@ class _SectionRowState extends State<_SectionRow> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(widget.label,
-                    style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  child: Text(
+                    widget.label,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
                 ),
-                Text('${widget.tokens}',
-                  style: TextStyle(color: widget.color, fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(
+                  '${widget.tokens}',
+                  style: TextStyle(
+                    color: widget.color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
                 const SizedBox(width: 8),
                 SizedBox(
                   width: 48,
-                  child: Text(widget.percentage,
+                  child: Text(
+                    widget.percentage,
                     style: const TextStyle(color: Colors.white38, fontSize: 12),
-                    textAlign: TextAlign.right),
+                    textAlign: TextAlign.right,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 Icon(
                   _expanded ? Icons.expand_less : Icons.expand_more,
-                  color: Colors.white24, size: 18,
+                  color: Colors.white24,
+                  size: 18,
                 ),
               ],
             ),
@@ -280,7 +323,11 @@ class _SectionRowState extends State<_SectionRow> {
             ),
             child: SelectableText(
               widget.rawText,
-              style: const TextStyle(color: Colors.white60, fontSize: 11, fontFamily: 'monospace'),
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
             ),
           ),
         const Divider(height: 1, color: Colors.white10),

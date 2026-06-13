@@ -76,7 +76,9 @@ class KokoroChunker {
     final chunks = <KokoroChunk>[];
     int chunkCounter = 0;
 
-    kDebugPrint('[KokoroChunker] Splitting text of length ${text.length} into chunks (max $maxChars chars)');
+    kDebugPrint(
+      '[KokoroChunker] Splitting text of length ${text.length} into chunks (max $maxChars chars)',
+    );
 
     for (final part in rawParts) {
       final trimmed = part.trim();
@@ -94,9 +96,13 @@ class KokoroChunker {
           prefix: prefix,
         );
         if (trimmed.length < 25) {
-          kDebugPrint('[KokoroChunker] ⚠️  Very small chunk created #${chunk.originalIndex} (len=${trimmed.length}): "${_preview(trimmed)}"');
+          kDebugPrint(
+            '[KokoroChunker] ⚠️  Very small chunk created #${chunk.originalIndex} (len=${trimmed.length}): "${_preview(trimmed)}"',
+          );
         } else {
-          kDebugPrint('[KokoroChunker] Created chunk #${chunk.originalIndex} (len=${trimmed.length}): "${_preview(trimmed)}"');
+          kDebugPrint(
+            '[KokoroChunker] Created chunk #${chunk.originalIndex} (len=${trimmed.length}): "${_preview(trimmed)}"',
+          );
         }
         chunks.add(chunk);
       } else {
@@ -114,9 +120,13 @@ class KokoroChunker {
               prefix: prefix,
             );
             if (sub.length < 25) {
-              kDebugPrint('[KokoroChunker] ⚠️  Very small FORCED chunk #${chunk.originalIndex} (len=${sub.length}): "${_preview(sub)}"');
+              kDebugPrint(
+                '[KokoroChunker] ⚠️  Very small FORCED chunk #${chunk.originalIndex} (len=${sub.length}): "${_preview(sub)}"',
+              );
             } else {
-              kDebugPrint('[KokoroChunker] Created chunk #${chunk.originalIndex} (len=${sub.length}, FORCED): "${_preview(sub)}"');
+              kDebugPrint(
+                '[KokoroChunker] Created chunk #${chunk.originalIndex} (len=${sub.length}, FORCED): "${_preview(sub)}"',
+              );
             }
             chunks.add(chunk);
           }
@@ -124,7 +134,9 @@ class KokoroChunker {
       }
     }
 
-    kDebugPrint('[KokoroChunker] Finished splitting → produced ${chunks.length} chunks');
+    kDebugPrint(
+      '[KokoroChunker] Finished splitting → produced ${chunks.length} chunks',
+    );
     return chunks;
   }
 
@@ -144,16 +156,13 @@ class KokoroChunker {
     final sentencePattern = RegExp(r'(?<=[.!?])\s+');
     final raw = text.split(sentencePattern);
 
-    final parts = raw
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
+    final parts = raw.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
     // Merge very short consecutive pieces (very common in RP dialogue).
     // Keep merging as long as the accumulated chunk is still relatively short
     // and the next piece is also short. This is tuned for stylized RP.
-    const targetMin = 40;   // Try to keep chunks at least this long when possible
-    const hardMin = 25;     // Never leave a chunk shorter than this unless forced
+    const targetMin = 40; // Try to keep chunks at least this long when possible
+    const hardMin = 25; // Never leave a chunk shorter than this unless forced
 
     final merged = <String>[];
     int i = 0;
@@ -168,7 +177,8 @@ class KokoroChunker {
         if (next.length > 40) break; // next piece is substantial, stop merging
 
         final combinedLen = current.length + 1 + next.length; // +1 for space
-        if (combinedLen < targetMin || (current.length < hardMin && combinedLen < 80)) {
+        if (combinedLen < targetMin ||
+            (current.length < hardMin && combinedLen < 80)) {
           current = '$current $next';
           i++;
         } else {
@@ -216,13 +226,18 @@ class KokoroChunker {
     int index = 0;
     int start = 0;
 
-    kDebugPrint('[KokoroChunker] Using smart fixed-character chunking (target ${chunkSize} chars) for verbatim mode');
+    kDebugPrint(
+      '[KokoroChunker] Using smart fixed-character chunking (target $chunkSize chars) for verbatim mode',
+    );
 
     while (start < text.length) {
       if (start >= text.length) break;
 
       int idealEnd = start + chunkSize;
-      int searchEnd = (idealEnd + 40).clamp(0, text.length); // small lookahead for better breaks
+      int searchEnd = (idealEnd + 40).clamp(
+        0,
+        text.length,
+      ); // small lookahead for better breaks
 
       int chosenEnd = text.length;
 
@@ -237,7 +252,9 @@ class KokoroChunker {
         final candidates = <int>[];
 
         // 1. Strong sentence / dialogue ends — best possible break for prosody
-        final sentenceEnd = RegExp(r'[.!?]["”»]?\s+').allMatches(window).lastOrNull;
+        final sentenceEnd = RegExp(
+          r'[.!?]["”»]?\s+',
+        ).allMatches(window).lastOrNull;
         if (sentenceEnd != null) {
           candidates.add(windowStart + sentenceEnd.end);
         }
@@ -306,9 +323,13 @@ class KokoroChunker {
         );
 
         if (chunkText.length < 25) {
-          kDebugPrint('[KokoroChunker] ⚠️  Very small chunk created #${chunk.originalIndex} (len=${chunkText.length}): "${_preview(chunkText)}"');
+          kDebugPrint(
+            '[KokoroChunker] ⚠️  Very small chunk created #${chunk.originalIndex} (len=${chunkText.length}): "${_preview(chunkText)}"',
+          );
         } else {
-          kDebugPrint('[KokoroChunker] Created chunk #${chunk.originalIndex} (len=${chunkText.length}): "${_preview(chunkText)}"');
+          kDebugPrint(
+            '[KokoroChunker] Created chunk #${chunk.originalIndex} (len=${chunkText.length}): "${_preview(chunkText)}"',
+          );
         }
 
         chunks.add(chunk);
@@ -317,12 +338,15 @@ class KokoroChunker {
       start = chosenEnd;
 
       // Skip leading whitespace for the next chunk
-      while (start < text.length && (text[start] == ' ' || text[start] == '\n' || text[start] == '\t')) {
+      while (start < text.length &&
+          (text[start] == ' ' || text[start] == '\n' || text[start] == '\t')) {
         start++;
       }
     }
 
-    kDebugPrint('[KokoroChunker] Finished smart fixed-character splitting → produced ${chunks.length} chunks');
+    kDebugPrint(
+      '[KokoroChunker] Finished smart fixed-character splitting → produced ${chunks.length} chunks',
+    );
     return chunks;
   }
 
@@ -335,7 +359,10 @@ class KokoroChunker {
 
     while (remaining.length > maxChars) {
       // Look for a reasonable break point in the window [maxChars*0.65 ... maxChars + 60]
-      final minSearch = (maxChars * 0.65).floor().clamp(0, remaining.length - 1);
+      final minSearch = (maxChars * 0.65).floor().clamp(
+        0,
+        remaining.length - 1,
+      );
       final maxSearch = (maxChars + 60).clamp(0, remaining.length);
 
       final searchRegion = remaining.substring(minSearch, maxSearch);
@@ -344,9 +371,18 @@ class KokoroChunker {
 
       // Preferred break points for RP/prose (in rough order of quality)
       final breakOptions = [
-        ', ', '; ', ' and ', ' but ', ' so ', ' because ',
-        '—', '–', '…', '...',
-        ', ', ' '
+        ', ',
+        '; ',
+        ' and ',
+        ' but ',
+        ' so ',
+        ' because ',
+        '—',
+        '–',
+        '…',
+        '...',
+        ', ',
+        ' ',
       ];
 
       for (final option in breakOptions) {

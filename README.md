@@ -3,10 +3,24 @@
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![Branch](https://img.shields.io/badge/Branch-Rawhide-orange)
+
+**Rawhide is the primary rolling development branch.** All new features, experiments, refactors, and the majority of ongoing work land here. Nightly / cutting-edge builds are produced from Rawhide. Stable releases are tagged on `main`. Beta stabilization branches (e.g. `0.9.x-Beta`) are cut from Rawhide when preparing a release.
 
 **A privacy-first AI companion for Windows, Linux, and macOS.** Runs fully offline with local LLMs (KoboldCpp, etc.) by default, but also supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them.
 
-💬 **[Join the Discord](https://discord.gg/e4tET6rpdv)** — questions, feedback, and hanging out welcome. Also on **[Matrix](https://matrix.dreamersai.art)**.
+💬 **[Join the Discord](https://discord.gg/e4tET6rpdv)** — questions, feedback, and hanging out welcome.
+
+### 🌟 Community Showcase
+
+Front Porch is growing a small companion ecosystem. Big thanks to community members building tools that integrate deeply.
+
+**Character Card Forge** by [@FrozenKangaroo](https://github.com/FrozenKangaroo) — A companion editor with strong integration, including emotion image export and seeding initial Realism Engine state.
+
+[Check it out →](https://github.com/FrozenKangaroo/Character-Card-Forge)  
+If you use it, a star would mean a lot to the developer.
+
+> **Note:** This community tool uses direct database access for its advanced features. It can be impacted by future schema changes.
 
 <p align="center">
   <img src="docs/screenshots/home_new.png" width="800" alt="Front Porch AI — Character Library">
@@ -14,10 +28,39 @@
 
 ---
 
-<p align="center">
-  <strong>Download v0.9.8</strong><br><br>
-  <a href="https://github.com/linux4life1/front-porch-ai/releases/latest"><strong>Windows • macOS • Linux</strong></a>
-</p>
+## 🆕 What's New on Rawhide (vs main)
+
+These are the user-facing changes and improvements that have landed on the Rawhide branch since it diverged from `main`. Many originated on the dedicated refactor workstream and were promoted here; others are targeted fixes and polish.
+
+- 🏗️ **God File Modularization (Stages 1–7 complete)** — The largest god files (`chat_service.dart`, `storage_service.dart`, key UI pages like settings/character creator/chat, and supporting services) have been decomposed into focused, single-responsibility, testable modules. Full behavioral parity for 1:1 chats, group chats, Realism Engine (bond/trust/emotion/arousal/fixation), Needs simulation, objectives, character evolution, fact extraction, summaries, prompt injection, RAG, creators, and everything else. The entire test suite is now reliably green with a strong new baseline (+1126 tests). This is a major internal restructuring that makes future features and fixes faster and safer — you should see no functional differences, just a more solid app.
+
+- 🎯 **Autonomous character objectives now reliably generate subtasks** — When the Realism Engine proposes a personal goal for a character ("proposed_objective"), the system now consistently auto-generates 3 concrete sequential tasks the character can pursue. This was previously unreliable (especially under group impersonation and per-speaker evaluation paths). User-created objectives (typed in the UI) correctly do *not* auto-generate tasks; you remain in full control and can still press Generate Tasks manually when you want them.
+
+- 🧠 **Thinking / reasoning models get proper breathing room for objectives & tasks** — Subtask generation and objective/task completion checks raised from 600/1024 tokens to 2000. `<think>...</think>` stripping (using the central robust helper that also handles unclosed tags) now runs after the full stream. Models that reason for hundreds of tokens before emitting the final numbered list or YES/NO now work reliably. Autonomous proposals already had generous limits; the subtask paths now match.
+
+- 🔏 **macOS nightly build quality** — Switched CI to .pkg packaging (with deep PyInstaller code signing for frameworks inside sidecars), proper notarize-before-DMG / notarize-and-staple flows, and removal of problematic --deep signing. Rawhide nightlies now pass Apple's notary service cleanly and produce better-behaved macOS installs with fewer Gatekeeper / "damaged or incomplete" issues.
+
+- 🐛 **Realism Engine, Needs, Group chat & state reliability fixes** (multiple rounds):
+  - Sidebar bond/trust (short + long form) now correctly reflect eval results and stay in sync with chips.
+  - Group chats: per-speaker needs vectors, scene impact rewards (fun/social/hygiene etc. from activities), decay, and sidebar/cards now persist and display correctly. Pre-turn snapshots, post-gen save of scalars into group state, and impersonation dance for checks are all hardened.
+  - Zero-delta needs chips are now skipped (no more clutter rows of "X 0").
+  - Climax / sexual / daily post-gen checks no longer risk double-firing for the same response.
+  - Fixed duplicate user/character messages appearing on session load (racy delete+insert in save path).
+  - Fresh starts, forks, new chats, and imported characters no longer bleed needs/fixation/relationship/parent-session state from previous contexts.
+  - Fixation and baseline bleed prevention on new chats and character imports.
+  - Various other polish to needs delta computation, chip reasons, group member cards, and "keep blocks in sync" reset hygiene across 1:1 vs group paths.
+
+- ✨ **Home screen & import UX** — Added a refresh button next to the multi-select controls so you can re-scan for external character imports without leaving the page.
+
+- 🛠️ **Database Cleanup Tool** (infrastructure landed; UI currently gated behind verification) — New utility to detect and optionally purge orphaned records (data left behind by deleted characters, stray group sessions, etc.). The core + dialog landed via community PR and was integrated during the refactor window.
+
+- 📦 **Build / CI / packaging polish for nightlies** — Distinct Rawhide app naming on Windows/macOS so nightlies don't collide with stable installs, ML cache cleanup in workflows, improved artifact handling, and many small reliability wins in the release/nightly pipelines.
+
+- 🔧 **Lint & test hygiene** — Literal zero remaining info-level lints on the active ruleset. Full test suite stabilized post-refactor as the new baseline.
+
+See `docs/Rawhide.md` for the concise version that feeds the in-app update dialog, and `docs/refactoring-guide.md` + `docs/refactor-god-file-modularization.md` for the technical record of the modularization work.
+
+> **Note for contributors & AI agents**: Per-branch user-facing notes live in `docs/<BranchName>.md` (e.g. `docs/Rawhide.md`). Update it for any user-visible work, just like appending to internal changelogs. Never mix notes across branches.
 
 ---
 
@@ -267,7 +310,6 @@ Starting with **v0.9.0**, this project is licensed under **AGPL-3.0** — meanin
 ## 💬 Community
 
 - **Discord**: [Join our server](https://discord.gg/e4tET6rpdv)
-- **Matrix**: [matrix.dreamersai.art](https://matrix.dreamersai.art)
 
 ---
 
@@ -275,10 +317,11 @@ Starting with **v0.9.0**, this project is licensed under **AGPL-3.0** — meanin
 
 Pull requests are welcome! If you're a dev reading this far down, here's what you need to know:
 
-- **Branch workflow:** All PRs target the **`dev`** branch — never `main`. The `main` branch is for stable releases only.
+- **Branch workflow:** All new features, experiments, and major work target the **`Rawhide`** branch (the primary rolling development line). Bug fixes for the current stable go to `dev`. Beta stabilization branches (e.g. `0.9.x-Beta`) receive only fixes for that release series. `main` is for final tagged stable releases only. See AGENTS.md for the full current model.
+- **Nightly / scheduled builds & schedule triggers:** Automatic builds are powered by `.github/workflows/nightly.yml`. GitHub **only** reads `on: schedule:` from the default branch (`main`). A current copy of the workflow (especially the version-patching step) must live on `main`, otherwise nightly compiles will fail. The job typically checks out the active development branch for source, but the workflow definition itself always comes from `main`.
 - **Commit conventions:** Follow the guidelines in [AGENTS.md](AGENTS.md) for commit message format, code style, and naming conventions.
 - **Full guide:** See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing requirements, and the PR template.
-- **Before you PR:** Run `flutter analyze` and `flutter test` locally. CI will check these too, but saving a round-trip is nicer for everyone.
+- **Before you PR:** Run `flutter analyze` and `flutter test` locally. The project is now at 0 warnings on the active rules. CI analyzes only changed `.dart` files on PRs (plus a full scheduled lint job). Introducing new warnings will fail CI.
 
 ---
 

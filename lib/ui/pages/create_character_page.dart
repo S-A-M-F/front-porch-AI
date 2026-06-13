@@ -32,6 +32,8 @@ import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 
 /// Manual character creator — 6-step wizard.
@@ -89,7 +91,30 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   String _realismEmotionIntensity = 'mild';
   bool _realismNsfwCooldown = false;
   bool _realismChaosMode = false;
+  bool _realismNeedsSim = false;
+  bool _realismEnjoysLowHygiene = false;
   String _realismCurrentTask = '';
+  bool _realismVerificationEnabled = false;
+  int _realismVerificationMaxReprocesses = 1;
+  int _realismVerificationStrictness = 3;
+  bool _realismNeedsDirectorAuthority = false;
+
+  // ── Needs Simulation baselines (0-100) ──
+  int _needsBaselineHunger = 80;
+  int _needsBaselineBladder = 80;
+  int _needsBaselineEnergy = 80;
+  int _needsBaselineSocial = 80;
+  int _needsBaselineFun = 80;
+  int _needsBaselineHygiene = 80;
+  int _needsBaselineComfort = 80;
+
+  int _needsDecayHunger = 5;
+  int _needsDecayBladder = 5;
+  int _needsDecayEnergy = 5;
+  int _needsDecaySocial = 5;
+  int _needsDecayFun = 5;
+  int _needsDecayHygiene = 5;
+  int _needsDecayComfort = 5;
 
   // ── Token counter ──
   int _totalTokenEstimate = 0;
@@ -123,7 +148,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     }
     // Add lorebook entries
     for (final entry in _lorebookEntries) {
-      total += ((entry.name.length + entry.key.length + entry.content.length) / 4).ceil();
+      total +=
+          ((entry.name.length + entry.key.length + entry.content.length) / 4)
+              .ceil();
     }
     if (mounted && total != _totalTokenEstimate) {
       setState(() => _totalTokenEstimate = total);
@@ -154,12 +181,13 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.surfaceOf(context),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Provider.of<AppState>(context, listen: false).setIndex(0),
+          onPressed: () =>
+              Provider.of<AppState>(context, listen: false).setIndex(0),
         ),
         title: Row(
           children: [
@@ -178,23 +206,19 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             child: _currentStep == 0
                 ? _buildIdentityStep()
                 : _currentStep == 1
-                    ? _buildPersonalityStep()
-                    : _currentStep == 2
-                        ? _buildDialogueStep()
-                        : _currentStep == 3
-                            ? _buildLorebookStep()
-                            : _currentStep == 4
-                                ? _buildRealismStep()
-                                : _currentStep == 5
-                                    ? _buildExpressionImagesStep()
-                                    : _buildReviewStep(),
+                ? _buildPersonalityStep()
+                : _currentStep == 2
+                ? _buildDialogueStep()
+                : _currentStep == 3
+                ? _buildLorebookStep()
+                : _currentStep == 4
+                ? _buildRealismStep()
+                : _currentStep == 5
+                ? _buildExpressionImagesStep()
+                : _buildReviewStep(),
           ),
           // Floating token counter
-          Positioned(
-            right: 24,
-            bottom: 24,
-            child: _buildTokenBadge(),
-          ),
+          Positioned(right: 24, bottom: 24, child: _buildTokenBadge()),
         ],
       ),
     );
@@ -228,6 +252,23 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   Widget _stepDot(int step, String label) {
     final isActive = _currentStep >= step;
     final isCurrent = _currentStep == step;
+
+    final dotColor = isActive
+        ? AppColors.resolve(context, Colors.blueAccent, Colors.blue.shade700)
+        : AppColors.surfaceContainerOf(context);
+
+    final borderColor = isCurrent
+        ? AppColors.textPrimary(context)
+        : AppColors.borderOf(context);
+
+    final numberOrCheckColor = isActive
+        ? AppColors.resolve(context, Colors.white, Colors.white)
+        : AppColors.textTertiary(context);
+
+    final labelColor = isActive
+        ? AppColors.textSecondary(context)
+        : AppColors.textTertiary(context);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -236,25 +277,24 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           height: 24,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isActive ? Colors.blueAccent : Colors.white12,
-            border: isCurrent ? Border.all(color: Colors.white, width: 2) : null,
+            color: dotColor,
+            border: isCurrent
+                ? Border.all(color: borderColor, width: 2)
+                : Border.all(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.3),
+                  ),
           ),
           child: Center(
             child: isActive && !isCurrent
-                ? const Icon(Icons.check, size: 14, color: Colors.white)
-                : Text('${step + 1}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isActive ? Colors.white : Colors.white38,
-                    )),
+                ? Icon(Icons.check, size: 14, color: numberOrCheckColor)
+                : Text(
+                    '${step + 1}',
+                    style: TextStyle(fontSize: 11, color: numberOrCheckColor),
+                  ),
           ),
         ),
         const SizedBox(height: 2),
-        Text(label,
-            style: TextStyle(
-              fontSize: 10,
-              color: isActive ? Colors.white70 : Colors.white30,
-            )),
+        Text(label, style: TextStyle(fontSize: 10, color: labelColor)),
       ],
     );
   }
@@ -264,7 +304,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       width: 24,
       height: 2,
       margin: const EdgeInsets.only(bottom: 14),
-      color: Colors.white12,
+      color: AppColors.borderOf(context).withValues(alpha: 0.35),
     );
   }
 
@@ -272,8 +312,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     final color = _totalTokenEstimate > 4000
         ? Colors.redAccent
         : _totalTokenEstimate > 2000
-            ? Colors.orangeAccent
-            : Colors.blueAccent;
+        ? Colors.orangeAccent
+        : Colors.blueAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -295,7 +335,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           const SizedBox(width: 6),
           Text(
             '~$_totalTokenEstimate tokens',
-            style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -312,8 +356,17 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     VoidCallback? onNext,
     bool showBack = true,
   }) {
-    final labels = ['Personality', 'Dialogue', 'Lorebook', 'Realism Engine', 'Expression Images', 'Review & Save'];
-    final nextText = nextLabel ?? (currentStep < labels.length ? 'Next: ${labels[currentStep]}' : 'Save');
+    final labels = [
+      'Personality',
+      'Dialogue',
+      'Lorebook',
+      'Realism Engine',
+      'Expression Images',
+      'Review & Save',
+    ];
+    final nextText =
+        nextLabel ??
+        (currentStep < labels.length ? 'Next: ${labels[currentStep]}' : 'Save');
 
     return Padding(
       padding: const EdgeInsets.only(top: 32),
@@ -325,13 +378,16 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               SizedBox(
                 height: 52,
                 child: OutlinedButton.icon(
-                  onPressed: () => setState(() => _currentStep = currentStep - 1),
+                  onPressed: () =>
+                      setState(() => _currentStep = currentStep - 1),
                   icon: const Icon(Icons.arrow_back, size: 18),
                   label: const Text('Back', style: TextStyle(fontSize: 14)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white54,
-                    side: const BorderSide(color: Colors.white24),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    foregroundColor: AppColors.textSecondary(context),
+                    side: BorderSide(color: AppColors.borderOf(context)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
@@ -340,28 +396,43 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               width: 280,
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: onNext ?? () {
-                  // Validate on step 0 (name required)
-                  if (currentStep == 0) {
-                    if (_nameController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Character name is required'),
-                          backgroundColor: Colors.redAccent,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                      return;
-                    }
-                  }
-                  setState(() => _currentStep = currentStep + 1);
-                },
-                icon: Icon(currentStep >= 4 ? Icons.check : Icons.arrow_forward, size: 20),
+                onPressed:
+                    onNext ??
+                    () {
+                      // Validate on step 0 (name required)
+                      if (currentStep == 0) {
+                        if (_nameController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Character name is required'),
+                              backgroundColor: Colors.redAccent,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          return;
+                        }
+                      }
+                      setState(() => _currentStep = currentStep + 1);
+                    },
+                icon: Icon(
+                  currentStep >= 4 ? Icons.check : Icons.arrow_forward,
+                  size: 20,
+                ),
                 label: Text(nextText, style: const TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  backgroundColor: AppColors.resolve(
+                    context,
+                    Colors.blueAccent,
+                    Colors.blue.shade700,
+                  ),
+                  foregroundColor: AppColors.resolve(
+                    context,
+                    Colors.white,
+                    Colors.black87,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -385,14 +456,22 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Character Identity',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
+                ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Set your character\'s name, avatar, and tags.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary(context),
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -405,8 +484,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     height: 260,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      color: const Color(0xFF1E293B),
-                      border: Border.all(color: Colors.white12),
+                      color: AppColors.surfaceContainerOf(context),
+                      border: Border.all(color: AppColors.borderOf(context)),
                       image: _avatarBytes != null
                           ? DecorationImage(
                               image: MemoryImage(_avatarBytes!),
@@ -418,10 +497,19 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                         ? Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.add_a_photo, size: 48, color: Colors.white.withValues(alpha: 0.2)),
+                              Icon(
+                                Icons.add_a_photo,
+                                size: 48,
+                                color: AppColors.textTertiary(context),
+                              ),
                               const SizedBox(height: 8),
-                              const Text('Click to add avatar',
-                                  style: TextStyle(color: Colors.white38, fontSize: 13)),
+                              Text(
+                                'Click to add avatar',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary(context),
+                                  fontSize: 13,
+                                ),
+                              ),
                             ],
                           )
                         : Align(
@@ -430,10 +518,14 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                               margin: const EdgeInsets.all(8),
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: Colors.black54,
+                                color: AppColors.surfaceOf(context),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.camera_alt, size: 18, color: Colors.white70),
+                              child: Icon(
+                                Icons.camera_alt,
+                                size: 18,
+                                color: AppColors.iconSecondary(context),
+                              ),
                             ),
                           ),
                   ),
@@ -446,7 +538,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameController,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 16,
+                ),
                 decoration: _inputDecoration('Enter character name'),
               ),
               const SizedBox(height: 24),
@@ -458,14 +553,26 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  ..._tags.map((tag) => Chip(
-                    label: Text(tag, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    backgroundColor: const Color(0xFF374151),
-                    side: BorderSide.none,
-                    deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white38),
-                    onDeleted: () => setState(() => _tags.remove(tag)),
-                    visualDensity: VisualDensity.compact,
-                  )),
+                  ..._tags.map(
+                    (tag) => Chip(
+                      label: Text(
+                        tag,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                      backgroundColor: AppColors.surfaceContainerOf(context),
+                      side: BorderSide.none,
+                      deleteIcon: Icon(
+                        Icons.close,
+                        size: 14,
+                        color: AppColors.iconSecondary(context),
+                      ),
+                      onDeleted: () => setState(() => _tags.remove(tag)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -474,7 +581,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   Expanded(
                     child: TextField(
                       controller: _tagController,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      style: TextStyle(
+                        color: AppColors.textPrimary(context),
+                        fontSize: 14,
+                      ),
                       decoration: _inputDecoration('Add a tag...'),
                       onSubmitted: _addTag,
                     ),
@@ -482,7 +592,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: () => _addTag(_tagController.text),
-                    icon: const Icon(Icons.add_circle, color: Colors.blueAccent),
+                    icon: const Icon(
+                      Icons.add_circle,
+                      color: Colors.blueAccent,
+                    ),
                     tooltip: 'Add tag',
                   ),
                 ],
@@ -535,47 +648,85 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             children: [
               const Text(
                 'Personality & World',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Define who your character is and the world they inhabit.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
-              _expandableField('Description', _descriptionController,
-                  hint: 'Physical appearance, backstory, key traits...', maxLines: 4),
+              _expandableField(
+                'Description',
+                _descriptionController,
+                hint: 'Physical appearance, backstory, key traits...',
+                maxLines: 4,
+              ),
               const SizedBox(height: 20),
 
-              _expandableField('Personality', _personalityController,
-                  hint: 'How they act, speak, think...', maxLines: 3),
+              _expandableField(
+                'Personality',
+                _personalityController,
+                hint: 'How they act, speak, think...',
+                maxLines: 3,
+              ),
               const SizedBox(height: 20),
 
-              _expandableField('Scenario', _scenarioController,
-                  hint: 'The setting, situation, or context...', maxLines: 3),
+              _expandableField(
+                'Scenario',
+                _scenarioController,
+                hint: 'The setting, situation, or context...',
+                maxLines: 3,
+              ),
               const SizedBox(height: 24),
 
               // Advanced Prompts (collapsed)
               Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   tilePadding: EdgeInsets.zero,
                   title: const Row(
                     children: [
-                      Icon(Icons.settings_suggest, size: 18, color: Colors.white38),
+                      Icon(
+                        Icons.settings_suggest,
+                        size: 18,
+                        color: Colors.white38,
+                      ),
                       SizedBox(width: 8),
-                      Text('Advanced Prompts (optional)',
-                          style: TextStyle(color: Colors.white54, fontSize: 14)),
+                      Text(
+                        'Advanced Prompts (optional)',
+                        style: TextStyle(color: Colors.white54, fontSize: 14),
+                      ),
                     ],
                   ),
                   children: [
                     const SizedBox(height: 8),
-                    _expandableField('System Prompt', _systemPromptController,
-                        hint: 'Instructions for the AI about how to play this character...', maxLines: 4),
+                    _expandableField(
+                      'System Prompt',
+                      _systemPromptController,
+                      hint:
+                          'Instructions for the AI about how to play this character...',
+                      maxLines: 4,
+                    ),
                     const SizedBox(height: 16),
-                    _expandableField('Post-History Instructions', _postHistoryController,
-                        hint: 'Injected after chat history, before AI response...', maxLines: 3),
+                    _expandableField(
+                      'Post-History Instructions',
+                      _postHistoryController,
+                      hint:
+                          'Injected after chat history, before AI response...',
+                      maxLines: 3,
+                    ),
                   ],
                 ),
               ),
@@ -604,17 +755,30 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             children: [
               const Text(
                 'Dialogue & Greetings',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Configure the character\'s opening message and example dialogue.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
-              _expandableField('First Message', _firstMessageController,
-                  hint: 'The character\'s opening message when a conversation starts...', maxLines: 6),
+              _expandableField(
+                'First Message',
+                _firstMessageController,
+                hint:
+                    'The character\'s opening message when a conversation starts...',
+                maxLines: 6,
+              ),
               const SizedBox(height: 24),
 
               // Alternate Greetings
@@ -632,7 +796,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     },
                     icon: const Icon(Icons.add, size: 16),
                     label: const Text('Add Greeting'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.blueAccent),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.blueAccent,
+                    ),
                   ),
                 ],
               ),
@@ -646,8 +812,12 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: _expandableField('Greeting ${idx + 1}', ctrl,
-                            hint: 'Alternative opening message...', maxLines: 4),
+                        child: _expandableField(
+                          'Greeting ${idx + 1}',
+                          ctrl,
+                          hint: 'Alternative opening message...',
+                          maxLines: 4,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       IconButton(
@@ -657,7 +827,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                             _altGreetingControllers.removeAt(idx);
                           });
                         },
-                        icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                        icon: const Icon(
+                          Icons.remove_circle_outline,
+                          color: Colors.redAccent,
+                          size: 20,
+                        ),
                         tooltip: 'Remove greeting',
                       ),
                     ],
@@ -666,8 +840,12 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               }),
               const SizedBox(height: 20),
 
-              _expandableField('Example Dialogue', _exampleDialogueController,
-                  hint: '<START>\n{{user}}: Hello!\n{{char}}: *smiles warmly*', maxLines: 6),
+              _expandableField(
+                'Example Dialogue',
+                _exampleDialogueController,
+                hint: '<START>\n{{user}}: Hello!\n{{char}}: *smiles warmly*',
+                maxLines: 6,
+              ),
 
               _buildNavButtons(currentStep: 2),
             ],
@@ -699,12 +877,20 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       children: [
                         Text(
                           'Lorebook',
-                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                         SizedBox(height: 8),
                         Text(
                           'Add world lore entries that inject context into conversations when keywords are detected.',
-                          style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white54,
+                            height: 1.5,
+                          ),
                         ),
                       ],
                     ),
@@ -717,7 +903,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blueAccent,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ],
@@ -730,18 +918,28 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E293B),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
                   ),
                   child: Center(
                     child: Column(
                       children: [
-                        Icon(Icons.menu_book_outlined, size: 48, color: Colors.white.withValues(alpha: 0.15)),
+                        Icon(
+                          Icons.menu_book_outlined,
+                          size: 48,
+                          color: Colors.white.withValues(alpha: 0.15),
+                        ),
                         const SizedBox(height: 12),
-                        const Text('No lorebook entries yet',
-                            style: TextStyle(color: Colors.white38, fontSize: 15)),
+                        const Text(
+                          'No lorebook entries yet',
+                          style: TextStyle(color: Colors.white38, fontSize: 15),
+                        ),
                         const SizedBox(height: 4),
-                        const Text('Add entries to inject context-aware world lore into conversations.',
-                            style: TextStyle(color: Colors.white24, fontSize: 12)),
+                        const Text(
+                          'Add entries to inject context-aware world lore into conversations.',
+                          style: TextStyle(color: Colors.white24, fontSize: 12),
+                        ),
                       ],
                     ),
                   ),
@@ -780,24 +978,40 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           // Header row
           Row(
             children: [
-              Icon(Icons.menu_book, size: 16,
-                  color: entry.constant ? Colors.amberAccent : Colors.blueAccent),
+              Icon(
+                Icons.menu_book,
+                size: 16,
+                color: entry.constant ? Colors.amberAccent : Colors.blueAccent,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   entry.displayName,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               if (entry.constant)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.amberAccent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text('Always Active',
-                      style: TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.w600)),
+                  child: const Text(
+                    'Always Active',
+                    style: TextStyle(
+                      color: Colors.amberAccent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               const SizedBox(width: 8),
               IconButton(
@@ -808,7 +1022,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               ),
               IconButton(
                 onPressed: () => _deleteLorebookEntry(index),
-                icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: Colors.redAccent,
+                ),
                 tooltip: 'Delete entry',
                 visualDensity: VisualDensity.compact,
               ),
@@ -816,14 +1034,22 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           ),
           if (!entry.constant && entry.key.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('Keys: ${entry.key}',
-                style: const TextStyle(color: Colors.blueAccent, fontSize: 11)),
+            Text(
+              'Keys: ${entry.key}',
+              style: const TextStyle(color: Colors.blueAccent, fontSize: 11),
+            ),
           ],
           if (entry.content.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
-              entry.content.length > 120 ? '${entry.content.substring(0, 120)}...' : entry.content,
-              style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
+              entry.content.length > 120
+                  ? '${entry.content.substring(0, 120)}...'
+                  : entry.content,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                height: 1.4,
+              ),
             ),
           ],
         ],
@@ -848,7 +1074,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
 
   void _showLorebookEntryDialog(int? editIndex) {
     final isEditing = editIndex != null;
-    final entry = isEditing ? _lorebookEntries[editIndex] : LorebookEntry(key: '', content: '');
+    final entry = isEditing
+        ? _lorebookEntries[editIndex]
+        : LorebookEntry(key: '', content: '');
 
     final nameCtrl = TextEditingController(text: entry.name);
     final keyCtrl = TextEditingController(text: entry.key);
@@ -861,7 +1089,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
           backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
             child: Padding(
@@ -870,8 +1100,14 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(isEditing ? 'Edit Lorebook Entry' : 'Add Lorebook Entry',
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    isEditing ? 'Edit Lorebook Entry' : 'Add Lorebook Entry',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   TextField(
                     controller: nameCtrl,
@@ -882,7 +1118,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   TextField(
                     controller: keyCtrl,
                     enabled: !constant,
-                    style: TextStyle(color: constant ? Colors.white38 : Colors.white, fontSize: 14),
+                    style: TextStyle(
+                      color: constant ? Colors.white38 : Colors.white,
+                      fontSize: 14,
+                    ),
                     decoration: _inputDecoration('Keywords (comma-separated)'),
                   ),
                   const SizedBox(height: 12),
@@ -902,18 +1141,30 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       Checkbox(
                         value: constant,
                         activeColor: Colors.amberAccent,
-                        onChanged: (v) => setDialogState(() => constant = v ?? false),
+                        onChanged: (v) =>
+                            setDialogState(() => constant = v ?? false),
                       ),
-                      const Text('Always Active', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      const Text(
+                        'Always Active',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
                       const Spacer(),
                       if (!constant) ...[
-                        const Text('Depth: ', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        const Text(
+                          'Depth: ',
+                          style: TextStyle(color: Colors.white38, fontSize: 12),
+                        ),
                         SizedBox(
                           width: 50,
                           child: TextField(
-                            controller: TextEditingController(text: stickyDepth.toString()),
+                            controller: TextEditingController(
+                              text: stickyDepth.toString(),
+                            ),
                             keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
                             textAlign: TextAlign.center,
                             decoration: const InputDecoration(
                               border: InputBorder.none,
@@ -934,7 +1185,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(color: Colors.white54),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton(
@@ -956,7 +1210,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                           });
                           Navigator.pop(ctx);
                         },
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                        ),
                         child: Text(isEditing ? 'Save' : 'Add'),
                       ),
                     ],
@@ -984,15 +1240,23 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Realism Engine',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary(context),
+                ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Set the initial state for the Realism Engine when a new conversation starts. '
                 'These values will seed the relationship, emotion, and time-of-day systems.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary(context),
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -1000,25 +1264,93 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 enabled: _realismEnabled,
                 onEnabledChanged: (v) => setState(() => _realismEnabled = v),
                 timeOfDay: _realismTimeOfDay,
-                onTimeOfDayChanged: (v) => setState(() => _realismTimeOfDay = v),
+                onTimeOfDayChanged: (v) =>
+                    setState(() => _realismTimeOfDay = v),
                 dayCount: _realismDayCount,
                 onDayCountChanged: (v) => setState(() => _realismDayCount = v),
                 shortTermBond: _realismShortTermBond,
-                onShortTermBondChanged: (v) => setState(() => _realismShortTermBond = v),
+                onShortTermBondChanged: (v) =>
+                    setState(() => _realismShortTermBond = v),
                 longTermBond: _realismLongTermBond,
-                onLongTermBondChanged: (v) => setState(() => _realismLongTermBond = v),
+                onLongTermBondChanged: (v) =>
+                    setState(() => _realismLongTermBond = v),
                 trustLevel: _realismTrustLevel,
-                onTrustLevelChanged: (v) => setState(() => _realismTrustLevel = v),
+                onTrustLevelChanged: (v) =>
+                    setState(() => _realismTrustLevel = v),
                 emotion: _realismEmotion,
                 onEmotionChanged: (v) => setState(() => _realismEmotion = v),
                 emotionIntensity: _realismEmotionIntensity,
-                onEmotionIntensityChanged: (v) => setState(() => _realismEmotionIntensity = v),
+                onEmotionIntensityChanged: (v) =>
+                    setState(() => _realismEmotionIntensity = v),
                 nsfwCooldownEnabled: _realismNsfwCooldown,
-                onNsfwCooldownChanged: (v) => setState(() => _realismNsfwCooldown = v),
+                onNsfwCooldownChanged: (v) =>
+                    setState(() => _realismNsfwCooldown = v),
                 chaosModeEnabled: _realismChaosMode,
-                onChaosModeChanged: (v) => setState(() => _realismChaosMode = v),
+                onChaosModeChanged: (v) =>
+                    setState(() => _realismChaosMode = v),
                 currentTask: _realismCurrentTask,
-                onCurrentTaskChanged: (v) => setState(() => _realismCurrentTask = v),
+                onCurrentTaskChanged: (v) =>
+                    setState(() => _realismCurrentTask = v),
+                realismVerificationEnabled: _realismVerificationEnabled,
+                onRealismVerificationChanged: (v) =>
+                    setState(() => _realismVerificationEnabled = v),
+                realismVerificationMaxReprocesses:
+                    _realismVerificationMaxReprocesses,
+                onRealismVerificationMaxReprocessesChanged: (v) =>
+                    setState(() => _realismVerificationMaxReprocesses = v),
+                realismVerificationStrictness: _realismVerificationStrictness,
+                onRealismVerificationStrictnessChanged: (v) =>
+                    setState(() => _realismVerificationStrictness = v),
+                needsFormSection: NeedsFormSection(
+                  enabled: _realismNeedsSim,
+                  onEnabledChanged: (v) => setState(() => _realismNeedsSim = v),
+                  enjoysLowHygiene: _realismEnjoysLowHygiene,
+                  onEnjoysLowHygieneChanged: (v) =>
+                      setState(() => _realismEnjoysLowHygiene = v),
+                  needsSimStrength: 1, // default, not editable in creator
+                  baselineHunger: _needsBaselineHunger,
+                  onBaselineHungerChanged: (v) =>
+                      setState(() => _needsBaselineHunger = v),
+                  baselineBladder: _needsBaselineBladder,
+                  onBaselineBladderChanged: (v) =>
+                      setState(() => _needsBaselineBladder = v),
+                  baselineEnergy: _needsBaselineEnergy,
+                  onBaselineEnergyChanged: (v) =>
+                      setState(() => _needsBaselineEnergy = v),
+                  baselineSocial: _needsBaselineSocial,
+                  onBaselineSocialChanged: (v) =>
+                      setState(() => _needsBaselineSocial = v),
+                  baselineFun: _needsBaselineFun,
+                  onBaselineFunChanged: (v) =>
+                      setState(() => _needsBaselineFun = v),
+                  baselineHygiene: _needsBaselineHygiene,
+                  onBaselineHygieneChanged: (v) =>
+                      setState(() => _needsBaselineHygiene = v),
+                  baselineComfort: _needsBaselineComfort,
+                  onBaselineComfortChanged: (v) =>
+                      setState(() => _needsBaselineComfort = v),
+                  decayHunger: _needsDecayHunger,
+                  onDecayHungerChanged: (v) =>
+                      setState(() => _needsDecayHunger = v),
+                  decayBladder: _needsDecayBladder,
+                  onDecayBladderChanged: (v) =>
+                      setState(() => _needsDecayBladder = v),
+                  decayEnergy: _needsDecayEnergy,
+                  onDecayEnergyChanged: (v) =>
+                      setState(() => _needsDecayEnergy = v),
+                  decaySocial: _needsDecaySocial,
+                  onDecaySocialChanged: (v) =>
+                      setState(() => _needsDecaySocial = v),
+                  decayFun: _needsDecayFun,
+                  onDecayFunChanged: (v) =>
+                      setState(() => _needsDecayFun = v),
+                  decayHygiene: _needsDecayHygiene,
+                  onDecayHygieneChanged: (v) =>
+                      setState(() => _needsDecayHygiene = v),
+                  decayComfort: _needsDecayComfort,
+                  onDecayComfortChanged: (v) =>
+                      setState(() => _needsDecayComfort = v),
+                ),
               ),
 
               _buildNavButtons(currentStep: 4),
@@ -1045,13 +1377,21 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             children: [
               const Text(
                 'Expression Images',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Add sprite images for different emotions. These will be displayed during chat '
                 'to reflect your character\'s mood. Optional — you can always add them later.',
-                style: TextStyle(fontSize: 14, color: Colors.white54, height: 1.5),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -1067,8 +1407,13 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.blueAccent,
                         side: BorderSide(color: Colors.blueAccent, width: 1.5),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1078,9 +1423,17 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       label: const Text('Import ZIP'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.purpleAccent,
-                        side: BorderSide(color: Colors.purpleAccent, width: 1.5),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: BorderSide(
+                          color: Colors.purpleAccent,
+                          width: 1.5,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ],
@@ -1110,7 +1463,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     return Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(11),
@@ -1140,7 +1495,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                               right: 6,
                               child: GestureDetector(
                                 onTap: () {
-                                  setState(() => _expressionImages.removeAt(index));
+                                  setState(
+                                    () => _expressionImages.removeAt(index),
+                                  );
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
@@ -1148,7 +1505,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                                     color: Colors.black54,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.close, size: 14, color: Colors.redAccent),
+                                  child: const Icon(
+                                    Icons.close,
+                                    size: 14,
+                                    color: Colors.redAccent,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1166,9 +1527,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                                   Expanded(
                                     child: Text(
                                       entry.emotion,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 11,
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary(context),
                                         fontWeight: FontWeight.w600,
                                       ),
                                       overflow: TextOverflow.ellipsis,
@@ -1191,11 +1552,18 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   child: Center(
                     child: Column(
                       children: [
-                        Icon(Icons.mood, size: 48, color: Colors.white.withValues(alpha: 0.15)),
+                        Icon(
+                          Icons.mood,
+                          size: 48,
+                          color: Colors.white.withValues(alpha: 0.15),
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           'No expression images added yet',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 14),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            fontSize: 14,
+                          ),
                         ),
                       ],
                     ),
@@ -1290,10 +1658,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         final Uint8List? data = entry.content as Uint8List?;
         if (data == null) continue;
 
-        _expressionImages.add(_ExpressionImageEntry(
-          bytes: data,
-          emotion: emotionLabel,
-        ));
+        _expressionImages.add(
+          _ExpressionImageEntry(bytes: data, emotion: emotionLabel),
+        );
         imported++;
       }
 
@@ -1358,7 +1725,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           const SizedBox(height: 12),
           const Text(
             'Choose emotion for this image',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white70),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white70,
+            ),
           ),
           const SizedBox(height: 12),
           // Emotion grid
@@ -1370,21 +1741,28 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               return InkWell(
                 onTap: () {
                   setState(() {
-                    _expressionImages.add(_ExpressionImageEntry(
-                      bytes: _pendingExpressionBytes!,
-                      emotion: emotion,
-                    ));
+                    _expressionImages.add(
+                      _ExpressionImageEntry(
+                        bytes: _pendingExpressionBytes!,
+                        emotion: emotion,
+                      ),
+                    );
                     _pendingExpressionBytes = null;
                     _showingExpressionPicker = false;
                   });
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1393,7 +1771,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       const SizedBox(width: 4),
                       Text(
                         emotion,
-                        style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white70,
+                        ),
                       ),
                     ],
                   ),
@@ -1410,7 +1791,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   _showingExpressionPicker = false;
                 });
               },
-              style: TextButton.styleFrom(foregroundColor: Colors.white.withValues(alpha: 0.4)),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white.withValues(alpha: 0.4),
+              ),
               child: const Text('Cancel'),
             ),
           ),
@@ -1441,8 +1824,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   height: 260,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: const Color(0xFF1E293B),
-                    border: Border.all(color: Colors.white12),
+                    color: AppColors.cardOf(context),
+                    border: Border.all(color: AppColors.borderOf(context)),
                     image: _avatarBytes != null
                         ? DecorationImage(
                             image: MemoryImage(_avatarBytes!),
@@ -1452,15 +1835,25 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   ),
                   child: _avatarBytes == null
                       ? Center(
-                          child: Icon(Icons.person, size: 64, color: Colors.white.withValues(alpha: 0.15)),
+                          child: Icon(
+                            Icons.person,
+                            size: 64,
+                            color: AppColors.textTertiary(context),
+                          ),
                         )
                       : null,
                 ),
                 const SizedBox(height: 16),
                 // Name
                 Text(
-                  _nameController.text.isEmpty ? 'Unnamed' : _nameController.text,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                  _nameController.text.isEmpty
+                      ? 'Unnamed'
+                      : _nameController.text,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary(context),
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -1470,12 +1863,24 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     spacing: 6,
                     runSpacing: 6,
                     alignment: WrapAlignment.center,
-                    children: _tags.map((tag) => Chip(
-                      label: Text(tag, style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                      backgroundColor: const Color(0xFF374151),
-                      side: BorderSide.none,
-                      visualDensity: VisualDensity.compact,
-                    )).toList(),
+                    children: _tags
+                        .map(
+                          (tag) => Chip(
+                            label: Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textPrimary(context),
+                              ),
+                            ),
+                            backgroundColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
+                            side: BorderSide.none,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )
+                        .toList(),
                   ),
                 const SizedBox(height: 16),
                 // Realism Engine summary
@@ -1486,26 +1891,54 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     decoration: BoxDecoration(
                       color: Colors.blueAccent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.blueAccent.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Row(
                           children: [
-                            Icon(Icons.psychology, size: 14, color: Colors.blueAccent),
+                            Icon(
+                              Icons.psychology,
+                              size: 14,
+                              color: Colors.blueAccent,
+                            ),
                             SizedBox(width: 6),
-                            Text('Realism Engine', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Realism Engine',
+                              style: TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Text('Day $_realismDayCount · ${_realismTimeOfDay.split('_').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}',
-                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                        Text(
+                          'Day $_realismDayCount · ${_realismTimeOfDay.split('_').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}',
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 11,
+                          ),
+                        ),
                         if (_realismEmotion.isNotEmpty)
-                          Text('Emotion: $_realismEmotion ($_realismEmotionIntensity)',
-                              style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                        Text('Bond: $_realismShortTermBond / $_realismLongTermBond · Trust: $_realismTrustLevel',
-                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                          Text(
+                            'Emotion: $_realismEmotion ($_realismEmotionIntensity)',
+                            style: TextStyle(
+                              color: AppColors.textTertiary(context),
+                              fontSize: 11,
+                            ),
+                          ),
+                        Text(
+                          'Bond: $_realismShortTermBond / $_realismLongTermBond · Trust: $_realismTrustLevel',
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1521,7 +1954,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                       backgroundColor: Colors.green.shade700,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -1533,10 +1968,12 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     icon: const Icon(Icons.arrow_back, size: 18),
                     label: const Text('Back to Edit'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white54,
-                      side: const BorderSide(color: Colors.white24),
+                      foregroundColor: AppColors.textSecondary(context),
+                      side: BorderSide(color: AppColors.borderOf(context)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -1550,73 +1987,144 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Review & Edit',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary(context),
+                  ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Review your character card. All fields are still editable before saving.',
-                  style: TextStyle(color: Colors.white38, fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                _reviewField('Description', _descriptionController, maxLines: 4),
-                _reviewField('Personality', _personalityController, maxLines: 3),
+                _reviewField(
+                  'Description',
+                  _descriptionController,
+                  maxLines: 4,
+                ),
+                _reviewField(
+                  'Personality',
+                  _personalityController,
+                  maxLines: 3,
+                ),
                 _reviewField('Scenario', _scenarioController, maxLines: 3),
-                _reviewField('First Message', _firstMessageController, maxLines: 5),
+                _reviewField(
+                  'First Message',
+                  _firstMessageController,
+                  maxLines: 5,
+                ),
                 if (_exampleDialogueController.text.isNotEmpty)
-                  _reviewField('Example Dialogue', _exampleDialogueController, maxLines: 4),
+                  _reviewField(
+                    'Example Dialogue',
+                    _exampleDialogueController,
+                    maxLines: 4,
+                  ),
                 if (_systemPromptController.text.isNotEmpty)
-                  _reviewField('System Prompt', _systemPromptController, maxLines: 3),
+                  _reviewField(
+                    'System Prompt',
+                    _systemPromptController,
+                    maxLines: 3,
+                  ),
                 if (_postHistoryController.text.isNotEmpty)
-                  _reviewField('Post-History Instructions', _postHistoryController, maxLines: 3),
+                  _reviewField(
+                    'Post-History Instructions',
+                    _postHistoryController,
+                    maxLines: 3,
+                  ),
 
                 // Alt greetings
                 ..._altGreetingControllers.asMap().entries.map((entry) {
-                  return _reviewField('Alt Greeting ${entry.key + 1}', entry.value, maxLines: 3);
+                  return _reviewField(
+                    'Alt Greeting ${entry.key + 1}',
+                    entry.value,
+                    maxLines: 3,
+                  );
                 }),
 
                 // Lorebook
                 if (_lorebookEntries.isNotEmpty) ...[
-                  const Divider(color: Colors.white12, height: 32),
+                  Divider(color: AppColors.borderOf(context), height: 32),
                   Row(
                     children: [
-                      const Icon(Icons.menu_book, color: Colors.blueAccent, size: 18),
+                      const Icon(
+                        Icons.menu_book,
+                        color: Colors.blueAccent,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
-                      const Text('Lorebook Entries',
-                          style: TextStyle(color: Colors.blueAccent, fontSize: 15, fontWeight: FontWeight.w600)),
+                      const Text(
+                        'Lorebook Entries',
+                        style: TextStyle(
+                          color: Colors.blueAccent,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
-                      Text('${_lorebookEntries.length} entries',
-                          style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                      Text(
+                        '${_lorebookEntries.length} entries',
+                        style: TextStyle(
+                          color: AppColors.textTertiary(context),
+                          fontSize: 11,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ..._lorebookEntries.map((entry) => Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(entry.displayName,
-                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                        if (entry.key.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text('Keys: ${entry.key}',
-                              style: const TextStyle(color: Colors.blueAccent, fontSize: 11)),
+                  ..._lorebookEntries.map(
+                    (entry) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardOf(context),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.blueAccent.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.displayName,
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (entry.key.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Keys: ${entry.key}',
+                              style: const TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                          if (entry.content.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              entry.content,
+                              style: TextStyle(
+                                color: AppColors.textSecondary(context),
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
                         ],
-                        if (entry.content.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(entry.content,
-                              style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4)),
-                        ],
-                      ],
+                      ),
                     ),
-                  )),
+                  ),
                 ],
               ],
             ),
@@ -1626,28 +2134,43 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  Widget _reviewField(String label, TextEditingController controller, {int maxLines = 3}) {
+  Widget _reviewField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 3,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 6),
           AppTextField(
             controller: controller,
             maxLines: maxLines,
-            style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
+            style: TextStyle(
+              color: AppColors.textPrimary(context),
+              fontSize: 13,
+              height: 1.5,
+            ),
             decoration: InputDecoration(
               filled: true,
-              fillColor: const Color(0xFF1E293B),
+              fillColor: AppColors.surfaceContainerOf(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Colors.white12),
+                borderSide: BorderSide(color: AppColors.borderOf(context)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Colors.white12),
+                borderSide: BorderSide(color: AppColors.borderOf(context)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1698,7 +2221,27 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         nsfwCooldownEnabled: _realismNsfwCooldown,
         passageOfTimeEnabled: true, // default on; user can toggle later
         chaosModeEnabled: _realismChaosMode,
+        needsSimEnabled: _realismNeedsSim,
+        enjoysLowHygiene: _realismEnjoysLowHygiene,
         currentTask: _realismCurrentTask,
+        realismVerificationEnabled: _realismVerificationEnabled,
+        realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
+        realismVerificationStrictness: _realismVerificationStrictness,
+        realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
+        needsBaselineHunger: _needsBaselineHunger,
+        needsBaselineBladder: _needsBaselineBladder,
+        needsBaselineEnergy: _needsBaselineEnergy,
+        needsBaselineSocial: _needsBaselineSocial,
+        needsBaselineFun: _needsBaselineFun,
+        needsBaselineHygiene: _needsBaselineHygiene,
+        needsBaselineComfort: _needsBaselineComfort,
+        needsDecayHunger: _needsDecayHunger,
+        needsDecayBladder: _needsDecayBladder,
+        needsDecayEnergy: _needsDecayEnergy,
+        needsDecaySocial: _needsDecaySocial,
+        needsDecayFun: _needsDecayFun,
+        needsDecayHygiene: _needsDecayHygiene,
+        needsDecayComfort: _needsDecayComfort,
       );
 
       final card = CharacterCard(
@@ -1726,7 +2269,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       final charDir = storage.charactersDir;
       if (!charDir.existsSync()) charDir.createSync(recursive: true);
       final epoch = DateTime.now().millisecondsSinceEpoch;
-      final safeName = name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
+      final safeName = name
+          .replaceAll(RegExp(r'[^\w\s]'), '')
+          .replaceAll(' ', '_');
       final imagePath = p.join(charDir.path, '${safeName}_$epoch.png');
 
       if (_avatarBytes != null) {
@@ -1736,7 +2281,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       // Always embed V2 card data (creates placeholder image if no avatar)
       card.imagePath = imagePath;
       final v2Service = V2CardService();
-      await v2Service.saveCardAsPng(card, imagePath, _avatarBytes != null ? imagePath : null);
+      await v2Service.saveCardAsPng(
+        card,
+        imagePath,
+        _avatarBytes != null ? imagePath : null,
+      );
       debugPrint(
         '[CreateCharacter] Saved PNG with extensions: '
         'realism=${fpExt.realismEnabled}, bond=${fpExt.shortTermBond}, '
@@ -1753,11 +2302,16 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           await avatarDir.create(recursive: true);
         }
         for (final entry in _expressionImages) {
-          final filename = 'avatar_${DateTime.now().millisecondsSinceEpoch}_${entry.emotion}.png';
-          await File(p.join(avatarDir.path, filename)).writeAsBytes(entry.bytes);
+          final filename =
+              'avatar_${DateTime.now().millisecondsSinceEpoch}_${entry.emotion}.png';
+          await File(
+            p.join(avatarDir.path, filename),
+          ).writeAsBytes(entry.bytes);
           await repo.addAvatar(card.dbId!, name, entry.bytes, entry.emotion);
         }
-        debugPrint('[CreateCharacter] Saved ${_expressionImages.length} expression images');
+        debugPrint(
+          '[CreateCharacter] Saved ${_expressionImages.length} expression images',
+        );
       }
 
       if (mounted) {
@@ -1765,7 +2319,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                const Icon(
+                  Icons.check_circle,
+                  color: Colors.greenAccent,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text('${card.name} created successfully!'),
               ],
@@ -1788,7 +2346,9 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           _exampleDialogueController.clear();
           _systemPromptController.clear();
           _postHistoryController.clear();
-          for (final c in _altGreetingControllers) { c.dispose(); }
+          for (final c in _altGreetingControllers) {
+            c.dispose();
+          }
           _altGreetingControllers.clear();
           _lorebookEntries.clear();
           _avatarBytes = null;
@@ -1804,6 +2364,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           _realismNsfwCooldown = false;
           _realismChaosMode = false;
           _realismCurrentTask = '';
+          _realismVerificationEnabled = false;
+          _realismVerificationMaxReprocesses = 1;
+          _realismVerificationStrictness = 3;
+          _realismNeedsDirectorAuthority = false;
           _totalTokenEstimate = 0;
         });
       }
@@ -1827,8 +2391,16 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   Widget _inputLabel(String text, {bool required = false}) {
     return Row(
       children: [
-        Text(text, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-        if (required) const Text(' *', style: TextStyle(color: Colors.redAccent)),
+        Text(
+          text,
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (required)
+          const Text(' *', style: TextStyle(color: Colors.redAccent)),
       ],
     );
   }
@@ -1836,27 +2408,40 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 14),
+      hintStyle: TextStyle(
+        color: AppColors.textTertiary(context),
+        fontSize: 14,
+      ),
       filled: true,
-      fillColor: const Color(0xFF1E293B),
+      fillColor: AppColors.surfaceContainerOf(context),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white12),
+        borderSide: BorderSide(color: AppColors.borderOf(context)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.white12),
+        borderSide: BorderSide(color: AppColors.borderOf(context)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.blueAccent),
+        borderSide: BorderSide(
+          color: AppColors.resolve(
+            context,
+            Colors.blueAccent,
+            Colors.blue.shade700,
+          ),
+        ),
       ),
       contentPadding: const EdgeInsets.all(14),
     );
   }
 
-  Widget _expandableField(String label, TextEditingController controller,
-      {String hint = '', int maxLines = 3}) {
+  Widget _expandableField(
+    String label,
+    TextEditingController controller, {
+    String hint = '',
+    int maxLines = 3,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1866,7 +2451,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             const Spacer(),
             IconButton(
               onPressed: () => _openExpandedEditor(label, controller),
-              icon: const Icon(Icons.open_in_full, size: 16, color: Colors.white38),
+              icon: const Icon(
+                Icons.open_in_full,
+                size: 16,
+                color: Colors.white38,
+              ),
               tooltip: 'Expand editor',
               visualDensity: VisualDensity.compact,
             ),
@@ -1876,7 +2465,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         AppTextField(
           controller: controller,
           maxLines: maxLines,
-          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            height: 1.5,
+          ),
           spellCheckConfiguration: AppTextField.platformSpellCheck(),
           decoration: _inputDecoration(hint),
         ),
@@ -1884,14 +2477,19 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  Future<void> _openExpandedEditor(String label, TextEditingController controller) async {
+  Future<void> _openExpandedEditor(
+    String label,
+    TextEditingController controller,
+  ) async {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) {
         final editController = TextEditingController(text: controller.text);
         return Dialog(
           backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
             width: 700,
             height: 500,
@@ -1901,9 +2499,14 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
               children: [
                 Row(
                   children: [
-                    Text(label,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -1919,7 +2522,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                     expands: true,
                     textAlignVertical: TextAlignVertical.top,
                     spellCheckConfiguration: AppTextField.platformSpellCheck(),
-                    style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.6),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
                     decoration: _inputDecoration(''),
                   ),
                 ),
@@ -1929,12 +2536,17 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   children: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white54),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
                       onPressed: () => Navigator.pop(ctx, editController.text),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                      ),
                       child: const Text('Apply'),
                     ),
                   ],
@@ -1957,8 +2569,5 @@ class _ExpressionImageEntry {
   final Uint8List bytes;
   final String emotion;
 
-  _ExpressionImageEntry({
-    required this.bytes,
-    required this.emotion,
-  });
+  _ExpressionImageEntry({required this.bytes, required this.emotion});
 }

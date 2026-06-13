@@ -40,8 +40,12 @@ class StableDbImportDialog extends StatelessWidget {
     final betaRoot = p.join(docsDir.path, 'FrontPorchAI-Beta');
     final stableRoot = p.join(docsDir.path, 'FrontPorchAI');
 
-    final betaDb = File(p.join(betaRoot, 'KoboldManager', 'front_porch_beta.db'));
-    final stableDb = File(p.join(stableRoot, 'KoboldManager', 'front_porch.db'));
+    final betaDb = File(
+      p.join(betaRoot, 'KoboldManager', 'front_porch_beta.db'),
+    );
+    final stableDb = File(
+      p.join(stableRoot, 'KoboldManager', 'front_porch.db'),
+    );
 
     return stableDb.existsSync() && !betaDb.existsSync();
   }
@@ -71,12 +75,12 @@ class StableDbImportDialog extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 540),
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.12)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               blurRadius: 32,
               offset: const Offset(0, 12),
               spreadRadius: -4,
@@ -92,7 +96,7 @@ class StableDbImportDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withOpacity(0.15),
+                  color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -135,10 +139,10 @@ class StableDbImportDialog extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.04),
+                  color: Colors.white.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.06),
+                    color: Colors.white.withValues(alpha: 0.06),
                   ),
                 ),
                 child: const Text(
@@ -162,11 +166,8 @@ class StableDbImportDialog extends StatelessWidget {
                   OutlinedButton(
                     onPressed: () => _handleSkip(context),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                        color: Colors.white24,
-                        width: 1,
-                      ),
-                      foregroundColor: Colors.white.withOpacity(0.7),
+                      side: const BorderSide(color: Colors.white24, width: 1),
+                      foregroundColor: Colors.white.withValues(alpha: 0.7),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
                         vertical: 12,
@@ -197,7 +198,10 @@ class StableDbImportDialog extends StatelessWidget {
                     ),
                     child: const Text(
                       'Import Stable DB',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],

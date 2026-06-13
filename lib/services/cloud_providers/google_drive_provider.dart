@@ -60,7 +60,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
     final savedScope = prefs.getString('gdrive_scope') ?? '';
     final currentScope = _scopes.join(',');
     if (savedScope != currentScope && savedCreds != null) {
-      debugPrint('AG_DEBUG: Google Drive scope changed, clearing saved credentials for re-auth');
+      debugPrint(
+        'AG_DEBUG: Google Drive scope changed, clearing saved credentials for re-auth',
+      );
       await prefs.remove('gdrive_credentials');
       await prefs.remove('gdrive_scope');
       // Fall through to interactive sign-in below
@@ -77,7 +79,11 @@ class GoogleDriveProvider extends CloudStorageProvider {
           json['refreshToken'],
           _scopes,
         );
-        _authClient = autoRefreshingClient(_clientId, accessCreds, http.Client());
+        _authClient = autoRefreshingClient(
+          _clientId,
+          accessCreds,
+          http.Client(),
+        );
         _driveApi = drive.DriveApi(_authClient!);
         _connected = true;
         return;
@@ -89,27 +95,26 @@ class GoogleDriveProvider extends CloudStorageProvider {
 
     // Interactive sign-in: opens system browser via localhost redirect
     try {
-      _authClient = await clientViaUserConsent(
-        _clientId,
-        _scopes,
-        (url) async {
-          final uri = Uri.parse(url);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-      );
+      _authClient = await clientViaUserConsent(_clientId, _scopes, (url) async {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      });
       _driveApi = drive.DriveApi(_authClient!);
       _connected = true;
 
       // Save credentials and scope for next time
       final creds = _authClient!.credentials;
-      await prefs.setString('gdrive_credentials', jsonEncode({
-        'type': creds.accessToken.type,
-        'data': creds.accessToken.data,
-        'expiry': creds.accessToken.expiry.toIso8601String(),
-        'refreshToken': creds.refreshToken,
-      }));
+      await prefs.setString(
+        'gdrive_credentials',
+        jsonEncode({
+          'type': creds.accessToken.type,
+          'data': creds.accessToken.data,
+          'expiry': creds.accessToken.expiry.toIso8601String(),
+          'refreshToken': creds.refreshToken,
+        }),
+      );
       await prefs.setString('gdrive_scope', _scopes.join(','));
     } catch (e) {
       _connected = false;
@@ -138,7 +143,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
     } on drive.DetailedApiRequestError catch (e) {
       if (e.status == 404) {
         // Stale folder ID cached — invalidate and retry once
-        debugPrint('[GDrive] 404 in listFiles for $remotePath, clearing cache and retrying');
+        debugPrint(
+          '[GDrive] 404 in listFiles for $remotePath, clearing cache and retrying',
+        );
         _invalidateCacheForPath(remotePath);
         return await _listFilesInternal(remotePath);
       }
@@ -170,11 +177,13 @@ class GoogleDriveProvider extends CloudStorageProvider {
             result.addAll(subFiles);
           } catch (_) {}
         } else {
-          result.add(RemoteFileInfo(
-            remotePath: '$remotePath/${file.name}',
-            lastModified: file.modifiedTime,
-            size: int.tryParse(file.size ?? '0'),
-          ));
+          result.add(
+            RemoteFileInfo(
+              remotePath: '$remotePath/${file.name}',
+              lastModified: file.modifiedTime,
+              size: int.tryParse(file.size ?? '0'),
+            ),
+          );
         }
       }
       pageToken = fileList.nextPageToken;
@@ -192,7 +201,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
       if (e.status == 404) {
         // Stale folder ID cached — invalidate and retry once
         final parentPath = remotePath.substring(0, remotePath.lastIndexOf('/'));
-        debugPrint('[GDrive] 404 in uploadFile for $remotePath, clearing cache and retrying');
+        debugPrint(
+          '[GDrive] 404 in uploadFile for $remotePath, clearing cache and retrying',
+        );
         _invalidateCacheForPath(parentPath);
         await _uploadFileInternal(localPath, remotePath);
       } else {
@@ -215,7 +226,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
       spaces: 'appDataFolder',
       $fields: 'files(id)',
     );
-    debugPrint('[GDrive] Upload: found ${existing.files?.length ?? 0} existing files');
+    debugPrint(
+      '[GDrive] Upload: found ${existing.files?.length ?? 0} existing files',
+    );
 
     final localFile = File(localPath);
     final fileSize = await localFile.length();
@@ -224,7 +237,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
 
     if (existing.files != null && existing.files!.isNotEmpty) {
       // Update existing file
-      debugPrint('[GDrive] Upload: updating existing file ${existing.files!.first.id}');
+      debugPrint(
+        '[GDrive] Upload: updating existing file ${existing.files!.first.id}',
+      );
       await _driveApi!.files.update(
         drive.File()..modifiedTime = (await localFile.stat()).modified,
         existing.files!.first.id!,
@@ -262,10 +277,12 @@ class GoogleDriveProvider extends CloudStorageProvider {
       throw Exception('File not found on Google Drive: $remotePath');
     }
 
-    final response = await _driveApi!.files.get(
-      fileList.files!.first.id!,
-      downloadOptions: drive.DownloadOptions.fullMedia,
-    ) as drive.Media;
+    final response =
+        await _driveApi!.files.get(
+              fileList.files!.first.id!,
+              downloadOptions: drive.DownloadOptions.fullMedia,
+            )
+            as drive.Media;
 
     final localFile = File(localPath);
     await localFile.parent.create(recursive: true);
@@ -304,7 +321,9 @@ class GoogleDriveProvider extends CloudStorageProvider {
     if (_driveApi == null) throw Exception('Not connected to Google Drive');
 
     final folderId = await _getOrCreateFolderId(remotePath);
-    if (folderId == null || folderId == 'root' || folderId == 'appDataFolder') return;
+    if (folderId == null || folderId == 'root' || folderId == 'appDataFolder') {
+      return;
+    }
 
     // Delete the folder (Google Drive cascades to contents)
     try {
@@ -326,13 +345,17 @@ class GoogleDriveProvider extends CloudStorageProvider {
   /// Invalidate all cached folder IDs at or below the given path.
   /// This forces a fresh lookup on the next call to _getOrCreateFolderId.
   void _invalidateCacheForPath(String remotePath) {
-    _folderIdCache.removeWhere((key, _) => key == remotePath || key.startsWith('$remotePath/'));
+    _folderIdCache.removeWhere(
+      (key, _) => key == remotePath || key.startsWith('$remotePath/'),
+    );
   }
 
   /// Get or create a folder hierarchy and return the leaf folder's ID.
   Future<String?> _getOrCreateFolderId(String remotePath) async {
     if (_driveApi == null) return null;
-    if (_folderIdCache.containsKey(remotePath)) return _folderIdCache[remotePath];
+    if (_folderIdCache.containsKey(remotePath)) {
+      return _folderIdCache[remotePath];
+    }
 
     final parts = remotePath.split('/').where((p) => p.isNotEmpty).toList();
     String parentId = 'appDataFolder';
@@ -345,17 +368,24 @@ class GoogleDriveProvider extends CloudStorageProvider {
       }
 
       // Search for existing folder
-      final query = "'$parentId' in parents and name = '${parts[i]}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-      final list = await _driveApi!.files.list(q: query, spaces: 'appDataFolder', $fields: 'files(id)');
+      final query =
+          "'$parentId' in parents and name = '${parts[i]}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+      final list = await _driveApi!.files.list(
+        q: query,
+        spaces: 'appDataFolder',
+        $fields: 'files(id)',
+      );
 
       if (list.files != null && list.files!.isNotEmpty) {
         parentId = list.files!.first.id!;
       } else {
         // Create folder
-        final folder = await _driveApi!.files.create(drive.File()
-          ..name = parts[i]
-          ..mimeType = 'application/vnd.google-apps.folder'
-          ..parents = [parentId]);
+        final folder = await _driveApi!.files.create(
+          drive.File()
+            ..name = parts[i]
+            ..mimeType = 'application/vnd.google-apps.folder'
+            ..parents = [parentId],
+        );
         parentId = folder.id!;
       }
       _folderIdCache[partPath] = parentId;

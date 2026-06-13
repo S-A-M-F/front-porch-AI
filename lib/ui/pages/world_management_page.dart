@@ -24,6 +24,7 @@ import 'package:front_porch_ai/models/world.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/utils/world_colors.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class WorldManagementPage extends StatefulWidget {
   const WorldManagementPage({super.key});
@@ -60,14 +61,14 @@ class _WorldManagementPageState extends State<WorldManagementPage>
     return Consumer<WorldRepository>(
       builder: (context, repo, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.backgroundOf(context),
           body: CustomScrollView(
             slivers: [
               // Hero header
-              SliverToBoxAdapter(child: _buildHeroHeader(repo)),
+              SliverToBoxAdapter(child: _buildHeroHeader(context, repo)),
 
               // Stats section
-              SliverToBoxAdapter(child: _buildStatsSection(repo)),
+              SliverToBoxAdapter(child: _buildStatsSection(context, repo)),
 
               // Section label
               SliverToBoxAdapter(
@@ -86,10 +87,10 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                       const SizedBox(width: 10),
                       Text(
                         'All Worlds (${repo.worlds.length})',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white70,
+                          color: AppColors.textSecondary(context),
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -123,7 +124,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
 
   // ── Hero Header ────────────────────────────────────────────────────────
 
-  Widget _buildHeroHeader(WorldRepository repo) {
+  Widget _buildHeroHeader(BuildContext context, WorldRepository repo) {
     final accentColor = const Color(
       0xFF6366F1,
     ); // Using same color as persona page
@@ -143,8 +144,16 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 accentColor.withValues(
                   alpha: 0.08 + _headerGlowAnimation.value * 0.06,
                 ),
-                const Color(0xFF1E293B).withValues(alpha: 0.9),
-                const Color(0xFF0F172A).withValues(alpha: 0.95),
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF1E293B),
+                  AppColors.lightCard,
+                ).withValues(alpha: 0.9),
+                AppColors.resolve(
+                  context,
+                  const Color(0xFF0F172A),
+                  AppColors.lightBackground,
+                ).withValues(alpha: 0.95),
               ],
             ),
             border: Border.all(
@@ -180,10 +189,18 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                   width: 88,
                   height: 88,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
+                    color: AppColors.resolve(
+                      context,
+                      Colors.white.withValues(alpha: 0.15),
+                      Colors.black.withValues(alpha: 0.08),
+                    ),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.language, size: 48, color: Colors.white),
+                  child: Icon(
+                    Icons.language,
+                    size: 48,
+                    color: AppColors.textPrimary(context),
+                  ),
                 ),
               ),
               const SizedBox(width: 24),
@@ -192,12 +209,12 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'World Management',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary(context),
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -208,10 +225,12 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                       runSpacing: 6,
                       children: [
                         _buildStatChip(
+                          context,
                           Icons.public,
                           '${repo.worlds.length} world${repo.worlds.length != 1 ? 's' : ''}',
                         ),
                         _buildStatChip(
+                          context,
                           Icons.library_books,
                           '${repo.worlds.expand((w) => w.lorebook.entries).length} lore entries',
                         ),
@@ -252,22 +271,35 @@ class _WorldManagementPageState extends State<WorldManagementPage>
     );
   }
 
-  Widget _buildStatChip(IconData icon, String label) {
+  Widget _buildStatChip(BuildContext context, IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppColors.resolve(
+          context,
+          Colors.white.withValues(alpha: 0.05),
+          Colors.black.withValues(alpha: 0.04),
+        ),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: AppColors.resolve(
+            context,
+            Colors.white.withValues(alpha: 0.06),
+            AppColors.lightBorder.withValues(alpha: 0.6),
+          ),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: Colors.white38),
+          Icon(icon, size: 13, color: AppColors.textTertiary(context)),
           const SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textTertiary(context),
+            ),
           ),
         ],
       ),
@@ -276,7 +308,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
 
   // ── Stats Section ───────────────────────────────────────────────────────
 
-  Widget _buildStatsSection(WorldRepository repo) {
+  Widget _buildStatsSection(BuildContext context, WorldRepository repo) {
     if (repo.worlds.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -284,20 +316,26 @@ class _WorldManagementPageState extends State<WorldManagementPage>
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+          color: AppColors.resolve(
+            context,
+            const Color(0xFF1E293B).withValues(alpha: 0.6),
+            AppColors.lightCard.withValues(alpha: 0.8),
+          ),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.12)),
+          border: Border.all(color: AppColors.borderOf(context)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildStatItem(
+              context: context,
               icon: Icons.public,
               value: repo.worlds.length.toString(),
               label: 'Worlds',
               color: const Color(0xFF6366F1),
             ),
             _buildStatItem(
+              context: context,
               icon: Icons.library_books,
               value: repo.worlds
                   .expand((w) => w.lorebook.entries)
@@ -307,6 +345,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
               color: const Color(0xFF10B981),
             ),
             _buildStatItem(
+              context: context,
               icon: Icons.link,
               value: repo.worlds
                   .where((w) => w.linkedCharacterName != null)
@@ -322,6 +361,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
   }
 
   Widget _buildStatItem({
+    required BuildContext context,
     required IconData icon,
     required String value,
     required String label,
@@ -341,17 +381,17 @@ class _WorldManagementPageState extends State<WorldManagementPage>
         const SizedBox(height: 8),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: AppColors.textPrimary(context),
           ),
         ),
         Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.white.withValues(alpha: 0.6),
+            color: AppColors.textSecondary(context),
           ),
         ),
       ],
@@ -371,7 +411,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        side: BorderSide(color: AppColors.borderOf(context)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -393,10 +433,10 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     children: [
                       Text(
                         world.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Colors.white,
+                          color: AppColors.textPrimary(context),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -419,12 +459,16 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                             children: [
                               Icon(Icons.link, size: 12, color: worldColor),
                               const SizedBox(width: 4),
-                              Text(
-                                world.linkedCharacterName!,
-                                style: TextStyle(
-                                  color: worldColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
+                              Flexible(
+                                child: Text(
+                                  world.linkedCharacterName!,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    color: worldColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
                             ],
@@ -438,9 +482,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                   icon: Icon(
                     Icons.more_vert,
                     size: 18,
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: AppColors.iconSecondary(context),
                   ),
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.surfaceContainerOf(context),
                   onSelected: (action) {
                     switch (action) {
                       case 'edit':
@@ -455,17 +499,27 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     }
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit, size: 16, color: Colors.white70),
-                          SizedBox(width: 8),
-                          Text('Edit', style: TextStyle(fontSize: 13)),
+                          Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: AppColors.iconPrimary(context),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'export',
                       child: Row(
                         children: [
@@ -474,17 +528,23 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                             size: 16,
                             color: Colors.cyanAccent,
                           ),
-                          SizedBox(width: 8),
-                          Text('Export JSON', style: TextStyle(fontSize: 13)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Export JSON',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'delete',
                       child: Row(
                         children: [
                           Icon(Icons.delete, size: 16, color: Colors.redAccent),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Text(
                             'Delete',
                             style: TextStyle(
@@ -510,9 +570,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.white.withValues(
-                    alpha: world.description.isEmpty ? 0.3 : 0.6,
-                  ),
+                  color: world.description.isEmpty
+                      ? AppColors.textTertiary(context)
+                      : AppColors.textSecondary(context),
                   height: 1.4,
                 ),
               ),
@@ -534,7 +594,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     ),
                   ),
                   child: Text(
-                    '${world.lorebook.entries.length} entries',
+                    '${world.lorebook.entries.length} ${world.lorebook.entries.length == 1 ? 'entry' : 'entries'}',
                     style: TextStyle(
                       color: worldColor,
                       fontSize: 11,
@@ -634,7 +694,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
-          backgroundColor: const Color(0xFF1E293B),
+          backgroundColor: AppColors.surfaceOf(ctx),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -650,9 +710,12 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 // Header
                 Container(
                   padding: const EdgeInsets.all(24),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: Color(0xFF374151), width: 1),
+                      bottom: BorderSide(
+                        color: AppColors.borderOf(ctx),
+                        width: 1,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -683,16 +746,19 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                           const SizedBox(width: 16),
                           Text(
                             world == null ? 'Create World' : 'Edit World',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: AppColors.textPrimary(ctx),
                             ),
                           ),
                         ],
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white70),
+                        icon: Icon(
+                          Icons.close,
+                          color: AppColors.textSecondary(ctx),
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                         tooltip: 'Close',
                       ),
@@ -711,12 +777,18 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF374151,
-                            ).withValues(alpha: 0.3),
+                            color: AppColors.resolve(
+                              ctx,
+                              const Color(0xFF374151).withValues(alpha: 0.3),
+                              AppColors.surfaceContainerLight.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.05),
+                              color: AppColors.borderOf(
+                                ctx,
+                              ).withValues(alpha: 0.2),
                             ),
                           ),
                           child: Column(
@@ -735,9 +807,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.9,
-                                      ),
+                                      color: AppColors.textPrimary(ctx),
                                     ),
                                   ),
                                 ],
@@ -745,34 +815,30 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                               const SizedBox(height: 16),
                               TextField(
                                 controller: nameController,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(ctx),
+                                ),
                                 decoration: InputDecoration(
                                   labelText: 'World Name',
-                                  labelStyle: const TextStyle(
-                                    color: Colors.white54,
+                                  labelStyle: TextStyle(
+                                    color: AppColors.textSecondary(ctx),
                                   ),
                                   hintText: 'Enter a name for this world',
                                   hintStyle: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.3),
+                                    color: AppColors.textTertiary(ctx),
                                   ),
                                   filled: true,
-                                  fillColor: Colors.white.withValues(
-                                    alpha: 0.02,
-                                  ),
+                                  fillColor: AppColors.surfaceContainerOf(ctx),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide: BorderSide(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.1,
-                                      ),
+                                      color: AppColors.borderOf(ctx),
                                     ),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide: BorderSide(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.1,
-                                      ),
+                                      color: AppColors.borderOf(ctx),
                                     ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
@@ -788,35 +854,31 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                               const SizedBox(height: 16),
                               TextField(
                                 controller: descController,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(ctx),
+                                ),
                                 maxLines: 3,
                                 decoration: InputDecoration(
                                   labelText: 'Description',
-                                  labelStyle: const TextStyle(
-                                    color: Colors.white54,
+                                  labelStyle: TextStyle(
+                                    color: AppColors.textSecondary(ctx),
                                   ),
                                   hintText: 'Brief description of this world',
                                   hintStyle: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.3),
+                                    color: AppColors.textTertiary(ctx),
                                   ),
                                   filled: true,
-                                  fillColor: Colors.white.withValues(
-                                    alpha: 0.02,
-                                  ),
+                                  fillColor: AppColors.surfaceContainerOf(ctx),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide: BorderSide(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.1,
-                                      ),
+                                      color: AppColors.borderOf(ctx),
                                     ),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                     borderSide: BorderSide(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.1,
-                                      ),
+                                      color: AppColors.borderOf(ctx),
                                     ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
@@ -838,12 +900,18 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                         // Lorebook Section
                         Container(
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF374151,
-                            ).withValues(alpha: 0.3),
+                            color: AppColors.resolve(
+                              ctx,
+                              const Color(0xFF374151).withValues(alpha: 0.3),
+                              AppColors.surfaceContainerLight.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.05),
+                              color: AppColors.borderOf(
+                                ctx,
+                              ).withValues(alpha: 0.2),
                             ),
                           ),
                           child: Column(
@@ -869,9 +937,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,
-                                            color: Colors.white.withValues(
-                                              alpha: 0.9,
-                                            ),
+                                            color: AppColors.textPrimary(ctx),
                                           ),
                                         ),
                                       ],
@@ -923,14 +989,17 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                   child: Container(
                                     padding: const EdgeInsets.all(24),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.02,
+                                      color: AppColors.resolve(
+                                        ctx,
+                                        Colors.white.withValues(alpha: 0.02),
+                                        AppColors.surfaceContainerLight
+                                            .withValues(alpha: 0.4),
                                       ),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.05,
-                                        ),
+                                        color: AppColors.borderOf(
+                                          ctx,
+                                        ).withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Column(
@@ -938,17 +1007,13 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                         Icon(
                                           Icons.library_books_outlined,
                                           size: 32,
-                                          color: Colors.white.withValues(
-                                            alpha: 0.3,
-                                          ),
+                                          color: AppColors.textTertiary(ctx),
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
                                           'No lorebook entries yet',
                                           style: TextStyle(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.5,
-                                            ),
+                                            color: AppColors.textSecondary(ctx),
                                           ),
                                         ),
                                         const SizedBox(height: 4),
@@ -956,9 +1021,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                           'Add entries to define world lore that will be injected into conversations',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.white.withValues(
-                                              alpha: 0.4,
-                                            ),
+                                            color: AppColors.textTertiary(ctx),
                                           ),
                                           textAlign: TextAlign.center,
                                         ),
@@ -980,8 +1043,11 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                     ),
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.02,
+                                      color: AppColors.resolve(
+                                        ctx,
+                                        Colors.white.withValues(alpha: 0.02),
+                                        AppColors.surfaceContainerLight
+                                            .withValues(alpha: 0.4),
                                       ),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
@@ -989,9 +1055,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                             ? const Color(
                                                 0xFF10B981,
                                               ).withValues(alpha: 0.2)
-                                            : Colors.white.withValues(
-                                                alpha: 0.05,
-                                              ),
+                                            : AppColors.borderOf(
+                                                ctx,
+                                              ).withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Column(
@@ -1013,15 +1079,19 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                                 .name
                                                                 .length,
                                                           ),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
+                                                style: TextStyle(
+                                                  color: AppColors.textPrimary(
+                                                    ctx,
+                                                  ),
                                                   fontWeight: FontWeight.w500,
                                                 ),
                                                 decoration: InputDecoration(
                                                   hintText: 'Entry name',
                                                   hintStyle: TextStyle(
-                                                    color: Colors.white
-                                                        .withValues(alpha: 0.4),
+                                                    color:
+                                                        AppColors.textTertiary(
+                                                          ctx,
+                                                        ),
                                                   ),
                                                   border: InputBorder.none,
                                                   contentPadding:
@@ -1047,7 +1117,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                         ? const Color(
                                                             0xFF10B981,
                                                           )
-                                                        : Colors.white38,
+                                                        : AppColors.textTertiary(
+                                                            ctx,
+                                                          ),
                                                   ),
                                                   tooltip: loreEntry.enabled
                                                       ? 'Disable entry'
@@ -1093,46 +1165,43 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                       offset:
                                                           loreEntry.key.length,
                                                     ),
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                          style: TextStyle(
+                                            color: AppColors.textPrimary(ctx),
                                             fontSize: 12,
                                           ),
                                           decoration: InputDecoration(
                                             labelText:
                                                 'Keywords (comma-separated)',
                                             labelStyle: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.6,
+                                              color: AppColors.textSecondary(
+                                                ctx,
                                               ),
                                               fontSize: 11,
                                             ),
                                             hintText: 'trigger, words, here',
                                             hintStyle: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.3,
+                                              color: AppColors.textTertiary(
+                                                ctx,
                                               ),
                                               fontSize: 11,
                                             ),
                                             filled: true,
-                                            fillColor: Colors.white.withValues(
-                                              alpha: 0.01,
-                                            ),
+                                            fillColor:
+                                                AppColors.surfaceContainerOf(
+                                                  ctx,
+                                                ),
                                             border: OutlineInputBorder(
                                               borderRadius:
                                                   BorderRadius.circular(6),
                                               borderSide: BorderSide(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                ),
+                                                color: AppColors.borderOf(ctx),
                                               ),
                                             ),
                                             enabledBorder: OutlineInputBorder(
                                               borderRadius:
                                                   BorderRadius.circular(6),
                                               borderSide: BorderSide(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                ),
+                                                color: AppColors.borderOf(ctx),
                                               ),
                                             ),
                                             focusedBorder: OutlineInputBorder(
@@ -1166,47 +1235,44 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                           .content
                                                           .length,
                                                     ),
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                          style: TextStyle(
+                                            color: AppColors.textPrimary(ctx),
                                             fontSize: 12,
                                           ),
                                           maxLines: 4,
                                           decoration: InputDecoration(
                                             labelText: 'Lore Content',
                                             labelStyle: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.6,
+                                              color: AppColors.textSecondary(
+                                                ctx,
                                               ),
                                               fontSize: 11,
                                             ),
                                             hintText:
                                                 'The actual lore text that will be injected...',
                                             hintStyle: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.3,
+                                              color: AppColors.textTertiary(
+                                                ctx,
                                               ),
                                               fontSize: 11,
                                             ),
                                             filled: true,
-                                            fillColor: Colors.white.withValues(
-                                              alpha: 0.01,
-                                            ),
+                                            fillColor:
+                                                AppColors.surfaceContainerOf(
+                                                  ctx,
+                                                ),
                                             border: OutlineInputBorder(
                                               borderRadius:
                                                   BorderRadius.circular(6),
                                               borderSide: BorderSide(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                ),
+                                                color: AppColors.borderOf(ctx),
                                               ),
                                             ),
                                             enabledBorder: OutlineInputBorder(
                                               borderRadius:
                                                   BorderRadius.circular(6),
                                               borderSide: BorderSide(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                ),
+                                                color: AppColors.borderOf(ctx),
                                               ),
                                             ),
                                             focusedBorder: OutlineInputBorder(
@@ -1247,16 +1313,19 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                   ),
                                                   checkColor: Colors.white,
                                                   side: BorderSide(
-                                                    color: Colors.white
-                                                        .withValues(alpha: 0.3),
+                                                    color: AppColors.borderOf(
+                                                      ctx,
+                                                    ),
                                                   ),
                                                 ),
                                                 Text(
                                                   'Always Active',
                                                   style: TextStyle(
                                                     fontSize: 11,
-                                                    color: Colors.white
-                                                        .withValues(alpha: 0.7),
+                                                    color:
+                                                        AppColors.textSecondary(
+                                                          ctx,
+                                                        ),
                                                   ),
                                                 ),
                                               ],
@@ -1271,9 +1340,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                     'Sticky Depth:',
                                                     style: TextStyle(
                                                       fontSize: 11,
-                                                      color: Colors.white
-                                                          .withValues(
-                                                            alpha: 0.7,
+                                                      color:
+                                                          AppColors.textSecondary(
+                                                            ctx,
                                                           ),
                                                     ),
                                                   ),
@@ -1294,48 +1363,45 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                                                       .toString()
                                                                       .length,
                                                                 ),
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
+                                                      style: TextStyle(
+                                                        color:
+                                                            AppColors.textPrimary(
+                                                              ctx,
+                                                            ),
                                                         fontSize: 11,
                                                       ),
                                                       keyboardType:
                                                           TextInputType.number,
                                                       decoration: InputDecoration(
                                                         filled: true,
-                                                        fillColor: Colors.white
-                                                            .withValues(
-                                                              alpha: 0.01,
+                                                        fillColor:
+                                                            AppColors.surfaceContainerOf(
+                                                              ctx,
                                                             ),
                                                         border: OutlineInputBorder(
                                                           borderRadius:
                                                               BorderRadius.circular(
                                                                 4,
                                                               ),
-                                                          borderSide:
-                                                              BorderSide(
-                                                                color: Colors
-                                                                    .white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.05,
-                                                                    ),
-                                                              ),
+                                                          borderSide: BorderSide(
+                                                            color:
+                                                                AppColors.borderOf(
+                                                                  ctx,
+                                                                ),
+                                                          ),
                                                         ),
-                                                        enabledBorder:
-                                                            OutlineInputBorder(
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    4,
-                                                                  ),
-                                                              borderSide: BorderSide(
-                                                                color: Colors
-                                                                    .white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.05,
-                                                                    ),
+                                                        enabledBorder: OutlineInputBorder(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
                                                               ),
-                                                            ),
+                                                          borderSide: BorderSide(
+                                                            color:
+                                                                AppColors.borderOf(
+                                                                  ctx,
+                                                                ),
+                                                          ),
+                                                        ),
                                                         focusedBorder:
                                                             OutlineInputBorder(
                                                               borderRadius:
@@ -1387,9 +1453,9 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 // Footer actions
                 Container(
                   padding: const EdgeInsets.all(24),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(color: Color(0xFF374151), width: 1),
+                      top: BorderSide(color: AppColors.borderOf(ctx), width: 1),
                     ),
                   ),
                   child: Row(
@@ -1405,9 +1471,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                         ),
                         child: Text(
                           'Cancel',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                          ),
+                          style: TextStyle(color: AppColors.textSecondary(ctx)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1444,10 +1508,15 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                                       world == null
                                           ? 'World created successfully'
                                           : 'World updated successfully',
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary(context),
+                                      ),
                                     ),
                                   ],
                                 ),
-                                backgroundColor: const Color(0xFF2A2A2A),
+                                backgroundColor: AppColors.surfaceContainerOf(
+                                  context,
+                                ),
                                 behavior: SnackBarBehavior.floating,
                               ),
                             );

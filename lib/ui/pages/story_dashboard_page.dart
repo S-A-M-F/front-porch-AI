@@ -29,6 +29,7 @@ import 'package:front_porch_ai/services/audiobook_generator_service.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/services/epub_generator_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Dashboard page — story bible overview: concept, themes, cast, threads, lore.
 class StoryDashboardPage extends StatefulWidget {
@@ -55,9 +56,6 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
   final Map<int, TextEditingController> _actTitleControllers = {};
   final Map<int, TextEditingController> _actDescControllers = {};
 
-  static const _bgDark = Color(0xFF0F172A);
-  static const _bgCard = Color(0xFF1E293B);
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -69,13 +67,19 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   @override
   void dispose() {
-    for (final c in _actTitleControllers.values) { c.dispose(); }
-    for (final c in _actDescControllers.values) { c.dispose(); }
+    for (final c in _actTitleControllers.values) {
+      c.dispose();
+    }
+    for (final c in _actDescControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  StoryProject? get _project =>
-      Provider.of<StoryRepository>(context, listen: false).getById(widget.projectId);
+  StoryProject? get _project => Provider.of<StoryRepository>(
+    context,
+    listen: false,
+  ).getById(widget.projectId);
 
   Future<void> _runStoryArchitect() async {
     final pipeline = Provider.of<StoryPipelineService>(context, listen: false);
@@ -84,7 +88,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
     try {
       // Run Chat Distiller first if chat history is enabled
-      if (project.useChatHistory && project.chatHistoryCharacterIds.isNotEmpty && project.distilledTimeline.isEmpty) {
+      if (project.useChatHistory &&
+          project.chatHistoryCharacterIds.isNotEmpty &&
+          project.distilledTimeline.isEmpty) {
         await pipeline.runChatDistiller(project);
       }
       await pipeline.runStoryArchitect(project);
@@ -92,7 +98,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -114,7 +123,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -125,7 +137,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     setState(() => _loadingChatPreview = true);
 
     try {
-      final pipeline = Provider.of<StoryPipelineService>(context, listen: false);
+      final pipeline = Provider.of<StoryPipelineService>(
+        context,
+        listen: false,
+      );
       final messages = await pipeline.getChatPreviewMessages(project);
 
       if (mounted) {
@@ -139,7 +154,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       if (mounted) {
         setState(() => _loadingChatPreview = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading chat preview: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Error loading chat preview: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -171,7 +189,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     }
   }
 
-  Future<void> _startAudiobookGeneration(StoryProject project, AudiobookGeneratorService service) async {
+  Future<void> _startAudiobookGeneration(
+    StoryProject project,
+    AudiobookGeneratorService service,
+  ) async {
     try {
       final audiobook = await service.generateAudiobook(project);
       if (audiobook != null && mounted) {
@@ -186,7 +207,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
           await audiobook.file.copy(outputFile);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Audiobook saved to $outputFile'), backgroundColor: Colors.green),
+              SnackBar(
+                content: Text('Audiobook saved to $outputFile'),
+                backgroundColor: Colors.green,
+              ),
             );
           }
         }
@@ -194,7 +218,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Audiobook Failed: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('Audiobook Failed: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -214,7 +241,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
           await File(outputFile).writeAsBytes(epub.bytes);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('eBook saved to $outputFile'), backgroundColor: Colors.green),
+              SnackBar(
+                content: Text('eBook saved to $outputFile'),
+                backgroundColor: Colors.green,
+              ),
             );
           }
         }
@@ -222,7 +252,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('eBook Export Failed: $e'), backgroundColor: Colors.red.shade800),
+          SnackBar(
+            content: Text('eBook Export Failed: $e'),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     }
@@ -244,12 +277,22 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             children: [
               const Icon(Icons.headphones, color: Colors.amber),
               const SizedBox(width: 12),
-              const Text('Compiling Audiobook...', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text(
+                'Compiling Audiobook...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
               TextButton.icon(
                 onPressed: service.stop,
                 icon: const Icon(Icons.stop, color: Colors.redAccent, size: 16),
-                label: const Text('Abort', style: TextStyle(color: Colors.redAccent)),
+                label: const Text(
+                  'Abort',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
               ),
             ],
           ),
@@ -262,7 +305,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             borderRadius: BorderRadius.circular(4),
           ),
           const SizedBox(height: 8),
-          Text(service.status, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(
+            service.status,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
         ],
       ),
     );
@@ -274,38 +320,54 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       builder: (context, repo, pipeline, child) {
         final project = repo.getById(widget.projectId);
         if (project == null) {
-          return const Scaffold(
-            body: Center(child: Text('Project not found', style: TextStyle(color: Colors.white70))),
+          return Scaffold(
+            body: Center(
+              child: Text(
+                'Project not found',
+                style: TextStyle(color: AppColors.textSecondary(context)),
+              ),
+            ),
           );
         }
 
         return Scaffold(
-          backgroundColor: _bgDark,
+          backgroundColor: AppColors.backgroundOf(context),
           appBar: AppBar(
             title: Text(project.title),
-            backgroundColor: _bgCard,
-            foregroundColor: Colors.white,
+            backgroundColor: AppColors.surfaceContainerOf(context),
+            foregroundColor: AppColors.textPrimary(context),
             elevation: 0,
             actions: [
               if (project.acts.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => StoryReaderPage(projectId: widget.projectId),
+                      builder: (_) =>
+                          StoryReaderPage(projectId: widget.projectId),
                     ),
                   ),
                   icon: const Icon(Icons.menu_book, color: Colors.amber),
-                  label: const Text('Read', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                  label: const Text(
+                    'Read',
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               if (project.acts.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => StoryStructurePage(projectId: widget.projectId),
+                      builder: (_) =>
+                          StoryStructurePage(projectId: widget.projectId),
                     ),
                   ),
                   icon: const Icon(Icons.account_tree, color: Colors.white70),
-                  label: const Text('Structure', style: TextStyle(color: Colors.white70)),
+                  label: const Text(
+                    'Structure',
+                    style: TextStyle(color: Colors.white70),
+                  ),
                 ),
             ],
           ),
@@ -325,26 +387,40 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(
-                width: 56, height: 56,
-                child: CircularProgressIndicator(strokeWidth: 3, color: Colors.amber),
+                width: 56,
+                height: 56,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Colors.amber,
+                ),
               ),
               const SizedBox(height: 32),
               Text(
                 pipeline.currentStep,
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
                 pipeline.statusMessage,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 14,
+                ),
                 textAlign: TextAlign.center,
               ),
               if (pipeline.tokenCount > 0) ...[
                 const SizedBox(height: 16),
                 Text(
                   '${pipeline.tokenCount} tokens generated',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ],
@@ -375,12 +451,21 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.amber.shade800,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           icon: const Icon(Icons.headphones),
-                          label: const Text('Export Audiobook (.wav)', style: TextStyle(fontWeight: FontWeight.bold)),
-                          onPressed: () => _startAudiobookGeneration(project, abService),
+                          label: const Text(
+                            'Export Audiobook (.wav)',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () =>
+                              _startAudiobookGeneration(project, abService),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -389,11 +474,19 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue.shade800,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           icon: const Icon(Icons.book),
-                          label: const Text('Export eBook (.epub)', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text(
+                            'Export eBook (.epub)',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           onPressed: () => _exportEpub(project),
                         ),
                       ),
@@ -404,16 +497,22 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
               return const SizedBox();
             },
           ),
-          
+
           // ── Chat History Preview ──
-          if (project.useChatHistory && project.chatHistoryCharacterIds.isNotEmpty) ...[
+          if (project.useChatHistory &&
+              project.chatHistoryCharacterIds.isNotEmpty) ...[
             _buildChatHistorySection(project),
             const SizedBox(height: 16),
           ],
 
           // Concept
           if (project.concept.isNotEmpty) ...[
-            _sectionCard('Concept', project.concept, Icons.lightbulb, Colors.amberAccent),
+            _sectionCard(
+              'Concept',
+              project.concept,
+              Icons.lightbulb,
+              Colors.amberAccent,
+            ),
             const SizedBox(height: 16),
           ],
           // Status Quo & Inciting Incident
@@ -421,9 +520,23 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _sectionCard('Status Quo', project.statusQuo, Icons.home, Colors.blueGrey)),
+                Expanded(
+                  child: _sectionCard(
+                    'Status Quo',
+                    project.statusQuo,
+                    Icons.home,
+                    Colors.blueGrey,
+                  ),
+                ),
                 const SizedBox(width: 16),
-                Expanded(child: _sectionCard('Inciting Incident', project.incitingIncident, Icons.bolt, Colors.redAccent)),
+                Expanded(
+                  child: _sectionCard(
+                    'Inciting Incident',
+                    project.incitingIncident,
+                    Icons.bolt,
+                    Colors.redAccent,
+                  ),
+                ),
               ],
             ),
           if (project.statusQuo.isNotEmpty) const SizedBox(height: 16),
@@ -433,21 +546,34 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _sectionCard('Themes', project.themes, Icons.psychology, Colors.purpleAccent)),
+                Expanded(
+                  child: _sectionCard(
+                    'Themes',
+                    project.themes,
+                    Icons.psychology,
+                    Colors.purpleAccent,
+                  ),
+                ),
                 const SizedBox(width: 16),
-                Expanded(child: _sectionCard(
-                  'Style',
-                  '${project.style.genre} • ${project.style.mood}\n${project.style.writingGuide}',
-                  Icons.palette,
-                  Colors.tealAccent,
-                )),
+                Expanded(
+                  child: _sectionCard(
+                    'Style',
+                    '${project.style.genre} • ${project.style.mood}\n${project.style.writingGuide}',
+                    Icons.palette,
+                    Colors.tealAccent,
+                  ),
+                ),
               ],
             ),
           if (project.themes.isNotEmpty) const SizedBox(height: 16),
 
           // Cast
           if (project.cast.isNotEmpty) ...[
-            _sectionTitle('Cast (${project.cast.length})', Icons.people, Colors.orangeAccent),
+            _sectionTitle(
+              'Cast (${project.cast.length})',
+              Icons.people,
+              Colors.orangeAccent,
+            ),
             const SizedBox(height: 8),
             ...project.cast.map((c) => _castCard(c)),
             const SizedBox(height: 16),
@@ -455,7 +581,11 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
           // Threads
           if (project.threads.isNotEmpty) ...[
-            _sectionTitle('Narrative Threads (${project.threads.length})', Icons.timeline, Colors.cyanAccent),
+            _sectionTitle(
+              'Narrative Threads (${project.threads.length})',
+              Icons.timeline,
+              Colors.cyanAccent,
+            ),
             const SizedBox(height: 8),
             ...project.threads.map((t) => _threadCard(t)),
             const SizedBox(height: 16),
@@ -463,7 +593,11 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
           // Lore
           if (project.lore.isNotEmpty) ...[
-            _sectionTitle('World Lore (${project.lore.length})', Icons.public, Colors.greenAccent),
+            _sectionTitle(
+              'World Lore (${project.lore.length})',
+              Icons.public,
+              Colors.greenAccent,
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -477,22 +611,41 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
           if (project.acts.isNotEmpty) ...[
             Row(
               children: [
-                _sectionTitle('Act Structure (${project.acts.length})', Icons.account_tree, Colors.indigoAccent),
+                _sectionTitle(
+                  'Act Structure (${project.acts.length})',
+                  Icons.account_tree,
+                  Colors.indigoAccent,
+                ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: () => _saveActEdits(project),
-                  icon: Icon(Icons.save, size: 16, color: Colors.indigo.shade300),
-                  label: Text('Save Edits', style: TextStyle(color: Colors.indigo.shade300, fontSize: 12)),
+                  icon: Icon(
+                    Icons.save,
+                    size: 16,
+                    color: Colors.indigo.shade300,
+                  ),
+                  label: Text(
+                    'Save Edits',
+                    style: TextStyle(
+                      color: Colors.indigo.shade300,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
               'Edit act titles and descriptions to guide the story, then generate scenes',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.3),
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
-            ...project.acts.asMap().entries.map((e) => _editableActCard(e.key, e.value, project)),
+            ...project.acts.asMap().entries.map(
+              (e) => _editableActCard(e.key, e.value, project),
+            ),
             const SizedBox(height: 16),
           ],
 
@@ -509,14 +662,18 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.indigo,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
+                    ),
                   ),
                 ),
               if (project.acts.isNotEmpty)
                 ElevatedButton.icon(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => StoryStructurePage(projectId: widget.projectId),
+                      builder: (_) =>
+                          StoryStructurePage(projectId: widget.projectId),
                     ),
                   ),
                   icon: const Icon(Icons.view_timeline),
@@ -524,7 +681,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.amber.shade800,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
+                    ),
                   ),
                 ),
               const SizedBox(width: 12),
@@ -533,7 +693,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   onPressed: _runStoryArchitect,
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Regenerate Bible'),
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.white54),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white54,
+                  ),
                 ),
             ],
           ),
@@ -552,9 +714,11 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade800.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: AppColors.borderOf(context).withValues(alpha: 0.3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -580,26 +744,38 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   const SizedBox(width: 8),
                   if (hasTimeline)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green.shade900.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         '${RegExp(r'\\[EVENT \\d+\\]').allMatches(project.distilledTimeline).length} events distilled',
-                        style: TextStyle(color: Colors.green.shade400, fontSize: 11),
+                        style: TextStyle(
+                          color: Colors.green.shade400,
+                          fontSize: 11,
+                        ),
                       ),
                     )
                   else
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.orange.shade900.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         'Not distilled yet',
-                        style: TextStyle(color: Colors.orange.shade400, fontSize: 11),
+                        style: TextStyle(
+                          color: Colors.orange.shade400,
+                          fontSize: 11,
+                        ),
                       ),
                     ),
                   const Spacer(),
@@ -620,27 +796,46 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
               child: Row(
                 children: [
                   if (hasTimeline) ...[
-                    _tabButton('Timeline', !_showRawMessages, () => setState(() => _showRawMessages = false)),
+                    _tabButton(
+                      'Timeline',
+                      !_showRawMessages,
+                      () => setState(() => _showRawMessages = false),
+                    ),
                     const SizedBox(width: 8),
                   ],
-                  _tabButton('Raw Messages', _showRawMessages || !hasTimeline, () {
-                    if (_chatPreviewMessages.isEmpty && !_loadingChatPreview) {
-                      _loadChatPreview(project);
-                    }
-                    setState(() => _showRawMessages = true);
-                  }),
+                  _tabButton(
+                    'Raw Messages',
+                    _showRawMessages || !hasTimeline,
+                    () {
+                      if (_chatPreviewMessages.isEmpty &&
+                          !_loadingChatPreview) {
+                        _loadChatPreview(project);
+                      }
+                      setState(() => _showRawMessages = true);
+                    },
+                  ),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () async {
-                      final pipeline = Provider.of<StoryPipelineService>(context, listen: false);
+                      final pipeline = Provider.of<StoryPipelineService>(
+                        context,
+                        listen: false,
+                      );
                       project.distilledTimeline = ''; // Force re-distill
                       await pipeline.runChatDistiller(project);
                       if (mounted) setState(() => _showRawMessages = false);
                     },
-                    icon: Icon(Icons.refresh, size: 14, color: Colors.blue.shade400),
+                    icon: Icon(
+                      Icons.refresh,
+                      size: 14,
+                      color: Colors.blue.shade400,
+                    ),
                     label: Text(
                       hasTimeline ? 'Redistill' : 'Distill Now',
-                      style: TextStyle(color: Colors.blue.shade400, fontSize: 12),
+                      style: TextStyle(
+                        color: Colors.blue.shade400,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ],
@@ -667,13 +862,21 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             ] else if (_loadingChatPreview) ...[
               const Padding(
                 padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue)),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue,
+                  ),
+                ),
               ),
             ] else if (_chatPreviewMessages.isNotEmpty) ...[
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 400),
                 child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   shrinkWrap: true,
                   itemCount: _chatPreviewMessages.length,
                   itemBuilder: (context, index) {
@@ -681,10 +884,15 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                     if (msg.startsWith('---')) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Divider(color: Colors.white.withValues(alpha: 0.1)),
+                        child: Divider(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       );
                     }
-                    final isUser = msg.startsWith('User:') || msg.startsWith('user:') || msg.startsWith('{{user}}:');
+                    final isUser =
+                        msg.startsWith('User:') ||
+                        msg.startsWith('user:') ||
+                        msg.startsWith('{{user}}:');
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(
@@ -693,7 +901,9 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                           Icon(
                             isUser ? Icons.person : Icons.smart_toy,
                             size: 14,
-                            color: isUser ? Colors.green.shade400 : Colors.purple.shade300,
+                            color: isUser
+                                ? Colors.green.shade400
+                                : Colors.purple.shade300,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -717,7 +927,10 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   'Click "Raw Messages" to load the full chat history.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ],
@@ -733,10 +946,14 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? Colors.blue.shade900.withValues(alpha: 0.4) : Colors.transparent,
+          color: active
+              ? Colors.blue.shade900.withValues(alpha: 0.4)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: active ? Colors.blue.shade700.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.1),
+            color: active
+                ? Colors.blue.shade700.withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.1),
           ),
         ),
         child: Text(
@@ -765,7 +982,7 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     final sceneCount = project.scenes[act.number - 1]?.length ?? 0;
 
     return Card(
-      color: _bgCard,
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -773,15 +990,26 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
         leading: CircleAvatar(
           backgroundColor: Colors.indigo.shade900.withValues(alpha: 0.5),
           radius: 18,
-          child: Text('${act.number}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          child: Text(
+            '${act.number}',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
         ),
         title: Text(
           _actTitleControllers[index]?.text ?? act.title,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
+            fontWeight: FontWeight.w500,
+          ),
         ),
         subtitle: Text(
-          (act.description.length > 100 ? '${act.description.substring(0, 100)}...' : act.description),
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+          (act.description.length > 100
+              ? '${act.description.substring(0, 100)}...'
+              : act.description),
+          style: TextStyle(
+            color: AppColors.textSecondary(context).withValues(alpha: 0.85),
+            fontSize: 12,
+          ),
         ),
         trailing: sceneCount > 0
             ? Container(
@@ -790,64 +1018,109 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                   color: Colors.blue.shade900.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('$sceneCount scenes', style: TextStyle(color: Colors.blue.shade300, fontSize: 11)),
+                child: Text(
+                  '$sceneCount scenes',
+                  style: TextStyle(color: Colors.blue.shade300, fontSize: 11),
+                ),
               )
             : null,
-        iconColor: Colors.white38,
+        iconColor: AppColors.iconSecondary(context),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Title', style: TextStyle(color: Colors.indigo.shade300, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(
+                  'Title',
+                  style: TextStyle(
+                    color: Colors.indigo.shade300,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 AppTextField(
                   controller: _actTitleControllers[index],
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 14,
+                  ),
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: _bgDark,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    fillColor: AppColors.surfaceContainerOf(context),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
                     contentPadding: const EdgeInsets.all(12),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text('Description', style: TextStyle(color: Colors.indigo.shade300, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(
+                  'Description',
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 AppTextField(
                   controller: _actDescControllers[index],
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 13,
+                  ),
                   maxLines: 8,
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: _bgDark,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    fillColor: AppColors.surfaceContainerOf(context),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
                     contentPadding: const EdgeInsets.all(12),
                   ),
                 ),
                 // Knots preview
                 if (act.knots.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  Text('Convergence Points', style: TextStyle(color: Colors.cyan.shade300, fontSize: 12, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  ...act.knots.map((k) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.merge_type, size: 14, color: Colors.cyan.shade600),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '${k.description} — ${k.interaction}',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
-                          ),
-                        ),
-                      ],
+                  Text(
+                    'Convergence Points',
+                    style: TextStyle(
+                      color: Colors.cyan.shade300,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
-                  )),
+                  ),
+                  const SizedBox(height: 4),
+                  ...act.knots.map(
+                    (k) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.merge_type,
+                            size: 14,
+                            color: Colors.cyan.shade600,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${k.description} — ${k.interaction}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.4),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -865,17 +1138,31 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     children: [
       Icon(icon, size: 20, color: color),
       const SizedBox(width: 8),
-      Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+      Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     ],
   );
 
-  Widget _sectionCard(String title, String content, IconData icon, Color color) {
+  Widget _sectionCard(
+    String title,
+    String content,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _bgCard,
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: AppColors.borderOf(context).withValues(alpha: 0.15),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -884,11 +1171,25 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
             children: [
               Icon(icon, size: 18, color: color),
               const SizedBox(width: 8),
-              Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 14)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(content, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+          Text(
+            content,
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
         ],
       ),
     );
@@ -896,28 +1197,58 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   Widget _castCard(StoryCastMember c) {
     return Card(
-      color: _bgCard,
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        title: Text(c.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-        subtitle: Text(c.role, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+        title: Text(
+          c.name,
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        subtitle: Text(
+          c.role,
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 12,
+          ),
+        ),
         leading: CircleAvatar(
           backgroundColor: Colors.orange.shade900.withValues(alpha: 0.4),
-          child: Text(c.name.isNotEmpty ? c.name[0] : '?', style: TextStyle(color: Colors.orange.shade300)),
+          child: Text(
+            c.name.isNotEmpty ? c.name[0] : '?',
+            style: TextStyle(color: Colors.orange.shade300),
+          ),
         ),
-        iconColor: Colors.white38,
+        iconColor: AppColors.iconSecondary(context),
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(c.description, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                Text(
+                  c.description,
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 13,
+                  ),
+                ),
                 if (c.voiceSample != null && c.voiceSample!.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text('Voice: "${c.voiceSample}"', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontStyle: FontStyle.italic, fontSize: 12)),
+                  Text(
+                    'Voice: "${c.voiceSample}"',
+                    style: TextStyle(
+                      color: AppColors.textSecondary(
+                        context,
+                      ).withValues(alpha: 0.8),
+                      fontStyle: FontStyle.italic,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
                 // TTS Voice picker
                 const SizedBox(height: 10),
@@ -927,31 +1258,69 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                     if (voices.isEmpty) return const SizedBox.shrink();
                     return Row(
                       children: [
-                        Icon(Icons.record_voice_over, size: 14, color: Colors.amber.withValues(alpha: 0.6)),
+                        Icon(
+                          Icons.record_voice_over,
+                          size: 14,
+                          color: Colors.amber.withValues(alpha: 0.6),
+                        ),
                         const SizedBox(width: 8),
-                        Text('TTS Voice:', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                        Text(
+                          'TTS Voice:',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 12,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButton<String>(
                             value: c.voiceModel,
-                            hint: Text('Default narrator', style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12)),
-                            dropdownColor: const Color(0xFF1E293B),
+                            hint: Text(
+                              'Default narrator',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                fontSize: 12,
+                              ),
+                            ),
+                            dropdownColor: AppColors.surfaceContainerOf(
+                              context,
+                            ),
                             isExpanded: true,
-                            underline: Container(height: 1, color: Colors.white12),
-                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            underline: Container(
+                              height: 1,
+                              color: Colors.white12,
+                            ),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
                             items: [
                               DropdownMenuItem<String>(
                                 value: null,
-                                child: Text('Default narrator', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+                                child: Text(
+                                  'Default narrator',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
-                              ...voices.map((v) => DropdownMenuItem<String>(
-                                value: v.id,
-                                child: Text(v.name, style: const TextStyle(fontSize: 12)),
-                              )),
+                              ...voices.map(
+                                (v) => DropdownMenuItem<String>(
+                                  value: v.id,
+                                  child: Text(
+                                    v.name,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ),
                             ],
                             onChanged: (value) {
                               c.voiceModel = value;
-                              final repo = Provider.of<StoryRepository>(context, listen: false);
+                              final repo = Provider.of<StoryRepository>(
+                                context,
+                                listen: false,
+                              );
                               final project = _project;
                               if (project != null) repo.saveProject(project);
                               setState(() {});
@@ -962,10 +1331,18 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
                     );
                   },
                 ),
-                ...c.details.entries.map((e) => Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('${e.key}: ${e.value}', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
-                )),
+                ...c.details.entries.map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${e.key}: ${e.value}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -976,14 +1353,26 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
 
   Widget _threadCard(StoryThread t) {
     return Card(
-      color: _bgCard,
+      color: AppColors.cardOf(context),
       margin: const EdgeInsets.only(bottom: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
         dense: true,
         leading: Icon(Icons.timeline, size: 18, color: Colors.cyan.shade400),
-        title: Text(t.name, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-        subtitle: Text(t.description, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+        title: Text(
+          t.name,
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 13,
+          ),
+        ),
+        subtitle: Text(
+          t.description,
+          style: TextStyle(
+            color: AppColors.textSecondary(context).withValues(alpha: 0.85),
+            fontSize: 12,
+          ),
+        ),
       ),
     );
   }
@@ -992,8 +1381,14 @@ class _StoryDashboardPageState extends State<StoryDashboardPage> {
     return Tooltip(
       message: l.detail,
       child: Chip(
-        label: Text(l.topic, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-        backgroundColor: _bgCard,
+        label: Text(
+          l.topic,
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary(context),
+          ),
+        ),
+        backgroundColor: AppColors.cardOf(context),
         side: BorderSide(color: Colors.green.shade800.withValues(alpha: 0.3)),
       ),
     );

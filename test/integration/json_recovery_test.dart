@@ -47,8 +47,10 @@ Here is the JSON response:
       expect(json['arousal_delta'], 0);
       expect(json['trust_delta'], 1);
       expect(json['mood_delta'], 2);
-      expect(json['narrative_note'],
-          'The character smiles warmly at the compliment.');
+      expect(
+        json['narrative_note'],
+        'The character smiles warmly at the compliment.',
+      );
     });
 
     test('completely broken JSON with no structure', () {
@@ -213,10 +215,7 @@ Analyzing the scene...
 
       expect(result, isNotNull);
       final json = result as Map;
-      expect(
-        json['narrative_note'],
-        'She said "thank you" with a smile.',
-      );
+      expect(json['narrative_note'], 'She said "thank you" with a smile.');
     });
 
     test('JSON with literal newlines in strings gets escaped', () {

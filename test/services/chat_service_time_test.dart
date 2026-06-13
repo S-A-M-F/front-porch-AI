@@ -170,10 +170,16 @@ void main() {
 
       stub.detectOocTimeSkip('time skip');
 
-      expect(stub.timeOfDay, 'morning',
-          reason: 'time should NOT advance when passage of time is disabled');
-      expect(stub.dayCount, 1,
-          reason: 'day should NOT advance when passage of time is disabled');
+      expect(
+        stub.timeOfDay,
+        'morning',
+        reason: 'time should NOT advance when passage of time is disabled',
+      );
+      expect(
+        stub.dayCount,
+        1,
+        reason: 'day should NOT advance when passage of time is disabled',
+      );
     });
 
     test('advances time when passageOfTimeEnabled is true', () {
@@ -182,8 +188,11 @@ void main() {
 
       stub.detectOocTimeSkip('time skip');
 
-      expect(stub.timeOfDay, 'late_morning',
-          reason: 'time advances by 1 period from morning → late_morning');
+      expect(
+        stub.timeOfDay,
+        'late_morning',
+        reason: 'time advances by 1 period from morning → late_morning',
+      );
     });
 
     test('global setting overrides character card setting', () {
@@ -195,13 +204,19 @@ void main() {
         globalPassageOfTimeDefault: false,
       );
 
-      expect(stub.passageOfTimeEnabled, isFalse,
-          reason: 'global setting is a hard ceiling');
+      expect(
+        stub.passageOfTimeEnabled,
+        isFalse,
+        reason: 'global setting is a hard ceiling',
+      );
 
       stub.detectOocTimeSkip('time skip');
 
-      expect(stub.timeOfDay, 'morning',
-          reason: 'OOC skip should be ignored when global setting is off');
+      expect(
+        stub.timeOfDay,
+        'morning',
+        reason: 'OOC skip should be ignored when global setting is off',
+      );
     });
   });
 
@@ -263,7 +278,10 @@ void main() {
       stub._timeOfDay = 'morning';
       stub.detectOocTimeSkip('several hours pass');
 
-      expect(stub.timeOfDay, 'evening'); // morning → late_morning → afternoon → evening
+      expect(
+        stub.timeOfDay,
+        'evening',
+      ); // morning → late_morning → afternoon → evening
     });
 
     test('"all day" advances by 4 periods', () {
@@ -273,7 +291,10 @@ void main() {
       // doesn't match hasSkipPhrase patterns
       stub.detectOocTimeSkip('(ooc: all day passes)');
 
-      expect(stub.timeOfDay, 'night'); // morning → late_morning → afternoon → evening → night
+      expect(
+        stub.timeOfDay,
+        'night',
+      ); // morning → late_morning → afternoon → evening → night
     });
 
     test('"an hour" advances by 1 period', () {
@@ -504,7 +525,10 @@ void main() {
       stub.detectOocTimeSkip('(ooc: time skip)');
 
       expect(stub.pendingRealismMetadata, isNotNull);
-      expect(stub.pendingRealismMetadata!['time_skip_to'], contains('Late Morning'));
+      expect(
+        stub.pendingRealismMetadata!['time_skip_to'],
+        contains('Late Morning'),
+      );
     });
 
     test('sets time_skip_to metadata for next-day transition', () {
@@ -537,14 +561,17 @@ void main() {
       expect(stub.dayCount, 1);
     });
 
-    test('does NOT advance time for text containing "hour" but not time-skip', () {
-      final stub = _PassageOfTimeStub();
-      stub._timeOfDay = 'morning';
+    test(
+      'does NOT advance time for text containing "hour" but not time-skip',
+      () {
+        final stub = _PassageOfTimeStub();
+        stub._timeOfDay = 'morning';
 
-      stub.detectOocTimeSkip('I have a hourglass on my desk');
+        stub.detectOocTimeSkip('I have a hourglass on my desk');
 
-      expect(stub.timeOfDay, 'morning');
-    });
+        expect(stub.timeOfDay, 'morning');
+      },
+    );
 
     test('does NOT advance time when no time-skip language detected', () {
       final stub = _PassageOfTimeStub();

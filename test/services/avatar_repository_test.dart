@@ -16,11 +16,11 @@ void main() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-    if (methodCall.method == 'getApplicationDocumentsDirectory') {
-      return Directory.systemTemp.path;
-    }
-    return null;
-  });
+        if (methodCall.method == 'getApplicationDocumentsDirectory') {
+          return Directory.systemTemp.path;
+        }
+        return null;
+      });
 
   SharedPreferences.setMockInitialValues({});
 
@@ -50,8 +50,8 @@ void main() {
       await db.close();
     });
 
-    test('schema version is 25', () {
-      expect(db.schemaVersion, 25);
+    test('schema version is 32', () {
+      expect(db.schemaVersion, 32);
     });
 
     test('characters table has prime_avatar_index column', () async {

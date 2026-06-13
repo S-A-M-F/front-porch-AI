@@ -128,27 +128,27 @@ void main() {
     test('firstMessage changes are picked up on re-selection', () {
       final stub = _CharacterSessionStub();
 
-      final original = CharacterCard(
-        name: 'Mira',
-        firstMessage: 'Old greeting',
-      )..dbId = 'char-003';
+      final original = CharacterCard(name: 'Mira', firstMessage: 'Old greeting')
+        ..dbId = 'char-003';
 
       stub.setActiveCharacter(original);
       expect(stub.messages, ['Old greeting']);
 
-      final edited = CharacterCard(
-        name: 'Mira',
-        firstMessage: 'New greeting!',
-      )..dbId = 'char-003';
+      final edited = CharacterCard(name: 'Mira', firstMessage: 'New greeting!')
+        ..dbId = 'char-003';
 
       stub.setActiveCharacter(edited);
 
       // Messages should be preserved (early-return path)
-      expect(stub.messages, ['Old greeting'],
-          reason: 'early-return must preserve existing messages');
+      expect(stub.messages, [
+        'Old greeting',
+      ], reason: 'early-return must preserve existing messages');
       // But the character reference should be updated
-      expect(stub.activeCharacter!.firstMessage, 'New greeting!',
-          reason: 'firstMessage must be updated on re-selection');
+      expect(
+        stub.activeCharacter!.firstMessage,
+        'New greeting!',
+        reason: 'firstMessage must be updated on re-selection',
+      );
     });
   });
 
@@ -176,17 +176,18 @@ void main() {
 
       stub.startNewChat();
 
-      expect(stub.activeCharacter!.personality, 'Bold and confident',
-          reason: 'startNewChat must refresh activeCharacter from repository');
+      expect(
+        stub.activeCharacter!.personality,
+        'Bold and confident',
+        reason: 'startNewChat must refresh activeCharacter from repository',
+      );
     });
 
     test('startNewChat refreshes first message', () {
       final stub = _CharacterSessionStub();
 
-      final original = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Old greeting',
-      )..dbId = 'char-001';
+      final original = CharacterCard(name: 'Luna', firstMessage: 'Old greeting')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(original);
       expect(stub.messages.first, 'Old greeting');
@@ -199,17 +200,18 @@ void main() {
       stub.repositoryCharacters = [updated];
       stub.startNewChat();
 
-      expect(stub.messages.first, 'Shiny new greeting!',
-          reason: 'new chat greeting must use the refreshed character data');
+      expect(
+        stub.messages.first,
+        'Shiny new greeting!',
+        reason: 'new chat greeting must use the refreshed character data',
+      );
     });
 
     test('startNewChat refreshes realism extensions from repository', () {
       final stub = _CharacterSessionStub();
 
-      final original = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-      )..dbId = 'char-001';
+      final original = CharacterCard(name: 'Luna', firstMessage: 'Hi')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(original);
       expect(stub.activeCharacter!.frontPorchExtensions, isNull);
@@ -231,7 +233,10 @@ void main() {
 
       expect(stub.activeCharacter!.frontPorchExtensions, isNotNull);
       expect(stub.activeCharacter!.frontPorchExtensions!.realismEnabled, true);
-      expect(stub.activeCharacter!.frontPorchExtensions!.chaosModeEnabled, true);
+      expect(
+        stub.activeCharacter!.frontPorchExtensions!.chaosModeEnabled,
+        true,
+      );
     });
   });
 
@@ -257,10 +262,16 @@ void main() {
 
       stub.setActiveCharacter(edited);
 
-      expect(identical(stub.activeCharacter, edited), isTrue,
-          reason: 'reference must be updated to the new object');
-      expect(identical(stub.activeCharacter, original), isFalse,
-          reason: 'reference must NOT still point to the old object');
+      expect(
+        identical(stub.activeCharacter, edited),
+        isTrue,
+        reason: 'reference must be updated to the new object',
+      );
+      expect(
+        identical(stub.activeCharacter, original),
+        isFalse,
+        reason: 'reference must NOT still point to the old object',
+      );
     });
 
     test('repository lookup returns updated character', () {
@@ -284,8 +295,11 @@ void main() {
 
       final found = stub.lookupInRepository('char-001');
       expect(found, isNotNull);
-      expect(found!.personality, 'Bold',
-          reason: 'repository lookup must return the updated character');
+      expect(
+        found!.personality,
+        'Bold',
+        reason: 'repository lookup must return the updated character',
+      );
     });
   });
 
@@ -317,24 +331,23 @@ void main() {
       stub.startNewChat();
 
       expect(stub.activeCharacter!.name, 'Luna');
-      expect(stub.activeCharacter!.personality, 'Bold',
-          reason: 'must pick the correct character by dbId, not name');
+      expect(
+        stub.activeCharacter!.personality,
+        'Bold',
+        reason: 'must pick the correct character by dbId, not name',
+      );
     });
 
     test('finds character regardless of position in repository list', () {
       final stub = _CharacterSessionStub();
 
-      final charA = CharacterCard(
-        name: 'A',
-        firstMessage: 'A',
-      )..dbId = 'char-a';
+      final charA = CharacterCard(name: 'A', firstMessage: 'A')
+        ..dbId = 'char-a';
 
       stub.setActiveCharacter(charA);
 
-      final updatedA = CharacterCard(
-        name: 'A',
-        firstMessage: 'Updated A',
-      )..dbId = 'char-a';
+      final updatedA = CharacterCard(name: 'A', firstMessage: 'Updated A')
+        ..dbId = 'char-a';
 
       // Put updated A at the END of the list
       stub.repositoryCharacters = [
@@ -345,8 +358,11 @@ void main() {
 
       stub.startNewChat();
 
-      expect(stub.activeCharacter!.firstMessage, 'Updated A',
-          reason: 'must find character regardless of list position');
+      expect(
+        stub.activeCharacter!.firstMessage,
+        'Updated A',
+        reason: 'must find character regardless of list position',
+      );
     });
   });
 
@@ -354,10 +370,8 @@ void main() {
     test('handles null character gracefully', () {
       final stub = _CharacterSessionStub();
 
-      final char = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Hi',
-      )..dbId = 'char-001';
+      final char = CharacterCard(name: 'Luna', firstMessage: 'Hi')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(char);
       expect(stub.activeCharacter, isNotNull);
@@ -369,25 +383,24 @@ void main() {
     test('handles same character with different dbId as different', () {
       final stub = _CharacterSessionStub();
 
-      final charA = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'Old',
-      )..dbId = 'char-001';
+      final charA = CharacterCard(name: 'Luna', firstMessage: 'Old')
+        ..dbId = 'char-001';
 
       stub.setActiveCharacter(charA);
       expect(stub.messages, ['Old']);
 
       // Same name, different dbId (e.g., a new character created with same name)
-      final charB = CharacterCard(
-        name: 'Luna',
-        firstMessage: 'New',
-      )..dbId = 'char-002';
+      final charB = CharacterCard(name: 'Luna', firstMessage: 'New')
+        ..dbId = 'char-002';
 
       stub.setActiveCharacter(charB);
 
       // Different dbId should NOT trigger early-return
-      expect(stub.messages, ['New'],
-          reason: 'same name but different dbId should clear messages');
+      expect(
+        stub.messages,
+        ['New'],
+        reason: 'same name but different dbId should clear messages',
+      );
     });
 
     test('handles empty messages list (no early-return)', () {
@@ -413,8 +426,11 @@ void main() {
 
       // With empty messages, early-return guard is NOT triggered
       // so the full path runs (clear + re-add greeting)
-      expect(stub.activeCharacter!.personality, 'Bold',
-          reason: 'must update reference even without early-return');
+      expect(
+        stub.activeCharacter!.personality,
+        'Bold',
+        reason: 'must update reference even without early-return',
+      );
     });
 
     test('preserves extensions when repository character lacks them', () {

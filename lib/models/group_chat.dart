@@ -26,51 +26,136 @@ enum TurnOrder {
 }
 
 /// A lightweight wrapper representing a multi-character conversation.
+///
+/// After the clean-break decoupling (2026-05), group membership is no longer
+/// stored as characterIds referencing the singular library. The authoritative
+/// list of members for a group lives in the group_members table (loaded via
+/// GroupChatRepository or joined queries). GroupChat itself no longer carries
+/// or manages the member ID list.
 class GroupChat {
   final String id;
   String name;
-  List<String> characterIds; // references into CharacterRepository
   TurnOrder turnOrder;
   bool autoAdvance; // auto-trigger next character after one responds
   bool directorMode; // start in director mode when entering this group
   String firstMessage; // custom group greeting (empty = use first character's)
-  String scenario; // group-level scenario override (empty = use first character's)
-  String systemPrompt; // group-level system prompt override (empty = use global)
+  String
+  scenario; // group-level scenario override (empty = use first character's)
+  String
+  systemPrompt; // group-level system prompt override (empty = use global)
+
+  /// Portable default realism/needs state for this group (definition-level).
+  /// JSON map of charId → realism blob. Travels with Group Cards and is used
+  /// as the seed when starting new group sessions or splitting members to solo.
+  /// Added in v30 (clean replacement for old hidden checkpoint system).
+  String defaultMemberRealismState;
+
+  /// Immutable creation-time baseline realism/needs seed for this group definition.
+  ///
+  /// This is the **frozen snapshot** of per-character realism values (bond, trust, emotion,
+  /// time of day, day count, etc.) that were explicitly seeded when the group was first
+  /// created or imported via Group Card. It is **never mutated** by normal chat activity.
+  ///
+  /// Contrast with [defaultMemberRealismState], which holds the live/evolving per-character
+  /// state for new sessions and can change over time.
+  ///
+  /// When exporting a Group Card, we deliberately export this baseline (not the evolved
+  /// state) so that re-importing the card recreates the group exactly as the creator
+  /// intended it at birth.
+  ///
+  /// Stored in its own first-class column (v31) rather than inside a JSON blob.
+  String baselineRealismState;
+
+  /// Per-character system prompt overrides that only apply inside *this* group.
+  /// Keyed by the GroupMember.id (UUID) of the member inside this group.
+  /// These take precedence over the member's normal `systemPrompt` (from their card)
+  /// when that member speaks in this group, but sit \"under\" the group-level `systemPrompt`.
+  ///
+  /// Stored in its own first-class column on the groups table (v32).
+  /// The previous transitional storage inside defaultMemberRealismState JSON
+  /// has been fully removed (no more Path B blob merging).
+  /// See docs/characters.md "Prompt Priority in Groups" for the hierarchy.
+  Map<String, String> characterSystemPrompts;
+
+  /// Worlds linked to this group (for world lorebook injection).
+  List<String> worldIds;
+
+  /// Group-level lorebook entries (JSON string, same format as Character.lorebook).
+  /// Takes highest priority in prompt construction.
+  String groupLorebook;
+
+  /// Whether to inherit/append lorebooks from participating characters.
+  /// When false, only group + world lorebooks are used.
+  bool inheritCharacterLorebooks;
+
+  /// Whether Chaos Mode (Chance Time) is enabled for this group.
+  bool chaosModeEnabled;
+
+  /// Whether NSFW events are included in the Chance Time pool for this group.
+  bool chaosNsfwEnabled;
 
   GroupChat({
     required this.id,
     required this.name,
-    required this.characterIds,
     this.turnOrder = TurnOrder.roundRobin,
     this.autoAdvance = false,
     this.directorMode = false,
     this.firstMessage = '',
     this.scenario = '',
     this.systemPrompt = '',
-  });
+    this.defaultMemberRealismState = '{}',
+    this.baselineRealismState = '{}',
+    Map<String, String>? characterSystemPrompts,
+    this.worldIds = const [],
+    this.groupLorebook = '',
+    this.inheritCharacterLorebooks = true,
+    this.chaosModeEnabled = false,
+    this.chaosNsfwEnabled = false,
+  }) : characterSystemPrompts = characterSystemPrompts ?? {};
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
-      'character_ids': characterIds,
+      // NOTE: character_ids intentionally removed (clean break 2026-05).
+      // Membership now lives exclusively in the group_members table (UUID keys).
+      // This toJson is primarily for debug/legacy paths; GroupCard is the
+      // portable interchange that carries full member definitions.
       'turn_order': turnOrder.name,
       'auto_advance': autoAdvance,
       'director_mode': directorMode,
       'first_message': firstMessage,
       'scenario': scenario,
       'system_prompt': systemPrompt,
+      'default_member_realism_state': defaultMemberRealismState,
+      'baseline_realism_state': baselineRealismState,
+      'character_system_prompts': characterSystemPrompts,
+      'world_ids': worldIds,
+      'group_lorebook': groupLorebook,
+      'inherit_character_lorebooks': inheritCharacterLorebooks,
+      'chaos_mode_enabled': chaosModeEnabled,
+      'chaos_nsfw_enabled': chaosNsfwEnabled,
     };
   }
 
   factory GroupChat.fromJson(Map<String, dynamic> json) {
+    final rawCharPrompts = json['character_system_prompts'];
+    final charPrompts = (rawCharPrompts is Map)
+        ? rawCharPrompts.map(
+            (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+          )
+        : <String, String>{};
+
+    final rawWorldIds = json['world_ids'];
+    final worldIdsList = (rawWorldIds is List)
+        ? rawWorldIds.map((e) => e.toString()).toList()
+        : <String>[];
+
     return GroupChat(
       id: json['id'] ?? '',
       name: json['name'] ?? 'Group Chat',
-      characterIds: (json['character_ids'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
+      // character_ids from legacy JSON ignored (clean break — no adoption).
+      // Real members come from group_members table after load.
       turnOrder: TurnOrder.values.firstWhere(
         (e) => e.name == json['turn_order'],
         orElse: () => TurnOrder.roundRobin,
@@ -80,6 +165,14 @@ class GroupChat {
       firstMessage: json['first_message'] ?? '',
       scenario: json['scenario'] ?? '',
       systemPrompt: json['system_prompt'] ?? '',
+      defaultMemberRealismState: json['default_member_realism_state'] ?? '{}',
+      baselineRealismState: json['baseline_realism_state'] ?? '{}',
+      characterSystemPrompts: charPrompts,
+      worldIds: worldIdsList,
+      groupLorebook: json['group_lorebook'] ?? '',
+      inheritCharacterLorebooks: json['inherit_character_lorebooks'] ?? true,
+      chaosModeEnabled: json['chaos_mode_enabled'] ?? false,
+      chaosNsfwEnabled: json['chaos_nsfw_enabled'] ?? false,
     );
   }
 }

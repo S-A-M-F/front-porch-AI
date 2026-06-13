@@ -26,12 +26,12 @@ const int defaultContextSize = 8192;
 const int tightThresholdMb = 2048; // 2 GB
 
 /// Utility class for estimating VRAM requirements and fit status.
-/// 
+///
 /// VRAM estimation formula:
 /// - Model weights: file size (GGUF files are already quantized)
 /// - KV cache: kvBytesPerToken * contextSize
 /// - Overhead: ~5% for runtime buffers
-/// 
+///
 /// Total = fileSize + kvCache + overhead
 class VramEstimator {
   /// Estimates total VRAM needed (in MB) to run a model.
@@ -145,7 +145,7 @@ class VramEstimator {
   }
 
   /// Estimates KV cache bytes per token based on model parameter count.
-  /// 
+  ///
   /// These are FP16 estimates. Actual values depend on architecture
   /// and may be lower with KV quantization enabled.
   static int _estimateKvBytesPerToken(double? paramCountB) {
@@ -154,14 +154,18 @@ class VramEstimator {
     // Heuristic based on common architectures:
     // KV cache per token = 2 * layers * kvHeads * headDim * 2 (FP16)
     // Approximate by parameter class:
-    if (paramCountB >= 128) return 8192;   // 128B+ class (e.g., Mixtral 8x22B, Command R+)
-    if (paramCountB >= 70) return 4096;    // 70B class (e.g., Llama-3-70B)
-    if (paramCountB >= 34) return 3072;    // 34B class (e.g., Yi-34B)
-    if (paramCountB >= 13) return 2048;    // 13B class (e.g., Mistral-7B-v3, Llama-2-13B)
-    if (paramCountB >= 8) return 1536;     // 8B class (e.g., Llama-3-8B)
-    if (paramCountB >= 3) return 1024;     // 3B class (e.g., Phi-3)
-    if (paramCountB >= 1) return 512;      // 1-2B class
-    return _defaultKvBytes;                // <1B or unknown
+    if (paramCountB >= 128) {
+      return 8192; // 128B+ class (e.g., Mixtral 8x22B, Command R+)
+    }
+    if (paramCountB >= 70) return 4096; // 70B class (e.g., Llama-3-70B)
+    if (paramCountB >= 34) return 3072; // 34B class (e.g., Yi-34B)
+    if (paramCountB >= 13) {
+      return 2048; // 13B class (e.g., Mistral-7B-v3, Llama-2-13B)
+    }
+    if (paramCountB >= 8) return 1536; // 8B class (e.g., Llama-3-8B)
+    if (paramCountB >= 3) return 1024; // 3B class (e.g., Phi-3)
+    if (paramCountB >= 1) return 512; // 1-2B class
+    return _defaultKvBytes; // <1B or unknown
   }
 
   /// Default KV bytes per token estimate for unknown models.

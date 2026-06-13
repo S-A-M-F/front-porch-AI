@@ -90,10 +90,20 @@ void main() {
       final card = CharacterCard(
         name: 'Lore Character',
         personality: 'Knows things',
-        lorebook: Lorebook(entries: [
-          LorebookEntry(name: 'World Lore', key: 'magic', content: 'Magic exists'),
-          LorebookEntry(name: 'Character Lore', key: 'sword', content: 'Wields a sword'),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(
+              name: 'World Lore',
+              key: 'magic',
+              content: 'Magic exists',
+            ),
+            LorebookEntry(
+              name: 'Character Lore',
+              key: 'sword',
+              content: 'Wields a sword',
+            ),
+          ],
+        ),
       );
 
       final outputPath = '$tempDir/lorebook_test.png';
@@ -135,7 +145,7 @@ void main() {
       final loaded = await service.readCard(outputPath);
       expect(loaded, isNotNull);
       expect(loaded!.tags, ['fantasy', 'magic', 'dragon']);
-      expect(loaded!.worldNames, ['Fantasy Realm', 'Dragon Keep']);
+      expect(loaded.worldNames, ['Fantasy Realm', 'Dragon Keep']);
     });
 
     test('round-trip preserves system prompt and post history', () async {
@@ -151,7 +161,7 @@ void main() {
       final loaded = await service.readCard(outputPath);
       expect(loaded, isNotNull);
       expect(loaded!.systemPrompt, 'You are a helpful assistant.');
-      expect(loaded!.postHistoryInstructions, 'Maintain character voice.');
+      expect(loaded.postHistoryInstructions, 'Maintain character voice.');
     });
 
     test('round-trip preserves mesExample', () async {
@@ -189,7 +199,7 @@ void main() {
       img.fill(sourceImg, color: img.ColorRgb8(255, 0, 0));
       final sourcePath = '$tempDir/source.png';
       final sourceFile = File(sourcePath);
-      await sourceFile.writeAsBytes(img.encodePng(sourceImg)!);
+      await sourceFile.writeAsBytes(img.encodePng(sourceImg));
 
       final card = CharacterCard(name: 'With Image Character');
       final outputPath = '$tempDir/with_source.png';
@@ -200,7 +210,10 @@ void main() {
     });
 
     test('readCard throws for non-existent file', () async {
-      expect(() => service.readCard('$tempDir/nonexistent.png'), throwsA(isA<PathNotFoundException>()));
+      expect(
+        () => service.readCard('$tempDir/nonexistent.png'),
+        throwsA(isA<PathNotFoundException>()),
+      );
     });
 
     test('readCard returns null for invalid PNG', () async {
@@ -214,7 +227,7 @@ void main() {
       final plainImg = img.Image(width: 50, height: 50);
       img.fill(plainImg, color: img.ColorRgb8(0, 0, 255));
       final noCharaPath = '$tempDir/no_chara.png';
-      await File(noCharaPath).writeAsBytes(img.encodePng(plainImg)!);
+      await File(noCharaPath).writeAsBytes(img.encodePng(plainImg));
 
       final loaded = await service.readCard(noCharaPath);
       expect(loaded, isNull);
@@ -223,18 +236,29 @@ void main() {
     test('full round-trip with all fields', () async {
       final card = CharacterCard(
         name: 'Full Test Character',
-        description: 'A comprehensive test character with all possible fields populated',
+        description:
+            'A comprehensive test character with all possible fields populated',
         personality: 'Brave, clever, and slightly mischievous',
         scenario: 'During a grand festival in a medieval city',
-        firstMessage: 'The festival lights dance across the square as you approach.',
+        firstMessage:
+            'The festival lights dance across the square as you approach.',
         mesExample: '{{char}}: Welcome to the festival!\n{{user}}: Thank you!',
         systemPrompt: 'You are a festival guide.',
         postHistoryInstructions: 'Describe the atmosphere.',
-        alternateGreetings: ['The festival is lively tonight!', 'Care to join the celebration?'],
+        alternateGreetings: [
+          'The festival is lively tonight!',
+          'Care to join the celebration?',
+        ],
         tags: ['fantasy', 'festival', 'guide'],
-        lorebook: Lorebook(entries: [
-          LorebookEntry(name: 'Festival Lore', key: 'festival', content: 'Annual celebration'),
-        ]),
+        lorebook: Lorebook(
+          entries: [
+            LorebookEntry(
+              name: 'Festival Lore',
+              key: 'festival',
+              content: 'Annual celebration',
+            ),
+          ],
+        ),
         worldNames: ['Festival City'],
         ttsVoice: 'en_us',
         frontPorchExtensions: FrontPorchExtensions(

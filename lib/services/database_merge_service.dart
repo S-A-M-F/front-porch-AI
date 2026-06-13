@@ -110,7 +110,9 @@ class DatabaseMergeService {
     if (remoteRows.isEmpty) return false;
 
     // Read all rows from local, keyed by ID
-    final localResult = await localDb.customSelect('SELECT * FROM $tableName').get();
+    final localResult = await localDb
+        .customSelect('SELECT * FROM $tableName')
+        .get();
     final localById = <String, QueryRow>{};
     for (final row in localResult) {
       // Use .toString() because SQLite may return numeric-looking text as int
@@ -135,20 +137,40 @@ class DatabaseMergeService {
         final localUpdatedAt = localRow.data[updatedAtColumn] as int? ?? 0;
         final localDeletedAt = localRow.data[deletedAtColumn] as int?;
 
-        if (remoteUpdatedAt > localUpdatedAt) {
-          // Remote is newer → UPDATE local
+        if (remoteUpdatedAt > localUpdatedAt &&
+            !(localDeletedAt != null && remoteDeletedAt == null)) {
+          // Remote is newer → UPDATE local.
+          // Guard: never let a remote *live* row resurrect a locally soft-deleted row
+          // (even on minor timestamp skew). The local deletion flag will travel when we
+          // upload the post-merge DB.
           await _updateRow(localDb, tableName, idColumn, remoteId, remoteRow);
           changed = true;
-          debugPrint('[Merge] UPDATE $tableName $remoteId (remote ${remoteUpdatedAt} > local ${localUpdatedAt})');
-        } else if (remoteDeletedAt != null && localDeletedAt == null && remoteUpdatedAt >= localUpdatedAt) {
+          debugPrint(
+            '[Merge] UPDATE $tableName $remoteId (remote $remoteUpdatedAt > local $localUpdatedAt)',
+          );
+        } else if (remoteDeletedAt != null &&
+            localDeletedAt == null &&
+            remoteUpdatedAt >= localUpdatedAt) {
           // Remote was deleted, local wasn't, and remote is at least as new → soft delete local
           await localDb.customUpdate(
             'UPDATE $tableName SET $deletedAtColumn = ?, $updatedAtColumn = ? WHERE $idColumn = ?',
-            variables: [Variable(remoteDeletedAt), Variable(remoteUpdatedAt), Variable(remoteId)],
+            variables: [
+              Variable(remoteDeletedAt),
+              Variable(remoteUpdatedAt),
+              Variable(remoteId),
+            ],
             updates: {},
           );
           changed = true;
           debugPrint('[Merge] SOFT-DELETE $tableName $remoteId');
+        } else if (localDeletedAt != null &&
+            (remoteDeletedAt == null || remoteUpdatedAt < localUpdatedAt)) {
+          // Local soft-delete wins (remote is still live or older). No local change needed
+          // (the row we already have carries the flag), but note it for diagnostics.
+          // The subsequent upload of the local DB after merge will carry the deletion.
+          debugPrint(
+            '[Merge] LOCAL SOFT-DELETE $tableName $remoteId wins over remote (prevents resurrection)',
+          );
         }
       }
     }
@@ -199,7 +221,10 @@ class DatabaseMergeService {
 
   // ── Per-table merge methods ───────────────────────────────────────
 
-  static Future<bool> _mergeFolders(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergeFolders(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'folders',
       localDb: localDb,
@@ -207,7 +232,10 @@ class DatabaseMergeService {
     );
   }
 
-  static Future<bool> _mergeCharacters(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergeCharacters(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'characters',
       localDb: localDb,
@@ -215,7 +243,10 @@ class DatabaseMergeService {
     );
   }
 
-  static Future<bool> _mergeGroups(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergeGroups(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'groups',
       localDb: localDb,
@@ -223,7 +254,10 @@ class DatabaseMergeService {
     );
   }
 
-  static Future<bool> _mergePersonas(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergePersonas(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'personas',
       localDb: localDb,
@@ -231,7 +265,10 @@ class DatabaseMergeService {
     );
   }
 
-  static Future<bool> _mergeWorlds(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergeWorlds(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'worlds',
       localDb: localDb,
@@ -239,7 +276,10 @@ class DatabaseMergeService {
     );
   }
 
-  static Future<bool> _mergeSessions(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergeSessions(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'sessions',
       localDb: localDb,
@@ -247,7 +287,10 @@ class DatabaseMergeService {
     );
   }
 
-  static Future<bool> _mergeMessages(AppDatabase localDb, QueryExecutor remoteDb) {
+  static Future<bool> _mergeMessages(
+    AppDatabase localDb,
+    QueryExecutor remoteDb,
+  ) {
     return _mergeTable(
       tableName: 'messages',
       localDb: localDb,
@@ -262,7 +305,10 @@ class _MergeDbUser extends QueryExecutorUser {
   int get schemaVersion => 3;
 
   @override
-  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) async {
+  Future<void> beforeOpen(
+    QueryExecutor executor,
+    OpeningDetails details,
+  ) async {
     // No-op — we only read from this DB, no migrations should run
   }
 }

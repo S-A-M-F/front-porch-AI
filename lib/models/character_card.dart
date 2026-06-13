@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'package:front_porch_ai/database/database.dart' show AvatarImage;
+import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 
 import 'package:flutter/material.dart';
@@ -38,6 +38,51 @@ class FrontPorchExtensions {
   bool nsfwCooldownEnabled;
   bool passageOfTimeEnabled; // sub-toggle for automatic time advancement
   bool chaosModeEnabled;
+  bool needsSimEnabled; // per-character default for the needs simulation toggle
+  bool
+  enjoysLowHygiene; // when true, low hygiene is desirable (inverted behavior for filthy/musky characters)
+
+  // Optional director/verifier thread for Realism Engine + Needs (ingests full latent context + deltas JSON;
+  // rules + optional reprocess with corrections up to full per-eval clamp limits; per-char in Optional Features).
+  bool realismVerificationEnabled;
+  int realismVerificationMaxReprocesses; // 1-5
+  int
+  realismVerificationStrictness; // 1-5 (default 3 = Balanced; higher = stricter director)
+
+  // Director authority on needs deltas (simple model+Director path): when true, verified/corrected deltas from Director review loop take authority for needs_impact (straight decay ticks + model deltas + optional director corrections; no legacy buffers/table/spaghetti). Off by default for conservative behavior.
+  bool realismNeedsDirectorAuthority;
+
+  // User-chosen exponent (1-5) for Needs Simulation delta magnitude. 1 = baseline (current behavior).
+  // Higher values make swings larger (e.g. model/Director emits -3 hygiene → at 5x becomes -15).
+  // The value is injected into the first-pass needs impact eval prompt and the Director (needs_impact)
+  // so both the model emission and any corrections are produced at the user-requested scale.
+  // Applied as rawDelta * strength (safety) in the evaluator for both authority and legacy paths.
+  // Stored per-card (and per-member via frontPorch in groups). Default 1 = no behavior change.
+  int needsSimStrength;
+
+  // Per-need baseline values (0-100). Used to seed the needs vector when starting a new session
+  // with this character. Default 80 matches legacy initialization behavior.
+  int needsBaselineHunger;
+  int needsBaselineBladder;
+  int needsBaselineEnergy;
+  int needsBaselineSocial;
+  int needsBaselineFun;
+  int needsBaselineHygiene;
+  int needsBaselineComfort;
+
+  // Per-need decay rates (0-10). Applied as base decay per turn in tickDecay().
+  // Defaults match the legacy hardcoded NeedsSimulation.needDecay values.
+  int needsDecayHunger;
+  int needsDecayBladder;
+  int needsDecayEnergy;
+  int needsDecaySocial;
+  int needsDecayFun;
+  int needsDecayHygiene;
+  int needsDecayComfort;
+
+  // Avatar behavior
+  bool
+  avatarLocked; // when true, avatar won't grow past default sidebar width on resize
 
   // Chat appearance colors (null = use global default)
   Color? userBubbleColor;
@@ -64,6 +109,42 @@ class FrontPorchExtensions {
     this.nsfwCooldownEnabled = false,
     this.passageOfTimeEnabled = true, // defaults to on when realism is enabled
     this.chaosModeEnabled = false,
+    this.needsSimEnabled = false,
+    this.enjoysLowHygiene = false,
+
+    // Realism Verification (Director/Verifier) — optional, off by default (zero cost when off)
+    this.realismVerificationEnabled = false,
+    this.realismVerificationMaxReprocesses = 1,
+    this.realismVerificationStrictness = 3,
+
+    // Director authority on needs deltas (simple model+Director path; off default = legacy conservative)
+    this.realismNeedsDirectorAuthority = false,
+
+    // Needs delta strength (1-5). Injected into the first needs-impact model call and (when Director
+    // authority is enabled) the verifier prompt so the model and Director emit/correct deltas at the
+    // requested magnitude on the first pass. The Director must not receive an already-scaled value
+    // and then scale it again. What the (Director-corrected) call returns is applied directly.
+    this.needsSimStrength = 1,
+
+    // Per-need baseline values (0-100). Default 80 matches legacy initialization.
+    this.needsBaselineHunger = 80,
+    this.needsBaselineBladder = 80,
+    this.needsBaselineEnergy = 80,
+    this.needsBaselineSocial = 80,
+    this.needsBaselineFun = 80,
+    this.needsBaselineHygiene = 80,
+    this.needsBaselineComfort = 80,
+
+    this.needsDecayHunger = 4,
+    this.needsDecayBladder = 6,
+    this.needsDecayEnergy = 3,
+    this.needsDecaySocial = 2,
+    this.needsDecayFun = 2,
+    this.needsDecayHygiene = 1,
+    this.needsDecayComfort = 2,
+
+    // Avatar behavior
+    this.avatarLocked = false,
 
     // Chat appearance colors (null = use global default)
     this.userBubbleColor,
@@ -94,6 +175,32 @@ class FrontPorchExtensions {
         'nsfw_cooldown_enabled': nsfwCooldownEnabled,
         'passage_of_time_enabled': passageOfTimeEnabled,
         'chaos_mode_enabled': chaosModeEnabled,
+        'needs_sim_enabled': needsSimEnabled,
+        'enjoys_low_hygiene': enjoysLowHygiene,
+        'realism_verification_enabled': realismVerificationEnabled,
+        'realism_verification_max_reprocesses':
+            realismVerificationMaxReprocesses,
+        'realism_verification_strictness': realismVerificationStrictness,
+        'realism_needs_director_authority': realismNeedsDirectorAuthority,
+        'needs_sim_strength': needsSimStrength,
+        // Per-need baseline values
+        'needs_baseline_hunger': needsBaselineHunger,
+        'needs_baseline_bladder': needsBaselineBladder,
+        'needs_baseline_energy': needsBaselineEnergy,
+        'needs_baseline_social': needsBaselineSocial,
+        'needs_baseline_fun': needsBaselineFun,
+        'needs_baseline_hygiene': needsBaselineHygiene,
+        'needs_baseline_comfort': needsBaselineComfort,
+
+        'needs_decay_hunger': needsDecayHunger,
+        'needs_decay_bladder': needsDecayBladder,
+        'needs_decay_energy': needsDecayEnergy,
+        'needs_decay_social': needsDecaySocial,
+        'needs_decay_fun': needsDecayFun,
+        'needs_decay_hygiene': needsDecayHygiene,
+        'needs_decay_comfort': needsDecayComfort,
+
+        'avatar_locked': avatarLocked,
 
         // Chat appearance colors (null = use global default)
         'user_bubble_color': userBubbleColor?.toARGB32(),
@@ -125,6 +232,32 @@ class FrontPorchExtensions {
       nsfwCooldownEnabled: realism['nsfw_cooldown_enabled'] as bool? ?? false,
       passageOfTimeEnabled: realism['passage_of_time_enabled'] as bool? ?? true,
       chaosModeEnabled: realism['chaos_mode_enabled'] as bool? ?? false,
+      needsSimEnabled: realism['needs_sim_enabled'] as bool? ?? false,
+      enjoysLowHygiene: realism['enjoys_low_hygiene'] as bool? ?? false,
+      realismVerificationEnabled:
+          realism['realism_verification_enabled'] as bool? ?? false,
+      realismVerificationMaxReprocesses:
+          realism['realism_verification_max_reprocesses'] as int? ?? 1,
+      realismVerificationStrictness:
+          realism['realism_verification_strictness'] as int? ?? 3,
+      realismNeedsDirectorAuthority:
+          realism['realism_needs_director_authority'] as bool? ?? false,
+      needsSimStrength: realism['needs_sim_strength'] as int? ?? 1,
+      needsBaselineHunger: realism['needs_baseline_hunger'] as int? ?? 80,
+      needsBaselineBladder: realism['needs_baseline_bladder'] as int? ?? 80,
+      needsBaselineEnergy: realism['needs_baseline_energy'] as int? ?? 80,
+      needsBaselineSocial: realism['needs_baseline_social'] as int? ?? 80,
+      needsBaselineFun: realism['needs_baseline_fun'] as int? ?? 80,
+      needsBaselineHygiene: realism['needs_baseline_hygiene'] as int? ?? 80,
+      needsBaselineComfort: realism['needs_baseline_comfort'] as int? ?? 80,
+      needsDecayHunger: realism['needs_decay_hunger'] as int? ?? 4,
+      needsDecayBladder: realism['needs_decay_bladder'] as int? ?? 6,
+      needsDecayEnergy: realism['needs_decay_energy'] as int? ?? 3,
+      needsDecaySocial: realism['needs_decay_social'] as int? ?? 2,
+      needsDecayFun: realism['needs_decay_fun'] as int? ?? 2,
+      needsDecayHygiene: realism['needs_decay_hygiene'] as int? ?? 1,
+      needsDecayComfort: realism['needs_decay_comfort'] as int? ?? 2,
+      avatarLocked: realism['avatar_locked'] as bool? ?? false,
 
       // Chat appearance colors (null = use global default)
       userBubbleColor: realism['user_bubble_color'] != null
@@ -166,6 +299,28 @@ class FrontPorchExtensions {
     bool? nsfwCooldownEnabled,
     bool? passageOfTimeEnabled,
     bool? chaosModeEnabled,
+    bool? needsSimEnabled,
+    bool? enjoysLowHygiene,
+    bool? realismVerificationEnabled,
+    int? realismVerificationMaxReprocesses,
+    int? realismVerificationStrictness,
+    bool? realismNeedsDirectorAuthority,
+    int? needsSimStrength,
+    int? needsBaselineHunger,
+    int? needsBaselineBladder,
+    int? needsBaselineEnergy,
+    int? needsBaselineSocial,
+    int? needsBaselineFun,
+    int? needsBaselineHygiene,
+    int? needsBaselineComfort,
+    int? needsDecayHunger,
+    int? needsDecayBladder,
+    int? needsDecayEnergy,
+    int? needsDecaySocial,
+    int? needsDecayFun,
+    int? needsDecayHygiene,
+    int? needsDecayComfort,
+    bool? avatarLocked,
 
     // Chat appearance colors (null = use global default)
     Color? userBubbleColor,
@@ -192,6 +347,33 @@ class FrontPorchExtensions {
       nsfwCooldownEnabled: nsfwCooldownEnabled ?? this.nsfwCooldownEnabled,
       passageOfTimeEnabled: passageOfTimeEnabled ?? this.passageOfTimeEnabled,
       chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
+      needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
+      enjoysLowHygiene: enjoysLowHygiene ?? this.enjoysLowHygiene,
+      realismVerificationEnabled:
+          realismVerificationEnabled ?? this.realismVerificationEnabled,
+      realismVerificationMaxReprocesses:
+          realismVerificationMaxReprocesses ??
+          this.realismVerificationMaxReprocesses,
+      realismVerificationStrictness:
+          realismVerificationStrictness ?? this.realismVerificationStrictness,
+      realismNeedsDirectorAuthority:
+          realismNeedsDirectorAuthority ?? this.realismNeedsDirectorAuthority,
+      needsSimStrength: needsSimStrength ?? this.needsSimStrength,
+      needsBaselineHunger: needsBaselineHunger ?? this.needsBaselineHunger,
+      needsBaselineBladder: needsBaselineBladder ?? this.needsBaselineBladder,
+      needsBaselineEnergy: needsBaselineEnergy ?? this.needsBaselineEnergy,
+      needsBaselineSocial: needsBaselineSocial ?? this.needsBaselineSocial,
+      needsBaselineFun: needsBaselineFun ?? this.needsBaselineFun,
+      needsBaselineHygiene: needsBaselineHygiene ?? this.needsBaselineHygiene,
+      needsBaselineComfort: needsBaselineComfort ?? this.needsBaselineComfort,
+      needsDecayHunger: needsDecayHunger ?? this.needsDecayHunger,
+      needsDecayBladder: needsDecayBladder ?? this.needsDecayBladder,
+      needsDecayEnergy: needsDecayEnergy ?? this.needsDecayEnergy,
+      needsDecaySocial: needsDecaySocial ?? this.needsDecaySocial,
+      needsDecayFun: needsDecayFun ?? this.needsDecayFun,
+      needsDecayHygiene: needsDecayHygiene ?? this.needsDecayHygiene,
+      needsDecayComfort: needsDecayComfort ?? this.needsDecayComfort,
+      avatarLocked: avatarLocked ?? this.avatarLocked,
 
       // Chat appearance colors (null = use global default)
       userBubbleColor: userBubbleColor ?? this.userBubbleColor,
@@ -224,6 +406,7 @@ class CharacterCard {
   String? folderId;
   Lorebook? lorebook;
   List<String> worldNames;
+
   /// Per-character TTS voice assignment.
   ///
   /// This must be a valid voice key for the *currently selected* TTS engine
@@ -233,7 +416,7 @@ class CharacterCard {
   String? dbId; // UUID primary key (runtime only, not serialized)
   FrontPorchExtensions? frontPorchExtensions; // V2.5 Realism Engine defaults
   Map<String, dynamic>?
-      rawExtensions; // Preserve unknown third-party extension keys
+  rawExtensions; // Preserve unknown third-party extension keys
   List<AvatarImage>? avatarImages; // Multiple avatar images for the character
   int primeAvatarIndex = 1; // 1-based index of the prime (default) avatar
 
@@ -291,10 +474,10 @@ class CharacterCard {
       'post_history_instructions': postHistoryInstructions,
       'alternate_greetings': alternateGreetings,
       'tags': tags,
-      'character_book': lorebook?.toJson(),
+      'character_book': lorebook?.toCharacterBook(),
       'world_names': worldNames,
       if (ttsVoice != null) 'tts_voice': ttsVoice,
-      if (extensions != null) 'extensions': extensions,
+      'extensions': ?extensions,
     };
   }
 

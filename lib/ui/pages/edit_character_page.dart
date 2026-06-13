@@ -28,10 +28,12 @@ import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 
 // ═══════════════════════════════════════════════════════════════
 //  DESIGN TOKENS — Slate / Indigo dark theme
@@ -85,7 +87,31 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   bool _realismNsfwCooldown = false;
   bool _realismPassageOfTime = true;
   bool _realismChaosMode = false;
+  bool _realismNeedsSim = false;
+  bool _realismEnjoysLowHygiene = false;
   String _realismCurrentTask = '';
+  bool _realismVerificationEnabled = false;
+  int _realismVerificationMaxReprocesses = 1;
+  int _realismVerificationStrictness = 3;
+  bool _realismNeedsDirectorAuthority = false;
+  int _needsSimStrength = 1; // 1-5 multiplier for needs deltas (injected to model + Director)
+
+  // Per-need baseline values (0-100).
+  int _needsBaselineHunger = 80;
+  int _needsBaselineBladder = 80;
+  int _needsBaselineEnergy = 80;
+  int _needsBaselineSocial = 80;
+  int _needsBaselineFun = 80;
+  int _needsBaselineHygiene = 80;
+  int _needsBaselineComfort = 80;
+
+  int _needsDecayHunger = 5;
+  int _needsDecayBladder = 5;
+  int _needsDecayEnergy = 5;
+  int _needsDecaySocial = 5;
+  int _needsDecayFun = 5;
+  int _needsDecayHygiene = 5;
+  int _needsDecayComfort = 5;
 
   @override
   void initState() {
@@ -142,7 +168,30 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       _realismNsfwCooldown = ext.nsfwCooldownEnabled;
       _realismPassageOfTime = ext.passageOfTimeEnabled;
       _realismChaosMode = ext.chaosModeEnabled;
+      _realismNeedsSim = ext.needsSimEnabled;
+      _realismEnjoysLowHygiene = ext.enjoysLowHygiene;
       _realismCurrentTask = ext.currentTask;
+      _realismVerificationEnabled = ext.realismVerificationEnabled;
+      _realismVerificationMaxReprocesses =
+          ext.realismVerificationMaxReprocesses;
+      _realismVerificationStrictness = ext.realismVerificationStrictness;
+      _realismNeedsDirectorAuthority = ext.realismNeedsDirectorAuthority;
+      _needsSimStrength = ext.needsSimStrength;
+      _needsBaselineHunger = ext.needsBaselineHunger;
+      _needsBaselineBladder = ext.needsBaselineBladder;
+      _needsBaselineEnergy = ext.needsBaselineEnergy;
+      _needsBaselineSocial = ext.needsBaselineSocial;
+      _needsBaselineFun = ext.needsBaselineFun;
+      _needsBaselineHygiene = ext.needsBaselineHygiene;
+      _needsBaselineComfort = ext.needsBaselineComfort;
+
+      _needsDecayHunger = ext.needsDecayHunger;
+      _needsDecayBladder = ext.needsDecayBladder;
+      _needsDecayEnergy = ext.needsDecayEnergy;
+      _needsDecaySocial = ext.needsDecaySocial;
+      _needsDecayFun = ext.needsDecayFun;
+      _needsDecayHygiene = ext.needsDecayHygiene;
+      _needsDecayComfort = ext.needsDecayComfort;
     }
 
     _tabController = TabController(length: 4, vsync: this);
@@ -421,7 +470,28 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         nsfwCooldownEnabled: _realismNsfwCooldown,
         passageOfTimeEnabled: _realismPassageOfTime,
         chaosModeEnabled: _realismChaosMode,
+        needsSimEnabled: _realismNeedsSim,
+        enjoysLowHygiene: _realismEnjoysLowHygiene,
         currentTask: _realismCurrentTask,
+        realismVerificationEnabled: _realismVerificationEnabled,
+        realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
+        realismVerificationStrictness: _realismVerificationStrictness,
+        realismNeedsDirectorAuthority: _realismNeedsDirectorAuthority,
+        needsSimStrength: _needsSimStrength,
+        needsBaselineHunger: _needsBaselineHunger,
+        needsBaselineBladder: _needsBaselineBladder,
+        needsBaselineEnergy: _needsBaselineEnergy,
+        needsBaselineSocial: _needsBaselineSocial,
+        needsBaselineFun: _needsBaselineFun,
+        needsBaselineHygiene: _needsBaselineHygiene,
+        needsBaselineComfort: _needsBaselineComfort,
+        needsDecayHunger: _needsDecayHunger,
+        needsDecayBladder: _needsDecayBladder,
+        needsDecayEnergy: _needsDecayEnergy,
+        needsDecaySocial: _needsDecaySocial,
+        needsDecayFun: _needsDecayFun,
+        needsDecayHygiene: _needsDecayHygiene,
+        needsDecayComfort: _needsDecayComfort,
       );
     }
 
@@ -461,7 +531,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         debugPrint(
           '[_saveCharacter] PNG saved successfully for ${widget.character.name} to $targetPngPath',
         );
-        
+
         // Verify PNG was written by reading it back immediately
         try {
           final reloaded = await V2CardService().readCard(targetPngPath);
@@ -475,7 +545,9 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             );
           }
         } catch (verifyError) {
-          debugPrint('[_saveCharacter] PNG verification read failed: $verifyError');
+          debugPrint(
+            '[_saveCharacter] PNG verification read failed: $verifyError',
+          );
         }
       } catch (e) {
         debugPrint('Failed to embed V2 card data: $e');
@@ -501,6 +573,19 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         widget.character,
         worldRepo: Provider.of<WorldRepository>(context, listen: false),
       );
+
+      // Refresh the "Enjoys low hygiene" flag in any active chat so that
+      // toggling it on the character immediately affects existing sessions
+      // (without requiring a database change).
+      if (mounted) {
+        try {
+          final chatService = Provider.of<ChatService>(context, listen: false);
+          chatService.refreshEnjoysLowHygieneFromActiveCharacter();
+        } catch (_) {
+          // ChatService not available in this context — that's fine.
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -745,7 +830,9 @@ class _EditCharacterPageState extends State<EditCharacterPage>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported ${lorebook.entries.length} entries.')),
+          SnackBar(
+            content: Text('Imported ${lorebook.entries.length} entries.'),
+          ),
         );
       }
     } on FormatException catch (e) {
@@ -1130,12 +1217,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                   ),
                   const SizedBox(height: 16),
                   _styledField(
-                     controller: _scenarioController,
-                     label: 'Scenario',
-                     maxLines: 3,
-                     expandable: true,
-                     hint: 'The setting, situation, or context...',
-                   ),
+                    controller: _scenarioController,
+                    label: 'Scenario',
+                    maxLines: 3,
+                    expandable: true,
+                    hint: 'The setting, situation, or context...',
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1806,6 +1893,108 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             _realismCurrentTask = v;
             _realismSettingsModified = true;
           }),
+          realismVerificationEnabled: _realismVerificationEnabled,
+          onRealismVerificationChanged: (v) => setState(() {
+            _realismVerificationEnabled = v;
+            _realismSettingsModified = true;
+          }),
+          realismVerificationMaxReprocesses: _realismVerificationMaxReprocesses,
+          onRealismVerificationMaxReprocessesChanged: (v) => setState(() {
+            _realismVerificationMaxReprocesses = v;
+            _realismSettingsModified = true;
+          }),
+          realismVerificationStrictness: _realismVerificationStrictness,
+          onRealismVerificationStrictnessChanged: (v) => setState(() {
+            _realismVerificationStrictness = v;
+            _realismSettingsModified = true;
+          }),
+          needsFormSection: NeedsFormSection(
+            enabled: _realismNeedsSim,
+            onEnabledChanged: (v) => setState(() {
+              _realismNeedsSim = v;
+              _realismSettingsModified = true;
+            }),
+            enjoysLowHygiene: _realismEnjoysLowHygiene,
+            onEnjoysLowHygieneChanged: (v) => setState(() {
+              _realismEnjoysLowHygiene = v;
+              _realismSettingsModified = true;
+            }),
+            needsSimStrength: _needsSimStrength,
+            onNeedsSimStrengthChanged: (v) => setState(() {
+              _needsSimStrength = v;
+              _realismSettingsModified = true;
+            }),
+            baselineHunger: _needsBaselineHunger,
+            onBaselineHungerChanged: (v) => setState(() {
+              _needsBaselineHunger = v;
+              _realismSettingsModified = true;
+            }),
+            baselineBladder: _needsBaselineBladder,
+            onBaselineBladderChanged: (v) => setState(() {
+              _needsBaselineBladder = v;
+              _realismSettingsModified = true;
+            }),
+            baselineEnergy: _needsBaselineEnergy,
+            onBaselineEnergyChanged: (v) => setState(() {
+              _needsBaselineEnergy = v;
+              _realismSettingsModified = true;
+            }),
+            baselineSocial: _needsBaselineSocial,
+            onBaselineSocialChanged: (v) => setState(() {
+              _needsBaselineSocial = v;
+              _realismSettingsModified = true;
+            }),
+            baselineFun: _needsBaselineFun,
+            onBaselineFunChanged: (v) => setState(() {
+              _needsBaselineFun = v;
+              _realismSettingsModified = true;
+            }),
+            baselineHygiene: _needsBaselineHygiene,
+            onBaselineHygieneChanged: (v) => setState(() {
+              _needsBaselineHygiene = v;
+              _realismSettingsModified = true;
+            }),
+            baselineComfort: _needsBaselineComfort,
+            onBaselineComfortChanged: (v) => setState(() {
+              _needsBaselineComfort = v;
+              _realismSettingsModified = true;
+            }),
+            decayHunger: _needsDecayHunger,
+            onDecayHungerChanged: (v) => setState(() {
+              _needsDecayHunger = v;
+              _realismSettingsModified = true;
+            }),
+            decayBladder: _needsDecayBladder,
+            onDecayBladderChanged: (v) => setState(() {
+              _needsDecayBladder = v;
+              _realismSettingsModified = true;
+            }),
+            decayEnergy: _needsDecayEnergy,
+            onDecayEnergyChanged: (v) => setState(() {
+              _needsDecayEnergy = v;
+              _realismSettingsModified = true;
+            }),
+            decaySocial: _needsDecaySocial,
+            onDecaySocialChanged: (v) => setState(() {
+              _needsDecaySocial = v;
+              _realismSettingsModified = true;
+            }),
+            decayFun: _needsDecayFun,
+            onDecayFunChanged: (v) => setState(() {
+              _needsDecayFun = v;
+              _realismSettingsModified = true;
+            }),
+            decayHygiene: _needsDecayHygiene,
+            onDecayHygieneChanged: (v) => setState(() {
+              _needsDecayHygiene = v;
+              _realismSettingsModified = true;
+            }),
+            decayComfort: _needsDecayComfort,
+            onDecayComfortChanged: (v) => setState(() {
+              _needsDecayComfort = v;
+              _realismSettingsModified = true;
+            }),
+          ),
         ),
       ],
     );

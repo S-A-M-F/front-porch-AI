@@ -27,15 +27,15 @@ class World {
   String name;
   String description;
   Lorebook lorebook;
-  
+
   /// If set, this world was auto-created from a character import.
   /// When linked to a character, we can display the character's actual avatar
   /// instead of a generic globe icon.
   String? linkedCharacterName;
-  
+
   /// Path to the avatar image for this world. Only applicable when
   /// linkedCharacterName is set (world was created from a character).
-  /// 
+  ///
   /// This allows us to display the actual character avatar in world cards
   /// and other UI elements, providing visual consistency between characters
   /// and their associated worlds.
@@ -54,7 +54,8 @@ class World {
       'name': name,
       'description': description,
       'lorebook': lorebook.toJson(),
-      if (linkedCharacterName != null) 'linked_character_name': linkedCharacterName,
+      if (linkedCharacterName != null)
+        'linked_character_name': linkedCharacterName,
       if (avatarPath != null) 'avatar_path': avatarPath,
     };
   }

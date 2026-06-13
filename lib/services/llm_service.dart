@@ -35,20 +35,24 @@ class GenerationParams {
   final bool reasoningEnabled;
   final String reasoningEffort;
   final List<String>? bannedPhrases;
+
   /// Optional system prompt for chat APIs. When provided, OpenRouter/LM Studio
   /// will send this as a proper 'system' role message instead of lumping
   /// everything into a single 'user' message. KoboldCPP ignores this field.
   final String? systemPrompt;
+
   /// Optional GBNF grammar string for constrained JSON output (KoboldCPP local only).
-  /// Never set this when reasoning/thinking mode is active — the <think> block
+  /// Never set this when reasoning/thinking mode is active — the `<think>` block
   /// tokens would be illegal under the grammar and break generation.
   final String? grammar;
+
   /// When true, instructs KoboldCPP to never emit EOS mid-generation.
-  /// Required for thinking models so the model can complete its <think> block
+  /// Required for thinking models so the model can complete its `<think>` block
   /// without KoboldCPP treating the template's built-in stop tokens as EOS.
   final bool banEosToken;
+
   /// Controls KoboldCPP's trim_stop behaviour. Set to false for thinking models
-  /// so template stop tokens (<|im_end|> etc.) don't silently eat the output.
+  /// so template stop tokens (`<|im_end|>` etc.) don't silently eat the output.
   final bool trimStop;
 
   const GenerationParams({

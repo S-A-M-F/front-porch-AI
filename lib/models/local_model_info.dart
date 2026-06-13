@@ -126,10 +126,10 @@ class LocalModelInfo {
     // These are FP16 values; actual KV cache may be quantized
     if (paramCountB != null) {
       // Very rough estimate: larger models tend to have larger hidden dims
-      if (paramCountB! >= 70) return 4096;   // 70B class
-      if (paramCountB! >= 13) return 2048;   // 13B class
-      if (paramCountB! >= 7) return 1024;    // 7-8B class
-      if (paramCountB! >= 3) return 512;     // 3B class
+      if (paramCountB! >= 70) return 4096; // 70B class
+      if (paramCountB! >= 13) return 2048; // 13B class
+      if (paramCountB! >= 7) return 1024; // 7-8B class
+      if (paramCountB! >= 3) return 512; // 3B class
     }
     return 1024; // Default estimate for 7B-class model
   }

@@ -49,7 +49,9 @@ class WebChatBridge extends ChangeNotifier {
   Stream<List<int>> addClient() {
     final controller = StreamController<List<int>>();
     _sseClients.add(controller);
-    debugPrint('[WebChatBridge] SSE client connected (${_sseClients.length} total)');
+    debugPrint(
+      '[WebChatBridge] SSE client connected (${_sseClients.length} total)',
+    );
 
     // Send initial connection acknowledgement
     _sendToClient(controller, {'event': 'connected'});
@@ -62,7 +64,9 @@ class WebChatBridge extends ChangeNotifier {
     // Clean up when the client disconnects
     controller.onCancel = () {
       _sseClients.remove(controller);
-      debugPrint('[WebChatBridge] SSE client disconnected (${_sseClients.length} remaining)');
+      debugPrint(
+        '[WebChatBridge] SSE client disconnected (${_sseClients.length} remaining)',
+      );
     };
 
     return controller.stream;
@@ -91,7 +95,10 @@ class WebChatBridge extends ChangeNotifier {
   }
 
   /// Send a single SSE event to a specific client.
-  void _sendToClient(StreamController<List<int>> client, Map<String, dynamic> eventData) {
+  void _sendToClient(
+    StreamController<List<int>> client,
+    Map<String, dynamic> eventData,
+  ) {
     if (client.isClosed) return;
 
     try {

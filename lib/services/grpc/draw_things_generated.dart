@@ -4,8 +4,6 @@
 import 'dart:typed_data' show Uint8List;
 import 'package:flat_buffers/flat_buffers.dart' as fb;
 
-
-
 enum SamplerType {
   DPMPP2MKarras(0),
   EulerA(1),
@@ -32,26 +30,46 @@ enum SamplerType {
 
   factory SamplerType.fromValue(int value) {
     switch (value) {
-      case 0: return SamplerType.DPMPP2MKarras;
-      case 1: return SamplerType.EulerA;
-      case 2: return SamplerType.DDIM;
-      case 3: return SamplerType.PLMS;
-      case 4: return SamplerType.DPMPPSDEKarras;
-      case 5: return SamplerType.UniPC;
-      case 6: return SamplerType.LCM;
-      case 7: return SamplerType.EulerASubstep;
-      case 8: return SamplerType.DPMPPSDESubstep;
-      case 9: return SamplerType.TCD;
-      case 10: return SamplerType.EulerATrailing;
-      case 11: return SamplerType.DPMPPSDETrailing;
-      case 12: return SamplerType.DPMPP2MAYS;
-      case 13: return SamplerType.EulerAAYS;
-      case 14: return SamplerType.DPMPPSDEAYS;
-      case 15: return SamplerType.DPMPP2MTrailing;
-      case 16: return SamplerType.DDIMTrailing;
-      case 17: return SamplerType.UniPCTrailing;
-      case 18: return SamplerType.UniPCAYS;
-      default: throw StateError('Invalid value $value for bit flag enum');
+      case 0:
+        return SamplerType.DPMPP2MKarras;
+      case 1:
+        return SamplerType.EulerA;
+      case 2:
+        return SamplerType.DDIM;
+      case 3:
+        return SamplerType.PLMS;
+      case 4:
+        return SamplerType.DPMPPSDEKarras;
+      case 5:
+        return SamplerType.UniPC;
+      case 6:
+        return SamplerType.LCM;
+      case 7:
+        return SamplerType.EulerASubstep;
+      case 8:
+        return SamplerType.DPMPPSDESubstep;
+      case 9:
+        return SamplerType.TCD;
+      case 10:
+        return SamplerType.EulerATrailing;
+      case 11:
+        return SamplerType.DPMPPSDETrailing;
+      case 12:
+        return SamplerType.DPMPP2MAYS;
+      case 13:
+        return SamplerType.EulerAAYS;
+      case 14:
+        return SamplerType.DPMPPSDEAYS;
+      case 15:
+        return SamplerType.DPMPP2MTrailing;
+      case 16:
+        return SamplerType.DDIMTrailing;
+      case 17:
+        return SamplerType.UniPCTrailing;
+      case 18:
+        return SamplerType.UniPCAYS;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
     }
   }
 
@@ -85,11 +103,16 @@ enum SeedMode {
 
   factory SeedMode.fromValue(int value) {
     switch (value) {
-      case 0: return SeedMode.Legacy;
-      case 1: return SeedMode.TorchCpuCompatible;
-      case 2: return SeedMode.ScaleAlike;
-      case 3: return SeedMode.NvidiaGpuCompatible;
-      default: throw StateError('Invalid value $value for bit flag enum');
+      case 0:
+        return SeedMode.Legacy;
+      case 1:
+        return SeedMode.TorchCpuCompatible;
+      case 2:
+        return SeedMode.ScaleAlike;
+      case 3:
+        return SeedMode.NvidiaGpuCompatible;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
     }
   }
 
@@ -122,10 +145,14 @@ enum ControlMode {
 
   factory ControlMode.fromValue(int value) {
     switch (value) {
-      case 0: return ControlMode.Balanced;
-      case 1: return ControlMode.Prompt;
-      case 2: return ControlMode.Control;
-      default: throw StateError('Invalid value $value for bit flag enum');
+      case 0:
+        return ControlMode.Balanced;
+      case 1:
+        return ControlMode.Prompt;
+      case 2:
+        return ControlMode.Control;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
     }
   }
 
@@ -174,26 +201,46 @@ enum ControlInputType {
 
   factory ControlInputType.fromValue(int value) {
     switch (value) {
-      case 0: return ControlInputType.Unspecified;
-      case 1: return ControlInputType.Custom;
-      case 2: return ControlInputType.Depth;
-      case 3: return ControlInputType.Canny;
-      case 4: return ControlInputType.Scribble;
-      case 5: return ControlInputType.Pose;
-      case 6: return ControlInputType.Normalbae;
-      case 7: return ControlInputType.Color;
-      case 8: return ControlInputType.Lineart;
-      case 9: return ControlInputType.Softedge;
-      case 10: return ControlInputType.Seg;
-      case 11: return ControlInputType.Inpaint;
-      case 12: return ControlInputType.Ip2p;
-      case 13: return ControlInputType.Shuffle;
-      case 14: return ControlInputType.Mlsd;
-      case 15: return ControlInputType.Tile;
-      case 16: return ControlInputType.Blur;
-      case 17: return ControlInputType.Lowquality;
-      case 18: return ControlInputType.Gray;
-      default: throw StateError('Invalid value $value for bit flag enum');
+      case 0:
+        return ControlInputType.Unspecified;
+      case 1:
+        return ControlInputType.Custom;
+      case 2:
+        return ControlInputType.Depth;
+      case 3:
+        return ControlInputType.Canny;
+      case 4:
+        return ControlInputType.Scribble;
+      case 5:
+        return ControlInputType.Pose;
+      case 6:
+        return ControlInputType.Normalbae;
+      case 7:
+        return ControlInputType.Color;
+      case 8:
+        return ControlInputType.Lineart;
+      case 9:
+        return ControlInputType.Softedge;
+      case 10:
+        return ControlInputType.Seg;
+      case 11:
+        return ControlInputType.Inpaint;
+      case 12:
+        return ControlInputType.Ip2p;
+      case 13:
+        return ControlInputType.Shuffle;
+      case 14:
+        return ControlInputType.Mlsd;
+      case 15:
+        return ControlInputType.Tile;
+      case 16:
+        return ControlInputType.Blur;
+      case 17:
+        return ControlInputType.Lowquality;
+      case 18:
+        return ControlInputType.Gray;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
     }
   }
 
@@ -226,10 +273,14 @@ enum LoRamode {
 
   factory LoRamode.fromValue(int value) {
     switch (value) {
-      case 0: return LoRamode.All;
-      case 1: return LoRamode.Base;
-      case 2: return LoRamode.Refiner;
-      default: throw StateError('Invalid value $value for bit flag enum');
+      case 0:
+        return LoRamode.All;
+      case 1:
+        return LoRamode.Base;
+      case 2:
+        return LoRamode.Refiner;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
     }
   }
 
@@ -264,16 +315,29 @@ class Control {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get file => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  double get weight => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 6, 1.0);
-  double get guidanceStart => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 8, 0.0);
-  double get guidanceEnd => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 10, 1.0);
-  bool get noPrompt => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
-  bool get globalAveragePooling => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, true);
-  double get downSamplingRate => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 16, 1.0);
-  ControlMode get controlMode => ControlMode.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 18, 0));
-  List<String>? get targetBlocks => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 20);
-  ControlInputType get inputOverride => ControlInputType.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 22, 0));
+  String? get file =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  double get weight =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 6, 1.0);
+  double get guidanceStart =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 8, 0.0);
+  double get guidanceEnd =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 10, 1.0);
+  bool get noPrompt =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get globalAveragePooling =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, true);
+  double get downSamplingRate =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 16, 1.0);
+  ControlMode get controlMode => ControlMode.fromValue(
+    const fb.Int8Reader().vTableGet(_bc, _bcOffset, 18, 0),
+  );
+  List<String>? get targetBlocks => const fb.ListReader<String>(
+    fb.StringReader(),
+  ).vTableGetNullable(_bc, _bcOffset, 20);
+  ControlInputType get inputOverride => ControlInputType.fromValue(
+    const fb.Int8Reader().vTableGet(_bc, _bcOffset, 22, 0),
+  );
 
   @override
   String toString() {
@@ -285,8 +349,8 @@ class _ControlReader extends fb.TableReader<Control> {
   const _ControlReader();
 
   @override
-  Control createObject(fb.BufferContext bc, int offset) => 
-    Control._(bc, offset);
+  Control createObject(fb.BufferContext bc, int offset) =>
+      Control._(bc, offset);
 }
 
 class ControlBuilder {
@@ -302,38 +366,47 @@ class ControlBuilder {
     fbBuilder.addOffset(0, offset);
     return fbBuilder.offset;
   }
+
   int addWeight(double? weight) {
     fbBuilder.addFloat32(1, weight);
     return fbBuilder.offset;
   }
+
   int addGuidanceStart(double? guidanceStart) {
     fbBuilder.addFloat32(2, guidanceStart);
     return fbBuilder.offset;
   }
+
   int addGuidanceEnd(double? guidanceEnd) {
     fbBuilder.addFloat32(3, guidanceEnd);
     return fbBuilder.offset;
   }
+
   int addNoPrompt(bool? noPrompt) {
     fbBuilder.addBool(4, noPrompt);
     return fbBuilder.offset;
   }
+
   int addGlobalAveragePooling(bool? globalAveragePooling) {
     fbBuilder.addBool(5, globalAveragePooling);
     return fbBuilder.offset;
   }
+
   int addDownSamplingRate(double? downSamplingRate) {
     fbBuilder.addFloat32(6, downSamplingRate);
     return fbBuilder.offset;
   }
+
   int addControlMode(ControlMode? controlMode) {
     fbBuilder.addInt8(7, controlMode?.value);
     return fbBuilder.offset;
   }
+
   int addTargetBlocksOffset(int? offset) {
     fbBuilder.addOffset(8, offset);
     return fbBuilder.offset;
   }
+
   int addInputOverride(ControlInputType? inputOverride) {
     fbBuilder.addInt8(9, inputOverride?.value);
     return fbBuilder.offset;
@@ -367,25 +440,28 @@ class ControlObjectBuilder extends fb.ObjectBuilder {
     ControlMode? controlMode,
     List<String>? targetBlocks,
     ControlInputType? inputOverride,
-  })
-      : _file = file,
-        _weight = weight,
-        _guidanceStart = guidanceStart,
-        _guidanceEnd = guidanceEnd,
-        _noPrompt = noPrompt,
-        _globalAveragePooling = globalAveragePooling,
-        _downSamplingRate = downSamplingRate,
-        _controlMode = controlMode,
-        _targetBlocks = targetBlocks,
-        _inputOverride = inputOverride;
+  }) : _file = file,
+       _weight = weight,
+       _guidanceStart = guidanceStart,
+       _guidanceEnd = guidanceEnd,
+       _noPrompt = noPrompt,
+       _globalAveragePooling = globalAveragePooling,
+       _downSamplingRate = downSamplingRate,
+       _controlMode = controlMode,
+       _targetBlocks = targetBlocks,
+       _inputOverride = inputOverride;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? fileOffset = _file == null ? null
+    final int? fileOffset = _file == null
+        ? null
         : fbBuilder.writeString(_file!);
-    final int? targetBlocksOffset = _targetBlocks == null ? null
-        : fbBuilder.writeList(_targetBlocks!.map(fbBuilder.writeString).toList());
+    final int? targetBlocksOffset = _targetBlocks == null
+        ? null
+        : fbBuilder.writeList(
+            _targetBlocks!.map(fbBuilder.writeString).toList(),
+          );
     fbBuilder.startTable(10);
     fbBuilder.addOffset(0, fileOffset);
     fbBuilder.addFloat32(1, _weight);
@@ -408,6 +484,7 @@ class ControlObjectBuilder extends fb.ObjectBuilder {
     return fbBuilder.buffer;
   }
 }
+
 class LoRa {
   LoRa._(this._bc, this._bcOffset);
   factory LoRa(List<int> bytes) {
@@ -420,9 +497,12 @@ class LoRa {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get file => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
-  double get weight => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 6, 0.6);
-  LoRamode get mode => LoRamode.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get file =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  double get weight =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 6, 0.6);
+  LoRamode get mode =>
+      LoRamode.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
 
   @override
   String toString() {
@@ -434,8 +514,7 @@ class _LoRaReader extends fb.TableReader<LoRa> {
   const _LoRaReader();
 
   @override
-  LoRa createObject(fb.BufferContext bc, int offset) => 
-    LoRa._(bc, offset);
+  LoRa createObject(fb.BufferContext bc, int offset) => LoRa._(bc, offset);
 }
 
 class LoRaBuilder {
@@ -451,10 +530,12 @@ class LoRaBuilder {
     fbBuilder.addOffset(0, offset);
     return fbBuilder.offset;
   }
+
   int addWeight(double? weight) {
     fbBuilder.addFloat32(1, weight);
     return fbBuilder.offset;
   }
+
   int addMode(LoRamode? mode) {
     fbBuilder.addInt8(2, mode?.value);
     return fbBuilder.offset;
@@ -470,19 +551,16 @@ class LoRaObjectBuilder extends fb.ObjectBuilder {
   final double? _weight;
   final LoRamode? _mode;
 
-  LoRaObjectBuilder({
-    String? file,
-    double? weight,
-    LoRamode? mode,
-  })
-      : _file = file,
-        _weight = weight,
-        _mode = mode;
+  LoRaObjectBuilder({String? file, double? weight, LoRamode? mode})
+    : _file = file,
+      _weight = weight,
+      _mode = mode;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? fileOffset = _file == null ? null
+    final int? fileOffset = _file == null
+        ? null
         : fbBuilder.writeString(_file!);
     fbBuilder.startTable(3);
     fbBuilder.addOffset(0, fileOffset);
@@ -499,6 +577,7 @@ class LoRaObjectBuilder extends fb.ObjectBuilder {
     return fbBuilder.buffer;
   }
 }
+
 class GenerationConfiguration {
   GenerationConfiguration._(this._bc, this._bcOffset);
   factory GenerationConfiguration(List<int> bytes) {
@@ -506,93 +585,171 @@ class GenerationConfiguration {
     return reader.read(rootRef, 0);
   }
 
-  static const fb.Reader<GenerationConfiguration> reader = _GenerationConfigurationReader();
+  static const fb.Reader<GenerationConfiguration> reader =
+      _GenerationConfigurationReader();
 
   final fb.BufferContext _bc;
   final int _bcOffset;
 
   int get id => const fb.Int64Reader().vTableGet(_bc, _bcOffset, 4, 0);
   int get startWidth => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 6, 0);
-  int get startHeight => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get startHeight =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 8, 0);
   int get seed => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
   int get steps => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 12, 0);
-  double get guidanceScale => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 14, 0.0);
-  double get strength => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 16, 0.0);
-  String? get model => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 18);
-  SamplerType get sampler => SamplerType.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 20, 0));
-  int get batchCount => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 22, 1);
+  double get guidanceScale =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 14, 0.0);
+  double get strength =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 16, 0.0);
+  String? get model =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 18);
+  SamplerType get sampler => SamplerType.fromValue(
+    const fb.Int8Reader().vTableGet(_bc, _bcOffset, 20, 0),
+  );
+  int get batchCount =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 22, 1);
   int get batchSize => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 24, 1);
-  bool get hiresFix => const fb.BoolReader().vTableGet(_bc, _bcOffset, 26, false);
-  int get hiresFixStartWidth => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 28, 0);
-  int get hiresFixStartHeight => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 30, 0);
-  double get hiresFixStrength => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 32, 0.7);
-  String? get upscaler => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 34);
-  double get imageGuidanceScale => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 36, 1.5);
-  SeedMode get seedMode => SeedMode.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 38, 0));
+  bool get hiresFix =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 26, false);
+  int get hiresFixStartWidth =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 28, 0);
+  int get hiresFixStartHeight =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 30, 0);
+  double get hiresFixStrength =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 32, 0.7);
+  String? get upscaler =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 34);
+  double get imageGuidanceScale =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 36, 1.5);
+  SeedMode get seedMode => SeedMode.fromValue(
+    const fb.Int8Reader().vTableGet(_bc, _bcOffset, 38, 0),
+  );
   int get clipSkip => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 40, 1);
-  List<Control>? get controls => const fb.ListReader<Control>(Control.reader).vTableGetNullable(_bc, _bcOffset, 42);
-  List<LoRa>? get loras => const fb.ListReader<LoRa>(LoRa.reader).vTableGetNullable(_bc, _bcOffset, 44);
-  double get maskBlur => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 46, 0.0);
-  String? get faceRestoration => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 48);
-  double get clipWeight => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 54, 1.0);
-  bool get negativePromptForImagePrior => const fb.BoolReader().vTableGet(_bc, _bcOffset, 56, true);
-  int get imagePriorSteps => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 58, 5);
-  String? get refinerModel => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 60);
-  int get originalImageHeight => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 62, 0);
-  int get originalImageWidth => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 64, 0);
+  List<Control>? get controls => const fb.ListReader<Control>(
+    Control.reader,
+  ).vTableGetNullable(_bc, _bcOffset, 42);
+  List<LoRa>? get loras => const fb.ListReader<LoRa>(
+    LoRa.reader,
+  ).vTableGetNullable(_bc, _bcOffset, 44);
+  double get maskBlur =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 46, 0.0);
+  String? get faceRestoration =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 48);
+  double get clipWeight =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 54, 1.0);
+  bool get negativePromptForImagePrior =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 56, true);
+  int get imagePriorSteps =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 58, 5);
+  String? get refinerModel =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 60);
+  int get originalImageHeight =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 62, 0);
+  int get originalImageWidth =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 64, 0);
   int get cropTop => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 66, 0);
   int get cropLeft => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 68, 0);
-  int get targetImageHeight => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 70, 0);
-  int get targetImageWidth => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 72, 0);
-  double get aestheticScore => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 74, 6.0);
-  double get negativeAestheticScore => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 76, 2.5);
-  bool get zeroNegativePrompt => const fb.BoolReader().vTableGet(_bc, _bcOffset, 78, false);
-  double get refinerStart => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 80, 0.7);
-  int get negativeOriginalImageHeight => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 82, 0);
-  int get negativeOriginalImageWidth => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 84, 0);
-  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 86);
+  int get targetImageHeight =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 70, 0);
+  int get targetImageWidth =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 72, 0);
+  double get aestheticScore =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 74, 6.0);
+  double get negativeAestheticScore =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 76, 2.5);
+  bool get zeroNegativePrompt =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 78, false);
+  double get refinerStart =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 80, 0.7);
+  int get negativeOriginalImageHeight =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 82, 0);
+  int get negativeOriginalImageWidth =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 84, 0);
+  String? get name =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 86);
   int get fpsId => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 88, 5);
-  int get motionBucketId => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 90, 127);
-  double get condAug => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 92, 0.02);
-  double get startFrameCfg => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 94, 1.0);
-  int get numFrames => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 96, 14);
-  int get maskBlurOutset => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 98, 0);
-  double get sharpness => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 100, 0.0);
-  double get shift => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 102, 1.0);
-  int get stage2Steps => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 104, 10);
-  double get stage2Cfg => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 106, 1.0);
-  double get stage2Shift => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 108, 1.0);
-  bool get tiledDecoding => const fb.BoolReader().vTableGet(_bc, _bcOffset, 110, false);
-  int get decodingTileWidth => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 112, 10);
-  int get decodingTileHeight => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 114, 10);
-  int get decodingTileOverlap => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 116, 2);
-  double get stochasticSamplingGamma => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 118, 0.3);
-  bool get preserveOriginalAfterInpaint => const fb.BoolReader().vTableGet(_bc, _bcOffset, 120, true);
-  bool get tiledDiffusion => const fb.BoolReader().vTableGet(_bc, _bcOffset, 122, false);
-  int get diffusionTileWidth => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 124, 16);
-  int get diffusionTileHeight => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 126, 16);
-  int get diffusionTileOverlap => const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 128, 2);
-  int get upscalerScaleFactor => const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 130, 0);
-  bool get t5TextEncoder => const fb.BoolReader().vTableGet(_bc, _bcOffset, 132, true);
-  bool get separateClipL => const fb.BoolReader().vTableGet(_bc, _bcOffset, 134, false);
-  String? get clipLText => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 136);
-  bool get separateOpenClipG => const fb.BoolReader().vTableGet(_bc, _bcOffset, 138, false);
-  String? get openClipGText => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 140);
-  bool get speedUpWithGuidanceEmbed => const fb.BoolReader().vTableGet(_bc, _bcOffset, 142, true);
-  double get guidanceEmbed => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 144, 3.5);
-  bool get resolutionDependentShift => const fb.BoolReader().vTableGet(_bc, _bcOffset, 146, true);
-  int get teaCacheStart => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 148, 5);
-  int get teaCacheEnd => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 150, -1);
-  double get teaCacheThreshold => const fb.Float32Reader().vTableGet(_bc, _bcOffset, 152, 0.06);
-  bool get teaCache => const fb.BoolReader().vTableGet(_bc, _bcOffset, 154, false);
-  bool get separateT5 => const fb.BoolReader().vTableGet(_bc, _bcOffset, 156, false);
-  String? get t5Text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 158);
-  int get teaCacheMaxSkipSteps => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 160, 3);
-  bool get causalInferenceEnabled => const fb.BoolReader().vTableGet(_bc, _bcOffset, 162, false);
-  int get causalInference => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 164, 3);
-  int get causalInferencePad => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 166, 0);
-  bool get cfgZeroStar => const fb.BoolReader().vTableGet(_bc, _bcOffset, 168, false);
-  int get cfgZeroInitSteps => const fb.Int32Reader().vTableGet(_bc, _bcOffset, 170, 0);
+  int get motionBucketId =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 90, 127);
+  double get condAug =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 92, 0.02);
+  double get startFrameCfg =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 94, 1.0);
+  int get numFrames =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 96, 14);
+  int get maskBlurOutset =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 98, 0);
+  double get sharpness =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 100, 0.0);
+  double get shift =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 102, 1.0);
+  int get stage2Steps =>
+      const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 104, 10);
+  double get stage2Cfg =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 106, 1.0);
+  double get stage2Shift =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 108, 1.0);
+  bool get tiledDecoding =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 110, false);
+  int get decodingTileWidth =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 112, 10);
+  int get decodingTileHeight =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 114, 10);
+  int get decodingTileOverlap =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 116, 2);
+  double get stochasticSamplingGamma =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 118, 0.3);
+  bool get preserveOriginalAfterInpaint =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 120, true);
+  bool get tiledDiffusion =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 122, false);
+  int get diffusionTileWidth =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 124, 16);
+  int get diffusionTileHeight =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 126, 16);
+  int get diffusionTileOverlap =>
+      const fb.Uint16Reader().vTableGet(_bc, _bcOffset, 128, 2);
+  int get upscalerScaleFactor =>
+      const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 130, 0);
+  bool get t5TextEncoder =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 132, true);
+  bool get separateClipL =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 134, false);
+  String? get clipLText =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 136);
+  bool get separateOpenClipG =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 138, false);
+  String? get openClipGText =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 140);
+  bool get speedUpWithGuidanceEmbed =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 142, true);
+  double get guidanceEmbed =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 144, 3.5);
+  bool get resolutionDependentShift =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 146, true);
+  int get teaCacheStart =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 148, 5);
+  int get teaCacheEnd =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 150, -1);
+  double get teaCacheThreshold =>
+      const fb.Float32Reader().vTableGet(_bc, _bcOffset, 152, 0.06);
+  bool get teaCache =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 154, false);
+  bool get separateT5 =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 156, false);
+  String? get t5Text =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 158);
+  int get teaCacheMaxSkipSteps =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 160, 3);
+  bool get causalInferenceEnabled =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 162, false);
+  int get causalInference =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 164, 3);
+  int get causalInferencePad =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 166, 0);
+  bool get cfgZeroStar =>
+      const fb.BoolReader().vTableGet(_bc, _bcOffset, 168, false);
+  int get cfgZeroInitSteps =>
+      const fb.Int32Reader().vTableGet(_bc, _bcOffset, 170, 0);
 
   @override
   String toString() {
@@ -600,12 +757,13 @@ class GenerationConfiguration {
   }
 }
 
-class _GenerationConfigurationReader extends fb.TableReader<GenerationConfiguration> {
+class _GenerationConfigurationReader
+    extends fb.TableReader<GenerationConfiguration> {
   const _GenerationConfigurationReader();
 
   @override
-  GenerationConfiguration createObject(fb.BufferContext bc, int offset) => 
-    GenerationConfiguration._(bc, offset);
+  GenerationConfiguration createObject(fb.BufferContext bc, int offset) =>
+      GenerationConfiguration._(bc, offset);
 }
 
 class GenerationConfigurationBuilder {
@@ -621,326 +779,407 @@ class GenerationConfigurationBuilder {
     fbBuilder.addInt64(0, id);
     return fbBuilder.offset;
   }
+
   int addStartWidth(int? startWidth) {
     fbBuilder.addUint16(1, startWidth);
     return fbBuilder.offset;
   }
+
   int addStartHeight(int? startHeight) {
     fbBuilder.addUint16(2, startHeight);
     return fbBuilder.offset;
   }
+
   int addSeed(int? seed) {
     fbBuilder.addUint32(3, seed);
     return fbBuilder.offset;
   }
+
   int addSteps(int? steps) {
     fbBuilder.addUint32(4, steps);
     return fbBuilder.offset;
   }
+
   int addGuidanceScale(double? guidanceScale) {
     fbBuilder.addFloat32(5, guidanceScale);
     return fbBuilder.offset;
   }
+
   int addStrength(double? strength) {
     fbBuilder.addFloat32(6, strength);
     return fbBuilder.offset;
   }
+
   int addModelOffset(int? offset) {
     fbBuilder.addOffset(7, offset);
     return fbBuilder.offset;
   }
+
   int addSampler(SamplerType? sampler) {
     fbBuilder.addInt8(8, sampler?.value);
     return fbBuilder.offset;
   }
+
   int addBatchCount(int? batchCount) {
     fbBuilder.addUint32(9, batchCount);
     return fbBuilder.offset;
   }
+
   int addBatchSize(int? batchSize) {
     fbBuilder.addUint32(10, batchSize);
     return fbBuilder.offset;
   }
+
   int addHiresFix(bool? hiresFix) {
     fbBuilder.addBool(11, hiresFix);
     return fbBuilder.offset;
   }
+
   int addHiresFixStartWidth(int? hiresFixStartWidth) {
     fbBuilder.addUint16(12, hiresFixStartWidth);
     return fbBuilder.offset;
   }
+
   int addHiresFixStartHeight(int? hiresFixStartHeight) {
     fbBuilder.addUint16(13, hiresFixStartHeight);
     return fbBuilder.offset;
   }
+
   int addHiresFixStrength(double? hiresFixStrength) {
     fbBuilder.addFloat32(14, hiresFixStrength);
     return fbBuilder.offset;
   }
+
   int addUpscalerOffset(int? offset) {
     fbBuilder.addOffset(15, offset);
     return fbBuilder.offset;
   }
+
   int addImageGuidanceScale(double? imageGuidanceScale) {
     fbBuilder.addFloat32(16, imageGuidanceScale);
     return fbBuilder.offset;
   }
+
   int addSeedMode(SeedMode? seedMode) {
     fbBuilder.addInt8(17, seedMode?.value);
     return fbBuilder.offset;
   }
+
   int addClipSkip(int? clipSkip) {
     fbBuilder.addUint32(18, clipSkip);
     return fbBuilder.offset;
   }
+
   int addControlsOffset(int? offset) {
     fbBuilder.addOffset(19, offset);
     return fbBuilder.offset;
   }
+
   int addLorasOffset(int? offset) {
     fbBuilder.addOffset(20, offset);
     return fbBuilder.offset;
   }
+
   int addMaskBlur(double? maskBlur) {
     fbBuilder.addFloat32(21, maskBlur);
     return fbBuilder.offset;
   }
+
   int addFaceRestorationOffset(int? offset) {
     fbBuilder.addOffset(22, offset);
     return fbBuilder.offset;
   }
+
   int addClipWeight(double? clipWeight) {
     fbBuilder.addFloat32(25, clipWeight);
     return fbBuilder.offset;
   }
+
   int addNegativePromptForImagePrior(bool? negativePromptForImagePrior) {
     fbBuilder.addBool(26, negativePromptForImagePrior);
     return fbBuilder.offset;
   }
+
   int addImagePriorSteps(int? imagePriorSteps) {
     fbBuilder.addUint32(27, imagePriorSteps);
     return fbBuilder.offset;
   }
+
   int addRefinerModelOffset(int? offset) {
     fbBuilder.addOffset(28, offset);
     return fbBuilder.offset;
   }
+
   int addOriginalImageHeight(int? originalImageHeight) {
     fbBuilder.addUint32(29, originalImageHeight);
     return fbBuilder.offset;
   }
+
   int addOriginalImageWidth(int? originalImageWidth) {
     fbBuilder.addUint32(30, originalImageWidth);
     return fbBuilder.offset;
   }
+
   int addCropTop(int? cropTop) {
     fbBuilder.addInt32(31, cropTop);
     return fbBuilder.offset;
   }
+
   int addCropLeft(int? cropLeft) {
     fbBuilder.addInt32(32, cropLeft);
     return fbBuilder.offset;
   }
+
   int addTargetImageHeight(int? targetImageHeight) {
     fbBuilder.addUint32(33, targetImageHeight);
     return fbBuilder.offset;
   }
+
   int addTargetImageWidth(int? targetImageWidth) {
     fbBuilder.addUint32(34, targetImageWidth);
     return fbBuilder.offset;
   }
+
   int addAestheticScore(double? aestheticScore) {
     fbBuilder.addFloat32(35, aestheticScore);
     return fbBuilder.offset;
   }
+
   int addNegativeAestheticScore(double? negativeAestheticScore) {
     fbBuilder.addFloat32(36, negativeAestheticScore);
     return fbBuilder.offset;
   }
+
   int addZeroNegativePrompt(bool? zeroNegativePrompt) {
     fbBuilder.addBool(37, zeroNegativePrompt);
     return fbBuilder.offset;
   }
+
   int addRefinerStart(double? refinerStart) {
     fbBuilder.addFloat32(38, refinerStart);
     return fbBuilder.offset;
   }
+
   int addNegativeOriginalImageHeight(int? negativeOriginalImageHeight) {
     fbBuilder.addUint32(39, negativeOriginalImageHeight);
     return fbBuilder.offset;
   }
+
   int addNegativeOriginalImageWidth(int? negativeOriginalImageWidth) {
     fbBuilder.addUint32(40, negativeOriginalImageWidth);
     return fbBuilder.offset;
   }
+
   int addNameOffset(int? offset) {
     fbBuilder.addOffset(41, offset);
     return fbBuilder.offset;
   }
+
   int addFpsId(int? fpsId) {
     fbBuilder.addUint32(42, fpsId);
     return fbBuilder.offset;
   }
+
   int addMotionBucketId(int? motionBucketId) {
     fbBuilder.addUint32(43, motionBucketId);
     return fbBuilder.offset;
   }
+
   int addCondAug(double? condAug) {
     fbBuilder.addFloat32(44, condAug);
     return fbBuilder.offset;
   }
+
   int addStartFrameCfg(double? startFrameCfg) {
     fbBuilder.addFloat32(45, startFrameCfg);
     return fbBuilder.offset;
   }
+
   int addNumFrames(int? numFrames) {
     fbBuilder.addUint32(46, numFrames);
     return fbBuilder.offset;
   }
+
   int addMaskBlurOutset(int? maskBlurOutset) {
     fbBuilder.addInt32(47, maskBlurOutset);
     return fbBuilder.offset;
   }
+
   int addSharpness(double? sharpness) {
     fbBuilder.addFloat32(48, sharpness);
     return fbBuilder.offset;
   }
+
   int addShift(double? shift) {
     fbBuilder.addFloat32(49, shift);
     return fbBuilder.offset;
   }
+
   int addStage2Steps(int? stage2Steps) {
     fbBuilder.addUint32(50, stage2Steps);
     return fbBuilder.offset;
   }
+
   int addStage2Cfg(double? stage2Cfg) {
     fbBuilder.addFloat32(51, stage2Cfg);
     return fbBuilder.offset;
   }
+
   int addStage2Shift(double? stage2Shift) {
     fbBuilder.addFloat32(52, stage2Shift);
     return fbBuilder.offset;
   }
+
   int addTiledDecoding(bool? tiledDecoding) {
     fbBuilder.addBool(53, tiledDecoding);
     return fbBuilder.offset;
   }
+
   int addDecodingTileWidth(int? decodingTileWidth) {
     fbBuilder.addUint16(54, decodingTileWidth);
     return fbBuilder.offset;
   }
+
   int addDecodingTileHeight(int? decodingTileHeight) {
     fbBuilder.addUint16(55, decodingTileHeight);
     return fbBuilder.offset;
   }
+
   int addDecodingTileOverlap(int? decodingTileOverlap) {
     fbBuilder.addUint16(56, decodingTileOverlap);
     return fbBuilder.offset;
   }
+
   int addStochasticSamplingGamma(double? stochasticSamplingGamma) {
     fbBuilder.addFloat32(57, stochasticSamplingGamma);
     return fbBuilder.offset;
   }
+
   int addPreserveOriginalAfterInpaint(bool? preserveOriginalAfterInpaint) {
     fbBuilder.addBool(58, preserveOriginalAfterInpaint);
     return fbBuilder.offset;
   }
+
   int addTiledDiffusion(bool? tiledDiffusion) {
     fbBuilder.addBool(59, tiledDiffusion);
     return fbBuilder.offset;
   }
+
   int addDiffusionTileWidth(int? diffusionTileWidth) {
     fbBuilder.addUint16(60, diffusionTileWidth);
     return fbBuilder.offset;
   }
+
   int addDiffusionTileHeight(int? diffusionTileHeight) {
     fbBuilder.addUint16(61, diffusionTileHeight);
     return fbBuilder.offset;
   }
+
   int addDiffusionTileOverlap(int? diffusionTileOverlap) {
     fbBuilder.addUint16(62, diffusionTileOverlap);
     return fbBuilder.offset;
   }
+
   int addUpscalerScaleFactor(int? upscalerScaleFactor) {
     fbBuilder.addUint8(63, upscalerScaleFactor);
     return fbBuilder.offset;
   }
+
   int addT5TextEncoder(bool? t5TextEncoder) {
     fbBuilder.addBool(64, t5TextEncoder);
     return fbBuilder.offset;
   }
+
   int addSeparateClipL(bool? separateClipL) {
     fbBuilder.addBool(65, separateClipL);
     return fbBuilder.offset;
   }
+
   int addClipLTextOffset(int? offset) {
     fbBuilder.addOffset(66, offset);
     return fbBuilder.offset;
   }
+
   int addSeparateOpenClipG(bool? separateOpenClipG) {
     fbBuilder.addBool(67, separateOpenClipG);
     return fbBuilder.offset;
   }
+
   int addOpenClipGTextOffset(int? offset) {
     fbBuilder.addOffset(68, offset);
     return fbBuilder.offset;
   }
+
   int addSpeedUpWithGuidanceEmbed(bool? speedUpWithGuidanceEmbed) {
     fbBuilder.addBool(69, speedUpWithGuidanceEmbed);
     return fbBuilder.offset;
   }
+
   int addGuidanceEmbed(double? guidanceEmbed) {
     fbBuilder.addFloat32(70, guidanceEmbed);
     return fbBuilder.offset;
   }
+
   int addResolutionDependentShift(bool? resolutionDependentShift) {
     fbBuilder.addBool(71, resolutionDependentShift);
     return fbBuilder.offset;
   }
+
   int addTeaCacheStart(int? teaCacheStart) {
     fbBuilder.addInt32(72, teaCacheStart);
     return fbBuilder.offset;
   }
+
   int addTeaCacheEnd(int? teaCacheEnd) {
     fbBuilder.addInt32(73, teaCacheEnd);
     return fbBuilder.offset;
   }
+
   int addTeaCacheThreshold(double? teaCacheThreshold) {
     fbBuilder.addFloat32(74, teaCacheThreshold);
     return fbBuilder.offset;
   }
+
   int addTeaCache(bool? teaCache) {
     fbBuilder.addBool(75, teaCache);
     return fbBuilder.offset;
   }
+
   int addSeparateT5(bool? separateT5) {
     fbBuilder.addBool(76, separateT5);
     return fbBuilder.offset;
   }
+
   int addT5TextOffset(int? offset) {
     fbBuilder.addOffset(77, offset);
     return fbBuilder.offset;
   }
+
   int addTeaCacheMaxSkipSteps(int? teaCacheMaxSkipSteps) {
     fbBuilder.addInt32(78, teaCacheMaxSkipSteps);
     return fbBuilder.offset;
   }
+
   int addCausalInferenceEnabled(bool? causalInferenceEnabled) {
     fbBuilder.addBool(79, causalInferenceEnabled);
     return fbBuilder.offset;
   }
+
   int addCausalInference(int? causalInference) {
     fbBuilder.addInt32(80, causalInference);
     return fbBuilder.offset;
   }
+
   int addCausalInferencePad(int? causalInferencePad) {
     fbBuilder.addInt32(81, causalInferencePad);
     return fbBuilder.offset;
   }
+
   int addCfgZeroStar(bool? cfgZeroStar) {
     fbBuilder.addBool(82, cfgZeroStar);
     return fbBuilder.offset;
   }
+
   int addCfgZeroInitSteps(int? cfgZeroInitSteps) {
     fbBuilder.addInt32(83, cfgZeroInitSteps);
     return fbBuilder.offset;
@@ -1118,112 +1357,125 @@ class GenerationConfigurationObjectBuilder extends fb.ObjectBuilder {
     int? causalInferencePad,
     bool? cfgZeroStar,
     int? cfgZeroInitSteps,
-  })
-      : _id = id,
-        _startWidth = startWidth,
-        _startHeight = startHeight,
-        _seed = seed,
-        _steps = steps,
-        _guidanceScale = guidanceScale,
-        _strength = strength,
-        _model = model,
-        _sampler = sampler,
-        _batchCount = batchCount,
-        _batchSize = batchSize,
-        _hiresFix = hiresFix,
-        _hiresFixStartWidth = hiresFixStartWidth,
-        _hiresFixStartHeight = hiresFixStartHeight,
-        _hiresFixStrength = hiresFixStrength,
-        _upscaler = upscaler,
-        _imageGuidanceScale = imageGuidanceScale,
-        _seedMode = seedMode,
-        _clipSkip = clipSkip,
-        _controls = controls,
-        _loras = loras,
-        _maskBlur = maskBlur,
-        _faceRestoration = faceRestoration,
-        _clipWeight = clipWeight,
-        _negativePromptForImagePrior = negativePromptForImagePrior,
-        _imagePriorSteps = imagePriorSteps,
-        _refinerModel = refinerModel,
-        _originalImageHeight = originalImageHeight,
-        _originalImageWidth = originalImageWidth,
-        _cropTop = cropTop,
-        _cropLeft = cropLeft,
-        _targetImageHeight = targetImageHeight,
-        _targetImageWidth = targetImageWidth,
-        _aestheticScore = aestheticScore,
-        _negativeAestheticScore = negativeAestheticScore,
-        _zeroNegativePrompt = zeroNegativePrompt,
-        _refinerStart = refinerStart,
-        _negativeOriginalImageHeight = negativeOriginalImageHeight,
-        _negativeOriginalImageWidth = negativeOriginalImageWidth,
-        _name = name,
-        _fpsId = fpsId,
-        _motionBucketId = motionBucketId,
-        _condAug = condAug,
-        _startFrameCfg = startFrameCfg,
-        _numFrames = numFrames,
-        _maskBlurOutset = maskBlurOutset,
-        _sharpness = sharpness,
-        _shift = shift,
-        _stage2Steps = stage2Steps,
-        _stage2Cfg = stage2Cfg,
-        _stage2Shift = stage2Shift,
-        _tiledDecoding = tiledDecoding,
-        _decodingTileWidth = decodingTileWidth,
-        _decodingTileHeight = decodingTileHeight,
-        _decodingTileOverlap = decodingTileOverlap,
-        _stochasticSamplingGamma = stochasticSamplingGamma,
-        _preserveOriginalAfterInpaint = preserveOriginalAfterInpaint,
-        _tiledDiffusion = tiledDiffusion,
-        _diffusionTileWidth = diffusionTileWidth,
-        _diffusionTileHeight = diffusionTileHeight,
-        _diffusionTileOverlap = diffusionTileOverlap,
-        _upscalerScaleFactor = upscalerScaleFactor,
-        _t5TextEncoder = t5TextEncoder,
-        _separateClipL = separateClipL,
-        _clipLText = clipLText,
-        _separateOpenClipG = separateOpenClipG,
-        _openClipGText = openClipGText,
-        _speedUpWithGuidanceEmbed = speedUpWithGuidanceEmbed,
-        _guidanceEmbed = guidanceEmbed,
-        _resolutionDependentShift = resolutionDependentShift,
-        _teaCacheStart = teaCacheStart,
-        _teaCacheEnd = teaCacheEnd,
-        _teaCacheThreshold = teaCacheThreshold,
-        _teaCache = teaCache,
-        _separateT5 = separateT5,
-        _t5Text = t5Text,
-        _teaCacheMaxSkipSteps = teaCacheMaxSkipSteps,
-        _causalInferenceEnabled = causalInferenceEnabled,
-        _causalInference = causalInference,
-        _causalInferencePad = causalInferencePad,
-        _cfgZeroStar = cfgZeroStar,
-        _cfgZeroInitSteps = cfgZeroInitSteps;
+  }) : _id = id,
+       _startWidth = startWidth,
+       _startHeight = startHeight,
+       _seed = seed,
+       _steps = steps,
+       _guidanceScale = guidanceScale,
+       _strength = strength,
+       _model = model,
+       _sampler = sampler,
+       _batchCount = batchCount,
+       _batchSize = batchSize,
+       _hiresFix = hiresFix,
+       _hiresFixStartWidth = hiresFixStartWidth,
+       _hiresFixStartHeight = hiresFixStartHeight,
+       _hiresFixStrength = hiresFixStrength,
+       _upscaler = upscaler,
+       _imageGuidanceScale = imageGuidanceScale,
+       _seedMode = seedMode,
+       _clipSkip = clipSkip,
+       _controls = controls,
+       _loras = loras,
+       _maskBlur = maskBlur,
+       _faceRestoration = faceRestoration,
+       _clipWeight = clipWeight,
+       _negativePromptForImagePrior = negativePromptForImagePrior,
+       _imagePriorSteps = imagePriorSteps,
+       _refinerModel = refinerModel,
+       _originalImageHeight = originalImageHeight,
+       _originalImageWidth = originalImageWidth,
+       _cropTop = cropTop,
+       _cropLeft = cropLeft,
+       _targetImageHeight = targetImageHeight,
+       _targetImageWidth = targetImageWidth,
+       _aestheticScore = aestheticScore,
+       _negativeAestheticScore = negativeAestheticScore,
+       _zeroNegativePrompt = zeroNegativePrompt,
+       _refinerStart = refinerStart,
+       _negativeOriginalImageHeight = negativeOriginalImageHeight,
+       _negativeOriginalImageWidth = negativeOriginalImageWidth,
+       _name = name,
+       _fpsId = fpsId,
+       _motionBucketId = motionBucketId,
+       _condAug = condAug,
+       _startFrameCfg = startFrameCfg,
+       _numFrames = numFrames,
+       _maskBlurOutset = maskBlurOutset,
+       _sharpness = sharpness,
+       _shift = shift,
+       _stage2Steps = stage2Steps,
+       _stage2Cfg = stage2Cfg,
+       _stage2Shift = stage2Shift,
+       _tiledDecoding = tiledDecoding,
+       _decodingTileWidth = decodingTileWidth,
+       _decodingTileHeight = decodingTileHeight,
+       _decodingTileOverlap = decodingTileOverlap,
+       _stochasticSamplingGamma = stochasticSamplingGamma,
+       _preserveOriginalAfterInpaint = preserveOriginalAfterInpaint,
+       _tiledDiffusion = tiledDiffusion,
+       _diffusionTileWidth = diffusionTileWidth,
+       _diffusionTileHeight = diffusionTileHeight,
+       _diffusionTileOverlap = diffusionTileOverlap,
+       _upscalerScaleFactor = upscalerScaleFactor,
+       _t5TextEncoder = t5TextEncoder,
+       _separateClipL = separateClipL,
+       _clipLText = clipLText,
+       _separateOpenClipG = separateOpenClipG,
+       _openClipGText = openClipGText,
+       _speedUpWithGuidanceEmbed = speedUpWithGuidanceEmbed,
+       _guidanceEmbed = guidanceEmbed,
+       _resolutionDependentShift = resolutionDependentShift,
+       _teaCacheStart = teaCacheStart,
+       _teaCacheEnd = teaCacheEnd,
+       _teaCacheThreshold = teaCacheThreshold,
+       _teaCache = teaCache,
+       _separateT5 = separateT5,
+       _t5Text = t5Text,
+       _teaCacheMaxSkipSteps = teaCacheMaxSkipSteps,
+       _causalInferenceEnabled = causalInferenceEnabled,
+       _causalInference = causalInference,
+       _causalInferencePad = causalInferencePad,
+       _cfgZeroStar = cfgZeroStar,
+       _cfgZeroInitSteps = cfgZeroInitSteps;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? modelOffset = _model == null ? null
+    final int? modelOffset = _model == null
+        ? null
         : fbBuilder.writeString(_model!);
-    final int? upscalerOffset = _upscaler == null ? null
+    final int? upscalerOffset = _upscaler == null
+        ? null
         : fbBuilder.writeString(_upscaler!);
-    final int? controlsOffset = _controls == null ? null
-        : fbBuilder.writeList(_controls!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    final int? lorasOffset = _loras == null ? null
-        : fbBuilder.writeList(_loras!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    final int? faceRestorationOffset = _faceRestoration == null ? null
+    final int? controlsOffset = _controls == null
+        ? null
+        : fbBuilder.writeList(
+            _controls!.map((b) => b.getOrCreateOffset(fbBuilder)).toList(),
+          );
+    final int? lorasOffset = _loras == null
+        ? null
+        : fbBuilder.writeList(
+            _loras!.map((b) => b.getOrCreateOffset(fbBuilder)).toList(),
+          );
+    final int? faceRestorationOffset = _faceRestoration == null
+        ? null
         : fbBuilder.writeString(_faceRestoration!);
-    final int? refinerModelOffset = _refinerModel == null ? null
+    final int? refinerModelOffset = _refinerModel == null
+        ? null
         : fbBuilder.writeString(_refinerModel!);
-    final int? nameOffset = _name == null ? null
+    final int? nameOffset = _name == null
+        ? null
         : fbBuilder.writeString(_name!);
-    final int? clipLTextOffset = _clipLText == null ? null
+    final int? clipLTextOffset = _clipLText == null
+        ? null
         : fbBuilder.writeString(_clipLText!);
-    final int? openClipGTextOffset = _openClipGText == null ? null
+    final int? openClipGTextOffset = _openClipGText == null
+        ? null
         : fbBuilder.writeString(_openClipGText!);
-    final int? t5TextOffset = _t5Text == null ? null
+    final int? t5TextOffset = _t5Text == null
+        ? null
         : fbBuilder.writeString(_t5Text!);
     fbBuilder.startTable(84);
     fbBuilder.addInt64(0, _id);

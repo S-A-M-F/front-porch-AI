@@ -65,7 +65,11 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
       svc.consumeChanceTimeTrigger();
       setState(() {
         _segments = svc.spinWheelEvents();
-        _charName = svc.activeCharacter?.name ?? 'Character';
+        // In group mode, use the current/next speaker so the event text is attributed
+        // to the character who will actually respond (as per group turn order).
+        // Falls back gracefully for 1:1 or when no next speaker is selected.
+        _charName =
+            svc.nextCharacter?.name ?? svc.activeCharacter?.name ?? 'Character';
       });
     });
   }
@@ -96,13 +100,9 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
     // Wheel rotation = full rotations + (2π - landingAngle).
     _targetAngle = extraRotations + (2 * pi - landingAngleInWheel);
 
-    _spinAnimation = Tween<double>(
-      begin: 0,
-      end: _targetAngle,
-    ).animate(CurvedAnimation(
-      parent: _spinController,
-      curve: Curves.easeOutCubic,
-    ));
+    _spinAnimation = Tween<double>(begin: 0, end: _targetAngle).animate(
+      CurvedAnimation(parent: _spinController, curve: Curves.easeOutCubic),
+    );
 
     _spinController.reset();
     _spinController.duration = const Duration(milliseconds: 3800);
@@ -120,56 +120,125 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
   // ── Category detection ─────────────────────────────────────────────────────
 
   static const _fortuneKeywords = [
-    'found something valuable', 'mistaken for someone important', 'crowd of admirers',
-    'turned up in the most unexpected', 'unexpected compliment', 'hidden stash',
-    'pulled off something impressive', 'stranger just paid', 'arrived somewhere late',
-    'won something', 'beautiful view', 'accidentally said the perfect',
-    'best hair', 'turned completely around', 'shortcut or trick',
-    'best seat', 'weather turned', 'ran into someone', 'animal has taken',
-    'made a guess', 'overheard something', 'arrived to help',
-    'offered more than they asked', 'kindness', 'well-rested',
-    'best portion', 'accomplished something', 'charming today',
-    'rooting for them', 'unexpected credit',
+    'found something valuable',
+    'mistaken for someone important',
+    'crowd of admirers',
+    'turned up in the most unexpected',
+    'unexpected compliment',
+    'hidden stash',
+    'pulled off something impressive',
+    'stranger just paid',
+    'arrived somewhere late',
+    'won something',
+    'beautiful view',
+    'accidentally said the perfect',
+    'best hair',
+    'turned completely around',
+    'shortcut or trick',
+    'best seat',
+    'weather turned',
+    'ran into someone',
+    'animal has taken',
+    'made a guess',
+    'overheard something',
+    'arrived to help',
+    'offered more than they asked',
+    'kindness',
+    'well-rested',
+    'best portion',
+    'accomplished something',
+    'charming today',
+    'rooting for them',
+    'unexpected credit',
   ];
   static const _misfortuneKeywords = [
-    'urgently needs to use the restroom', 'stepped in something extremely unpleasant',
-    'sneezed violently', 'sat in something wet', 'hiccups', 'bit their tongue',
-    'something in their teeth', 'ripped in an extremely inconvenient',
-    'knocked something over', 'tripped', 'involuntary sound',
-    'extremely itchy somewhere', 'spilled something on themselves',
-    'stomach is making alarming sounds', 'said goodbye to someone and then walked',
-    'confidently greeted someone who has no idea', 'waved back at someone who was not',
-    'laughed at something completely inappropriate', 'walked into something',
-    'piece of hair or debris', 'mark on their face', 'squeaking piece',
-    'yawned enormously', 'sent a message and immediately regretted', 'pretend they remember',
-    'hands are completely full', 'dropped something and it rolled',
-    'something in their eye', 'nodding along', 'pronouncing something wrong',
-    'sneezing fit', 'direct and sustained eye contact', 'reached for something',
-    'fell asleep briefly', 'confident prediction', 'forgot where it was going',
-    'uncooperative hair', 'involuntary noise while trying to lift',
-    'regretted the food choice', 'footwear issue', 'mispronounced repeatedly',
+    'urgently needs to use the restroom',
+    'stepped in something extremely unpleasant',
+    'sneezed violently',
+    'sat in something wet',
+    'hiccups',
+    'bit their tongue',
+    'something in their teeth',
+    'ripped in an extremely inconvenient',
+    'knocked something over',
+    'tripped',
+    'involuntary sound',
+    'extremely itchy somewhere',
+    'spilled something on themselves',
+    'stomach is making alarming sounds',
+    'said goodbye to someone and then walked',
+    'confidently greeted someone who has no idea',
+    'waved back at someone who was not',
+    'laughed at something completely inappropriate',
+    'walked into something',
+    'piece of hair or debris',
+    'mark on their face',
+    'squeaking piece',
+    'yawned enormously',
+    'sent a message and immediately regretted',
+    'pretend they remember',
+    'hands are completely full',
+    'dropped something and it rolled',
+    'something in their eye',
+    'nodding along',
+    'pronouncing something wrong',
+    'sneezing fit',
+    'direct and sustained eye contact',
+    'reached for something',
+    'fell asleep briefly',
+    'confident prediction',
+    'forgot where it was going',
+    'uncooperative hair',
+    'involuntary noise while trying to lift',
+    'regretted the food choice',
+    'footwear issue',
+    'mispronounced repeatedly',
     'backwards or inside-out',
   ];
   static const _chaosKeywords = [
-    'bird flew directly', 'loud and disruptive noise', 'fell over on its own',
-    'unexpected center of a very enthusiastic', 'animal has decided', 'unusual outfit',
-    'make noise', 'gust of wind', 'extremely large insect', 'lighting wherever',
-    'crowd has formed', 'very loud and very one-sided story', 'enthusiastic child',
-    'cooking or burning nearby', 'broken in a way that is more funny',
-    'uninvited guest or creature', 'spontaneously rearranged', 'recruit',
-    'loud and personal argument', 'small and ridiculous has escalated',
-    'animal is doing exactly what it should not', 'accidentally started a trend',
-    'performing something unsolicited', 'synchronized into something inexplicably musical',
-    'delivery or package', 'definitely fixed has become unfixed',
-    'squeak, rattle, or wobble', 'very long and intricate process',
-    'every seat, surface', 'counting on to work fine',
+    'bird flew directly',
+    'loud and disruptive noise',
+    'fell over on its own',
+    'unexpected center of a very enthusiastic',
+    'animal has decided',
+    'unusual outfit',
+    'make noise',
+    'gust of wind',
+    'extremely large insect',
+    'lighting wherever',
+    'crowd has formed',
+    'very loud and very one-sided story',
+    'enthusiastic child',
+    'cooking or burning nearby',
+    'broken in a way that is more funny',
+    'uninvited guest or creature',
+    'spontaneously rearranged',
+    'recruit',
+    'loud and personal argument',
+    'small and ridiculous has escalated',
+    'animal is doing exactly what it should not',
+    'accidentally started a trend',
+    'performing something unsolicited',
+    'synchronized into something inexplicably musical',
+    'delivery or package',
+    'definitely fixed has become unfixed',
+    'squeak, rattle, or wobble',
+    'very long and intricate process',
+    'every seat, surface',
+    'counting on to work fine',
   ];
 
   _EventCategory _categorize(String event) {
     final lower = event.toLowerCase();
-    for (final k in _fortuneKeywords) { if (lower.contains(k)) return _EventCategory.fortune; }
-    for (final k in _misfortuneKeywords) { if (lower.contains(k)) return _EventCategory.misfortune; }
-    for (final k in _chaosKeywords) { if (lower.contains(k)) return _EventCategory.chaos; }
+    for (final k in _fortuneKeywords) {
+      if (lower.contains(k)) return _EventCategory.fortune;
+    }
+    for (final k in _misfortuneKeywords) {
+      if (lower.contains(k)) return _EventCategory.misfortune;
+    }
+    for (final k in _chaosKeywords) {
+      if (lower.contains(k)) return _EventCategory.chaos;
+    }
     return _EventCategory.wildCard;
   }
 
@@ -183,9 +252,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: _segments.isEmpty
-            ? const SizedBox.shrink()
-            : _buildContent(),
+        child: _segments.isEmpty ? const SizedBox.shrink() : _buildContent(),
       ),
     );
   }
@@ -196,15 +263,15 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         maxHeight: MediaQuery.of(context).size.height * 0.88,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1117).withOpacity(0.97),
+        color: const Color(0xFF0D1117).withValues(alpha: 0.97),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: const Color(0xFFFFD166).withOpacity(0.4),
+          color: const Color(0xFFFFD166).withValues(alpha: 0.4),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFD166).withOpacity(0.15),
+            color: const Color(0xFFFFD166).withValues(alpha: 0.15),
             blurRadius: 40,
             spreadRadius: 4,
           ),
@@ -239,7 +306,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
           decoration: BoxDecoration(
             gradient: RadialGradient(
               colors: [
-                const Color(0xFFFFD166).withOpacity(0.3),
+                const Color(0xFFFFD166).withValues(alpha: 0.3),
                 Colors.transparent,
               ],
             ),
@@ -284,7 +351,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
               gradient: RadialGradient(
                 colors: [
                   Colors.transparent,
-                  const Color(0xFFFFD166).withOpacity(0.25),
+                  const Color(0xFFFFD166).withValues(alpha: 0.25),
                 ],
                 stops: const [0.85, 1.0],
               ),
@@ -294,9 +361,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
           AnimatedBuilder(
             animation: _spinning
                 ? _spinAnimation
-                : AlwaysStoppedAnimation(
-                    _landed ? _targetAngle % (2 * pi) : 0,
-                  ),
+                : AlwaysStoppedAnimation(_landed ? _targetAngle % (2 * pi) : 0),
             builder: (context, child) {
               final angle = _spinning
                   ? _spinAnimation.value
@@ -323,7 +388,11 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                 colors: [Color(0xFFFFF9C4), Color(0xFFFFD166)],
               ),
               boxShadow: [
-                BoxShadow(color: Colors.black54, blurRadius: 6, spreadRadius: 1),
+                BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 6,
+                  spreadRadius: 1,
+                ),
               ],
             ),
           ),
@@ -353,7 +422,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
           borderRadius: BorderRadius.circular(50),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFFD166).withOpacity(0.5),
+              color: const Color(0xFFFFD166).withValues(alpha: 0.5),
               blurRadius: 20,
               spreadRadius: 2,
             ),
@@ -377,10 +446,14 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
     final cat = _category ?? _EventCategory.wildCard;
 
     final (catEmoji, catLabel, catColor) = switch (cat) {
-      _EventCategory.fortune    => ('🎉', 'Fortune!',   const Color(0xFF06D6A0)),
-      _EventCategory.misfortune => ('💀', 'Misfortune', const Color(0xFFE63946)),
-      _EventCategory.chaos      => ('⚡', 'Chaos!',     const Color(0xFFFFD166)),
-      _EventCategory.wildCard   => ('🔮', 'Wild Card',  const Color(0xFF9B5DE5)),
+      _EventCategory.fortune => ('🎉', 'Fortune!', const Color(0xFF06D6A0)),
+      _EventCategory.misfortune => (
+        '💀',
+        'Misfortune',
+        const Color(0xFFE63946),
+      ),
+      _EventCategory.chaos => ('⚡', 'Chaos!', const Color(0xFFFFD166)),
+      _EventCategory.wildCard => ('🔮', 'Wild Card', const Color(0xFF9B5DE5)),
     };
 
     return Column(
@@ -392,7 +465,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         // ── Category banner ─────────────────────────────────────────────
         AnimatedBuilder(
           animation: _revealAnimation,
-          builder: (_, __) {
+          builder: (_, _) {
             final t = _revealAnimation.value;
             return Opacity(
               opacity: t.clamp(0.0, 1.0),
@@ -410,7 +483,12 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                         fontWeight: FontWeight.w900,
                         color: catColor,
                         letterSpacing: 1.2,
-                        shadows: [Shadow(color: catColor.withOpacity(0.6), blurRadius: 12)],
+                        shadows: [
+                          Shadow(
+                            color: catColor.withValues(alpha: 0.6),
+                            blurRadius: 12,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -424,7 +502,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
         // ── Event text card ─────────────────────────────────────────────
         AnimatedBuilder(
           animation: _revealAnimation,
-          builder: (_, __) {
+          builder: (_, _) {
             final t = (_revealAnimation.value - 0.3).clamp(0.0, 1.0) / 0.7;
             return Opacity(
               opacity: t,
@@ -433,12 +511,15 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: catColor.withOpacity(0.12),
+                    color: catColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: catColor.withOpacity(0.5), width: 1.5),
+                    border: Border.all(
+                      color: catColor.withValues(alpha: 0.5),
+                      width: 1.5,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: catColor.withOpacity(0.18),
+                        color: catColor.withValues(alpha: 0.18),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
@@ -484,7 +565,11 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
             },
             child: const Text(
               'Accept Your Fate 🎲',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5),
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
         ),
@@ -503,14 +588,15 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
             alignment: Alignment.center,
             children: [
               // Category-specific background pulse
-              if (cat == _EventCategory.fortune || cat == _EventCategory.misfortune)
+              if (cat == _EventCategory.fortune ||
+                  cat == _EventCategory.misfortune)
                 Opacity(
                   opacity: (1 - t).clamp(0.0, 0.6),
                   child: Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: catColor.withOpacity(0.25),
+                      color: catColor.withValues(alpha: 0.25),
                     ),
                   ),
                 ),
@@ -518,9 +604,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
               // Fortune: confetti
               if (cat == _EventCategory.fortune)
                 Positioned.fill(
-                  child: CustomPaint(
-                    painter: _ConfettiPainter(progress: t),
-                  ),
+                  child: CustomPaint(painter: _ConfettiPainter(progress: t)),
                 ),
 
               // Chaos: lightning strobe flash
@@ -530,7 +614,7 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: const Color(0xFFFFD166).withOpacity(0.35),
+                      color: const Color(0xFFFFD166).withValues(alpha: 0.35),
                     ),
                   ),
                 ),
@@ -546,7 +630,9 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          const Color(0xFF9B5DE5).withOpacity(0.5 * (1 - t)),
+                          const Color(
+                            0xFF9B5DE5,
+                          ).withValues(alpha: 0.5 * (1 - t)),
                           Colors.transparent,
                         ],
                       ),
@@ -560,9 +646,13 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
                     ? (t / 0.4) * 1.2
                     : 1.2 - ((t - 0.4) / 0.6) * 0.2,
                 child: Text(
-                  cat == _EventCategory.fortune    ? '🎉' :
-                  cat == _EventCategory.misfortune ? '💀' :
-                  cat == _EventCategory.chaos      ? '⚡' : '🔮',
+                  cat == _EventCategory.fortune
+                      ? '🎉'
+                      : cat == _EventCategory.misfortune
+                      ? '💀'
+                      : cat == _EventCategory.chaos
+                      ? '⚡'
+                      : '🔮',
                   style: const TextStyle(fontSize: 36),
                 ),
               ),
@@ -575,8 +665,8 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
 
   Widget _buildPressureRow() {
     return Consumer<ChatService>(
-      builder: (_, svc, __) {
-        final pressure = svc.chaosPressure;
+      builder: (_, svc, _) {
+        final pressure = svc.chaosModeService.chaosPressure;
         final color = Color.lerp(
           const Color(0xFF2EC4B6),
           const Color(0xFFE63946),
@@ -606,7 +696,6 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
 
 class _ConfettiPainter extends CustomPainter {
   final double progress; // 0→1
-  static final _rng = Random(42);
 
   _ConfettiPainter({required this.progress});
 
@@ -633,7 +722,7 @@ class _ConfettiPainter extends CustomPainter {
     for (final p in _pieces) {
       final y = p.startY + progress * p.speed * 1.6;
       if (y < 0 || y > 1.1) continue;
-      paint.color = p.color.withOpacity((1 - progress).clamp(0, 1));
+      paint.color = p.color.withValues(alpha: (1 - progress).clamp(0, 1));
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(
@@ -655,7 +744,13 @@ class _ConfettiPainter extends CustomPainter {
 class _Confetto {
   final double x, startY, size, speed;
   final Color color;
-  const _Confetto({required this.x, required this.startY, required this.color, required this.size, required this.speed});
+  const _Confetto({
+    required this.x,
+    required this.startY,
+    required this.color,
+    required this.size,
+    required this.speed,
+  });
 }
 
 // ── Wheel & Pointer ───────────────────────────────────────────────────────────
@@ -667,13 +762,17 @@ class _WheelPainter extends CustomPainter {
   // Fixed fun emojis per slot — visually interesting while spinning,
   // no text that goes upside-down. Event text revealed in result card.
   static const List<String> _slotEmojis = [
-    '🎲', '⚡', '🎯', '🔮', '🎪', '💎', '🌈', '🎭',
+    '🎲',
+    '⚡',
+    '🎯',
+    '🔮',
+    '🎪',
+    '💎',
+    '🌈',
+    '🎭',
   ];
 
-  const _WheelPainter({
-    required this.segments,
-    required this.colors,
-  });
+  const _WheelPainter({required this.segments, required this.colors});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -739,8 +838,7 @@ class _WheelPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WheelPainter old) =>
-      old.segments != segments;
+  bool shouldRepaint(covariant _WheelPainter old) => old.segments != segments;
 }
 
 class _PointerPainter extends CustomPainter {

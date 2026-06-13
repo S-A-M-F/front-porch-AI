@@ -5,7 +5,7 @@
 // Covers serialization, swipe handling, thinking tag stripping, and metadata.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/models/chat_message.dart';
 
 /// Helper to build text with thinking tags (tags rendered invisibly in terminal).
 String _thinkingText({required String content, bool inProgress = false}) {
@@ -32,11 +32,7 @@ void main() {
     });
 
     test('text returns single item when no swipes provided', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.text, 'Hello');
       expect(msg.swipes, ['Hello']);
@@ -68,7 +64,7 @@ void main() {
       expect(msg.swipes, isEmpty);
     });
 
-    test('swipeIndex out of range throws RangeError', () {
+    test('swipeIndex out of range is clamped (no RangeError on access)', () {
       final msg = ChatMessage(
         text: 'Hello',
         sender: 'Luna',
@@ -77,24 +73,23 @@ void main() {
         swipeIndex: 99,
       );
 
-      expect(() => msg.text, throwsRangeError);
+      expect(msg.swipeIndex, 0);
+      expect(msg.text, 'Hello'); // does not throw thanks to ctor clamping
     });
   });
 
   group('displayText', () {
     test('preserves text without thinking tags', () {
-      final msg = ChatMessage(
-        text: 'Hello!',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello!', sender: 'Luna', isUser: false);
 
       expect(msg.displayText, 'Hello!');
     });
 
     test('strips completed thinking block with surrounding text', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'Let me think about this carefully') + 'Hello!',
+        text:
+            _thinkingText(content: 'Let me think about this carefully') +
+            'Hello!',
         sender: 'Luna',
         isUser: false,
       );
@@ -114,7 +109,10 @@ void main() {
 
     test('strips multiple thinking blocks', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'first') + 'Between' + _thinkingText(content: 'second'),
+        text:
+            _thinkingText(content: 'first') +
+            'Between' +
+            _thinkingText(content: 'second'),
         sender: 'Luna',
         isUser: false,
       );
@@ -176,7 +174,9 @@ void main() {
 
     test('extracts completed thinking content', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'Let me think about this carefully') + 'Hello!',
+        text:
+            _thinkingText(content: 'Let me think about this carefully') +
+            'Hello!',
         sender: 'Luna',
         isUser: false,
       );
@@ -186,7 +186,10 @@ void main() {
 
     test('extracts in-progress thinking content', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'I am still working on this...', inProgress: true),
+        text: _thinkingText(
+          content: 'I am still working on this...',
+          inProgress: true,
+        ),
         sender: 'Luna',
         isUser: false,
       );
@@ -195,11 +198,7 @@ void main() {
     });
 
     test('returns null for text without thinking tags', () {
-      final msg = ChatMessage(
-        text: 'texthello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'texthello', sender: 'Luna', isUser: false);
 
       expect(msg.thinkingContent, isNull);
     });
@@ -216,13 +215,18 @@ void main() {
 
     test('prefers completed block over in-progress', () {
       final msg = ChatMessage(
-        text: _thinkingText(content: 'Closed block') + _thinkingText(content: 'Open block', inProgress: true),
+        text:
+            _thinkingText(content: 'Closed block') +
+            _thinkingText(content: 'Open block', inProgress: true),
         sender: 'Luna',
         isUser: false,
       );
 
-      expect(msg.thinkingContent, 'Closed block',
-          reason: 'completed block takes priority');
+      expect(
+        msg.thinkingContent,
+        'Closed block',
+        reason: 'completed block takes priority',
+      );
     });
   });
 
@@ -238,32 +242,20 @@ void main() {
     });
 
     test('false when no thinking tags and no duration', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.hasThinking, isFalse);
     });
 
     test('true when thinkingDurationMs > 0', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       msg.thinkingDurationMs = 500;
       expect(msg.hasThinking, isTrue);
     });
 
     test('false when thinkingDurationMs is 0', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.hasThinking, isFalse);
     });
@@ -286,7 +278,11 @@ void main() {
         text: 'Hello',
         sender: 'Luna',
         isUser: false,
-        swipeMetadata: [null, {'swipeKey': 'swipeValue'}],
+        swipes: ['Hello', 'Hello2'],
+        swipeMetadata: [
+          null,
+          {'swipeKey': 'swipeValue'},
+        ],
         swipeIndex: 1,
       );
 
@@ -307,11 +303,7 @@ void main() {
     });
 
     test('setting activeMetadata creates swipe metadata entry', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       msg.activeMetadata = {'new': 'data'};
       expect(msg.swipeMetadata.length, 1);
@@ -323,6 +315,7 @@ void main() {
         text: 'Hello',
         sender: 'Luna',
         isUser: false,
+        swipes: ['Hello', 'H1', 'H2'],
         swipeMetadata: [null, null, null],
         swipeIndex: 2,
       );
@@ -389,14 +382,18 @@ void main() {
         sender: 'Luna',
         isUser: false,
         swipes: ['Hello', 'Swipe 1'],
-        swipeMetadata: [null, {'swipeKey': 'swipeValue'}, null],
+        swipeMetadata: [
+          null,
+          {'swipeKey': 'swipeValue'},
+          null,
+        ],
         swipeIndex: 1,
       );
 
       final json = original.toJson();
       final restored = ChatMessage.fromJson(json);
 
-      expect(restored.swipeMetadata![1], {'swipeKey': 'swipeValue'});
+      expect(restored.swipeMetadata[1], {'swipeKey': 'swipeValue'});
     });
 
     test('round-trip with characterId', () {
@@ -414,11 +411,7 @@ void main() {
     });
 
     test('characterId omitted from JSON when null', () {
-      final original = ChatMessage(
-        text: 'Hello',
-        sender: 'User',
-        isUser: true,
-      );
+      final original = ChatMessage(text: 'Hello', sender: 'User', isUser: true);
 
       final json = original.toJson();
       expect(json.containsKey('character_id'), isFalse);
@@ -474,7 +467,11 @@ void main() {
         text: 'Hello',
         sender: 'Luna',
         isUser: false,
-        swipeMetadata: [null, {'key': 'val'}, null],
+        swipeMetadata: [
+          null,
+          {'key': 'val'},
+          null,
+        ],
       );
 
       final json = original.toJson();
@@ -484,21 +481,13 @@ void main() {
 
   group('swipeDurations', () {
     test('default duration is 0', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       expect(msg.swipeDurations[0], 0);
     });
 
     test('setting thinkingDurationMs pads the list', () {
-      final msg = ChatMessage(
-        text: 'Hello',
-        sender: 'Luna',
-        isUser: false,
-      );
+      final msg = ChatMessage(text: 'Hello', sender: 'Luna', isUser: false);
 
       msg.thinkingDurationMs = 500;
       expect(msg.swipeDurations.length, 1);

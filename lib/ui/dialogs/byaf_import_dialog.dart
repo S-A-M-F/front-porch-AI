@@ -58,17 +58,31 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
             // Header
             Row(
               children: [
-                const Icon(Icons.archive_outlined, color: Colors.blueAccent, size: 24),
+                const Icon(
+                  Icons.archive_outlined,
+                  color: Colors.blueAccent,
+                  size: 24,
+                ),
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
                     'Import Backyard AI Character',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white70),
-                  onPressed: () => Navigator.pop(context, ByafImportResult(confirmed: false, importChatHistory: false)),
+                  onPressed: () => Navigator.pop(
+                    context,
+                    ByafImportResult(
+                      confirmed: false,
+                      importChatHistory: false,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -98,11 +112,17 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
                                     File(preview.extractedImagePath!),
                                     fit: BoxFit.cover,
                                     alignment: Alignment.topCenter,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.person, color: Colors.white38, size: 48,
+                                    errorBuilder: (_, _, _) => const Icon(
+                                      Icons.person,
+                                      color: Colors.white38,
+                                      size: 48,
                                     ),
                                   )
-                                : const Icon(Icons.person, color: Colors.white38, size: 48),
+                                : const Icon(
+                                    Icons.person,
+                                    color: Colors.white38,
+                                    size: 48,
+                                  ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -114,17 +134,32 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
                               Text(
                                 preview.name,
                                 style: const TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              _buildInfoChip(Icons.auto_stories, '${preview.persona.length} chars persona'),
+                              _buildInfoChip(
+                                Icons.auto_stories,
+                                '${preview.persona.length} chars persona',
+                              ),
                               if (preview.loreItems.isNotEmpty)
-                                _buildInfoChip(Icons.book, '${preview.loreItems.length} lore items'),
+                                _buildInfoChip(
+                                  Icons.book,
+                                  '${preview.loreItems.length} lore items',
+                                ),
                               if (preview.messages.isNotEmpty)
-                                _buildInfoChip(Icons.chat, '${preview.messages.length} chat messages'),
-                              if (preview.firstMessage != null && preview.firstMessage!.isNotEmpty)
-                                _buildInfoChip(Icons.chat_bubble_outline, 'Has greeting'),
+                                _buildInfoChip(
+                                  Icons.chat,
+                                  '${preview.messages.length} chat messages',
+                                ),
+                              if (preview.firstMessage != null &&
+                                  preview.firstMessage!.isNotEmpty)
+                                _buildInfoChip(
+                                  Icons.chat_bubble_outline,
+                                  'Has greeting',
+                                ),
                             ],
                           ),
                         ),
@@ -134,7 +169,14 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
 
                     // Persona preview
                     if (preview.persona.isNotEmpty) ...[
-                      const Text('Persona', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 13)),
+                      const Text(
+                        'Persona',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueAccent,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Container(
                         width: double.infinity,
@@ -147,15 +189,27 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
                           preview.persona.length > 400
                               ? '${preview.persona.substring(0, 400)}…'
                               : preview.persona,
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
                     ],
 
                     // First message preview
-                    if (preview.firstMessage != null && preview.firstMessage!.isNotEmpty) ...[
-                      const Text('First Message', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 13)),
+                    if (preview.firstMessage != null &&
+                        preview.firstMessage!.isNotEmpty) ...[
+                      const Text(
+                        'First Message',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueAccent,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Container(
                         width: double.infinity,
@@ -168,7 +222,11 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
                           preview.firstMessage!.length > 300
                               ? '${preview.firstMessage!.substring(0, 300)}…'
                               : preview.firstMessage!,
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -176,24 +234,39 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
 
                     // Model settings (read-only)
                     if (preview.modelSettings.isNotEmpty) ...[
-                      const Text('Model Settings (preview only)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white38, fontSize: 13)),
+                      const Text(
+                        'Model Settings (preview only)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white38,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Wrap(
                         spacing: 8,
                         runSpacing: 4,
-                        children: preview.modelSettings.entries.map((e) =>
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF374151),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '${e.key}: ${e.value.toStringAsFixed(2)}',
-                              style: const TextStyle(color: Colors.white54, fontSize: 11),
-                            ),
-                          ),
-                        ).toList(),
+                        children: preview.modelSettings.entries
+                            .map(
+                              (e) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF374151),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${e.key}: ${e.value.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -202,22 +275,35 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
                     if (preview.messages.isNotEmpty)
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blueAccent.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: Colors.blueAccent.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: CheckboxListTile(
                           value: _importChat,
-                          onChanged: (v) => setState(() => _importChat = v ?? true),
+                          onChanged: (v) =>
+                              setState(() => _importChat = v ?? true),
                           title: Text(
                             'Import chat history (${preview.messages.length} messages)',
-                            style: const TextStyle(color: Colors.blueAccent, fontSize: 13, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                              color: Colors.blueAccent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           subtitle: const Text(
                             'Creates a chat session with the imported messages',
-                            style: TextStyle(color: Colors.white38, fontSize: 11),
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 11,
+                            ),
                           ),
                           activeColor: Colors.blueAccent,
                           checkColor: Colors.white,
@@ -238,19 +324,39 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context, ByafImportResult(confirmed: false, importChatHistory: false)),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                  onPressed: () => Navigator.pop(
+                    context,
+                    ByafImportResult(
+                      confirmed: false,
+                      importChatHistory: false,
+                    ),
+                  ),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context, ByafImportResult(confirmed: true, importChatHistory: _importChat)),
+                  onPressed: () => Navigator.pop(
+                    context,
+                    ByafImportResult(
+                      confirmed: true,
+                      importChatHistory: _importChat,
+                    ),
+                  ),
                   icon: const Icon(Icons.download, size: 18),
                   label: const Text('Import Character'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ],
@@ -269,7 +375,10 @@ class _ByafImportDialogState extends State<ByafImportDialog> {
         children: [
           Icon(icon, size: 14, color: Colors.white38),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
         ],
       ),
     );

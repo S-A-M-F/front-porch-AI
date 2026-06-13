@@ -29,14 +29,17 @@ class FormattedEbook {
 
 /// Utility for compiling a Porch Story project into a standard, offline-compliant `.epub` file.
 class EpubGeneratorService {
-
   /// Builds a fully-compliant EPUB 2/3 zip container entirely in memory.
   static Future<FormattedEbook?> generateEpub(StoryProject project) async {
     final archive = Archive();
 
     // 1. mimetype (MUST be at root, MUST be uncompressed, MUST be first)
     final mimetypeBytes = utf8.encode('application/epub+zip');
-    final mimetypeParam = ArchiveFile.noCompress('mimetype', mimetypeBytes.length, mimetypeBytes);
+    final mimetypeParam = ArchiveFile.noCompress(
+      'mimetype',
+      mimetypeBytes.length,
+      mimetypeBytes,
+    );
     archive.addFile(mimetypeParam);
 
     // 2. META-INF/container.xml
@@ -46,13 +49,19 @@ class EpubGeneratorService {
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>''';
-    archive.addFile(ArchiveFile('META-INF/container.xml', containerXml.length, utf8.encode(containerXml)));
+    archive.addFile(
+      ArchiveFile(
+        'META-INF/container.xml',
+        containerXml.length,
+        utf8.encode(containerXml),
+      ),
+    );
 
     // 3. Prepare content structure
     final chapterHtmlFiles = <String, String>{};
     final navPoints = <String>[];
     int playOrder = 1;
-    
+
     // Add Title Page
     chapterHtmlFiles['title.html'] = _buildHtmlWrap(project.title, '''
       <div style="text-align: center; margin-top: 25%;">
@@ -62,7 +71,7 @@ class EpubGeneratorService {
         <p>\${_escapeXml(project.concept)}</p>
       </div>
     ''');
-    
+
     navPoints.add('''
       <navPoint id="navPoint-$playOrder" playOrder="$playOrder">
         <navLabel><text>Title Page</text></navLabel>
@@ -73,17 +82,16 @@ class EpubGeneratorService {
 
     // Add Acts / Chapters
     for (int actIdx = 0; actIdx < project.acts.length; actIdx++) {
+      // ignore: unused_local_variable
       final act = project.acts[actIdx];
       final scenes = project.scenes[actIdx] ?? [];
-      
-      final chapterId = 'act_\${actIdx + 1}';
-      final chapterFilename = '\$chapterId.html';
 
       final buffer = StringBuffer();
       buffer.writeln('<h2>Act \${act.number}: \${_escapeXml(act.title)}</h2>');
       buffer.writeln('<p><i>\${_escapeXml(act.description)}</i></p><hr/>');
 
       for (int sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
+        // ignore: unused_local_variable
         final scene = scenes[sceneIdx];
         final sId = '\$actIdx-\$sceneIdx';
         final beats = project.beats[sId] ?? [];
@@ -92,7 +100,8 @@ class EpubGeneratorService {
 
         for (int beatIdx = 0; beatIdx < beats.length; beatIdx++) {
           final bId = '\$sId-\$beatIdx';
-          final prose = project.prose[bId]?.final_ ?? project.prose[bId]?.draft ?? '';
+          final prose =
+              project.prose[bId]?.final_ ?? project.prose[bId]?.draft ?? '';
           if (prose.trim().isNotEmpty) {
             // Split into paragraphs for proper eBook indentation flow
             final paragraphs = prose.split('\\n\\n');
@@ -105,7 +114,11 @@ class EpubGeneratorService {
         }
       }
 
-      chapterHtmlFiles[chapterFilename] = _buildHtmlWrap('Act \${act.number}', buffer.toString());
+      final chapterFilename = 'act_\${actIdx + 1}.html';
+      chapterHtmlFiles[chapterFilename] = _buildHtmlWrap(
+        'Act \${act.number}',
+        buffer.toString(),
+      );
 
       navPoints.add('''
         <navPoint id="navPoint-\$playOrder" playOrder="\$playOrder">
@@ -124,16 +137,21 @@ class EpubGeneratorService {
     }
 
     // 4. Create content.opf
-    final uuid = (project.dbId ?? 'generic-book-id').replaceAll('-', '');
     final manifestItems = StringBuffer();
     final spineItems = StringBuffer();
 
-    manifestItems.writeln('<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>');
-    manifestItems.writeln('<item id="title" href="Text/title.html" media-type="application/xhtml+xml"/>');
+    manifestItems.writeln(
+      '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
+    );
+    manifestItems.writeln(
+      '<item id="title" href="Text/title.html" media-type="application/xhtml+xml"/>',
+    );
     spineItems.writeln('<itemref idref="title"/>');
 
     for (int actIdx = 0; actIdx < project.acts.length; actIdx++) {
-      manifestItems.writeln('<item id="act_\${actIdx + 1}" href="Text/act_\${actIdx + 1}.html" media-type="application/xhtml+xml"/>');
+      manifestItems.writeln(
+        '<item id="act_\${actIdx + 1}" href="Text/act_\${actIdx + 1}.html" media-type="application/xhtml+xml"/>',
+      );
       spineItems.writeln('<itemref idref="act_\${actIdx + 1}"/>');
     }
 
@@ -150,8 +168,14 @@ class EpubGeneratorService {
   <spine toc="ncx">
 \${spineItems.toString()}  </spine>
 </package>''';
-    
-    archive.addFile(ArchiveFile('OEBPS/content.opf', utf8.encode(contentOpf).length, utf8.encode(contentOpf)));
+
+    archive.addFile(
+      ArchiveFile(
+        'OEBPS/content.opf',
+        utf8.encode(contentOpf).length,
+        utf8.encode(contentOpf),
+      ),
+    );
 
     // 5. Create toc.ncx
     final tocNcx = '''<?xml version="1.0" encoding="UTF-8"?>
@@ -171,11 +195,16 @@ class EpubGeneratorService {
   </navMap>
 </ncx>''';
 
-    archive.addFile(ArchiveFile('OEBPS/toc.ncx', utf8.encode(tocNcx).length, utf8.encode(tocNcx)));
+    archive.addFile(
+      ArchiveFile(
+        'OEBPS/toc.ncx',
+        utf8.encode(tocNcx).length,
+        utf8.encode(tocNcx),
+      ),
+    );
 
     // 6. Zip encode the final byte stream
     final encodedZip = ZipEncoder().encode(archive);
-    if (encodedZip == null) return null;
 
     return FormattedEbook(project: project, bytes: encodedZip);
   }
@@ -198,11 +227,13 @@ class EpubGeneratorService {
 </html>''';
   }
 
+  // ignore: unused_element
   static String _escapeXml(String text) {
-    return text.replaceAll('&', '&amp;')
-               .replaceAll('<', '&lt;')
-               .replaceAll('>', '&gt;')
-               .replaceAll('"', '&quot;')
-               .replaceAll("'", '&apos;');
+    return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&apos;');
   }
 }

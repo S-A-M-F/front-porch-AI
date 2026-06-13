@@ -117,14 +117,14 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
   late String _selectedStyle;
   late final TextEditingController _promptController;
 
-
   @override
   void initState() {
     super.initState();
     final storage = Provider.of<StorageService>(context, listen: false);
     _selectedStyle = storage.imageGenStyle;
     // Pre-set custom prompt text if available
-    if (widget.mode == ImageGenMode.customPrompt && widget.customPrompt != null) {
+    if (widget.mode == ImageGenMode.customPrompt &&
+        widget.customPrompt != null) {
       _currentPrompt = widget.customPrompt!;
     }
     _promptController = TextEditingController(text: _currentPrompt);
@@ -136,7 +136,6 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
     _promptController.dispose();
     super.dispose();
   }
-
 
   /// Full generate: craft prompt via LLM then generate image.
   Future<void> _generate() async {
@@ -227,7 +226,9 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
         size: size,
       );
 
-      debugPrint('ImageGenDialog: generateImage returned ${bytes?.length ?? 0} bytes');
+      debugPrint(
+        'ImageGenDialog: generateImage returned ${bytes?.length ?? 0} bytes',
+      );
 
       if (mounted) {
         setState(() {
@@ -248,7 +249,6 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
       }
     }
   }
-
 
   Future<void> _save() async {
     if (_imageBytes == null) return;
@@ -282,9 +282,11 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
     String? path;
     if (widget.mode == ImageGenMode.characterPortrait ||
         widget.mode == ImageGenMode.userAvatar) {
-      
       // Let the user crop the generated avatar to correct 2:3 proportions
-      final croppedBytes = await ImageCropDialog.show(context, imageBytes: _imageBytes!);
+      final croppedBytes = await ImageCropDialog.show(
+        context,
+        imageBytes: _imageBytes!,
+      );
       if (croppedBytes == null) {
         if (mounted) setState(() => _saving = false);
         return; // User cancelled crop
@@ -361,8 +363,7 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
           children: [
             // Header
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: const BoxDecoration(
                 border: Border(bottom: BorderSide(color: Colors.white10)),
               ),
@@ -371,11 +372,14 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
                   const Icon(Icons.auto_awesome, color: Colors.purpleAccent),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(_modeLabel,
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
+                    child: Text(
+                      _modeLabel,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white54),
@@ -400,15 +404,19 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
                     Container(
                       width: double.infinity,
                       constraints: const BoxConstraints(
-                          minHeight: 200, maxHeight: 400),
+                        minHeight: 200,
+                        maxHeight: 400,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black26,
                         borderRadius: BorderRadius.circular(12),
                         border: _imageBytes != null
                             ? Border.all(
-                                color:
-                                    Colors.purpleAccent.withValues(alpha: 0.3),
-                                width: 2)
+                                color: Colors.purpleAccent.withValues(
+                                  alpha: 0.3,
+                                ),
+                                width: 2,
+                              )
                             : null,
                       ),
                       child: _buildImageArea(),
@@ -417,7 +425,8 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
                     const SizedBox(height: 16),
 
                     // Prompt editor
-                    if (_currentPrompt.isNotEmpty || _promptController.text.isNotEmpty)
+                    if (_currentPrompt.isNotEmpty ||
+                        _promptController.text.isNotEmpty)
                       _buildPromptEditor(),
 
                     const SizedBox(height: 16),
@@ -434,7 +443,6 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
     );
   }
 
-
   Widget _buildPromptEditor() {
     return Container(
       width: double.infinity,
@@ -449,27 +457,37 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
         children: [
           Row(
             children: [
-              const Text('Prompt',
-                  style: TextStyle(
-                      color: Colors.white38,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600)),
+              const Text(
+                'Prompt',
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               if (widget.llmService != null)
                 const Padding(
                   padding: EdgeInsets.only(left: 6),
-                  child: Icon(Icons.auto_fix_high,
-                      size: 10, color: Colors.purpleAccent),
+                  child: Icon(
+                    Icons.auto_fix_high,
+                    size: 10,
+                    color: Colors.purpleAccent,
+                  ),
                 ),
               if (widget.llmService != null)
-                const Text(' AI-crafted',
-                    style: TextStyle(
-                        color: Colors.purpleAccent, fontSize: 9)),
+                const Text(
+                  ' AI-crafted',
+                  style: TextStyle(color: Colors.purpleAccent, fontSize: 9),
+                ),
               const Spacer(),
-              Text('Edit to tweak',
-                  style: TextStyle(
-                      color: Colors.white24,
-                      fontSize: 9,
-                      fontStyle: FontStyle.italic)),
+              Text(
+                'Edit to tweak',
+                style: TextStyle(
+                  color: Colors.white24,
+                  fontSize: 9,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -484,7 +502,10 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
               hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
               filled: true,
               fillColor: Colors.white.withValues(alpha: 0.04),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
                 borderSide: BorderSide(color: Colors.white12),
@@ -495,7 +516,10 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: Colors.purpleAccent, width: 1.5),
+                borderSide: const BorderSide(
+                  color: Colors.purpleAccent,
+                  width: 1.5,
+                ),
               ),
             ),
           ),
@@ -512,11 +536,13 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
       children: ImageGenService.styleLabels.entries.map((entry) {
         final isSelected = _selectedStyle == entry.key;
         return ChoiceChip(
-          label: Text(entry.value,
-              style: TextStyle(
-                fontSize: 12,
-                color: isSelected ? Colors.white : Colors.white60,
-              )),
+          label: Text(
+            entry.value,
+            style: TextStyle(
+              fontSize: 12,
+              color: isSelected ? Colors.white : Colors.white60,
+            ),
+          ),
           selected: isSelected,
           selectedColor: Colors.purpleAccent,
           backgroundColor: const Color(0xFF374151),
@@ -529,8 +555,10 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
                   if (selected) {
                     setState(() => _selectedStyle = entry.key);
                     // Persist the style choice
-                    final storage =
-                        Provider.of<StorageService>(context, listen: false);
+                    final storage = Provider.of<StorageService>(
+                      context,
+                      listen: false,
+                    );
                     storage.setImageGenStyle(entry.key);
                   }
                 },
@@ -554,11 +582,15 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Crafting prompt...',
-                style: TextStyle(color: Colors.purpleAccent, fontSize: 13)),
+            const Text(
+              'Crafting prompt...',
+              style: TextStyle(color: Colors.purpleAccent, fontSize: 13),
+            ),
             const SizedBox(height: 4),
-            const Text('Using AI to describe the scene',
-                style: TextStyle(color: Colors.white24, fontSize: 11)),
+            const Text(
+              'Using AI to describe the scene',
+              style: TextStyle(color: Colors.white24, fontSize: 11),
+            ),
           ],
         ),
       );
@@ -578,11 +610,15 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Generating image...',
-                style: TextStyle(color: Colors.white38, fontSize: 13)),
+            const Text(
+              'Generating image...',
+              style: TextStyle(color: Colors.white38, fontSize: 13),
+            ),
             const SizedBox(height: 4),
-            const Text('This may take 10-30 seconds',
-                style: TextStyle(color: Colors.white24, fontSize: 11)),
+            const Text(
+              'This may take 10-30 seconds',
+              style: TextStyle(color: Colors.white24, fontSize: 11),
+            ),
           ],
         ),
       );
@@ -595,13 +631,17 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline,
-                  color: Colors.redAccent, size: 40),
+              const Icon(
+                Icons.error_outline,
+                color: Colors.redAccent,
+                size: 40,
+              ),
               const SizedBox(height: 12),
-              Text(_error,
-                  textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(color: Colors.redAccent, fontSize: 13)),
+              Text(
+                _error,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              ),
             ],
           ),
         ),
@@ -611,10 +651,7 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
     if (_imageBytes != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.memory(
-          _imageBytes!,
-          fit: BoxFit.contain,
-        ),
+        child: Image.memory(_imageBytes!, fit: BoxFit.contain),
       );
     }
 
@@ -625,8 +662,10 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
         children: [
           const Icon(Icons.auto_awesome, color: Colors.purpleAccent, size: 48),
           const SizedBox(height: 16),
-          const Text('Choose a style above, then generate',
-              style: TextStyle(color: Colors.white38, fontSize: 13)),
+          const Text(
+            'Choose a style above, then generate',
+            style: TextStyle(color: Colors.white38, fontSize: 13),
+          ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: _generate,
@@ -670,7 +709,10 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
               : const Icon(Icons.save_alt, size: 16),
           label: const Text('Save'),
           style: ElevatedButton.styleFrom(
@@ -694,8 +736,7 @@ class _ImageGenDialogState extends State<ImageGenDialog> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.purpleAccent,
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
       ],
