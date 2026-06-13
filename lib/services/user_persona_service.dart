@@ -553,17 +553,39 @@ class UserPersonaService extends ChangeNotifier {
     }
   }
 
-  /// Export a single persona to a JSON file.
-  Future<void> exportPersonaToJson(String personaId, String filePath) async {
-    final p = _personas.firstWhere(
-      (e) => e.id == personaId,
-      orElse: () => persona,
-    );
+  /// Export multiple personas to a JSON file in SillyTavern compliant format.
+  Future<void> exportPersonasToSTFormat(
+      List<String> personaIds, String filePath) async {
+    final Map<String, String> personasMap = {};
+    final Map<String, dynamic> descriptionsMap = {};
+
+    for (final id in personaIds) {
+      final p = _personas.firstWhere((e) => e.id == id, orElse: () => persona);
+
+      String key = p.avatarPath != null
+          ? p.avatarPath!.split('/').last
+          : '${p.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}.png';
+      
+      if (personasMap.containsKey(key)) {
+        key = '${p.id}_$key';
+      }
+
+      personasMap[key] = p.name;
+      descriptionsMap[key] = {
+        'description': p.persona,
+        'title': p.title,
+        'learned_facts': p.learnedFacts,
+      };
+    }
+
+    final data = {
+      'personas': personasMap,
+      'persona_descriptions': descriptionsMap,
+    };
+
     final file = File(filePath);
     await file.parent.create(recursive: true);
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(p.toJson()),
-    );
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
   }
 
   /// Reload personas from DB (e.g. after cloud sync import).

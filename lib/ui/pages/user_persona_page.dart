@@ -25,6 +25,7 @@ import 'package:front_porch_ai/services/user_persona_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/utils/persona_colors.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/dialogs/export_persona_dialog.dart';
 
 class UserPersonaPage extends StatefulWidget {
   const UserPersonaPage({super.key});
@@ -226,7 +227,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     String? outputFile = await FilePicker.platform.saveFile(
       dialogTitle: 'Export Persona',
       fileName:
-          '${persona.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}_persona.json',
+          '${persona.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_')}_FPAIpersona.json',
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
@@ -234,7 +235,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
     if (outputFile != null) {
       if (!outputFile.endsWith('.json')) outputFile += '.json';
       final service = Provider.of<UserPersonaService>(context, listen: false);
-      await service.exportPersonaToJson(persona.id, outputFile);
+      await service.exportPersonasToSTFormat([persona.id], outputFile);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -248,6 +249,14 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         );
       }
     }
+  }
+
+  void _showExportDialog() {
+    final service = Provider.of<UserPersonaService>(context, listen: false);
+    showDialog(
+      context: context,
+      builder: (context) => ExportPersonaDialog(personas: service.personas),
+    );
   }
 
   @override
@@ -276,6 +285,11 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   icon: const Icon(Icons.download, color: Colors.cyanAccent),
                   tooltip: 'Import Persona (JSON)',
                   onPressed: _importPersona,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.upload, color: Colors.amberAccent),
+                  tooltip: 'Export Personas (JSON)',
+                  onPressed: _showExportDialog,
                 ),
                 const SizedBox(width: 4),
                 ElevatedButton.icon(
