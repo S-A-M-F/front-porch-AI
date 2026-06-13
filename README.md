@@ -3,9 +3,9 @@
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)
 ![Flutter](https://img.shields.io/badge/Made%20with-Flutter-02569B?logo=flutter)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![Branch](https://img.shields.io/badge/Branch-Rawhide-orange)
+![Branch](https://img.shields.io/badge/Branch-main-brightgreen)
 
-**Rawhide is the primary rolling development branch.** All new features, experiments, refactors, and the majority of ongoing work land here. Nightly / cutting-edge builds are produced from Rawhide. Stable releases are tagged on `main`. Beta stabilization branches (e.g. `0.9.x-Beta`) are cut from Rawhide when preparing a release.
+**`main` is the stable release branch.** All new features land on `Rawhide` (the rolling development branch) and are promoted here when ready. Nightly cutting-edge builds are available from Rawhide for users who want the latest.
 
 **A privacy-first AI companion for Windows, Linux, and macOS.** Runs fully offline with local LLMs (KoboldCpp, etc.) by default, but also supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them.
 
@@ -28,37 +28,40 @@ If you use it, a star would mean a lot to the developer.
 
 ---
 
-## 🆕 What's New on Rawhide (vs main)
+## 🆕 What's New in v0.9.9
 
-These are the user-facing changes and improvements that have landed on the Rawhide branch since it diverged from `main`. Many originated on the dedicated refactor workstream and were promoted here; others are targeted fixes and polish.
+v0.9.9 is the largest update Front Porch AI has ever shipped. Virtually every system in the app has been improved, hardened, or expanded. Here are the highlights.
 
-- 🏗️ **God File Modularization (Stages 1–7 complete)** — The largest god files (`chat_service.dart`, `storage_service.dart`, key UI pages like settings/character creator/chat, and supporting services) have been decomposed into focused, single-responsibility, testable modules. Full behavioral parity for 1:1 chats, group chats, Realism Engine (bond/trust/emotion/arousal/fixation), Needs simulation, objectives, character evolution, fact extraction, summaries, prompt injection, RAG, creators, and everything else. The entire test suite is now reliably green with a strong new baseline (+1126 tests). This is a major internal restructuring that makes future features and fixes faster and safer — you should see no functional differences, just a more solid app.
+**👥 Group Chat — Fully Grown Up**
 
-- 🎯 **Autonomous character objectives now reliably generate subtasks** — When the Realism Engine proposes a personal goal for a character ("proposed_objective"), the system now consistently auto-generates 3 concrete sequential tasks the character can pursue. This was previously unreliable (especially under group impersonation and per-speaker evaluation paths). User-created objectives (typed in the UI) correctly do *not* auto-generate tasks; you remain in full control and can still press Generate Tasks manually when you want them.
+- **Fork-to-Group Wizard** — "Fork to Group Chat" is now a smooth step-by-step wizard instead of a cramped popup. Pick who joins, drag to set the order they enter, name the group, set the scene, then give each newcomer an optional entrance: **Opening line** (your text used verbatim, no AI) or **Direction** (the AI writes their entrance in-voice from your notes) — or leave it blank for a silent join.
+- **Group settings completely redesigned** — a dedicated **Needs** tab holds all per-character needs baselines and the Director/Verifier controls. The **Realism** tab now includes editable bond, trust, emotion, and time-of-day starting values for every member. Changes persist as group defaults for all future sessions.
+- **Group Realism Engine hardened** — per-speaker needs vectors, scene impact rewards, decay, sidebar cards, and bond/trust display all persist and sync correctly across turns. Zero-delta chips are suppressed so the UI stays clean.
 
-- 🧠 **Thinking / reasoning models get proper breathing room for objectives & tasks** — Subtask generation and objective/task completion checks raised from 600/1024 tokens to 2000. `<think>...</think>` stripping (using the central robust helper that also handles unclosed tags) now runs after the full stream. Models that reason for hundreds of tokens before emitting the final numbered list or YES/NO now work reliably. Autonomous proposals already had generous limits; the subtask paths now match.
+**🧠 Needs Simulation — New & Improved**
 
-- 🔏 **macOS nightly build quality** — Switched CI to .pkg packaging (with deep PyInstaller code signing for frameworks inside sidecars), proper notarize-before-DMG / notarize-and-staple flows, and removal of problematic --deep signing. Rawhide nightlies now pass Apple's notary service cleanly and produce better-behaved macOS installs with fewer Gatekeeper / "damaged or incomplete" issues.
+- **Needs are now a full simulation** — Hunger, Bladder, Energy, Social, Fun, Hygiene, and Comfort tick down over time and are boosted by activities. Characters react appropriately (complain, struggle, seek relief) when levels hit noticeable or critical thresholds.
+- **Per-character custom decay rates** — adjust how quickly each need drops for each character right from the group settings Needs tab.
+- **Manual Needs Reprocessing** — a new "Manual Reprocess" button below the Needs chips lets you force the Director/Verifier to recalculate scene impacts with your own critique (e.g. "She ate a granola bar"). Look for the "✓ Director corrected (manual)" pill when it's done.
+- **Per-character baseline needs on new chats** — starting Needs values are now properly seeded from the character's saved defaults instead of always starting at 80.
 
-- 🐛 **Realism Engine, Needs, Group chat & state reliability fixes** (multiple rounds):
-  - Sidebar bond/trust (short + long form) now correctly reflect eval results and stay in sync with chips.
-  - Group chats: per-speaker needs vectors, scene impact rewards (fun/social/hygiene etc. from activities), decay, and sidebar/cards now persist and display correctly. Pre-turn snapshots, post-gen save of scalars into group state, and impersonation dance for checks are all hardened.
-  - Zero-delta needs chips are now skipped (no more clutter rows of "X 0").
-  - Climax / sexual / daily post-gen checks no longer risk double-firing for the same response.
-  - Fixed duplicate user/character messages appearing on session load (racy delete+insert in save path).
-  - Fresh starts, forks, new chats, and imported characters no longer bleed needs/fixation/relationship/parent-session state from previous contexts.
-  - Fixation and baseline bleed prevention on new chats and character imports.
-  - Various other polish to needs delta computation, chip reasons, group member cards, and "keep blocks in sync" reset hygiene across 1:1 vs group paths.
+**🎭 Realism Engine — Major Maturation**
 
-- ✨ **Home screen & import UX** — Added a refresh button next to the multi-select controls so you can re-scan for external character imports without leaving the page.
+- **Character objectives reliably generate subtasks** — when the engine proposes a personal goal, it now consistently auto-generates 3 concrete tasks. Thinking/reasoning models get 2,000-token breathing room for objective and task checks.
+- **Character Evolution hardened** — the evolution pipeline now handles models that return raw prose instead of JSON, models that echo the personality text back, truncated JSON, and nested `{{char}}` macros — salvaging the result in all cases.
+- **Realism Engine prompt overhauls** — bond, trust, fixation, and emotion evaluations are more accurate, more personality-aware, and more stable across local and remote models.
+- **Needs now feed into roleplay** — restored full injection prompts so characters' internal state (hunger, exhaustion, etc.) colors their responses.
 
-- 🛠️ **Database Cleanup Tool** (infrastructure landed; UI currently gated behind verification) — New utility to detect and optionally purge orphaned records (data left behind by deleted characters, stray group sessions, etc.). The core + dialog landed via community PR and was integrated during the refactor window.
+**📤 Export User Personas (SillyTavern-compatible)**
 
-- 📦 **Build / CI / packaging polish for nightlies** — Distinct Rawhide app naming on Windows/macOS so nightlies don't collide with stable installs, ML cache cleanup in workflows, improved artifact handling, and many small reliability wins in the release/nightly pipelines.
+You can now export your User Personas as fully SillyTavern-compliant JSON. Export all at once or pick specific personas — learned facts are included so nothing is lost when moving to another machine.
 
-- 🔧 **Lint & test hygiene** — Literal zero remaining info-level lints on the active ruleset. Full test suite stabilized post-refactor as the new baseline.
+**✨ UI & Quality of Life**
 
-See `docs/Rawhide.md` for the concise version that feeds the in-app update dialog, and `docs/refactoring-guide.md` + `docs/refactor-god-file-modularization.md` for the technical record of the modularization work.
+- **Home screen refresh button** — re-scan for new character files without leaving the page.
+- **Database Cleanup Tool** — detect and purge orphaned records left behind by deleted characters or stale group sessions.
+- **Sidebar Needs display** — Needs chips, zero-delta suppression, and the Director corrected pill all display in the sidebar during group chats.
+- **Fresh-start hygiene** — new chats, forks, and imported characters no longer bleed needs, fixation, relationship, or state from previous sessions.
 
 > **Note for contributors & AI agents**: Per-branch user-facing notes live in `docs/<BranchName>.md` (e.g. `docs/Rawhide.md`). Update it for any user-visible work, just like appending to internal changelogs. Never mix notes across branches.
 
@@ -220,70 +223,8 @@ Beta releases (e.g. the `0.9.8-Beta` series) are available for early access to n
 
 This isolation protects your main library while you test new features. Beta builds are recommended only for users comfortable with occasional rough edges.
 
----
 
-## 🆕 What's New in v0.9.8
 
-v0.9.8 is a substantial release focused on **making the app feel more alive and reliable**. The headline feature is **Character Expressions**, but the release also delivers major maturation of the Realism Engine, a much more robust local TTS experience, .kcpps preset support, custom chat backgrounds, and dozens of quality-of-life and stability improvements.
-
-**🎭 Character Expressions — Live Emotion Portraits**
-
-Your characters now *look* the way they feel. As the conversation evolves, their portrait automatically swaps to match their current emotional state.
-
-- **Dual classification engine:** Toggle between a fast local **ONNX path** (distilbert-based, ~300 ms) and the deeper **LLM path** via the Realism Engine. Both run entirely on-device.
-- **One-click model download:** Download the ONNX classifier directly from Settings → Expression Images with a beautiful glassmorphic progress overlay.
-- **SillyTavern compatible:** Works with any standard expression pack (26 emotion categories supported).
-- **Flexible presentation:** Sidebar mode for focused chats or fullscreen cinematic overlay.
-- **Graceful fallback:** Falls back cleanly to neutral if an image is missing.
-
-**🧠 Realism Engine – Major Maturation**
-
-The Realism Engine received its most significant round of refinements to date:
-
-- Bond and Trust ranges expanded to **±300** with updated tier naming to match the character creator.
-- Arousal system expanded to **±100** with new tier-based labels.
-- Improved spatial awareness logic and better behaviour when "passage of time" is disabled.
-- Realism evaluations are now **more reliable** on thinking models (higher token limits, hardened JSON generation parameters).
-- **GBNF grammar disabled** for KoboldCpp realism evals (dramatically improves completion rates on many models).
-- Much more robust **cancellation handling** — interrupting a response now cleanly aborts in-flight realism evaluations.
-- Better one-shot eval behaviour for remote APIs and improved tooltip explanations in the UI.
-
-**🗣️ Voice & Narration (Kokoro TTS)**
-
-Local voice output is now significantly more reliable and pleasant:
-
-- **Persistent Kokoro worker pool** — enables fast, high-quality "read everything" (verbatim) narration without the previous stuttering or slow startup.
-- "Only narrate quotes" mode is now much more dependable.
-- Improved local bundling of both Kokoro and Piper engines.
-- Better concurrency controls and pre-load behaviour.
-
-**⚙️ .kcpps Presets & Context Management**
-
-- Full support for loading **KoboldCpp `.kcpps` launch presets**.
-- When a preset is active, context size (and other generation parameters) are driven by the preset — the UI disables editing and shows a clear tooltip.
-- All context size logic has been consolidated into `StorageService` for consistency across the app.
-
-**✨ UI Polish & Quality of Life**
-
-- **Custom chat backgrounds** — upload and name your own images per chat.
-- **Google Fonts picker** for chat text styling.
-- **Per-character chat bubble colours** that persist correctly when exporting to PNG.
-- Scenario field is now **expandable** in the character editor.
-- UI Settings dialog is now properly scrollable.
-- Window size and position are remembered across restarts.
-- Many small improvements to tooltips, log copying, preset validation, and widget stability.
-
-**🐛 Stability & Fixes**
-
-- Numerous Realism Engine interruption and regeneration fixes.
-- Lorebook improvements: constant entries now persist correctly, better deduplication and wildcard/word-boundary matching.
-- macOS build quality: proper bundle naming for Metal, improved DMG packaging.
-- Many Tooltip, preset, and widget tree crashes resolved.
-- Various packaging and CI improvements for cleaner releases.
-
-This release represents one of the largest cumulative improvements to day-to-day feel and reliability since the Realism Engine was first introduced.
-
----
 
 ## ⚙️ Configuration
 
@@ -420,11 +361,21 @@ flutter build linux    # or windows
 <details>
 <summary><strong>📦 Old Release Notes</strong></summary>
 
+### v0.9.8.1
+
+- 🖼️ Fixed a crash when replacing a character's avatar in the full editor (especially on macOS — "Read-only file system" error).
+- ☁️ Cloud Sync settings page now loads the real interface instead of a placeholder.
+- 📖 Story engine handles floating-point numbers from AI models (e.g. `1.0` instead of `1`) — generation is much more stable across different models.
+- 🔊 Emojis stripped before sending to TTS. "Test Voice" now respects the "Only narrate quotes" setting.
+- 🖼️ Increased local image generation timeout for slower models.
+
+### v0.9.8
+
+The headline feature is **Character Expressions** (live emotion portraits that swap as the conversation evolves), plus major Realism Engine maturation, a much more robust Kokoro TTS experience, `.kcpps` preset support, custom chat backgrounds, Google Fonts picker, expanded bond/trust/arousal ranges, and dozens of stability fixes.
+
 ### V0.9.7.5
 
-This release delivers a **complete character editor redesign**, brings **editable Realism Engine settings** to the card editor, and fixes several stability and data integrity bugs.
-
-*(Full notes are in the "What's New in v0.9.8" section above.)*
+Complete character editor redesign with a 4-tab layout (Details, Dialogue, Lorebook, Worlds), glassmorphic section cards, Realism Engine settings editable directly in the character editor, and several crash/data-integrity fixes.
 
 **🎨 Character Editor — Full Redesign**
 - **New 4-tab layout:** Details, Dialogue, Lorebook, and Worlds — dialogue fields (first message, alternate greetings, example conversations) are no longer crammed into the Details tab.
