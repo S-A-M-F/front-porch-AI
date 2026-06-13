@@ -79,9 +79,14 @@ jobs:
           # Flutter expects at most 3 numeric segments before the "+" build number.
           #
           # Rule:
-          #   - Clean 3-part version (e.g. 0.9.9)  → 0.9.9+0   (build number = 0)
-          #   - 4+ part version (e.g. 0.9.9.1)      → 0.9.9+1   (last segment = build)
-          #   - Deep version (e.g. 0.9.8.0.1)        → 0.9.8+1
+          #   - Use the first 3 segments as the base version (0.9.8)
+          #   - Use the LAST segment from the tag as the build number
+          #
+          # Examples:
+          #   0.9.8       → 0.9.8+0
+          #   0.9.8.1     → 0.9.8+1
+          #   0.9.8.0.1   → 0.9.8+1
+          #   0.9.8.1.1   → 0.9.8+1
           #
           # DISPLAY_VERSION keeps the original full string (e.g. "0.9.8.0.1")
           # so it shows correctly inside the app.
@@ -90,15 +95,14 @@ jobs:
           IFS='.' read -ra PARTS <<< "$VERSION"
           COUNT=${#PARTS[@]}
 
-          if [ "$COUNT" -le 3 ]; then
-              # Clean 2- or 3-part version (e.g. 0.9.9) — build number is 0
-              FLUTTER_VERSION="${VERSION}+0"
-          else
-              # Deep version (e.g. 0.9.9.1, 0.9.8.0.1) — first 3 parts + last as build
+          if [ "$COUNT" -gt 1 ]; then
+              # Always use first 3 parts as base (or fewer if the version is short)
               BASE_PARTS=("${PARTS[@]:0:3}")
               BASE=$(IFS='.'; echo "${BASE_PARTS[*]}")
               BUILD=${PARTS[$((COUNT-1))]}
               FLUTTER_VERSION="${BASE}+${BUILD}"
+          else
+              FLUTTER_VERSION="${VERSION}+0"
           fi
 
           echo "Setting version to: $FLUTTER_VERSION"
@@ -106,34 +110,19 @@ jobs:
           # DISPLAY_VERSION keeps the original tag (e.g. "0.9.8.0.1") so it shows
           # correctly in the app's About/Settings screen and update dialogs.
           DISPLAY_VERSION="$VERSION"
-
-          # Write the patching logic to a temp file to avoid shell double-quote
-          # escaping issues that break inline python3 -c "..." scripts.
-          # Versions are passed as argv so the heredoc stays fully single-quoted.
-          # sed strips the 10-space YAML indentation so Python sees clean column-0 code.
-          sed 's/^          //' > /tmp/patch_version.py << 'PYEOF'
-          import re, sys
-          flutter_version = sys.argv[1]
-          display_version = sys.argv[2]
-          with open('pubspec.yaml', 'r') as f:
-              content = f.read()
-          content = re.sub(r'^version: .*$', f'version: {flutter_version}', content, flags=re.MULTILINE)
-          with open('pubspec.yaml', 'w') as f:
-              f.write(content)
-          with open('lib/app_version.dart', 'r') as f:
-              content = f.read()
-          content = re.sub(
-              r"^const String appVersion = '.*';$",
-              f"const String appVersion = '{display_version}';",
-              content,
-              flags=re.MULTILINE,
-          )
-          with open('lib/app_version.dart', 'w') as f:
-              f.write(content)
-          PYEOF
-          python3 /tmp/patch_version.py "$FLUTTER_VERSION" "$DISPLAY_VERSION"
-
-
+          # Use Python for cross-platform reliability (sed can fail silently with Windows \r\n line endings)
+          python3 -c "
+          import re
+          # Update pubspec.yaml
+          with open('pubspec.yaml', 'r') as f: content = f.read()
+          content = re.sub(r'^version: .*$', 'version: $FLUTTER_VERSION', content, flags=re.MULTILINE)
+          with open('pubspec.yaml', 'w') as f: f.write(content)
+          # Patch only the appVersion constant (preserve all committed getters and comments).
+          # This eliminates duplication and prevents compile breaks when app_version.dart evolves.
+          with open('lib/app_version.dart', 'r') as f: content = f.read()
+          content = re.sub(r\"^const String appVersion = '.*';\$\", "const String appVersion = '$DISPLAY_VERSION';", content, flags=re.MULTILINE)
+          with open('lib/app_version.dart', 'w') as f: f.write(content)
+          "
           # Verify both were updated (visible in CI logs)
           echo "Verifying pubspec version:"
           grep '^version:' pubspec.yaml
@@ -162,14 +151,7 @@ jobs:
           cache: 'pip'
 
       - name: Build Application
-        if: matrix.platform != 'linux'
         run: flutter build ${{ matrix.platform }} --release
-
-      - name: Build Application (Linux)
-        if: matrix.platform == 'linux'
-        env:
-          CXXFLAGS: "-Wno-unknown-warning-option"
-        run: flutter build linux --release
 
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
@@ -382,6 +364,47 @@ jobs:
 
           echo "ML engine bundling step complete"
 
+          # For macOS, copy into the app bundle Resources
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
+            if [ -n "$APP_NAME" ]; then
+              RESOURCES="$APP_NAME/Contents/Resources/piper"
+              mkdir -p "$RESOURCES"
+              cp -R "$DEST/kokoro_tts" "$RESOURCES/kokoro_tts"
+              cp -R "$DEST/piper" "$RESOURCES/piper"
+              chmod +x "$RESOURCES/kokoro_tts/kokoro_tts"
+              chmod +x "$RESOURCES/piper/piper"
+
+              STT_RESOURCES="$APP_NAME/Contents/Resources/whisper_stt"
+              mkdir -p "$STT_RESOURCES"
+              cp -R "$STT_DEST/whisper_stt/"* "$STT_RESOURCES/"
+              chmod +x "$STT_RESOURCES/whisper_stt"
+
+              EMBED_RESOURCES="$APP_NAME/Contents/Resources/embed_server"
+              mkdir -p "$EMBED_RESOURCES"
+              cp -R "$STT_DEST/embed_server/"* "$EMBED_RESOURCES/"
+              chmod +x "$EMBED_RESOURCES/embed_server"
+
+              SENTIMENT_RESOURCES="$APP_NAME/Contents/Resources/sentiment_classifier"
+              mkdir -p "$SENTIMENT_RESOURCES"
+              cp -R "$STT_DEST/sentiment_classifier/"* "$SENTIMENT_RESOURCES/"
+              chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier"
+
+              # Draw Things gRPC client (separate folder so it doesn't conflict with other engines)
+              DT_RESOURCES="$APP_NAME/Contents/Resources/dt_grpc"
+              mkdir -p "$DT_RESOURCES"
+              cp -R "$STT_DEST/dt_grpc_client" "$DT_RESOURCES/"
+              chmod +x "$DT_RESOURCES/dt_grpc_client/dt_grpc_client" 2>/dev/null || true
+            fi
+          fi
+
+          echo "TTS engines bundled at: $DEST"
+          ls -la "$DEST"
+          echo "STT engine bundled at: $STT_DEST/whisper_stt/"
+          ls -la "$STT_DEST/whisper_stt/"
+          echo "Embedding server bundled at: $STT_DEST/embed_server/"
+          ls -la "$STT_DEST/embed_server/"
+
       - name: Mask sensitive certificate values (prevent accidental log leakage)
         if: matrix.platform == 'macos'
         run: |
@@ -533,11 +556,7 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           APP_NAME=$(ls -d *.app | head -1)
-          PKG_NAME="Front_Porch_AI_Nightly.pkg"
-          if [[ "${{ github.workflow }}" == *"Release"* ]]; then
-            VERSION="${{ github.event.release.tag_name || github.ref_name }}"
-            PKG_NAME="Front_Porch_AI_${VERSION}.pkg"
-          fi
+          PKG_NAME="Front_Porch_AI.pkg"
           UNSIGNED_PKG="unsigned_${PKG_NAME}"
           
           echo "Building unsigned .pkg..."
@@ -555,11 +574,7 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           cd build/macos/Build/Products/Release
-          PKG_NAME="Front_Porch_AI_Nightly.pkg"
-          if [[ "${{ github.workflow }}" == *"Release"* ]]; then
-            VERSION="${{ github.event.release.tag_name || github.ref_name }}"
-            PKG_NAME="Front_Porch_AI_${VERSION}.pkg"
-          fi
+          PKG_NAME="Front_Porch_AI.pkg"
           if [ -f "$PKG_NAME" ]; then
             echo "Light xattr cleanup on PKG file only (not recursive)"
             xattr -d com.apple.quarantine "$PKG_NAME" 2>/dev/null || true
@@ -574,11 +589,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           cd build/macos/Build/Products/Release
-          PKG_NAME="Front_Porch_AI_Nightly.pkg"
-          if [[ "${{ github.workflow }}" == *"Release"* ]]; then
-            VERSION="${{ github.event.release.tag_name || github.ref_name }}"
-            PKG_NAME="Front_Porch_AI_${VERSION}.pkg"
-          fi
+          PKG_NAME="Front_Porch_AI.pkg"
           
           echo "Submitting PKG for notarization..."
           xcrun notarytool submit "$PKG_NAME" \
@@ -594,35 +605,34 @@ jobs:
             || { echo "⚠ PKG staple validation failed"; exit 1; }
           
           # Move PKG to workspace root for upload-artifact step
-          mv "$PKG_NAME" "${GITHUB_WORKSPACE}/" || { echo "ERROR: failed to move PKG to workspace root"; exit 1; }
+          mv "$PKG_NAME" ../../../../../
           
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
-
       # Unsigned shim DMG for stable channel (Front_Porch_AI.dmg) — the last bridge.
-      # Old stable users' auto-updater looks for a .dmg asset by name. Without this
-      # shim they would silently skip the v0.9.9 update entirely. The inner .app is
-      # already fully signed and notarized; only the DMG wrapper itself is unsigned.
       - name: Build unsigned shim DMG (legacy name for stable updater transition)
         if: matrix.platform == 'macos'
         run: |
           cd build/macos/Build/Products/Release
           APP_NAME=$(ls -d *.app | head -1)
+          # Absolute via GITHUB_WORKSPACE (robust against relative path drift)
           SHIM_DMG="${GITHUB_WORKSPACE}/Front_Porch_AI.dmg"
-          echo "==> Building unsigned shim DMG for stable channel (no codesign/notarize)"
-          SHIM_ROOT="/tmp/shim-stable-$$"
+          echo "==> Building unsigned/un-notarized shim DMG $SHIM_DMG from $APP_NAME"
+          # Stage so .app is at the volume root (client's find -maxdepth 1 expects it)
+          SHIM_ROOT="/tmp/shim-$$"
           rm -rf "$SHIM_ROOT"
           mkdir -p "$SHIM_ROOT"
           cp -R "$APP_NAME" "$SHIM_ROOT/"
-          if hdiutil create -volname "Front Porch AI" -srcfolder "$SHIM_ROOT" -ov -format UDZO "$SHIM_DMG" 2>&1 | tail -3; then
-            echo "✓ stable shim DMG created via hdiutil"
+          # Direct minimal hdiutil — no create-dmg fanciness, no --codesign, no --notarize
+          if hdiutil create -volname "Front Porch AI" -srcfolder "$SHIM_ROOT" -ov -format UDZO "$SHIM_DMG" 2>&1 | tail -5; then
+            echo "✓ Shim DMG created"
           else
-            echo "hdiutil failed, trying create-dmg fallback"
+            echo "hdiutil failed for shim; trying create-dmg --skip-jenkins as fallback"
             brew install create-dmg || true
-            create-dmg --skip-jenkins "$SHIM_DMG" "$SHIM_ROOT" || true
+            "${GITHUB_WORKSPACE}/create-dmg.sh" --skip-jenkins "$SHIM_DMG" "$SHIM_ROOT" || true
           fi
           rm -rf "$SHIM_ROOT"
-          ls -lh "$SHIM_DMG" || echo "WARNING: shim DMG not found"
+          ls -l "$SHIM_DMG" || echo "(shim not present)"
 
       - name: Get Version
         id: get_version
@@ -773,6 +783,7 @@ jobs:
             Front_Porch_AI-Linux.deb
             Front_Porch_AI-Linux.rpm
             Front_Porch_AI_Setup.exe
+            Front_Porch_AI.pkg
             Front_Porch_AI.dmg
             debug_assets.txt
           if-no-files-found: ignore
@@ -801,40 +812,6 @@ jobs:
             Front_Porch_AI.dmg
             debug_assets.txt
           prerelease: ${{ contains(github.ref_name, 'beta') }}
-          body: |
-            ## What\'s New in v0.9.9
-
-            🎉 Biggest update yet — here\'s what\'s new:
-
-            👥 **Fork-to-Group Wizard** — Fork any 1:1 chat into a group with a guided wizard. Drag to set arrival order, give each newcomer a custom entrance (your own words, an AI-written direction, or silent), and the round-robin picks up naturally after.
-
-            🧠 **Needs Simulation** — Hunger, Bladder, Energy, Social, Fun, Hygiene, and Comfort are now a live simulation. Characters react when levels drop. Per-character decay rates are configurable, and a new Manual Reprocess button lets you tell the Director exactly what happened to correct Needs on the fly.
-
-            🎭 **Group Settings Redesign** — Dedicated Needs tab with per-character baseline sliders. Realism tab now has editable bond, trust, starting emotion, and time-of-day per member. All changes seed future sessions.
-
-            📤 **Export User Personas** — Export your personas as SillyTavern-compliant JSON, learned facts and all.
-
-            ✨ **Home Screen Refresh Button** — Rescan for new character files without leaving the page.
-
-            🛠️ **Database Cleanup Tool** — Find and purge orphaned records left behind by deleted characters or stale sessions.
-
-            🔧 **Major Internal Modularization** — The core god files have been decomposed into focused, testable modules with 1,100+ new tests. The app is meaningfully more stable and easier to build on.
-
-            ---
-
-            ## 📦 Installation Notes
-
-            > **macOS users:** Please use the signed and notarized **Front_Porch_AI.pkg** installer. It installs cleanly past Gatekeeper with no warnings. The .dmg is provided only for users upgrading from an older version via the in-app updater.
-
-            ---
-
-            ## 🤝 Contributors
-
-            - **MisterLotto** — Fork-to-Group wizard with custom entrance sequences (PR #50)
-            - **S-A-M-F** — Massive internal modularization and test suite overhaul
-            - Everyone in Discord who tested and filed bugs — thank you ❤️
-
-            — SosukeAizen
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
