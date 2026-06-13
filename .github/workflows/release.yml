@@ -143,13 +143,21 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Disable inappwebview Linux plugin (uses external browser fallback)
-        if: matrix.platform == 'linux'
+      - name: Disable inappwebview native plugins (CI toolchain compatibility + Linux external browser fallback)
+        if: matrix.platform == 'linux' || matrix.platform == 'windows'
         run: |
           echo "" >> pubspec.yaml
           echo "dependency_overrides:" >> pubspec.yaml
-          echo "  flutter_inappwebview_linux:" >> pubspec.yaml
-          echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            echo "  flutter_inappwebview_linux:" >> pubspec.yaml
+            echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
+          fi
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            echo "  flutter_inappwebview_windows:" >> pubspec.yaml
+            echo "    path: ci/flutter_inappwebview_windows_stub" >> pubspec.yaml
+            echo "  audioplayers_windows:" >> pubspec.yaml
+            echo "    path: ci/audioplayers_windows_stub" >> pubspec.yaml
+          fi
           flutter pub get
 
       - name: Setup Rust Toolchain

@@ -1,0 +1,12 @@
+name: flutter_inappwebview_windows
+description: "No-op stub for Windows CI builds (newer MSVC toolchain treats <experimental/coroutine> as hard error in the plugin's native code)"
+version: 0.1.0-beta.1
+
+environment:
+  sdk: ^3.10.8
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_inappwebview_platform_interface: ^1.0.0
