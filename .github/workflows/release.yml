@@ -143,22 +143,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Disable inappwebview native plugins (CI toolchain compatibility + Linux external browser fallback)
-        if: matrix.platform == 'linux' || matrix.platform == 'windows'
+      - name: Disable inappwebview Linux plugin (uses external browser fallback)
+        if: matrix.platform == 'linux'
         run: |
           echo "" >> pubspec.yaml
           echo "dependency_overrides:" >> pubspec.yaml
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            echo "  flutter_inappwebview_linux:" >> pubspec.yaml
-            echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
-          fi
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            echo "  flutter_inappwebview_windows:" >> pubspec.yaml
-            echo "    path: ci/flutter_inappwebview_windows_stub" >> pubspec.yaml
-            echo "  audioplayers_windows:" >> pubspec.yaml
-            echo "    path: ci/audioplayers_windows_stub" >> pubspec.yaml
-          fi
+          echo "  flutter_inappwebview_linux:" >> pubspec.yaml
+          echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
           flutter pub get
+
+      - name: Silence MSVC <experimental/coroutine> deprecation in Windows plugins (GitHub runner toolchain)
+        if: matrix.platform == 'windows'
+        run: |
+          # flutter_inappwebview_windows and audioplayers_windows (and possibly others)
+          # still use the old <experimental/coroutine> header in their native C++ code.
+          # GitHub's windows-latest + current VS toolchain treats this as a hard error (STL1011/C2338).
+          # The official Microsoft escape hatch is this define. We set it for the entire
+          # CMake/MSBuild phase so the *real* plugins are used (functionality must not be stubbed
+          # on Windows — it works and is required).
+          echo "CMAKE_CXX_FLAGS=/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS" >> $GITHUB_ENV
+          echo "CXXFLAGS=/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS" >> $GITHUB_ENV
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
