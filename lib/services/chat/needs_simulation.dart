@@ -371,12 +371,36 @@ class NeedsSimulation {
     String topKey,
     int effectiveStep,
   ) {
-    if (effectiveStep < 1 || effectiveStep > 3) return '';
+    // Relaxed to <=4 to match the new progressive early-hint policy (mild step-4 now visible).
+    if (effectiveStep < 1 || effectiveStep > 4) return '';
     final secondary = sorted
-        .where((e) => e.key != topKey && getNeedStep(e.key, e.value) <= 3)
+        .where((e) => e.key != topKey && getNeedStep(e.key, e.value) <= 4)
         .firstOrNull;
     if (secondary == null) return '';
     return ' (She is also feeling the ${secondary.key} need.)';
+  }
+
+  /// Returns the lowest 1-2 needs that should receive background state text this turn
+  /// (those whose effective step is 4 or lower, i.e. mild or worse after enjoys inversion).
+  /// Always worst-first. Both 1:1 and group paths use this for consistent selection and
+  /// so slow-decaying needs (Comfort, Hygiene) can appear even when not the absolute lowest.
+  /// This revives the progressive early subtle hints (step 4 "Mild background sensation...")
+  /// while still preventing constant high-value noise.
+  List<({String key, int value, int effectiveStep})> getLowNeedsForInjection(
+      Map<String, int> vector) {
+    if (vector.isEmpty) return const [];
+    final entries = vector.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    final result = <({String key, int value, int effectiveStep})>[];
+    for (final e in entries) {
+      final eff = getInjectionEffectiveStep(e.key, e.value);
+      if (eff <= 4) {
+        result.add((key: e.key, value: e.value, effectiveStep: eff));
+        if (result.length >= 2) break;
+      }
+    }
+    return result;
   }
 
   String getPostCrashSuffixIfRelevant(String topKey) {

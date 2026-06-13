@@ -8,6 +8,8 @@
 
 🧠 **Needs Simulation** — Hunger, Bladder, Energy, Social, Fun, Hygiene, and Comfort are now a live simulation. Characters react when levels drop. Per-character decay rates are configurable, and a new Manual Reprocess button lets you tell the Director exactly what happened (e.g. *"she ate a granola bar"*) to correct Needs on the fly.
 
+🧠 **Needs refinements** — Characters now get earlier subtle hints about needs (mild "background sensation" language is visible again) and will act on them before they become critical. Comfort and Hygiene are no longer completely drowned out by faster-decaying needs; up to two relevant low needs can color the prompt each turn. Strong replenishing scenes (big meal, deep rest, caring attention) can now restore a full +100 to a need in one go while downside swings remain conservatively capped.
+
 🎭 **Group Settings Redesign** — Dedicated Needs tab with per-character baseline sliders. Realism tab now has editable bond, trust, starting emotion, and time-of-day per member. All changes seed future sessions.
 
 📤 **Export User Personas** — Export your personas as SillyTavern-compliant JSON, learned facts and all.
