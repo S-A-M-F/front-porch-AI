@@ -756,6 +756,14 @@ jobs:
           cd ${{ matrix.build_path }}
            tar -czvf ../../../../../${{ matrix.asset_name }} .
 
+      - name: Debug Workspace Assets
+        run: |
+          echo "=== Debugging GITHUB_WORKSPACE Assets ===" > ${GITHUB_WORKSPACE}/debug_assets.txt
+          echo "Current directory: $(pwd)" >> ${GITHUB_WORKSPACE}/debug_assets.txt
+          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}" >> ${GITHUB_WORKSPACE}/debug_assets.txt
+          ls -lh ${GITHUB_WORKSPACE}/*.pkg ${GITHUB_WORKSPACE}/*.dmg >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
+          find ${GITHUB_WORKSPACE} -maxdepth 2 -name "*.pkg" -o -name "*.dmg" >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v5
         with:
@@ -766,6 +774,7 @@ jobs:
             Front_Porch_AI-Linux.rpm
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.dmg
+            debug_assets.txt
           if-no-files-found: ignore
 
   publish-release:
@@ -790,6 +799,7 @@ jobs:
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.pkg
             Front_Porch_AI.dmg
+            debug_assets.txt
           prerelease: ${{ contains(github.ref_name, 'beta') }}
           body: |
             ## What\'s New in v0.9.9
