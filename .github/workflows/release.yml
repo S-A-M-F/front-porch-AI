@@ -180,7 +180,7 @@ jobs:
 
           # Install TTS dependencies + PyInstaller
             pip install --upgrade pip
-            pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
+            pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub grpcio grpcio-tools flatbuffers fpzip pillow
 
             # Build Kokoro TTS as a standalone directory bundle
             echo "Building Kokoro TTS binary..."
@@ -299,22 +299,29 @@ jobs:
             # (./build_tmp/dt_grpc/), not the workspace root. Absolute paths are
             # unambiguous regardless of where the spec file lives.
             GRPC_SRC="$(pwd)/tools/dt-grpc-python"
+            # Platform-specific separator for --add-data (":" on macOS/Linux, ";" on Windows).
+            # Using the wrong one on Windows causes PyInstaller to mis-parse the data
+            # files (or hit command-line limits / parser errors), breaking the bundle.
+            ADD_DATA_SEP=":"
+            if [ "${{ matrix.platform }}" = "windows" ]; then
+              ADD_DATA_SEP=";"
+            fi
             pyinstaller "$GRPC_SRC/dt_grpc_client.py" \
               --onedir \
               --name dt_grpc_client \
               --paths "$GRPC_SRC" \
-              --add-data "$GRPC_SRC/client.py:." \
-              --add-data "$GRPC_SRC/imageService_pb2.py:." \
-              --add-data "$GRPC_SRC/imageService_pb2_grpc.py:." \
-              --add-data "$GRPC_SRC/GenerationConfiguration.py:." \
-              --add-data "$GRPC_SRC/SamplerType.py:." \
-              --add-data "$GRPC_SRC/SeedMode.py:." \
-              --add-data "$GRPC_SRC/LoRA.py:." \
-              --add-data "$GRPC_SRC/LoRAMode.py:." \
-              --add-data "$GRPC_SRC/Control.py:." \
-              --add-data "$GRPC_SRC/ControlInputType.py:." \
-              --add-data "$GRPC_SRC/ControlMode.py:." \
-              --add-data "$GRPC_SRC/ca_chain.pem:." \
+              --add-data "$GRPC_SRC/client.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/imageService_pb2.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/imageService_pb2_grpc.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/GenerationConfiguration.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/SamplerType.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/SeedMode.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/LoRA.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/LoRAMode.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/Control.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/ControlInputType.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/ControlMode.py${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/ca_chain.pem${ADD_DATA_SEP}." \
               --collect-all grpcio \
               --collect-all flatbuffers \
               --collect-all fpzip \
@@ -544,7 +551,10 @@ jobs:
         run: |
           # Download the latest VC++ 2015-2022 x64 Redistributable from Microsoft's CDN
           # This is bundled into the installer so end-users get it automatically
-          $DestDir = "${{ github.workspace }}\${{ matrix.build_path }}\.."
+          # Compute parent dir robustly (the ..\ hack in the string could cause
+          # the file to land in the wrong place or fail the Inno source check).
+          $BuildPath = "${{ github.workspace }}\${{ matrix.build_path }}"
+          $DestDir = Split-Path -Parent $BuildPath
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
             -OutFile "$DestDir\vc_redist.x64.exe"
           Write-Host "VC++ Redistributable downloaded to $DestDir"
