@@ -14,16 +14,15 @@ permissions:
   contents: write
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Required GitHub Secrets for macOS Notarization (same as nightly.yml)
+# Required GitHub Secrets for macOS Notarization (same as nightly.yml on Rawhide)
 #
 #   MACOS_CERTIFICATE, MACOS_CERTIFICATE_PWD, MACOS_CERTIFICATE_NAME,
-#   APPLE_ID, APPLE_ID_PASSWORD, APPLE_TEAM_ID,
-#   MACOS_INSTALLER_CERT_NAME
+#   APPLE_ID, APPLE_ID_PASSWORD, APPLE_TEAM_ID, MACOS_INSTALLER_CERT_NAME
 #
 # Security notes:
 # - We use `::add-mask::` to proactively mask MACOS_CERTIFICATE_NAME and APPLE_TEAM_ID
 #   in all logs for the macOS job.
-# - See nightly.yml for the full list and explanation.
+# - See nightly.yml (Rawhide) for the full list and explanation.
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -57,6 +56,12 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Setup Python (with pip cache)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
       - name: Install Linux Dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -66,31 +71,22 @@ jobs:
       - name: Sync Version from Tag
         shell: bash
         run: |
-          # This step converts the Git tag (e.g. v0.9.8.0.1) into proper version strings
+          # This step converts the Git tag (e.g. v0.9.9) into proper version strings
           # for both pubspec.yaml and the in-app version constant.
-          # See detailed explanation in the bash logic below.
           TAG="${GITHUB_REF_NAME}"
           VERSION=$(echo "$TAG" | sed 's/^[vV]//')
 
-          # === Version Normalization for Flutter ===
-          # This project deliberately uses "deep" versioning (e.g. 0.9.8.0.1, 0.9.8.1.1)
-          #          # Rule:
-          #   - Clean 3-part version (e.g. 0.9.9)  → 0.9.9+0   (build number = 0)
-          #   - 4+ part version (e.g. 0.9.9.1)      → 0.9.9+1   (last segment = build)
-          #   - Deep version (e.g. 0.9.8.0.1)        → 0.9.8+1
-          #
-          # DISPLAY_VERSION keeps the original full string (e.g. "0.9.8.0.1")
-          # so it shows correctly inside the app.
-          #
-          # FLUTTER_VERSION is only for pubspec.yaml compatibility.
+          # === Version Normalization for Flutter (deep versioning support) ===
+          # This project uses "deep" versioning (e.g. 0.9.8.0.1).
+          # Rule:
+          #   - Clean 3-part (e.g. 0.9.9) → 0.9.9+0
+          #   - 4+ part (e.g. 0.9.9.1 or 0.9.8.0.1) → first 3 + last as build number
           IFS='.' read -ra PARTS <<< "$VERSION"
           COUNT=${#PARTS[@]}
 
           if [ "$COUNT" -le 3 ]; then
-              # Clean 2- or 3-part version (e.g. 0.9.9) — build number is 0
               FLUTTER_VERSION="${VERSION}+0"
           else
-              # Deep version (e.g. 0.9.9.1, 0.9.8.0.1) — first 3 parts + last as build
               BASE_PARTS=("${PARTS[@]:0:3}")
               BASE=$(IFS='.'; echo "${BASE_PARTS[*]}")
               BUILD=${PARTS[$((COUNT-1))]}
@@ -98,15 +94,9 @@ jobs:
           fi
 
           echo "Setting version to: $FLUTTER_VERSION"
-
-          # DISPLAY_VERSION keeps the original tag (e.g. "0.9.8.0.1") so it shows
-          # correctly in the app's About/Settings screen and update dialogs.
           DISPLAY_VERSION="$VERSION"
 
-          # Write the patching logic to a temp file to avoid shell double-quote
-          # escaping issues that break inline python3 -c "..." scripts.
-          # Versions are passed as argv so the heredoc stays fully single-quoted.
-          # sed strips the 10-space YAML indentation so Python sees clean column-0 code.
+          # Use temp file python patch (avoids shell escaping hell)
           sed 's/^          //' > /tmp/patch_version.py << 'PYEOF'
           import re, sys
           flutter_version = sys.argv[1]
@@ -129,16 +119,41 @@ jobs:
           PYEOF
           python3 /tmp/patch_version.py "$FLUTTER_VERSION" "$DISPLAY_VERSION"
 
-          # Verify both were updated (visible in CI logs)
           echo "Verifying pubspec version:"
           grep '^version:' pubspec.yaml
           echo "Verifying Dart version constant:"
           cat lib/app_version.dart
 
-      - name: Get Version
-        id: get_version
-        run: echo "VERSION=$(echo ${GITHUB_REF_NAME} | sed 's/^[vV]//')" >> $GITHUB_OUTPUT
+      - name: Prepare Friendly Release Notes (for in-app update dialog)
+        id: release_notes
         shell: bash
+        run: |
+          NOTES_FILE="docs/main.md"
+
+          if [ -f "$NOTES_FILE" ]; then
+            # Extract the main content after the title and first intro section.
+            # This keeps the notes friendly and focused for the update dialog.
+            BODY=$(awk '
+              /^## / { 
+                if (in_content) { exit } 
+                in_content=1; 
+                next 
+              }
+              in_content { print }
+            ' "$NOTES_FILE")
+
+            if [ -n "$BODY" ]; then
+              echo "body<<EOF" >> $GITHUB_OUTPUT
+              echo "$BODY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              echo "Using notes from $NOTES_FILE"
+            else
+              echo 'body=**Stable Release** — See the README for current focus areas.' >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No $NOTES_FILE found — using fallback notes"
+            echo 'body=**Stable Release**' >> $GITHUB_OUTPUT
+          fi
 
       - name: Install dependencies
         run: flutter pub get
@@ -152,26 +167,8 @@ jobs:
           echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
           flutter pub get
 
-      - name: Silence MSVC <experimental/coroutine> deprecation in Windows plugins (GitHub runner toolchain)
-        if: matrix.platform == 'windows'
-        run: |
-          # flutter_inappwebview_windows and audioplayers_windows (and possibly others)
-          # still use the old <experimental/coroutine> header in their native C++ code.
-          # GitHub's windows-latest + current VS toolchain treats this as a hard error (STL1011/C2338).
-          # The official Microsoft escape hatch is this define. We set it for the entire
-          # CMake/MSBuild phase so the *real* plugins are used (functionality must not be stubbed
-          # on Windows — it works and is required).
-          echo "CMAKE_CXX_FLAGS=/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS" >> $GITHUB_ENV
-          echo "CXXFLAGS=/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS" >> $GITHUB_ENV
-
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Python (with pip cache)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
 
       - name: Build Application
         if: matrix.platform != 'linux'
@@ -191,8 +188,7 @@ jobs:
           mkdir -p "$DEST"
 
           # Install TTS dependencies + PyInstaller
-            pip install --upgrade pip
-            pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub grpcio grpcio-tools flatbuffers fpzip pillow
+            pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
             # Build Kokoro TTS as a standalone directory bundle
             echo "Building Kokoro TTS binary..."
@@ -265,7 +261,7 @@ jobs:
             echo "Building Embedding Server (Rust)..."
             cd tools/embed_server
             cargo build --release
-            cd ../.. 
+            cd ../..
             EMBED_BINARY="tools/embed_server/target/release/embed_server"
             if [ "${{ matrix.platform }}" = "windows" ]; then
               EMBED_BINARY="tools/embed_server/target/release/embed_server.exe"
@@ -297,7 +293,7 @@ jobs:
               --noconfirm
             echo "Sentiment classifier built at: $STT_DEST/sentiment_classifier/"
 
-            # Build Draw Things gRPC client (for local Draw Things backend image gen)
+            # Build Draw Things gRPC client (proper PyInstaller bundle for release .app)
             # --add-data includes the sibling .py source files (client.py, pb2 files, etc.)
             # that dt_grpc_client.py imports via sys.path.insert(0, dirname(__file__)).
             # Without --add-data these files are absent inside the frozen bundle, causing
@@ -311,29 +307,22 @@ jobs:
             # (./build_tmp/dt_grpc/), not the workspace root. Absolute paths are
             # unambiguous regardless of where the spec file lives.
             GRPC_SRC="$(pwd)/tools/dt-grpc-python"
-            # Platform-specific separator for --add-data (":" on macOS/Linux, ";" on Windows).
-            # Using the wrong one on Windows causes PyInstaller to mis-parse the data
-            # files (or hit command-line limits / parser errors), breaking the bundle.
-            ADD_DATA_SEP=":"
-            if [ "${{ matrix.platform }}" = "windows" ]; then
-              ADD_DATA_SEP=";"
-            fi
             pyinstaller "$GRPC_SRC/dt_grpc_client.py" \
               --onedir \
               --name dt_grpc_client \
               --paths "$GRPC_SRC" \
-              --add-data "$GRPC_SRC/client.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/imageService_pb2.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/imageService_pb2_grpc.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/GenerationConfiguration.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/SamplerType.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/SeedMode.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/LoRA.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/LoRAMode.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/Control.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/ControlInputType.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/ControlMode.py${ADD_DATA_SEP}." \
-              --add-data "$GRPC_SRC/ca_chain.pem${ADD_DATA_SEP}." \
+              --add-data "$GRPC_SRC/client.py:." \
+              --add-data "$GRPC_SRC/imageService_pb2.py:." \
+              --add-data "$GRPC_SRC/imageService_pb2_grpc.py:." \
+              --add-data "$GRPC_SRC/GenerationConfiguration.py:." \
+              --add-data "$GRPC_SRC/SamplerType.py:." \
+              --add-data "$GRPC_SRC/SeedMode.py:." \
+              --add-data "$GRPC_SRC/LoRA.py:." \
+              --add-data "$GRPC_SRC/LoRAMode.py:." \
+              --add-data "$GRPC_SRC/Control.py:." \
+              --add-data "$GRPC_SRC/ControlInputType.py:." \
+              --add-data "$GRPC_SRC/ControlMode.py:." \
+              --add-data "$GRPC_SRC/ca_chain.pem:." \
               --collect-all grpcio \
               --collect-all flatbuffers \
               --collect-all fpzip \
@@ -391,7 +380,7 @@ jobs:
               cp -R "${{ matrix.build_path }}/sentiment_classifier/"* "$SENTIMENT_RESOURCES/" 2>/dev/null || true
               chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier" 2>/dev/null || true
 
-              # Draw Things gRPC client
+              # Draw Things gRPC client (proper bundled executable, not raw sources)
               DT_RESOURCES="$APP_NAME/Contents/Resources/dt_grpc"
               mkdir -p "$DT_RESOURCES"
               cp -R "${{ matrix.build_path }}/dt_grpc_client" "$DT_RESOURCES/" 2>/dev/null || true
@@ -401,13 +390,30 @@ jobs:
 
           echo "ML engine bundling step complete"
 
-          echo "TTS engines bundled at: $DEST"
-          ls -la "$DEST"
-          echo "STT engine bundled at: $STT_DEST/whisper_stt/"
-          ls -la "$STT_DEST/whisper_stt/"
-          echo "Embedding server bundled at: $STT_DEST/embed_server/"
-          ls -la "$STT_DEST/embed_server/"
+      - name: Download VC++ Redistributable (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          $DestDir = "${{ github.workspace }}\${{ matrix.build_path }}\.."
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "$DestDir\vc_redist.x64.exe"
+        shell: pwsh
 
+      - name: Download VC++ Redistributable (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          $DestDir = "${{ github.workspace }}\${{ matrix.build_path }}\.."
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "$DestDir\vc_redist.x64.exe"
+        shell: pwsh
+
+      - name: Build Windows Installer (Inno Setup)
+        if: matrix.platform == 'windows'
+        run: |
+          $VERSION = "${env:GITHUB_REF_NAME}" -replace '^[vV]', ''
+          choco install innosetup -y --no-progress
+          $ISCC = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $ISCC /DMyAppVersion="$VERSION" /DMyAppBuildDir="${{ github.workspace }}\${{ matrix.build_path }}" /DMyAppLicenseFile="${{ github.workspace }}\LICENSE" /DMyAppIconFile="${{ github.workspace }}\windows\runner\resources\app_icon.ico" "installers\windows\setup.iss"
+          Copy-Item "installers\windows\Front_Porch_AI_Setup.exe" -Destination "."
+        shell: pwsh
+      # ── Real Developer ID Code Signing + Notarization (macOS only) ──
       - name: Mask sensitive certificate values (prevent accidental log leakage)
         if: matrix.platform == 'macos'
         run: |
@@ -458,6 +464,15 @@ jobs:
 
           echo "✓ Certificate identity found in keychain"
 
+      # macOS signing + PKG notarization flow (PKG is now primary):
+      #
+      # 1. Clean xattrs from the built .app (must be before codesigning).
+      # 2. Sign the .app bundle (inside-out: frameworks → Resources Mach-O → app).
+      # 3. (Legacy DMG comments removed — we now build bare .pkg + staple it.)
+      # 4. pkgbuild + productsign the .pkg (using Installer cert).
+      # 5. Notarize + staple the .pkg.
+      # 6. Separately: build unsigned shim .dmg (see step below) for updater compat only.
+      # The shim is never signed/notarized; the real .pkg is.
       - name: Clean xattrs from app bundle (before code signing)
         if: matrix.platform == 'macos'
         run: |
@@ -529,60 +544,6 @@ jobs:
 
           echo "✓ App signed with Developer ID"
 
-      # Notarize the .app BEFORE packaging it into the PKG so Apple issues a ticket for its CDHash
-      - name: Notarize and Staple .app (pre-PKG)
-        if: matrix.platform == 'macos'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app | head -1)
-          APP_ZIP="${APP_NAME%.app}.zip"
-
-          echo "Creating ZIP of signed .app for notarization submission..."
-          ditto -c -k --keepParent "$APP_NAME" "$APP_ZIP"
-
-          echo "Submitting .app to Apple notary service (this may take 1–5 minutes)..."
-          xcrun notarytool submit "$APP_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_ID_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait || { echo "ERROR: .app notarization failed"; exit 1; }
-
-          rm -f "$APP_ZIP"
-          echo "✓ .app is notarized. CDHash is now known to Apple."
-
-          echo "Stapling .app..."
-          xcrun stapler staple "$APP_NAME"
-          xcrun stapler validate "$APP_NAME" || { echo "ERROR: .app staple validation failed"; exit 1; }
-          echo "✓ .app is stapled."
-
-      - name: Download VC++ Redistributable
-        if: matrix.platform == 'windows'
-        run: |
-          # Download the latest VC++ 2015-2022 x64 Redistributable from Microsoft's CDN
-          # This is bundled into the installer so end-users get it automatically
-          # Compute parent dir robustly (the ..\ hack in the string could cause
-          # the file to land in the wrong place or fail the Inno source check).
-          $BuildPath = "${{ github.workspace }}\${{ matrix.build_path }}"
-          $DestDir = Split-Path -Parent $BuildPath
-          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
-            -OutFile "$DestDir\vc_redist.x64.exe"
-          Write-Host "VC++ Redistributable downloaded to $DestDir"
-        shell: pwsh
-
-      - name: Build Windows Installer (Inno Setup)
-        if: matrix.platform == 'windows'
-        run: |
-          $VERSION = "${env:GITHUB_REF_NAME}" -replace '^[vV]', ''
-          # Convert 4-part (0.0.4.1) to 3-part for Inno Setup (0.0.4.1 stays as-is)
-          choco install innosetup -y --no-progress
-          $ISCC = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $ISCC /DMyAppVersion="$VERSION" /DMyAppBuildDir="${{ github.workspace }}\${{ matrix.build_path }}" /DMyAppLicenseFile="${{ github.workspace }}\LICENSE" /DMyAppIconFile="${{ github.workspace }}\windows\runner\resources\app_icon.ico" "installers\windows\setup.iss"
-          Copy-Item "installers\windows\Front_Porch_AI_Setup.exe" -Destination "."
-        shell: pwsh
-
       - name: Build macOS PKG
         if: matrix.platform == 'macos'
         env:
@@ -592,13 +553,13 @@ jobs:
           APP_NAME=$(ls -d *.app | head -1)
           PKG_NAME="Front_Porch_AI.pkg"
           UNSIGNED_PKG="unsigned_${PKG_NAME}"
-
+          
           echo "Building unsigned .pkg..."
           pkgbuild \
             --component "$APP_NAME" \
             --install-location /Applications \
             "$UNSIGNED_PKG" || { echo "ERROR: pkgbuild failed"; exit 1; }
-
+            
           echo "Signing .pkg with Installer cert..."
           productsign --sign "$MACOS_INSTALLER_CERT_NAME" "$UNSIGNED_PKG" "$PKG_NAME" || { echo "ERROR: productsign failed"; exit 1; }
           rm -f "$UNSIGNED_PKG"
@@ -624,40 +585,37 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           PKG_NAME="Front_Porch_AI.pkg"
-
+          
           echo "Submitting PKG for notarization..."
           xcrun notarytool submit "$PKG_NAME" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait || { echo "ERROR: PKG notarization failed"; exit 1; }
-
+          
           echo "Stapling notarization ticket to PKG..."
           xcrun stapler staple "$PKG_NAME"
           xcrun stapler validate "$PKG_NAME" \
             && echo "✓ PKG staple verified" \
             || { echo "⚠ PKG staple validation failed"; exit 1; }
-
-          # Move PKG to workspace root for upload-artifact step.
-          # Use absolute ${GITHUB_WORKSPACE} (exactly like the shim DMG step)
-          # and make the move fatal. The old relative ../../../../../ was
-          # silently failing on the macOS runner, so the notarized .pkg
-          # stayed in build/macos/... and never appeared in the artifact
-          # or the GitHub Release (while Front_Porch_AI.dmg always worked
-          # because it wrote directly with an absolute path).
-          mv "$PKG_NAME" "${GITHUB_WORKSPACE}/" || { echo "ERROR: failed to move PKG to workspace root"; exit 1; }
-
+          
+          # Move PKG to workspace root for upload-artifact step
+          mv "$PKG_NAME" ../../../../../
+          
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
-      # Unsigned shim DMG for stable channel (Front_Porch_AI.dmg) — the last bridge.
-      # The stable auto-updater bridge still expects this exact legacy filename
-      # containing the .app at the DMG root (find -maxdepth 1 style discovery).
-      - name: Build unsigned shim DMG (legacy name for stable updater transition)
+      # One last unsigned shim DMG (transitional). Produced from the exact same
+      # .app bundle that went into the .pkg. Deliberately no codesign/notarize
+      # so the legacy hdiutil attach path in UpdateService works on any macOS
+      # (including old clients). Named exactly as the legacy consts so both old
+      # and new client _platformAsset / fallback logic find it.
+      - name: Build unsigned shim DMG (last bridge for in-app updater from .dmg/.app installs)
         if: matrix.platform == 'macos'
         run: |
           cd build/macos/Build/Products/Release
           APP_NAME=$(ls -d *.app | head -1)
-          # Absolute via GITHUB_WORKSPACE (robust against relative path drift)
+          # Absolute via GITHUB_WORKSPACE (robust against relative path drift;
+          # addresses review issue 9). Produces exact legacy name at root.
           SHIM_DMG="${GITHUB_WORKSPACE}/Front_Porch_AI.dmg"
           echo "==> Building unsigned/un-notarized shim DMG $SHIM_DMG from $APP_NAME"
           # Stage so .app is at the volume root (client's find -maxdepth 1 expects it)
@@ -671,18 +629,15 @@ jobs:
           else
             echo "hdiutil failed for shim; trying create-dmg --skip-jenkins as fallback"
             brew install create-dmg || true
-            "${GITHUB_WORKSPACE}/create-dmg.sh" --skip-jenkins "$SHIM_DMG" "$SHIM_ROOT" || true
+            "${GITHUB_WORKSPACE}/create-dmg.sh" --skip-jenkins "$SHIM_DMG" "$SHIM_ROOT" || true  # absolute for consistency (Issue B)
           fi
           rm -rf "$SHIM_ROOT"
           ls -l "$SHIM_DMG" || echo "(shim not present)"
 
-      - name: Debug Workspace Assets
-        run: |
-          echo "=== Debugging GITHUB_WORKSPACE Assets ===" > ${GITHUB_WORKSPACE}/debug_assets.txt
-          echo "Current directory: $(pwd)" >> ${GITHUB_WORKSPACE}/debug_assets.txt
-          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}" >> ${GITHUB_WORKSPACE}/debug_assets.txt
-          ls -lh ${GITHUB_WORKSPACE}/*.pkg ${GITHUB_WORKSPACE}/*.dmg ${GITHUB_WORKSPACE}/*Linux* >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
-          find ${GITHUB_WORKSPACE} -maxdepth 2 -name "*.pkg" -o -name "*.dmg" -o -name "*Linux*" >> ${GITHUB_WORKSPACE}/debug_assets.txt 2>&1 || true
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=$(echo ${GITHUB_REF_NAME} | sed 's/^[vV]//')" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Package Linux
         if: matrix.platform == 'linux'
@@ -691,12 +646,11 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.VERSION }}"
           echo "Building packages for version $VERSION"
-
+          
           # 1. Prepare AppImage
-          # AppImage standard: AppRun at root, resources in distinct folders
           mkdir -p AppDir/usr/bin
           cp -r ${{ matrix.build_path }}/* AppDir/usr/bin/
-
+          
           # Create Desktop file
           cat <<EOF > AppDir/front_porch_ai.desktop
           [Desktop Entry]
@@ -707,7 +661,7 @@ jobs:
           Categories=Utility;
           Comment=A chilled out frontend for KoboldCPP
           EOF
-
+          
           # Icon management
           if [ -f "assets/images/front_porch_ai_icon.png" ]; then
             cp assets/images/front_porch_ai_icon.png AppDir/front_porch_ai.png
@@ -716,27 +670,24 @@ jobs:
             touch AppDir/front_porch_ai.png
             touch AppDir/.DirIcon
           fi
-
+          
           # AppRun - symlink to the binary in usr/bin
           ln -s usr/bin/front_porch_ai AppDir/AppRun
-
+          
           # Create AppImage
           curl -L https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
           chmod +x appimagetool
           ./appimagetool AppDir Front_Porch_AI-Linux.AppImage
-
+          
           # 2. Prepare .deb
-          # Install to /opt to keep bundle together
           mkdir -p deb/opt/front-porch-ai
           mkdir -p deb/usr/bin
           mkdir -p deb/usr/share/applications
           mkdir -p deb/DEBIAN
-
+          
           cp -r ${{ matrix.build_path }}/* deb/opt/front-porch-ai/
-          # Symlink to /usr/bin
           ln -s /opt/front-porch-ai/front_porch_ai deb/usr/bin/front-porch-ai
-
-          # Create a .desktop file for the deb that uses the correct symlink name
+          
           cat <<EOF > deb/usr/share/applications/front-porch-ai.desktop
           [Desktop Entry]
           Name=Front Porch AI
@@ -748,7 +699,7 @@ jobs:
           EOF
           mkdir -p deb/usr/share/pixmaps
           cp AppDir/front_porch_ai.png deb/usr/share/pixmaps/front-porch-ai.png
-
+          
           cat <<EOF > deb/DEBIAN/control
           Package: front-porch-ai
           Version: $VERSION
@@ -758,8 +709,7 @@ jobs:
           Maintainer: Front Porch AI Team
           Description: A chilled out frontend for KoboldCPP.
           EOF
-
-          # Post-install script: refresh desktop database so shortcut appears
+          
           cat <<'EOF' > deb/DEBIAN/postinst
           #!/bin/sh
           if command -v update-desktop-database >/dev/null 2>&1; then
@@ -771,11 +721,11 @@ jobs:
           EOF
           chmod 755 deb/DEBIAN/postinst
           dpkg-deb --build deb Front_Porch_AI-Linux.deb
-
+          
           # 3. Prepare .rpm
           sudo apt-get install -y rpm
           mkdir -p rpmroot/{BUILD,RPMS,SOURCES,SPECS,SRPMS,INSTALL}
-
+          
           cat <<EOF > rpmroot/SPECS/front-porch-ai.spec
           Name:           front-porch-ai
           Version:        $VERSION
@@ -787,31 +737,29 @@ jobs:
           Requires:       gtk3
           Requires:       glib2
           Requires:       libsecret
-
+          
           %description
           A chilled out frontend for KoboldCPP.
-
+          
           %install
           mkdir -p %{buildroot}/opt/front-porch-ai
           mkdir -p %{buildroot}/usr/bin
           cp -r ${GITHUB_WORKSPACE}/${{ matrix.build_path }}/* %{buildroot}/opt/front-porch-ai/
           ln -s /opt/front-porch-ai/front_porch_ai %{buildroot}/usr/bin/front-porch-ai
-
+          
           %files
           /opt/front-porch-ai
           /usr/bin/front-porch-ai
-
+          
           %changelog
           EOF
-
+          
           rpmbuild --define "_topdir $(pwd)/rpmroot" --define "_buildrootdir $(pwd)/rpmroot/INSTALL" -bb rpmroot/SPECS/front-porch-ai.spec
           cp rpmroot/RPMS/x86_64/*.rpm Front_Porch_AI-Linux.rpm
-
+          
           # 4. Standard tar.gz
-          # Write directly with absolute GITHUB_WORKSPACE (avoid fragile relative
-          # ../../../../../ after cd, per the same class of path bug that kept
-          # losing the .pkg while the shim .dmg succeeded).
-          tar -C ${{ matrix.build_path }} -czvf "${GITHUB_WORKSPACE}/${{ matrix.asset_name }}" .
+          cd ${{ matrix.build_path }}
+          tar -czvf ../../../../../${{ matrix.asset_name }} .
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v5
@@ -825,7 +773,6 @@ jobs:
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.pkg
             Front_Porch_AI.dmg
-            debug_assets.txt
           if-no-files-found: ignore
 
   publish-release:
@@ -851,7 +798,6 @@ jobs:
             Front_Porch_AI_Setup.exe
             Front_Porch_AI.pkg
             Front_Porch_AI.dmg
-            debug_assets.txt
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -872,43 +818,23 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.APT_DEPLOY_SSH_KEY }}
         run: |
-          # Set up SSH key
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/apt_deploy_key
           chmod 600 ~/.ssh/apt_deploy_key
-
-          # Add host key to known_hosts (avoids interactive prompt)
           ssh-keyscan -H dreamersai.art >> ~/.ssh/known_hosts 2>/dev/null
-
           SSH_OPTS="-i ~/.ssh/apt_deploy_key -o StrictHostKeyChecking=accept-new"
           REMOTE="apt-deploy@dreamersai.art"
-          REPO_PATH="/var/www/apt"
-
-          # Upload the .deb
-          echo "Uploading .deb to APT server..."
           scp $SSH_OPTS Front_Porch_AI-Linux.deb "${REMOTE}:/tmp/front-porch-ai-latest.deb"
-
-          # Remove old version and add new one via reprepro
-          echo "Publishing to APT repository..."
           ssh $SSH_OPTS "$REMOTE" bash -s <<'REMOTE_SCRIPT'
             set -euo pipefail
             REPO="/var/www/apt"
             DEB="/tmp/front-porch-ai-latest.deb"
-
-            # Remove previous version (reprepro won't overwrite)
             reprepro -b "$REPO" remove stable front-porch-ai 2>/dev/null || true
-
-            # Add new version
             reprepro -b "$REPO" includedeb stable "$DEB"
-
-            # Clean up
             rm -f "$DEB"
-
             echo "✓ Published to APT repository"
             reprepro -b "$REPO" list stable
           REMOTE_SCRIPT
-
-          # Clean up local SSH key
           rm -f ~/.ssh/apt_deploy_key
 
   # ── Publish .rpm to RPM repository at rpm.dreamersai.art ──
@@ -927,41 +853,22 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.APT_DEPLOY_SSH_KEY }}
         run: |
-          # Set up SSH key
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/apt_deploy_key
           chmod 600 ~/.ssh/apt_deploy_key
-
-          # Add host key to known_hosts
           ssh-keyscan -H dreamersai.art >> ~/.ssh/known_hosts 2>/dev/null
-
           SSH_OPTS="-i ~/.ssh/apt_deploy_key -o StrictHostKeyChecking=accept-new"
           REMOTE="apt-deploy@dreamersai.art"
-
-          # Upload the .rpm
-          echo "Uploading .rpm to RPM server..."
           scp $SSH_OPTS Front_Porch_AI-Linux.rpm "${REMOTE}:/tmp/front-porch-ai-latest.rpm"
-
-          # Replace old version and regenerate metadata
-          echo "Publishing to RPM repository..."
           ssh $SSH_OPTS "$REMOTE" bash -s <<'REMOTE_SCRIPT'
             set -euo pipefail
             RPM_REPO="/var/www/rpm"
-
-            # Remove old versions
             rm -f "$RPM_REPO/packages"/Front_Porch_AI*.rpm
-
-            # Add new version
             mv /tmp/front-porch-ai-latest.rpm "$RPM_REPO/packages/"
-
-            # Regenerate repo metadata
             createrepo_c --update "$RPM_REPO"
-
             echo "✓ Published to RPM repository"
             ls -la "$RPM_REPO/packages/"
           REMOTE_SCRIPT
-
-          # Clean up local SSH key
           rm -f ~/.ssh/apt_deploy_key
 
   # ── Update AUR stable package (front-porch-ai-bin) ──
@@ -976,28 +883,17 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           VERSION=$(echo "${GITHUB_REF_NAME}" | sed 's/^[vV]//')
-
-          # Set up SSH
           mkdir -p ~/.ssh
           echo "$AUR_SSH_KEY" > ~/.ssh/aur_key
           chmod 600 ~/.ssh/aur_key
           ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key -o StrictHostKeyChecking=accept-new"
-
-          # Clone AUR repo
           git clone ssh://aur@aur.archlinux.org/front-porch-ai-bin.git /tmp/aur
           cd /tmp/aur
-
           git config user.email "age3dude@gmail.com"
           git config user.name "Sosukeaizen"
-
-          # Update PKGBUILD version
           sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-
-          # Regenerate .SRCINFO
-          # Install makepkg dependencies (makepkg is part of pacman on Arch, use docker or manual generation on Ubuntu)
-          # Manual .SRCINFO generation for Ubuntu runner:
           cat > .SRCINFO <<SRCINFO
           pkgbase = front-porch-ai-bin
           	pkgdesc = A chilled out frontend for KoboldCPP
@@ -1019,21 +915,14 @@ jobs:
           	sha256sums = SKIP
           	sha256sums = SKIP
           	sha256sums = SKIP
-
           pkgname = front-porch-ai-bin
           SRCINFO
-
-          # Remove leading whitespace from .SRCINFO (heredoc indentation)
-          # and strip any stray \r from CRLF line endings
           sed -i 's/^          //' .SRCINFO
           sed -i 's/\r$//' .SRCINFO
           sed -i 's/\r$//' PKGBUILD
-
           git add -A
           git diff --cached --quiet && echo "No changes to push" && exit 0
           git commit -m "Update to ${VERSION}"
           git push
-
-          # Clean up
           rm -f ~/.ssh/aur_key
           echo "✓ AUR package updated to ${VERSION}"
