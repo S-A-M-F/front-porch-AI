@@ -594,7 +594,7 @@ jobs:
             || { echo "⚠ PKG staple validation failed"; exit 1; }
           
           # Move PKG to workspace root for upload-artifact step
-          mv "$PKG_NAME" ../../../../../
+          mv "$PKG_NAME" "${GITHUB_WORKSPACE}/" || { echo "ERROR: failed to move PKG to workspace root"; exit 1; }
           
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
