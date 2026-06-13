@@ -167,27 +167,24 @@ jobs:
           echo "    path: ci/flutter_inappwebview_linux_stub" >> pubspec.yaml
           flutter pub get
 
-      - name: Patch Windows CMake to silence experimental coroutine deprecation (GitHub runner toolchain)
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Patch for Windows MSVC deprecation and CMake policy (to make flutter build windows succeed on current GitHub runner)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          # The GitHub windows-latest runner's current Visual Studio image (VS 18 / MSVC 14.51)
-          # turns use of the deprecated <experimental/coroutine> header (still present in the
-          # native C++ of audioplayers_windows and flutter_inappwebview_windows) into a hard
-          # error (STL1011 / C2338). The Microsoft-recommended escape hatch is the define below.
-          #
-          # Appending the set() to windows/flutter/CMakeLists.txt ensures the flag is passed
-          # through to the CMake generation for *all* plugin vcxproj files (including the
-          # ephemeral symlinked ones). This is more reliable than GITHUB_ENV for Flutter's
-          # Windows build process than plain env var.
-          #
-          # This only affects the CI build on the runner; local dev machines (with older
-          # MSVC or the define already tolerated) continue to work, and the real plugins
-          # are used at runtime on Windows (as required).
+          # 1. Silence the hard error from new MSVC treating <experimental/coroutine> as error (STL1011).
+          # This is the define Microsoft tells you to use in the exact error message.
+          # We append to the flutter CMakeLists (the parent that drives plugin builds) so it applies to
+          # audioplayers_windows and flutter_inappwebview_windows vcxproj.
           Add-Content -Path windows/flutter/CMakeLists.txt -Value 'set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")' -Encoding utf8
 
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+          # 2. Suppress the dev warning about CMP0175 (add_custom_command DEPENDS) from the inappwebview plugin's CMakeLists.
+          # This is just a policy warning from the plugin (not our code); setting the policy to OLD makes it happy.
+          # We also add -Wno-dev via env so cmake invocations are quieter.
+          Add-Content -Path windows/flutter/CMakeLists.txt -Value 'cmake_policy(SET CMP0175 OLD)' -Encoding utf8
+          "CMAKE_ARGS=-Wno-dev" >> $env:GITHUB_ENV
 
       - name: Build Application
         if: matrix.platform != 'linux'
