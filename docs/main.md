@@ -1,21 +1,27 @@
-# Stable — What's New
+# What's New in v0.9.9
 
-These notes feed the in-app "Update Available" dialog for official stable releases.
+🎉 Biggest update yet — here's what's new:
 
-## Version 0.9.8.1
+👥 **Fork-to-Group Wizard** — Fork any 1:1 chat into a group with a guided wizard. Drag to set arrival order, give each newcomer a custom entrance (your own words, an AI-written direction, or silent), and the round-robin picks up naturally after.
 
-- 🖼️ **Fixing Character Avatar Changes** — A long-standing crash when replacing a character's avatar image in the full editor has been fixed. This particularly affected users on macOS (and could affect packaged builds on other platforms). Avatar updates now complete reliably without "Read-only file system" errors.
+🧠 **Needs Simulation** — Hunger, Bladder, Energy, Social, Fun, Hygiene, and Comfort are now a live simulation. Characters react when levels drop. Per-character decay rates are configurable, and a new Manual Reprocess button lets you tell the Director exactly what happened (e.g. *"she ate a granola bar"*) to correct Needs on the fly.
 
-- ☁️ **Cloud Sync Page is Live** — The Cloud Sync settings page now loads the real interface instead of a placeholder. You can manage your sync settings properly.
+🎭 **Group Settings Redesign** — Dedicated Needs tab with per-character baseline sliders. Realism tab now has editable bond, trust, starting emotion, and time-of-day per member. All changes seed future sessions.
 
-- 📖 **More Forgiving Story Generation** — The story engine now handles cases where AI models return floating point numbers (e.g. `1.0`) instead of clean integers for beats, scenes, acts, and lore entries. This makes story generation much more stable across different models.
+📤 **Export User Personas** — Export your personas as SillyTavern-compliant JSON, learned facts and all.
 
-- 🔊 **TTS Improvements** — 
-  - Emojis are now stripped from text before sending to the TTS engine.
-  - The "Test Voice" button in TTS settings now correctly respects the "Only narrate quotes" setting.
+✨ **Home Screen Refresh Button** — Rescan for new character files without leaving the page.
 
-- 🖼️ **Image Generation Patience** — Increased the timeout for local image generation requests, giving slower models more time to respond.
+🛠️ **Database Cleanup Tool** — Find and purge orphaned records left behind by deleted characters or stale sessions.
 
-- 🛠️ **Quality of Life & Maintenance** — Several behind-the-scenes improvements to CI, linting, and repository hygiene that make ongoing development smoother and more reliable.
+🔧 **Major Internal Modularization** — The core god files have been decomposed into focused, testable modules with 1,100+ new tests. You won't see it directly, but the app is meaningfully more stable and easier to build on.
 
-This is a focused point release containing important bug fixes and small quality-of-life improvements while we continue maturing larger features for future releases.
+---
+
+## 🤝 Contributors
+
+- **MisterLotto** — Fork-to-Group wizard with custom entrance sequences (PR #50)
+- **S-A-M-F** — Massive internal modularization and test suite overhaul
+- Everyone in Discord who tested and filed bugs — thank you ❤️
+
+— SosukeAizen
