@@ -22,11 +22,11 @@ import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 
 /// Plain needs injection builder (_getNeedsInjection).
 /// Per-char in group via cbs, 1:1 scalar, suppression, erotic special case, secondary note, post-crash.
-/// Step 8. Simplified post needs impact rework: hard calc (effective step after enjoys/damp,
-/// urgency prefix, secondary note, post-crash suffix, romantic context) delegated to
-/// NeedsSimulation context helpers (getInjectionEffectiveStep etc); keeps only dispatch,
-/// the erotic bladder tension text as data, and formatting. Exact prior behavior +
-/// Proposal A milder notes via romantic context if used.
+/// Step 8. Now uses NeedsSimulation.getLowNeedsForInjection (shared selection of up to 2 lowest
+/// at step <=4 / mild-or-worse) so early subtle hints are visible again and slow needs
+/// (Comfort, Hygiene) are not completely silenced by faster decayers. Progressive stepped
+/// text (mild → catastrophic) reaches the model earlier. Special bladder case preserved.
+/// Delegates step/urgency calc to sim helpers.
 class NeedsInjection {
   final NeedsSimulation needsSimulation;
   final NsfwService nsfwService;
@@ -72,18 +72,20 @@ class NeedsInjection {
           )
           .name;
 
-      final sorted = needs.entries.toList()
-        ..sort((a, b) => a.value.compareTo(b.value));
-      final top = sorted.first;
-      final step = needsSimulation.getNeedStep(top.key, top.value);
+      // Use shared selection (up to 2 lowest that are mild or worse). This lets slow
+      // decayers like Comfort/Hygiene surface when they are #2, and revives step-4
+      // subtle early hints for progressive awareness.
+      final low = needsSimulation.getLowNeedsForInjection(needs);
+      if (low.isEmpty) return '';
 
-      // Only inject when the need is noticeable or worse (step 3 or lower).
-      // This prevents mild needs (e.g. 62% hunger) from constantly interrupting roleplay.
-      if (step >= 4) return '';
-
-      final label = NeedsSimulation.needSteppedText[top.key]?[step] ?? top.key;
-
-      return '[Background State for $name: $label (level ${top.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n';
+      final buf = StringBuffer();
+      for (final item in low) {
+        final step = item.effectiveStep; // for group we still use raw-ish via the helper
+        final label = NeedsSimulation.needSteppedText[item.key]?[step.clamp(0, 4)] ?? item.key;
+        buf.write(
+            '[Background State for $name: $label (level ${item.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n');
+      }
+      return buf.toString();
     }
 
     // 1:1 path
@@ -94,47 +96,49 @@ class NeedsInjection {
     final sorted = needsSimulation.vector.entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
 
-    final top = sorted.first;
-    final rawStep = needsSimulation.getNeedStep(top.key, top.value);
-
-    // Only inject when the need is noticeable or worse.
-    // Mild needs (step 4) no longer force injection — reduces wack-a-mole behavior.
-    if (rawStep >= 4) return '';
+    final rawStepTop = needsSimulation.getNeedStep(sorted.first.key, sorted.first.value);
 
     // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
     // This one deliberately uses the *original* step so desperate holding while
     // extremely turned on can still create charged, kinky flavor even when other
     // needs are being softened by lust. (Kept as data here per plan.)
-    if (top.key == 'bladder' &&
+    if (sorted.first.key == 'bladder' &&
         nsfwService.nsfwCooldownEnabled &&
         nsfwService.arousalLevel >= 40 &&
-        rawStep <= 2) {
-      final tension = rawStep <= 1
+        rawStepTop <= 2) {
+      final tension = rawStepTop <= 1
           ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
           : 'The combination of bladder desperation and current arousal (level: ${nsfwService.arousalLevel}/10) creates a charged, uncomfortable tension.';
       return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
     }
 
-    // Delegate effective step (enjoys inversion + suppression damp) + prefix/secondary/postcrash
-    // to sim helpers (kills prior 10+ ifs for calc in this file).
-    final effectiveStep = needsSimulation.getInjectionEffectiveStep(
-      top.key,
-      top.value,
-    );
+    // Shared selection: up to the two lowest needs at mild (step 4) or worse.
+    // This replaces the old "only the single worst + optional parenthetical" rule.
+    // Mild step-4 descriptions are now emitted (progressive early hints the character
+    // can act on before things become critical). Comfort and Hygiene can appear as #2.
+    final lowNeeds = needsSimulation.getLowNeedsForInjection(needsSimulation.vector);
+    if (lowNeeds.isEmpty) return '';
 
-    if (effectiveStep >= 5) return '';
+    final buf = StringBuffer();
+    for (final item in lowNeeds) {
+      // Delegate effective step + helpers (enjoys, urgency text, etc.)
+      final eff = item.effectiveStep;
+      if (eff >= 5) continue; // defensive
 
-    final list = NeedsSimulation.needSteppedText[top.key] ?? const <String>[];
-    final baseText = list.isNotEmpty ? list[effectiveStep.clamp(0, 4)] : top.key;
+      final list = NeedsSimulation.needSteppedText[item.key] ?? const <String>[];
+      final baseText = list.isNotEmpty ? list[eff.clamp(0, 4)] : item.key;
 
-    final urgencyPrefix = needsSimulation.getUrgencyPrefixForStep(effectiveStep);
-    final secondaryNote = needsSimulation.getSecondaryLowNeedNote(
-      sorted,
-      top.key,
-      effectiveStep,
-    );
-    final postCrashSuffix = needsSimulation.getPostCrashSuffixIfRelevant(top.key);
+      final urgencyPrefix = needsSimulation.getUrgencyPrefixForStep(eff);
+      // Secondary note kept for the (rare) case of 3+ low needs; it will mention one extra.
+      final secondaryNote = needsSimulation.getSecondaryLowNeedNote(
+        sorted,
+        item.key,
+        eff,
+      );
+      final postCrashSuffix = needsSimulation.getPostCrashSuffixIfRelevant(item.key);
 
-    return '[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n';
+      buf.write('[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n');
+    }
+    return buf.toString();
   }
 }

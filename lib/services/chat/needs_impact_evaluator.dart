@@ -198,8 +198,12 @@ class NeedsImpactEvaluator {
       // Simple clamps only (no complex gates/rules). Prevent obviously broken output from the model.
       // The Director (when authority + verification enabled) does the scene-faithfulness check,
       // just like bond/emotion/relationship evals. Strength scaling is already instructed in the prompt.
+      //
+      // Positive side loosened to +100 so a strong replenishing scene (meal, long rest, thorough
+      // care/bathing, deep social connection) can meaningfully restore a need in one go.
+      // Negative side kept at -30 to avoid any single scene catastrophically tanking a need.
       for (final k in deltas.keys.toList()) {
-        deltas[k] = deltas[k]!.clamp(-30, 30);
+        deltas[k] = deltas[k]!.clamp(-30, 100);
       }
 
       // Strength (1-5x) is communicated to the model on the first needs-impact call and (when
@@ -319,7 +323,7 @@ class NeedsImpactEvaluator {
       }
 
       for (final k in deltas.keys.toList()) {
-        deltas[k] = deltas[k]!.clamp(-30, 30);
+        deltas[k] = deltas[k]!.clamp(-30, 100);
       }
 
       final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(effectiveText);
