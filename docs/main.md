@@ -16,6 +16,8 @@
 
 ✨ **Home Screen Refresh Button** — Rescan for new character files without leaving the page.
 
+📁 **Folder previews on the home screen** — folders now show a 2×2 thumbnail of the first few characters inside them instead of a plain folder icon, so you can tell at a glance what's in each one. The preview scales with your grid size; empty folders keep the classic folder icon.
+
 🛠️ **Database Cleanup Tool** — Find and purge orphaned records left behind by deleted characters or stale sessions.
 
 🔧 **Major Internal Modularization** — The core god files have been decomposed into focused, testable modules with 1,100+ new tests. You won't see it directly, but the app is meaningfully more stable and easier to build on.
