@@ -42,6 +42,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; Clean up bad desktop shortcuts created by the buggy 0.9.9 stable installer.
+; That installer (due to a packaging bug when porting from the Rawhide nightly
+; build script) created shortcuts named "Front Porch AI" (the stable name)
+; but installed the app into the Beta location and made the .lnk point there.
+; We only target the stable-named desktop shortcut so that legitimate Rawhide
+; "Front Porch AI Nightly" shortcuts are left completely alone.
+; This section runs early during install, before new shortcuts are created.
+Type: files; Name: "{autodesktop}\Front Porch AI.lnk"
+
 [Files]
 ; Main application files
 Source: "{#MyAppBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
