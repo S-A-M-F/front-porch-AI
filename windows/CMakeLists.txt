@@ -10,6 +10,19 @@ set(BINARY_NAME "front_porch_ai")
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
 
+# Silence hard errors and warnings from newer MSVC (Visual Studio 2022/2025+,
+# MSVC 14.40+) when plugins still use the deprecated <experimental/coroutine>
+# header (audioplayers_windows, flutter_inappwebview_windows, etc.).
+# Microsoft documents _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS as
+# the escape hatch. Set at project level so it propagates to all plugin
+# sub-projects generated during `flutter build windows`.
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
+# Suppress dev-mode policy warnings (e.g. CMP0175 about add_custom_command
+# DEPENDS) coming from third-party plugin CMakeLists.txt files.
+# This is a noisy but non-fatal warning from the plugins themselves.
+cmake_policy(SET CMP0175 OLD)
+
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(IS_MULTICONFIG)

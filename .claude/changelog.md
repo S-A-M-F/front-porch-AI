@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-06-15 (fix: Windows build broken on GitHub runners by MSVC experimental/coroutine deprecation in plugins)
+
+- **Files changed**: windows/CMakeLists.txt (added project-level `add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)` + `cmake_policy(SET CMP0175 OLD)` right after the existing VERSION policy).
+- **Why**: Rawhide nightlies (and any `flutter build windows --release`) started failing on current windows-latest with the exact STL1011/C2338 hard errors from <experimental/coroutine> inside audioplayers_windows + flutter_inappwebview_windows transitive deps (same bug that hit main a few days ago). The previous CI-only patches in release.yml were removed when the permanent source fix landed on main; Rawhide's CMakeLists was never updated, so its Windows CI was now broken too.
+- **What changed**:
+  - Ported the exact main commit (36eeea6) change: the two blocks are now at the root windows/CMakeLists.txt level so they apply before FLUTTER_MANAGED_DIR and generated_plugins.cmake (reaches all plugin vcxproj).
+  - This eliminates any need for fragile "patch the ephemeral CMakeLists" steps in nightly.yml / beta / release.
+  - Also addresses the CMP0175 dev warning shown in the failure log.
+  - flutter analyze clean, dart fix nothing, build command exercised (correctly aborts on macOS host as expected; real validation is in CI).
+- **Verification**: Matched the diff from main exactly; flutter analyze (full, --no-fatal-*) reports "No issues found!"; dart fix --dry-run "Nothing to fix"; `flutter build windows --release` produces the expected "only supported on Windows hosts" (host limitation); git diff clean for the CMake fix; no new private Dart methods, no dead code.
+- **Note**: Initial edit had incorrectly added a bullet to docs/Rawhide.md. User clarified this is not user-facing, so removed from Rawhide.md (only internal .claude/changelog.md + the actual CMake fix remain). docs/Rawhide.md change was reverted in follow-up.
+- **Branch**: Rawhide (port of the Windows MSVC fix).
+
 ## 2026-06-15 (fix: Realism delta chips Bond/Trust/Lust broken by incomplete batch director wiring)
 
 - **Files changed**: lib/services/chat/realism_evals.dart (finalize no longer clears collected; applyBatchResults now async + fully implements rel/emotional/narrative via helpers + deduped direct paths; updated collection comments), lib/services/chat/realism_verification.dart (enabled dart:convert + actual jsonDecode for the combined director batch response), lib/services/chat_service.dart (await apply in main; added matching collected/verify/apply block to regen path after finalize; no new god void _ privates), docs/Rawhide.md (new leading fix bullet + context).
