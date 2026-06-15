@@ -64,6 +64,7 @@ import 'package:front_porch_ai/services/chat/prompt_injection/time_injection.dar
 import 'package:front_porch_ai/services/chat/prompt_injection/nsfw_injection.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/chaos_injection.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/needs_injection.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/realism_state_injection.dart';
 import 'package:front_porch_ai/services/chat/llm_eval_engine.dart';
 import 'package:front_porch_ai/services/chat/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/realism_verification.dart';
@@ -746,6 +747,29 @@ class ChatService extends ChangeNotifier {
     getActiveCharacter: () => _activeCharacter,
     getEnjoysLowHygiene: () => enjoysLowHygiene,
     getGroupNeeds: _getGroupNeeds,
+    getCharacterIdFromCard: _getCharacterIdFromCard,
+  );
+
+  /// New central composer for the full speaker-internal realism snapshot.
+  /// Replaces the previous loose concatenation of the individual builders.
+  /// This gives the model one clearly grouped, number-first view of relationship,
+  /// emotion, time, needs (with x/100), behavioral anchors, nsfw state, etc.
+  late final _realismStateInjection = RealismStateInjection(
+    relationshipInjection: _relationshipInjection,
+    emotionInjection: _emotionInjection,
+    timeInjection: _timeInjection,
+    behavioralInjection: _behavioralInjection,
+    nsfwInjection: _nsfwInjection,
+    needsInjection: _needsInjection,
+    needsSimulation: _needsSimulation,
+    relationshipService: _relationshipService,
+    timeService: _timeService,
+    nsfwService: _nsfwService,
+    getRealismEnabled: () => _realismEnabled,
+    getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
+    getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+    getGroupCharacters: () => _groupCharacters,
+    getActiveCharacter: () => _activeCharacter,
     getCharacterIdFromCard: _getCharacterIdFromCard,
   );
 
@@ -4492,7 +4516,14 @@ class ChatService extends ChangeNotifier {
       }
 
       _applyMoodDecay();
-      _needsSimulation.tickDecay();
+      // Needs decay for 1:1 always here. For group non-observer, speaker-specific decay
+      // (respecting the actual picked speaker for random turn order) is applied inside
+      // _evaluateRealismForUpcomingGroupSpeaker after _pickNextGroupCharacter has run.
+      if (_activeGroup == null || _observerMode || !_needsSimEnabled) {
+        _needsSimulation.tickDecay();
+      } else {
+        // Group non-obs + needs on: defer to per-speaker path (see _evaluateRealismForUpcomingGroupSpeaker).
+      }
       _nsfwService.decrementCooldownIfActive();
       _isEvaluatingRealism = true;
       _realismEvalStreamText = '';
@@ -4556,6 +4587,7 @@ class ChatService extends ChangeNotifier {
         if (_storageService.realismSettings.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
+          _realismEvals.beginCollectForBatchedVerification();
           await Future.wait([
             _evaluateRelationshipCall(
               onChunk: handleChunk,
@@ -4564,6 +4596,29 @@ class ChatService extends ChangeNotifier {
             _evaluatePhysicalStateCall(onChunk: handleChunk),
             _evaluateNarrativeCall(onChunk: handleChunk),
           ]);
+          await _realismEvals.finalizeBatchedRealismVerifications();
+
+          // One-shot director batch (user proposal): after the mains, use the collected from the leaf
+          // and the god's _realismVerifier to do the single batch verify pass on all 5 (or 4).
+          // This reduces verifier LLM calls from up to 5 to 1 when the per-char flag is on.
+          final collected = _realismEvals.getCollectedForBatch();
+          if (collected.isNotEmpty) {
+            final items = collected.map((p) => (
+              evalKind: p['kind'] as String,
+              rawOutput: p['raw'] as String,
+              sceneResponse: p['scene'] as String,
+              preState: null,
+              activeChar: _activeCharacter,
+              activeGroup: _activeGroup,
+              recentMessages: _messages,
+              promptText: p['prompt'] as String?,
+              injections: (p['injections'] as Map?)?.cast<String, String>(),
+              strictnessOverride: null,
+              maxPassesOverride: null,
+            )).toList();
+            final batchRes = await _realismVerifier.verifyBatch(items);
+            await _realismEvals.applyBatchResults(batchRes);
+          }
         }
 
         // Check for cancellation after evals complete but before saving
@@ -4628,16 +4683,21 @@ class ChatService extends ChangeNotifier {
           notifyListeners();
         }
       } else {
-        // Group: use the pre-decay snapshot for this speaker (captured before tick using nextCharacter)
-        // so chips reflect the full net turn effect (decay + scene deltas) for 1:1 parity.
-        // Fall back to the vector embedded in the per-speaker realism_state snapshot (post-decay)
-        // if the pre-decay snapshot wasn't available (e.g. edge rotation).
-        final preVec =
-            groupSpeakerPreDecayNeeds ??
-            _coerceNeedsVector(
-              ((_messages.last.activeMetadata?['realism_state']
-                      as Map<String, dynamic>?)?['needs']?['vector']),
-            );
+        // Group: use the pre-decay snapshot for this speaker (captured before tick using nextCharacter,
+        // or stashed from inside the per-speaker eval for random turn order) so chips reflect
+        // the full net turn effect (decay + scene deltas) for 1:1 parity.
+        // Fall back to a top-level 'needs_pre_turn_vector' on the message metadata (our stash),
+        // then to the vector embedded in the per-speaker realism_state snapshot.
+        Map<String, int> preVec = groupSpeakerPreDecayNeeds ?? const {};
+        if (preVec.isEmpty) {
+          preVec = _coerceNeedsVector(_messages.last.activeMetadata?['needs_pre_turn_vector']);
+        }
+        if (preVec.isEmpty) {
+          preVec = _coerceNeedsVector(
+            ((_messages.last.activeMetadata?['realism_state']
+                    as Map<String, dynamic>?)?['needs']?['vector']),
+          );
+        }
         if (preVec.isNotEmpty) {
           final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
             preVec,
@@ -4944,6 +5004,7 @@ class ChatService extends ChangeNotifier {
         if (_storageService.realismSettings.realismOneShotEval) {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
+          _realismEvals.beginCollectForBatchedVerification();
           await Future.wait([
             _evaluateRelationshipCall(
               onChunk: handleChunk,
@@ -4952,6 +5013,30 @@ class ChatService extends ChangeNotifier {
             _evaluatePhysicalStateCall(onChunk: handleChunk),
             _evaluateNarrativeCall(onChunk: handleChunk),
           ]);
+          await _realismEvals.finalizeBatchedRealismVerifications();
+
+          // Mirror of the primary send path: apply the one director batch (or the cheap
+          // accepted-originals path) so relationship/emotional/narrative deltas and side
+          // effects (bond/trust/arousal chips, fixation, autonomous objectives, emotion)
+          // are produced for swiped/regenerated assistant messages too.
+          final collected = _realismEvals.getCollectedForBatch();
+          if (collected.isNotEmpty) {
+            final items = collected.map((p) => (
+              evalKind: p['kind'] as String,
+              rawOutput: p['raw'] as String,
+              sceneResponse: p['scene'] as String,
+              preState: null,
+              activeChar: _activeCharacter,
+              activeGroup: _activeGroup,
+              recentMessages: _messages,
+              promptText: p['prompt'] as String?,
+              injections: (p['injections'] as Map?)?.cast<String, String>(),
+              strictnessOverride: null,
+              maxPassesOverride: null,
+            )).toList();
+            final batchRes = await _realismVerifier.verifyBatch(items);
+            await _realismEvals.applyBatchResults(batchRes);
+          }
         }
 
         // Check for cancellation after evals complete
@@ -5844,19 +5929,13 @@ class ChatService extends ChangeNotifier {
 
         // ── Context Shift: budget-aware history trimming ──
 
-        // Realism injection blocks — compute early so they're in the token budget
-        // (now via thin _get* delegating to prompt_injection/* builders per step 8)
+        // Realism / internal state block — now produced by a single dedicated composer
+        // (lib/services/chat/prompt_injection/realism_state_injection.dart).
+        // It groups *all* the live scalars (needs with x/100, bond/trust, emotion, time,
+        // arousal, spatial, etc.) under one clear, number-first header + collation guidance.
+        // This is the main place the model "sees" the current character state for consistency.
         if (_realismActiveThisMode) {
-          final relationship = _getRelationshipInjection();
-          final emotion = _getEmotionInjection();
-          final time = _getTimeInjection();
-          final trustBehavior = _getTrustBehaviorInjection();
-          final cooldown = _getNsfwCooldownInjection();
-          final behavioral = _getBehavioralMechanicsInjection();
-          final needs = _getNeedsInjection();
-          final interCharFeelings = _getInterCharacterFeelingsInjection();
-          realismBlock =
-              '$relationship$emotion$time$trustBehavior$cooldown$behavioral$needs$interCharFeelings';
+          realismBlock = _getRealismStateInjection();
         }
 
         // Chance Time injection — independent of realism mode
@@ -7923,59 +8002,11 @@ class ChatService extends ChangeNotifier {
 
   // ── Prompt Injection Builders (thins only; full in lib/services/chat/prompt_injection/* step 8) ──
 
-  String _getRelationshipInjection() {
-    // Thin delegation to builder (full logic + group/1:1 dispatch via cbs in step 8).
-    return _relationshipInjection.buildRelationshipInjection();
-  }
-
-  /// Phase 2: Invisible inter-character relationship injection.
-  /// Returns private guidance for the *current speaker* describing how they
-  /// secretly feel about the other members of the group. This is NEVER shown
-  /// in the UI (the sidebar bars remain strictly user-focused). It exists only
-  /// to let the LLM make the speaker react realistically to their groupmates.
-  ///
-  /// Example output:
-  /// [Private feelings of Alice toward other group members]
-  /// - Bob: slightly wary of (-18)
-  /// - Charlie: fond of (+42)
-  String _getInterCharacterFeelingsInjection() {
-    // Thin delegation (full in RelationshipInjection per step 8).
-    return _relationshipInjection.buildInterCharacterFeelingsInjection();
-  }
-
-  String _getEmotionInjection() {
-    // Thin delegation (full in EmotionInjection per step 8; group uses scalar after load).
-    return _emotionInjection.buildEmotionInjection();
-  }
-
-  String _getBehavioralMechanicsInjection() {
-    // Thin delegation (full in BehavioralInjection per step 8).
-    return _behavioralInjection.buildBehavioralMechanicsInjection();
-  }
-
-  String _getTimeInjection() {
-    // Thin delegation (authoritative in TimeInjection per step 8; time_service also thin wrapper).
-    return _timeInjection.buildTimeInjection();
-  }
-
-  /// Injects a trust-calibrated behavioral frame based on existing trust level (now via RelationshipService).
-  /// Tells the model how much of the character's inner self to surface — but
-  /// deliberately avoids prescribing specific behaviors, letting the character
-  /// persona define what "opening up" actually looks like for THIS character.
-  /// Trust tier 0 is now truly neutral — neither trusting nor distrustful.
-  String _getTrustBehaviorInjection() {
-    // Thin delegation (full in RelationshipInjection per step 8).
-    return _relationshipInjection.buildTrustBehaviorInjection();
-  }
-
-  /// Returns a prompt fragment that enforces the refractory period, phased by
-  /// how far into recovery the character is. The total refractory duration varies
-  /// per character (1-8 turns based on personality), so the prompt uses the
-  /// ratio of remaining/total to determine the phase.
-  String _getNsfwCooldownInjection() {
-    // Thin delegation (full in NsfwInjection per step 8).
-    return _nsfwInjection.buildNsfwCooldownInjection();
-  }
+  // The individual _get* thins for relationship/emotion/time/behavioral/nsfw are no longer used
+  // for main prompt assembly — the new _realismStateInjection composer owns the full
+  // grouped "Speaker Internal State" output (see realism_state_injection.dart).
+  // The sub-builders themselves are still instantiated and passed to the composer.
+  // Chance Time remains separate (it is not part of the per-turn realism state bundle).
 
   /// Injects a Chance Time event into the character's response prompt.
   /// Placed AFTER the character name suffix for maximum recency weight.
@@ -8186,9 +8217,38 @@ class ChatService extends ChangeNotifier {
     // logic work exactly as they do for 1:1 chats.
     _activeCharacter = speaker;
 
-    // Load this speaker's persisted group realism state into the scalar fields
-    // that the eval methods will read and mutate.
-    _loadGroupRealismIntoScalars(charId);
+    // Group non-observer: ensure this definite speaker receives their per-turn needs decay
+    // (central tick in sendMessage is skipped for groups to support random turn order without
+    // always decaying the 'first' member). Snapshot the pre-decay value for chips/realism_state
+    // *before* applying this turn's decay, then decay the speaker's map entry, then load scalars.
+    if (_activeGroup != null && !_observerMode && _needsSimEnabled) {
+      final sidForDecay = charId;
+      final currentForSpeaker = _getGroupNeeds(sidForDecay);
+      final preDecay = currentForSpeaker.isNotEmpty
+          ? Map<String, int>.from(currentForSpeaker)
+          : {for (final k in NeedsSimulation.needKeys) k: NeedsSimulation.needDefaults[k] ?? 80};
+      // Stash the true pre-decay for this speaker so post-gen chip delta computation
+      // (and regen) see the correct baseline including the decay portion of the turn.
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['needs_pre_turn_vector'] = preDecay;
+
+      // Apply one tick of decay directly to this speaker's group entry (custom rates or defaults).
+      final decayed = Map<String, int>.from(preDecay);
+      final customRates = _groupDecayRates;
+      for (final key in NeedsSimulation.needKeys) {
+        final cur = decayed[key] ?? 80;
+        final decay = customRates[key] ?? NeedsSimulation.needDecay[key] ?? 0;
+        decayed[key] = (cur - decay).clamp(0, 100);
+      }
+      _setGroupNeeds(sidForDecay, decayed);
+
+      // Now load the post-decay state into scalars for the remainder of the speaker eval + prompt injection.
+      _loadGroupRealismIntoScalars(charId);
+    } else {
+      // Load this speaker's persisted group realism state into the scalar fields
+      // that the eval methods will read and mutate.
+      _loadGroupRealismIntoScalars(charId);
+    }
 
     // Phase 2: Ensure hidden inter-character relationship tracking is seeded
     // for all other group members (neutral 0). This happens on the speaker's
@@ -8514,9 +8574,12 @@ class ChatService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  String _getNeedsInjection() {
-    // Thin delegation (full in NeedsInjection per step 8; group per-char via cb, suppression etc).
-    return _needsInjection.buildNeedsInjection();
+  String _getRealismStateInjection() {
+    // Thin delegation to the new central realism state composer.
+    // This is the single source of the grouped "Speaker Internal State" block
+    // that the model receives (metrics first + guidance). Replaces the old
+    // manual 8-builder concat.
+    return _realismStateInjection.buildRealismStateInjection();
   }
 
   void _restoreRealismStateFromMessage(ChatMessage? msg) {

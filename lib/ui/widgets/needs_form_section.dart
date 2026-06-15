@@ -135,7 +135,7 @@ class NeedsFormSection extends StatelessWidget {
                 icon: Icons.battery_std,
                 label: 'Needs Simulation',
                 subtitle:
-                    'Hunger, bladder, energy, social, fun, hygiene, comfort — influences prompts & behavior',
+                    'Hunger etc. (higher = more sated/less urgent; 100=full, 0=critical) — influences prompts & behavior when low',
                 value: enabled,
                 onChanged: onEnabledChanged,
                 context: context,

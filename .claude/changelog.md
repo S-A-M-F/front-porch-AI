@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-15 (fix: Realism delta chips Bond/Trust/Lust broken by incomplete batch director wiring)
+
+- **Files changed**: lib/services/chat/realism_evals.dart (finalize no longer clears collected; applyBatchResults now async + fully implements rel/emotional/narrative via helpers + deduped direct paths; updated collection comments), lib/services/chat/realism_verification.dart (enabled dart:convert + actual jsonDecode for the combined director batch response), lib/services/chat_service.dart (await apply in main; added matching collected/verify/apply block to regen path after finalize; no new god void _ privates), docs/Rawhide.md (new leading fix bullet + context).
+- **Why**: The prior "fire mains then one director batch" slice (to address remote eval latency when Director enabled) collected raws in the 4 evaluate* (early return before _verify/parse), but finalize always cleared the list (and had a wouldVerify early-out), so god's post-await "collected = get...; if not empty { verifyBatch; apply }" always saw empty → never called the parse paths that populate bond_delta/trust_delta/arousal_delta (Lust) + reasons into _pendingRealismMetadata for the message chips. Emotion label continued via the unconditional synthesis after the block. OneShot path was unaffected (doesn't set the collect flag). Regen path also lacked the block.
+- **What changed**:
+  - finalizeBatched now only flips the flag (cheap fast-path lives in verifyBatch returning accepted map when verifier disabled).
+  - applyBatchResults snapshots, is now async (for narrative setObjective), and dispatches relationship (_parseAndApply), emotional (_applyEmotionalResults for scalar+arousal pending), narrative (_applyNarrativeResults for fixation+autonomous objective) using the eff (corrected or raw).
+  - Direct emotional and narrative paths now delegate to the same helpers (deleted ~30 lines of duplicated extraction).
+  - Wired the batch response parse so when Director is on for the char the one LLM critique actually supplies per-kind corrected raws to apply.
+  - Duplicated the small collected/verify/apply stanza into the regen !oneShot path (no new private helper allowed in god).
+  - Verified void _ count in chat_service stayed exactly 15; flutter analyze 0 issues; dart fix nothing; Rawhide.md and internal changelog updated.
+- **Verification**: flutter analyze clean (full project, 0 issues on changed files); dart fix --dry-run "Nothing to fix"; manual logic review of chip keys (bond/trust/arousal/emotion_label in _buildRealismIndicator) vs. population sites (_parseAndApply + helpers + post synthesis); 1:1 vs group + oneShot parity paths preserved; no behavior change when oneShot enabled or when no evals run.
+- **Branch**: Rawhide (continuation of batch one-shot director slice).
+
 ## 2026-06-12 (feat: folder character previews on the home screen)
 
 - **Files changed**: lib/ui/widgets/character_card_grid.dart, docs/Rawhide.md, .claude/changelog.md.

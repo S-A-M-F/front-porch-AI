@@ -57,7 +57,22 @@ class NeedsInjection {
   String buildNeedsInjection() {
     if (!getNeedsSimEnabled() || !getRealismEnabled()) return '';
 
-    // Group mode (non-director) — per-character needs
+    // Helper to build a compact status line for one need.
+    String _needLine(String key, int value) {
+      final eff = needsSimulation.getInjectionEffectiveStep(key, value);
+      final steppedList = NeedsSimulation.needSteppedText[key] ?? const <String>[];
+      final desc = (eff <= 4 && steppedList.isNotEmpty)
+          ? steppedList[eff.clamp(0, 4)]
+          : 'comfortable / no significant drive';
+      final tag = (eff >= 5)
+          ? 'sated'
+          : needsSimulation.getUrgencyPrefixForStep(eff).replaceAll(' — ', ' — ').replaceAll('this is ', '');
+      return '$key: $value/100 — $tag: $desc';
+    }
+
+    // Group mode (non-director) — per-character needs. Now emits a grouped, explicit block
+    // for *all* needs (with x/100) so the model can directly see the full vector and
+    // easily collate severity to behavior.
     if (getIsGroupNonObserverMode()) {
       final id = getCurrentSpeakerIdForRealism();
       final needs = getGroupNeeds(id);
@@ -72,73 +87,31 @@ class NeedsInjection {
           )
           .name;
 
-      // Use shared selection (up to 2 lowest that are mild or worse). This lets slow
-      // decayers like Comfort/Hygiene surface when they are #2, and revives step-4
-      // subtle early hints for progressive awareness.
-      final low = needsSimulation.getLowNeedsForInjection(needs);
-      if (low.isEmpty) return '';
-
       final buf = StringBuffer();
-      for (final item in low) {
-        final step = item.effectiveStep; // for group we still use raw-ish via the helper
-        final label = NeedsSimulation.needSteppedText[item.key]?[step.clamp(0, 4)] ?? item.key;
-        buf.write(
-            '[Background State for $name: $label (level ${item.value}) — this is a subtle physical or emotional condition that may gently influence her mood, thoughts, small behaviors, and focus this turn. Do not force her to directly comment on it unless it naturally fits the scene.]\n');
+      buf.writeln('[Current Needs Status for $name — higher = more sated / less urgent (100=full, 0=critical)]');
+      for (final key in NeedsSimulation.needKeys) {
+        final v = needs[key] ?? NeedsSimulation.needDefaults[key] ?? 80;
+        buf.writeln(_needLine(key, v));
       }
+      buf.writeln('[Collate these exact values: the character\'s physical presentation, energy level, hunger sensations, focus, willingness to exert, posture, small behaviors, and any natural internal references or dialogue this turn must be consistent with the current numbers. Lower values should be more prominent right now.]');
       return buf.toString();
     }
 
-    // 1:1 path
-    final charName = getActiveCharacter()?.name ?? 'the character';
-
+    // 1:1 path (same grouped explicit format for easy collation by the model)
     if (needsSimulation.vector.isEmpty) return '';
 
-    final sorted = needsSimulation.vector.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value));
+    final charName = getActiveCharacter()?.name ?? 'the character';
 
-    final rawStepTop = needsSimulation.getNeedStep(sorted.first.key, sorted.first.value);
-
-    // Preserve (and keep strong) the special erotic bladder + high-arousal tension case.
-    // This one deliberately uses the *original* step so desperate holding while
-    // extremely turned on can still create charged, kinky flavor even when other
-    // needs are being softened by lust. (Kept as data here per plan.)
-    if (sorted.first.key == 'bladder' &&
-        nsfwService.nsfwCooldownEnabled &&
-        nsfwService.arousalLevel >= 40 &&
-        rawStepTop <= 2) {
-      final tension = rawStepTop <= 1
-          ? 'She is *desperately* holding on while extremely aroused — the combination is overwhelming and humiliating.'
-          : 'The combination of bladder desperation and current arousal (level: ${nsfwService.arousalLevel}/10) creates a charged, uncomfortable tension.';
-      return '[CRITICAL NEED — she cannot ignore this. $charName urgently needs to use the restroom. $tension]\n';
-    }
-
-    // Shared selection: up to the two lowest needs at mild (step 4) or worse.
-    // This replaces the old "only the single worst + optional parenthetical" rule.
-    // Mild step-4 descriptions are now emitted (progressive early hints the character
-    // can act on before things become critical). Comfort and Hygiene can appear as #2.
-    final lowNeeds = needsSimulation.getLowNeedsForInjection(needsSimulation.vector);
-    if (lowNeeds.isEmpty) return '';
-
+    // Special erotic bladder case is still supported but now inside the structured block
+    // for consistency (the old urgent override is rare; we keep the spirit by using the
+    // real value + strong tag).
     final buf = StringBuffer();
-    for (final item in lowNeeds) {
-      // Delegate effective step + helpers (enjoys, urgency text, etc.)
-      final eff = item.effectiveStep;
-      if (eff >= 5) continue; // defensive
-
-      final list = NeedsSimulation.needSteppedText[item.key] ?? const <String>[];
-      final baseText = list.isNotEmpty ? list[eff.clamp(0, 4)] : item.key;
-
-      final urgencyPrefix = needsSimulation.getUrgencyPrefixForStep(eff);
-      // Secondary note kept for the (rare) case of 3+ low needs; it will mention one extra.
-      final secondaryNote = needsSimulation.getSecondaryLowNeedNote(
-        sorted,
-        item.key,
-        eff,
-      );
-      final postCrashSuffix = needsSimulation.getPostCrashSuffixIfRelevant(item.key);
-
-      buf.write('[$urgencyPrefix $baseText$secondaryNote$postCrashSuffix]\n');
+    buf.writeln('[Current Needs Status for $charName — higher = more sated / less urgent (100=full, 0=critical)]');
+    for (final key in NeedsSimulation.needKeys) {
+      final v = needsSimulation.vector[key] ?? NeedsSimulation.needDefaults[key] ?? 80;
+      buf.writeln(_needLine(key, v));
     }
+    buf.writeln('[Collate these exact values: the character\'s physical presentation, energy level, hunger sensations, focus, willingness to exert, posture, small behaviors, and any natural internal references or dialogue this turn must be consistent with the current numbers. Lower values should be more prominent right now.]');
     return buf.toString();
   }
 }

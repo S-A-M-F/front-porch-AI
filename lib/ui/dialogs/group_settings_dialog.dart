@@ -2627,7 +2627,7 @@ class _NeedsTabState extends State<_NeedsTab> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Simulates hunger, bladder, energy, social, fun, hygiene, and comfort. Low needs influence AI behavior and prompt injections.',
+                    'Simulates need satisfaction (hunger, bladder, energy, social, fun, hygiene, comfort). Higher = more sated (100=full, 0=critical). Low values influence AI behavior and prompt injections.',
                     style: TextStyle(fontSize: 11, color: Colors.white54),
                   ),
                 ],

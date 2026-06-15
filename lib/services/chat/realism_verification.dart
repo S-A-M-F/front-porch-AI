@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -194,6 +195,167 @@ class RealismVerification {
       passes: passesUsed,
       reason: reason,
     );
+  }
+
+  /// Batch version for "one director pass after all 5 (or 4) mains".
+  /// Does local rule checks for every item (zero LLM cost).
+  /// If any fail rules or strictness, builds ONE combined critique prompt with all
+  /// the failing raws + their full latent bundles, fires the LLM once, and returns
+  /// per-kind corrected (or accepted) results.
+  /// This directly implements the user's suggestion and cuts verifier roundtrips
+  /// from up to 5 to at most 1 when the feature is active on remote APIs.
+  Future<Map<String, VerificationResult>> verifyBatch(
+    List<({
+      String evalKind,
+      String rawOutput,
+      String sceneResponse,
+      Map<String, dynamic>? preState,
+      CharacterCard? activeChar,
+      GroupChat? activeGroup,
+      List<ChatMessage>? recentMessages,
+      String? promptText,
+      Map<String, String>? injections,
+      int? strictnessOverride,
+      int? maxPassesOverride,
+    })> items,
+  ) async {
+    if (items.isEmpty) return {};
+
+    final enabled = getRealismVerificationEnabled();
+    if (!enabled) {
+      return {
+        for (final i in items)
+          i.evalKind: VerificationResult.accepted(raw: i.rawOutput, passes: 0)
+      };
+    }
+
+    final results = <String, VerificationResult>{};
+    final needing = <int>[]; // indices into items that need LLM critique
+
+    for (int idx = 0; idx < items.length; idx++) {
+      final it = items[idx];
+      final bundle = <String, dynamic>{
+        'eval_kind': it.evalKind,
+        'raw': it.rawOutput,
+        'scene': it.sceneResponse,
+        'pre_state': it.preState ?? (captureRealismState?.call() ?? {}),
+        'prompt': it.promptText ?? '',
+        'injections': it.injections ?? const <String, String>{},
+        'char_name': (it.activeChar ?? getActiveCharacter())?.name ?? '',
+        'char_personality': (it.activeChar ?? getActiveCharacter())?.personality ?? '',
+        'char_scenario': (it.activeChar ?? getActiveCharacter())?.scenario ?? '',
+        'char_frontPorch': (it.activeChar ?? getActiveCharacter())?.frontPorchExtensions?.toJson() ?? {},
+        'group': {'name': (it.activeGroup ?? getActiveGroup())?.name ?? ''},
+        'recent': (it.recentMessages ?? getMessages()).length,
+        'strictness': it.strictnessOverride ?? getVerificationStrictness(),
+        'max_passes': it.maxPassesOverride ?? getVerificationMaxReprocesses(),
+        'user': getUserName(),
+      };
+
+      final rule = _applyRuleChecks(it.rawOutput, bundle, it.strictnessOverride ?? getVerificationStrictness());
+      if (rule.passed) {
+        results[it.evalKind] = VerificationResult.accepted(raw: it.rawOutput, passes: 0);
+      } else {
+        needing.add(idx);
+        results[it.evalKind] = VerificationResult.corrected(
+          raw: rule.correctedRaw ?? it.rawOutput,
+          passes: 0,
+          reason: rule.reason,
+        );
+      }
+    }
+
+    if (needing.isEmpty) return results;
+
+    onVerificationPhase?.call(true, pass: 1, max: getVerificationMaxReprocesses());
+
+    // One combined critique for all that needed it.
+    final critiquePrompt = _buildBatchCritiquePrompt(
+      items: needing.map((i) => items[i]).toList(),
+      initialCorrections: results,
+    );
+
+    String? reOut;
+    try {
+      reOut = await fireLLMEval(critiquePrompt);
+      if (reOut != null) reOut = stripThinkBlocks(reOut);
+    } catch (e) {
+      debugPrint('[Realism:Verifier] batch re-fire fail: $e');
+      onVerificationPhase?.call(false);
+      return results;
+    }
+
+    if (reOut == null || reOut.trim().isEmpty) {
+      onVerificationPhase?.call(false);
+      return results;
+    }
+
+    // The model is instructed to return a flat JSON with keys = evalKind and values = the corrected raw for that kind.
+    try {
+      final noFence = reOut.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+      final si = noFence.indexOf('{');
+      final ei = noFence.lastIndexOf('}');
+      if (si >= 0 && ei > si) {
+        final obj = jsonDecode(noFence.substring(si, ei + 1));
+        if (obj is Map) {
+          for (final entry in obj.entries) {
+            final k = entry.key.toString();
+            final v = entry.value?.toString() ?? '';
+            if (results.containsKey(k) && v.isNotEmpty) {
+              results[k] = VerificationResult.corrected(
+                raw: v,
+                passes: 1,
+                reason: 'batch director correction',
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // fallback: keep the initial rule corrections
+    }
+
+    onVerificationPhase?.call(false);
+    return results;
+  }
+
+  String _buildBatchCritiquePrompt({
+    required List<({
+      String evalKind,
+      String rawOutput,
+      String sceneResponse,
+      Map<String, dynamic>? preState,
+      CharacterCard? activeChar,
+      GroupChat? activeGroup,
+      List<ChatMessage>? recentMessages,
+      String? promptText,
+      Map<String, String>? injections,
+      int? strictnessOverride,
+      int? maxPassesOverride,
+    })> items,
+    required Map<String, VerificationResult> initialCorrections,
+  }) {
+    final buf = StringBuffer();
+    buf.writeln('You are the Realism Director reviewing a batch of realism eval outputs for consistency.');
+    buf.writeln('For each eval kind below, the "raw" is the model\'s structured output for that eval.');
+    buf.writeln('Apply the same rules as single verification (scene-faithful deltas, no contradictions with narrative/pre-state, inertia, etc.).');
+    buf.writeln('Return ONLY a flat JSON object with keys = the evalKind and values = the corrected raw string for that kind (or the original if no change needed).');
+    buf.writeln('Example: {"relationship": "{...corrected...}", "emotional_state": "{...}"}');
+    buf.writeln();
+
+    for (final it in items) {
+      buf.writeln('--- EVAL: ${it.evalKind} ---');
+      buf.writeln('PROMPT USED:\n${it.promptText ?? ""}\n');
+      buf.writeln('SCENE / RECENT:\n${it.sceneResponse}\n');
+      buf.writeln('RAW OUTPUT:\n${it.rawOutput}\n');
+      if (initialCorrections[it.evalKind] != null) {
+        buf.writeln('INITIAL RULE-BASED CORRECTION (if any):\n${initialCorrections[it.evalKind]!.correctedRaw ?? it.rawOutput}\n');
+      }
+      buf.writeln('--- END ${it.evalKind} ---\n');
+    }
+
+    buf.writeln('Respond with ONLY the JSON object of corrections.');
+    return buf.toString();
   }
 
   _RuleResult _applyRuleChecks(
