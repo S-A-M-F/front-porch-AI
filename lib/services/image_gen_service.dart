@@ -1044,6 +1044,20 @@ class ImageGenService extends ChangeNotifier {
   /// Returns true if the model was successfully switched and confirmed ready.
   Future<bool> switchLocalModel(String baseUrl, String modelName) async {
     if (modelName.isEmpty) return false;
+    final isDrawThings =
+        _storage.imageGenSettings.imageGenBackend == 'drawthings';
+    if (isDrawThings) {
+      // Draw Things has no separate switch endpoint exposed via our gRPC CLI.
+      // The requested 'model' is passed per-generation inside the config dict
+      // (see _generateViaDrawThingsGrpc + DrawThingsGrpcService). Treat as
+      // immediate success so web API / legacy callers and the lastLoaded
+      // tracking continue to work without error.
+      debugPrint(
+        'ImageGen: switchLocalModel: DT backend — recording $modelName (sent at generate time; no pre-load RPC)',
+      );
+      _lastLoadedCheckpoint = modelName;
+      return true;
+    }
     // Step 1: unload current model (best-effort — Draw Things may ignore this)
     await unloadLocalModel(baseUrl);
     // Step 2: request the new checkpoint

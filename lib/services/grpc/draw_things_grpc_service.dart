@@ -240,9 +240,11 @@ class DrawThingsGrpcService {
             final models = raw.where((f) {
               final lower = f.toLowerCase();
               if (skip.any((k) => lower.contains(k))) return false;
-              return f.endsWith('.ckpt') ||
-                  f.endsWith('.safetensors') ||
-                  f.endsWith('.pt');
+              // Trust the Python CLI's skip list primarily.
+              // Include virtually everything that is not a known sidecar type.
+              // This makes the dropdown actually populate for users whose
+              // Draw Things reports bare names, .pth, paths, etc.
+              return true;
             }).toList();
 
             debugPrint(

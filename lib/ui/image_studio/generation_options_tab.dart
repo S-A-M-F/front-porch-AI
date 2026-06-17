@@ -99,11 +99,13 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
   }
 
   Future<void> _fetchLocalModels(String url) async {
-    if (url.isEmpty) return;
+    final st = Provider.of<StorageService>(context, listen: false);
+    final isDT = st.imageGenBackend == 'drawthings';
+    if (!isDT && url.isEmpty) return;
+    if (isDT && st.drawThingsGrpcHost.isEmpty) return;
     setState(() => _loadingLocalModels = true);
     final svc = Provider.of<ImageGenService>(context, listen: false);
-    final st = Provider.of<StorageService>(context, listen: false);
-    final ms = st.imageGenBackend == 'drawthings'
+    final ms = isDT
         ? await svc.fetchDrawThingsModels(url)
         : await svc.fetchA1111Models(url);
     if (mounted) {
@@ -148,7 +150,13 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
     final st = Provider.of<StorageService>(context, listen: false);
     final isDT = st.imageGenBackend == 'drawthings';
     String u = _localUrlController.text.trim();
-    if (isDT) u = u.isNotEmpty ? u : '127.0.0.1:7859';
+    if (isDT) {
+      final h = _dtHostController.text.trim();
+      final p = _dtPortController.text.trim();
+      final host = h.isNotEmpty ? h : st.drawThingsGrpcHost;
+      final port = p.isNotEmpty ? p : st.drawThingsGrpcPort.toString();
+      u = '$host:$port';
+    }
     if (u.isEmpty) return;
     setState(() {
       _testingConnection = true;
@@ -188,12 +196,10 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
     final m = st.imageGenModel;
     if (u.isEmpty || m.isEmpty) return;
     setState(() => _switchingModel = true);
-    if (st.imageGenBackend != 'drawthings') {
-      await Provider.of<ImageGenService>(
-        context,
-        listen: false,
-      ).switchLocalModel(u, m);
-    }
+    await Provider.of<ImageGenService>(
+      context,
+      listen: false,
+    ).switchLocalModel(u, m);
     if (mounted) {
       setState(() => _switchingModel = false);
     }
@@ -411,7 +417,7 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
           ),
           child: Text(
             isDT
-                ? 'Draw Things gRPC (port 7859). Test to list models.'
+                ? 'Draw Things gRPC (default port 7859). Test to list models. Selection used on next generation.'
                 : 'A1111 --api. Test to list/switch.',
             style: TextStyle(
               color: AppColors.textSecondary(context),
@@ -506,13 +512,31 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'Checkpoint Model',
-            style: TextStyle(
-              color: AppColors.textSecondary(context),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Text(
+                'Checkpoint Model',
+                style: TextStyle(
+                  color: AppColors.textSecondary(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (!_loadingLocalModels)
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+                  onPressed: () {
+                    final h = _dtHostController.text.trim();
+                    final p = _dtPortController.text.trim();
+                    final url = h.isNotEmpty ? '$h:$p' : st.drawThingsGrpcHost;
+                    _fetchLocalModels(url);
+                  },
+                  tooltip: 'Refresh model list',
+                ),
+            ],
           ),
           if (_loadingLocalModels)
             const Center(
@@ -525,56 +549,55 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
                 ),
               ),
             )
-          else if (_localModels.isEmpty)
-            Text(
-              'Test to list models.',
-              style: TextStyle(
-                color: AppColors.textTertiary(context),
-                fontSize: 10,
-              ),
-            )
           else
-            DropdownButtonFormField<String>(
-              initialValue: _localModels.contains(st.imageGenModel)
-                  ? st.imageGenModel
-                  : null,
-              dropdownColor: AppColors.surfaceContainerOf(context),
-              style: TextStyle(
-                color: AppColors.textPrimary(context),
-                fontSize: 11,
-              ),
-              isExpanded: true,
-              decoration: _deco(hint: 'Select'),
-              items: _localModels
-                  .map(
-                    (m) => DropdownMenuItem(
-                      value: m,
-                      child: Text(
-                        m,
-                        style: TextStyle(
-                          color: AppColors.textPrimary(context),
-                          fontSize: 11,
+            Builder(builder: (_) {
+              final dtModels = _localModels.isNotEmpty
+                  ? _localModels
+                  : (st.imageGenModel.isNotEmpty ? [st.imageGenModel] : <String>[]);
+              if (dtModels.isEmpty) {
+                return Text(
+                  'Test to list models.',
+                  style: TextStyle(
+                    color: AppColors.textTertiary(context),
+                    fontSize: 10,
+                  ),
+                );
+              }
+              return DropdownButtonFormField<String>(
+                key: ValueKey('dt-checkpoint-${st.imageGenModel}'),
+                initialValue: dtModels.contains(st.imageGenModel)
+                    ? st.imageGenModel
+                    : null,
+                dropdownColor: AppColors.surfaceContainerOf(context),
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 11,
+                ),
+                isExpanded: true,
+                decoration: _deco(hint: 'Select'),
+                items: dtModels
+                    .map(
+                      (m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(
+                          m,
+                          style: TextStyle(
+                            color: AppColors.textPrimary(context),
+                            fontSize: 11,
+                          ),
                         ),
                       ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) st.setImageGenModel(v);
-              },
-            ),
-          ElevatedButton(
-            onPressed: (_switchingModel || st.imageGenModel.isEmpty)
-                ? null
-                : _switchModel,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.cardOf(context),
-              foregroundColor: AppColors.textPrimary(context),
-            ),
-            child: const Text(
-              'Load Selected (DT)',
-              style: TextStyle(fontSize: 11),
-            ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) st.setImageGenModel(v);
+                },
+              );
+            }),
+          const SizedBox(height: 4),
+          Text(
+            'Selection is used automatically on the next generation.',
+            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 9),
           ),
         ] else ...[
           Text(
@@ -681,6 +704,7 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
             )
           else
             DropdownButtonFormField<String>(
+              key: ValueKey('a1111-checkpoint-${st.imageGenModel}'),
               initialValue: _localModels.contains(st.imageGenModel)
                   ? st.imageGenModel
                   : null,
