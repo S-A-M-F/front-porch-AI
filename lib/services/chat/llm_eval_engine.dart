@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -243,13 +244,11 @@ class LlmEvalEngine {
 
   /// Shared helper: fire a lightweight LLM eval call and return the raw response.
   ///
-  /// Always adds `}\n` as a stop sequence so the model halts the moment it
-  /// closes the JSON object, regardless of backend or model type.
-  /// Thinking models (Kimi 2.5, GLM 5) will still think freely — they produce
-  /// the `&lt;think&gt;` block, then output the JSON, then hit `}\n` and stop.
-  ///
-  /// (Post-0.9.8 clean port: constrained GBNF removed; rely on stop sequences
-  /// + regex post-processing for all Realism/Needs evals.)
+  /// Stop sequences include JSON-friendly terminators (}\n, ```) so models halt
+  /// promptly after emitting the expected structure for all Realism/Needs evals.
+  /// Safe for both local Kobold and remote (prevents run-on tokens that can lead
+  /// to empty/fragile parses). Thinking models still produce &lt;think&gt; freely before JSON.
+  /// (Post-0.9.8: rely on stops + regex; no GBNF.)
   Future<String?> fireLLMEval(
     String prompt, {
     void Function(String)? onChunk,
@@ -283,7 +282,7 @@ class LlmEvalEngine {
       topP: 0.5,
       xtcProbability: 0.0,
       reasoningEnabled: false,
-      stopSequences: [],
+      stopSequences: const ['}\n', '}\r\n', '```'],
       banEosToken: false,
       trimStop: true,
     );
@@ -380,7 +379,10 @@ class LlmEvalEngine {
   Future<String?> evaluateNeedsImpactCall(
     String responseText, {
     void Function(String)? onChunk,
-    int strength = 1, // 1-5; injected into the prompt so the model emits deltas at the user-requested magnitude on the *first* call (e.g. normal -3 becomes ~-15 at 5x). When Director authority is on, the verifier is also told the strength and corrects in the scaled space. The evaluator no longer post-multiplies after Director (avoids double-scaling a -15 into -75).
+    int strength =
+        1, // 1-5; injected into the prompt so the model emits deltas at the user-requested magnitude on the *first* call (e.g. normal -3 becomes ~-15 at 5x). When Director authority is on, the verifier is also told the strength and corrects in the scaled space. The evaluator no longer post-multiplies after Director (avoids double-scaling a -15 into -75).
+    String? userCritique,
+    Map<String, int>? previousDeltas,
   }) async {
     if (!getRealismEnabled()) return null;
     if (getActiveCharacter() == null && getActiveGroup() == null) return null;
@@ -408,29 +410,61 @@ class LlmEvalEngine {
         ? 'Current physical position/stance of $charName: "${relationshipService.spatialStance}". '
         : '';
 
-    final prompt =
-        'You are evaluating the effects of a roleplay scene on $charName\'s needs.\n\n'
-        '$personalityInjection'
-        '$currentStance'
-        'RESPONSE (the scene that just happened):\n$responseText\n\n'
-        'Recent exchange for context:\n$recent\n\n'
-        'Analyze what actually occurred in the scene (actions, physical descriptions, dialogue, power dynamics, emotional tone) and determine the *net signed effects* on each of $charName\'s needs caused by this scene, on top of normal decay.\n\n'
-        'This is immersive erotic roleplay. Detailed physical and psychological descriptions matter: self-touch, bodily arousal states ("charging", "aching", "swollen", "leaking through fabric"), fluids, dominance, submission, "choosing", begging, power exchange, and explicit narration of what the character is doing or feeling should influence the relevant needs (fun, social, comfort, hygiene, energy, etc.) in natural, grounded ways.\n\n'
-        'Be reasonable and faithful to the written text. Do not invent events that are not described.\n\n'
-        'Report *net signed effects* (deltas) on each need.\n\n'
-        'User has set Needs delta strength to ' + strength.toString() + 'x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x). The Director (if reviewing) also receives this strength and will correct at the requested scale.\n\n'
-        'The optional Director/Verifier (when enabled with authority on needs) will correct you if your structured output does not match the actual narrative you just wrote.\n\n'
-        'Respond with ONLY a flat JSON object:\n'
-        '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
-        '"intensity": 1-10, '
-        '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
-        '"reason": "<brief grounded reason for the deltas>", '
-        '"is_climax": true/false }\n'
-        'If the scene had little or no notable effect on needs, use small numbers or zeros and a short reason.';
+    final String prompt;
+    if (userCritique != null && userCritique.trim().isNotEmpty) {
+      // B: unified rich correction prompt (no duplication of context logic)
+      final prev = jsonEncode(previousDeltas ?? {});
+      prompt =
+          'You are the Realism Director correcting the previous Needs deltas for a roleplay scene.\n\n'
+          '$personalityInjection'
+          '$currentStance'
+          'RESPONSE (the scene that just happened):\n$responseText\n\n'
+          'Recent exchange for context:\n$recent\n\n'
+          'This is immersive erotic roleplay. Detailed physical and psychological descriptions matter: self-touch, bodily arousal states, fluids, dominance, submission, power exchange, and explicit narration of actions should influence needs (fun, social, comfort, hygiene, energy, hunger, bladder) in natural grounded ways.\n\n'
+          'Be reasonable and faithful to the written text. Do not invent events that are not described.\n\n'
+          'PREVIOUS DELTAS:\n$prev\n\n'
+          'USER CRITIQUE (The user noticed an issue with the deltas that MUST be fixed):\n"$userCritique"\n\n'
+          'Analyze what actually occurred and output a corrected set of net signed effects (deltas) on each need.\n\n'
+          'User has set Needs delta strength to ${strength}x. Emit deltas with magnitude scaled by this factor.\n\n'
+          'Even if the critique suggests little/no change, you MUST output the complete flat JSON with all seven _delta keys (0 is valid). Do not omit fields.\n\n'
+          'Examples of valid correction output:\n'
+          '{"hunger_delta": 8, "energy_delta": 0, "hygiene_delta": -2, "fun_delta": 5, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 1, "reason": "ate snack per critique", "is_climax": false}\n'
+          '{"hunger_delta": 0, "energy_delta": 0, "hygiene_delta": 0, "fun_delta": 0, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 0, "reason": "no notable need impact", "is_climax": false}\n\n'
+          'Respond with ONLY a flat JSON object:\n'
+          '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
+          '"intensity": 1-10, '
+          '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
+          '"reason": "<brief grounded reason for the deltas incorporating the critique>", '
+          '"is_climax": true/false }';
+    } else {
+      prompt =
+          'You are evaluating the effects of a roleplay scene on $charName\'s needs.\n\n'
+              '$personalityInjection'
+              '$currentStance'
+              'RESPONSE (the scene that just happened):\n$responseText\n\n'
+              'Recent exchange for context:\n$recent\n\n'
+              'Analyze what actually occurred in the scene (actions, physical descriptions, dialogue, power dynamics, emotional tone) and determine the *net signed effects* on each of $charName\'s needs caused by this scene, on top of normal decay.\n\n'
+              'This is immersive erotic roleplay. Detailed physical and psychological descriptions matter: self-touch, bodily arousal states ("charging", "aching", "swollen", "leaking through fabric"), fluids, dominance, submission, "choosing", begging, power exchange, and explicit narration of what the character is doing or feeling should influence the relevant needs (fun, social, comfort, hygiene, energy, etc.) in natural, grounded ways.\n\n'
+              'Be reasonable and faithful to the written text. Do not invent events that are not described.\n\n'
+              'Report *net signed effects* (deltas) on each need.\n\n'
+              'User has set Needs delta strength to ' +
+          strength.toString() +
+          'x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x). The Director (if reviewing) also receives this strength and will correct at the requested scale.\n\n'
+              'The optional Director/Verifier (when enabled with authority on needs) will correct you if your structured output does not match the actual narrative you just wrote.\n\n'
+              'Respond with ONLY a flat JSON object:\n'
+              '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
+              '"intensity": 1-10, '
+              '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
+              '"reason": "<brief grounded reason for the deltas>", '
+              '"is_climax": true/false }\n'
+              'If the scene had little or no notable effect on needs, use small numbers or zeros and a short reason.';
+    }
 
     try {
       debugPrint(
-        '[Realism:Needs] Running consolidated impact eval (via engine)...',
+        userCritique != null
+            ? '[Realism:Needs] Running manual reprocess impact eval (via engine)...'
+            : '[Realism:Needs] Running consolidated impact eval (via engine)...',
       );
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
       if (raw == null) return null;

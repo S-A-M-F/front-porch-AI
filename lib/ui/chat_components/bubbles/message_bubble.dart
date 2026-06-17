@@ -1464,50 +1464,153 @@ class _MessageBubbleState extends State<MessageBubble> {
               children: _spaced(needsChipList, 8),
             ),
           ),
-          
-          // Row 3: Manual Reprocess Button
-          if (widget.chatService != null && index == widget.chatService!.messages.length - 1 && !message.isUser) ...[
-            const SizedBox(height: 6),
-            Tooltip(
-              message: 'Reprocess Needs with critique',
-              preferBelow: false,
-              textStyle: const TextStyle(fontSize: 12, color: Colors.white),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1F2937),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _showReprocessNeedsDialog(context, index),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.tealAccent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.4)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.rate_review, size: 12, color: Colors.tealAccent),
-                        SizedBox(width: 6),
-                        Text(
-                          'Manual Reprocess',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.tealAccent,
+
+          // Row 3: Manual Reprocess / Revert buttons (only for last non-user msg with usable needs state)
+          if (widget.chatService != null &&
+              index == widget.chatService!.messages.length - 1 &&
+              !message.isUser &&
+              !widget.chatService!.isGenerating) ...[
+            // A guard: only show reprocess affordance if this msg carries realism_state['needs']
+            if (() {
+              final m = message.activeMetadata;
+              final rs = m?['realism_state'];
+              return rs is Map && rs['needs'] != null;
+            }()) ...[
+              const SizedBox(height: 6),
+              Tooltip(
+                message: 'Reprocess Needs with critique',
+                preferBelow: false,
+                textStyle: const TextStyle(fontSize: 12, color: Colors.white),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2937),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _showReprocessNeedsDialog(context, index),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.resolve(
+                          context,
+                          AppColors.optionalAccent.withValues(alpha: 0.15),
+                          AppColors.optionalAccent.withValues(alpha: 0.15),
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.resolve(
+                            context,
+                            AppColors.optionalAccent.withValues(alpha: 0.4),
+                            AppColors.optionalAccent.withValues(alpha: 0.4),
                           ),
                         ),
-                      ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.rate_review,
+                            size: 12,
+                            color: AppColors.optionalAccent,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Manual Reprocess',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.optionalAccent,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
+            // D: Revert pill shown only when pre-reprocess stash exists on this (last) msg
+            if (message.activeMetadata != null &&
+                (message.activeMetadata!['needs_deltas_pre_reprocess']
+                    is Map)) ...[
+              const SizedBox(height: 4),
+              Tooltip(
+                message:
+                    'Restore previous Needs deltas and live state before the last reprocess',
+                preferBelow: false,
+                textStyle: const TextStyle(fontSize: 12, color: Colors.white),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2937),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () async {
+                      final chat = widget.chatService;
+                      if (chat != null) {
+                        try {
+                          await chat.revertNeedsReprocess(index);
+                        } catch (e) {
+                          debugPrint('[Realism:Needs] revert error: $e');
+                        }
+                        if (mounted) {
+                          // mounted guard present for safety after async revert
+                        }
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.resolve(
+                          context,
+                          AppColors.optionalAccent.withValues(alpha: 0.12),
+                          AppColors.optionalAccent.withValues(alpha: 0.12),
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.resolve(
+                            context,
+                            AppColors.optionalAccent.withValues(alpha: 0.35),
+                            AppColors.optionalAccent.withValues(alpha: 0.35),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.undo,
+                            size: 11,
+                            color: AppColors.optionalAccent,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Revert reprocess',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.optionalAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -1517,6 +1620,8 @@ class _MessageBubbleState extends State<MessageBubble> {
   void _showReprocessNeedsDialog(BuildContext context, int index) {
     final chatService = Provider.of<ChatService>(context, listen: false);
     final controller = TextEditingController();
+    // Capture for snack after dialog pop (A: user feedback on success/fail)
+    final messenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1527,7 +1632,10 @@ class _MessageBubbleState extends State<MessageBubble> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Enter your critique to correct the Needs Simulation deltas. The Realism Director will re-evaluate the scene based on this input.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              const Text(
+                'Enter your critique to correct the Needs Simulation deltas. The Realism Director will re-evaluate the scene based on this input.',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
               const SizedBox(height: 12),
               AppTextField(
                 controller: controller,
@@ -1535,7 +1643,8 @@ class _MessageBubbleState extends State<MessageBubble> {
                 minLines: 2,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'e.g., The character ate a granola bar and an energy drink. Hunger and energy should improve.',
+                  hintText:
+                      'e.g., The character ate a granola bar and an energy drink. Hunger and energy should improve.',
                   hintStyle: const TextStyle(color: Colors.white38),
                   filled: true,
                   fillColor: const Color(0xFF374151),
@@ -1551,17 +1660,47 @@ class _MessageBubbleState extends State<MessageBubble> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textTertiary(context))),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textTertiary(context)),
+            ),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.resolve(context, Colors.teal, const Color(0xFF0D9488))),
-            onPressed: () {
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.resolve(
+                context,
+                Colors.teal,
+                const Color(0xFF0D9488),
+              ),
+            ),
+            onPressed: () async {
+              final text = controller.text.trim();
               Navigator.of(context).pop();
-              if (controller.text.trim().isNotEmpty) {
-                chatService.manualReprocessNeeds(index, controller.text.trim());
+              if (text.isNotEmpty) {
+                bool success = false;
+                try {
+                  success = await chatService.manualReprocessNeeds(index, text);
+                } catch (e) {
+                  debugPrint('[Realism:Needs] reprocess error: $e');
+                }
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success
+                            ? 'Needs deltas reprocessed with your critique.'
+                            : 'Reprocess received no response from the model. Original deltas preserved.',
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
               }
             },
-            child: const Text('Reprocess', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Reprocess',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

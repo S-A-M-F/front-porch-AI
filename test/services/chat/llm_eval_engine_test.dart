@@ -274,6 +274,92 @@ void main() {
       // thins exercised via calls above + key suites
     });
 
+    test(
+      'evaluateNeedsImpactCall critique branch captures GenerationParams (stops + prompt phrases)',
+      () async {
+        List<GenerationParams> captured = [];
+        final e = LlmEvalEngine(
+          getActiveCharacter: () =>
+              CharacterCard(name: 'testchar', personality: 'friendly'),
+          getActiveGroup: () => null,
+          getIsObserverMode: () => false,
+          getUserName: () => 'User',
+          getRealismEnabled: () => true,
+          getMessages: () => const [],
+          getLlmService: () => _FakeLlmService((p) {
+            captured.add(p);
+            return Stream.value('{"hunger_delta": 3}');
+          }),
+          getIsLocal: () => false,
+          getKoboldService: () => null,
+          reconnectIfAlive: () async {},
+          ensureServerIdle: () async {},
+          getIsCancellingRealismEval: () => false,
+          getRealismEvalCancelled: () => false,
+          relationshipService: RelationshipService(
+            onNotify: () {},
+            onSaveChat: () async {},
+            getIsGroupActive: () => false,
+            getObserverMode: () => false,
+            getGroupCharacterCount: () => 0,
+            getShouldTrackInterCharacterRelationships: () => false,
+            getCurrentSpeakerIdForRealism: () => '',
+            getCurrentGroupMemberIds: () => {},
+            getOtherGroupMemberIds: (_) => [],
+            getOtherGroupMemberIdToLowerName: (_) => {},
+            getRecentExchangeLowerText: () => '',
+            getMessageCount: () => 0,
+            getIsGroupRealismActive: () => false,
+            getGroupAffectionScore: (_, {defaultValue = 0}) => 0,
+            setGroupAffectionScore: (_, __) {},
+            getGroupLongTermScore: (_, {defaultValue = 0}) => 0,
+            setGroupLongTermScore: (_, __) {},
+            getGroupTrustLevel: (_, {defaultValue = 0}) => 0,
+            setGroupTrustLevel: (_, __) {},
+            getGroupFixation: (_, {defaultValue = ''}) => '',
+            setGroupFixation: (_, __) {},
+            getGroupFixationLifespan: (_, {defaultValue = 0}) => 0,
+            setGroupFixationLifespan: (_, __) {},
+            getGroupRelationshipTier: (_, {defaultValue = 0}) => 0,
+            setGroupRelationshipTier: (_, __) {},
+            getGroupLongTermTier: (_, {defaultValue = 0}) => 0,
+            setGroupLongTermTier: (_, __) {},
+            getGroupSpatialStance: (_, {defaultValue = ''}) => '',
+            setGroupSpatialStance: (_, __) {},
+            getGroupInterCharacterRelationships: (_) => const {},
+            setGroupInterCharacterRelationships: (_, __) {},
+          ),
+          getPendingRealismMetadata: () => null,
+          setPendingRealismMetadata: (_) {},
+          captureRealismState: ({preTurn}) => {},
+          getCharacterEmotion: () => '',
+          setCharacterEmotion: (_) {},
+          getEmotionIntensity: () => '',
+          setEmotionIntensity: (_) {},
+        );
+        // normal
+        await e.evaluateNeedsImpactCall('scene', strength: 1);
+        // critique branch
+        await e.evaluateNeedsImpactCall(
+          'scene',
+          strength: 1,
+          userCritique: 'fix hunger',
+          previousDeltas: {'hunger': 0},
+        );
+        expect(captured.isNotEmpty, true);
+        final last = captured.last;
+        expect(last.stopSequences, contains('}\n'));
+        expect(last.stopSequences, contains('```'));
+        expect(last.prompt, contains('USER CRITIQUE'));
+        expect(
+          last.prompt,
+          contains(
+            'MUST output the complete flat JSON with all seven _delta keys',
+          ),
+        );
+      },
+    );
+
     // (error paths test for objective excised to step 11 dedicated as part of task.)
   });
 }

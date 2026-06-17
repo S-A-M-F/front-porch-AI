@@ -43,6 +43,7 @@ import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/group_member.dart';
 import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/models/needs_impact.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
@@ -4800,22 +4801,26 @@ class ChatService extends ChangeNotifier {
     await _generateResponse(GenerationMode.normal);
   }
 
-  Future<void> manualReprocessNeeds(int index, String critique) async {
-    if (index < 0 || index >= _messages.length) return;
-    if (index != _messages.length - 1) return;
+  Future<bool> manualReprocessNeeds(int index, String critique) async {
+    if (index < 0 || index >= _messages.length) return false;
+    if (_isGenerating) return false;
 
     final msg = _messages[index];
-    if (msg.isUser || msg.sender == 'System') return;
+    if (msg.isUser || msg.sender == 'System') return false;
 
     final meta = msg.activeMetadata;
-    if (meta == null || !meta.containsKey('realism_state')) return;
+    if (meta == null || !meta.containsKey('realism_state')) return false;
 
     final preState = meta['realism_state'];
-    if (preState is! Map || preState['needs'] == null) return;
+    if (preState is! Map || preState['needs'] == null) return false;
+
+    // A: entry guard (usable needs data) already passed; button in UI also checks now.
 
     final oldNeedsDeltas = <String, int>{};
+    Map<String, dynamic>? originalNeedsDeltasForStash;
     if (meta.containsKey('needs_deltas')) {
       final oldMap = meta['needs_deltas'] as Map;
+      originalNeedsDeltasForStash = Map<String, dynamic>.from(oldMap);
       for (final k in oldMap.keys) {
         if (oldMap[k] is Map && oldMap[k]['delta'] is num) {
           oldNeedsDeltas[k.toString()] = (oldMap[k]['delta'] as num).toInt();
@@ -4823,27 +4828,108 @@ class ChatService extends ChangeNotifier {
       }
     }
 
+    // D: stash original deltas under pre_reprocess key (before any commit)
+    final hasPrior = originalNeedsDeltasForStash != null;
+
+    final bool isLast = index == _messages.length - 1;
+    final bool isGroupNonObs = _activeGroup != null && !_observerMode;
+    String? sid;
+    CharacterCard? targetSpeakerCard;
+    if (isGroupNonObs) {
+      if (_groupCharacters.isEmpty) return false;
+      targetSpeakerCard = _groupCharacters.firstWhere(
+        (c) => c.name == msg.sender,
+        orElse: () => _groupCharacters.first,
+      );
+      sid = _getCharacterIdFromCard(targetSpeakerCard);
+    }
+
+    // Snapshot the *active* live state *before* any historical/target prepare (for strict historical meta-only)
+    final Map<String, int> preOpLive;
+    String? preOpActiveSid;
+    CharacterCard? preActiveChar;
+    if (isGroupNonObs) {
+      preOpActiveSid = _getCurrentSpeakerIdForRealism();
+      preOpLive = Map<String, int>.from(_getGroupNeeds(preOpActiveSid));
+      preActiveChar = _activeCharacter;
+    } else {
+      preOpLive = Map<String, int>.from(_needsSimulation.vector);
+    }
+
+    // Snapshot for rollback (target's at click time; used for last + compute baseline)
+    final Map<String, int> livePreClick;
+    if (isGroupNonObs && sid != null && sid.isNotEmpty) {
+      livePreClick = Map<String, int>.from(_getGroupNeeds(sid));
+    } else {
+      livePreClick = Map<String, int>.from(_needsSimulation.vector);
+    }
+
+    // Group impersonation dance + load for prompt fidelity (personality/stance via getActiveCharacter in evaluate) + prepare scalar to msg pre.
+    // For !isLast we still dance (to get correct prompt for that speaker's critique) but will strictly rollback live after.
+    if (isGroupNonObs && sid != null && sid.isNotEmpty) {
+      if (targetSpeakerCard != null) {
+        _activeCharacter = targetSpeakerCard;
+      }
+      _loadGroupRealismIntoScalars(sid);
+    }
     _needsSimulation.restoreFromSnapshot(preState['needs']);
     final Map<String, int> restoredPreVector = Map<String, int>.from(
       _needsSimulation.vector,
     );
 
-    _isVerifyingRealism = true;
-    _verificationPass = 1;
-    _verificationMaxPasses = 1;
-    notifyListeners();
+    if (isLast) {
+      _isVerifyingRealism = true;
+      _verificationPass = 1;
+      _verificationMaxPasses = 1;
+      notifyListeners();
+    }
 
     _pendingRealismMetadata = null;
 
-    await _needsImpactEvaluator.reprocessWithUserCritique(
-      msg.displayText,
-      oldNeedsDeltas,
-      critique,
-    );
+    final bool reprocessOk = await _needsImpactEvaluator
+        .reprocessWithUserCritique(msg.displayText, oldNeedsDeltas, critique);
 
+    if (!reprocessOk) {
+      // A: non-destructive: rollback to pre-op active live (historical leaves current active untouched)
+      if (isGroupNonObs &&
+          preOpActiveSid != null &&
+          preOpActiveSid.isNotEmpty) {
+        _loadGroupRealismIntoScalars(preOpActiveSid);
+      } else if (isGroupNonObs && sid != null && sid.isNotEmpty) {
+        _setGroupNeeds(sid, livePreClick); // fallback
+      } else {
+        _needsSimulation.restoreFromSnapshot({'vector': preOpLive});
+      }
+      if (preActiveChar != null) {
+        _activeCharacter = preActiveChar;
+      }
+      if (isLast) {
+        _isVerifyingRealism = false;
+        _pendingRealismMetadata = null;
+        await _saveChat();
+        notifyListeners();
+      } else {
+        _pendingRealismMetadata = null;
+      }
+      return false;
+    }
+
+    // Success path: commit metadata always (for the target msg)
     final updatedMeta = Map<String, dynamic>.from(meta);
-    updatedMeta['needs_deltas'] = _needsSimulation
-        .computeNeedsDeltasWithReasons(restoredPreVector);
+    final computed = _needsSimulation.computeNeedsDeltasWithReasons(
+      restoredPreVector,
+    );
+    updatedMeta['needs_deltas'] = computed;
+
+    if (hasPrior) {
+      updatedMeta['needs_deltas_pre_reprocess'] = originalNeedsDeltasForStash;
+    }
+    // D: record critique in verif meta (for history/tooltip)
+    final verifMeta =
+        (updatedMeta[RealismVerification.kMetaKey] as Map<String, dynamic>?) ??
+        <String, dynamic>{};
+    verifMeta['reprocess_critique'] = critique;
+    updatedMeta[RealismVerification.kMetaKey] = verifMeta;
 
     if (_pendingRealismMetadata != null) {
       for (final e in _pendingRealismMetadata!.entries) {
@@ -4853,10 +4939,127 @@ class ChatService extends ChangeNotifier {
 
     msg.swipeMetadata[msg.swipeIndex] = updatedMeta;
 
-    _isVerifyingRealism = false;
-    _pendingRealismMetadata = null;
+    if (isLast) {
+      // Persist live only for current last speaker
+      if (isGroupNonObs && sid != null && sid.isNotEmpty) {
+        _saveScalarsIntoGroupRealism(sid);
+      }
+      _isVerifyingRealism = false;
+      _pendingRealismMetadata = null;
+    } else {
+      // Historical: meta updated; strictly no live/group mutation left behind.
+      // Transient onSaveChat may fire from temp apply (critique path); scalars rolled back; _saveChat here is only for target msg metadata.
+      if (isGroupNonObs &&
+          preOpActiveSid != null &&
+          preOpActiveSid.isNotEmpty) {
+        _loadGroupRealismIntoScalars(preOpActiveSid);
+      } else if (!isGroupNonObs) {
+        _needsSimulation.restoreFromSnapshot({'vector': preOpLive});
+      }
+      if (preActiveChar != null) {
+        _activeCharacter = preActiveChar;
+      }
+      _pendingRealismMetadata = null;
+    }
     await _saveChat();
     notifyListeners();
+    return true;
+  }
+
+  /// Revert a prior manual reprocess on the given message.
+  /// Restores the stashed 'needs_deltas_pre_reprocess' into 'needs_deltas' (with reasons),
+  /// rewinds live scalars *only if last* (historical: metadata-only update, live scalars/group untouched).
+  /// Safe for 1:1 and group (speaker via msg.sender + dance on last).
+  /// Returns true on success.
+  Future<bool> revertNeedsReprocess(int index) async {
+    if (index < 0 || index >= _messages.length) return false;
+    if (_isGenerating) return false;
+    final msg = _messages[index];
+    final meta = msg.activeMetadata;
+    if (meta == null || !meta.containsKey('needs_deltas_pre_reprocess')) {
+      return false;
+    }
+    final preState = meta['realism_state'];
+    if (preState is! Map || preState['needs'] == null) return false;
+
+    final stashedDeltasMap = meta['needs_deltas_pre_reprocess'] as Map;
+    final oldDeltas = <String, int>{};
+    stashedDeltasMap.forEach((k, v) {
+      if (v is Map && v['delta'] is num) {
+        oldDeltas[k.toString()] = (v['delta'] as num).toInt();
+      }
+    });
+
+    final bool isLast = index == _messages.length - 1;
+    final bool isGroupNonObs = _activeGroup != null && !_observerMode;
+    String? sid;
+    CharacterCard? targetSpeakerCard;
+    if (isGroupNonObs) {
+      if (_groupCharacters.isEmpty) return false;
+      targetSpeakerCard = _groupCharacters.firstWhere(
+        (c) => c.name == msg.sender,
+        orElse: () => _groupCharacters.first,
+      );
+      sid = _getCharacterIdFromCard(targetSpeakerCard);
+    }
+
+    // Snapshot pre-op active for strict !isLast rollback (no live mutation)
+    CharacterCard? preActiveChar;
+    Map<String, int> preOpLive = {};
+    String? preOpSid;
+    if (isGroupNonObs) {
+      preOpSid = _getCurrentSpeakerIdForRealism();
+      preOpLive = Map<String, int>.from(_getGroupNeeds(preOpSid));
+      preActiveChar = _activeCharacter;
+    } else {
+      preOpLive = Map<String, int>.from(_needsSimulation.vector);
+    }
+
+    // Dance + prepare only if we will keep the effect (isLast); for historical we temp dance but rollback
+    if (isGroupNonObs && sid != null && sid.isNotEmpty) {
+      if (targetSpeakerCard != null) _activeCharacter = targetSpeakerCard;
+      _loadGroupRealismIntoScalars(sid);
+    }
+    _needsSimulation.restoreFromSnapshot(preState['needs'] as Map);
+
+    if (oldDeltas.isNotEmpty) {
+      String? reasonToRestore;
+      final values = (stashedDeltasMap as Map?)?.values ?? const [];
+      for (final v in values) {
+        if (v is Map &&
+            v['reason'] is String &&
+            (v['reason'] as String).isNotEmpty) {
+          reasonToRestore = v['reason'] as String;
+          break;
+        }
+      }
+      _needsSimulation.applySceneImpact(
+        NeedsImpact(deltas: oldDeltas, reason: reasonToRestore),
+      );
+    }
+
+    final updated = Map<String, dynamic>.from(meta);
+    updated['needs_deltas'] = stashedDeltasMap;
+    updated.remove('needs_deltas_pre_reprocess');
+    msg.swipeMetadata[msg.swipeIndex] = updated;
+
+    if (isLast) {
+      if (isGroupNonObs && sid != null && sid.isNotEmpty) {
+        _saveScalarsIntoGroupRealism(sid);
+      }
+    } else {
+      // Historical meta-only: rollback live + char, do not persist to group for this op
+      if (isGroupNonObs && preOpSid != null && preOpSid.isNotEmpty) {
+        _loadGroupRealismIntoScalars(preOpSid);
+      } else if (!isGroupNonObs) {
+        _needsSimulation.restoreFromSnapshot({'vector': preOpLive});
+      }
+      if (preActiveChar != null) _activeCharacter = preActiveChar;
+    }
+
+    await _saveChat();
+    notifyListeners();
+    return true;
   }
 
   Future<void> regenerateLastMessage() async {
