@@ -1083,11 +1083,14 @@ class ChatService extends ChangeNotifier {
   // try { consolidated=jsonDecode, cleaned=where _isValid, debug before→after, update with cleaned } catch fallback truncate).
   // Cadence/flag/counter/periodic orchestration / enabled / sequence / call sites / load/save of transients stay thin
   // in god per plan ("thin delegation here; full fact extraction in step 13").
+  // The facts cadence now uses its dedicated _userMessagesSinceLastPeriodicEval vs autoPersonaInterval
+  // (god thin coordinator decides; leaf has no cadence logic).
   // God late final (after _summaryService) + thins/delegates at *every* prior call site (the one in
   // _runPeriodicEvalsInSequence and the guard/flag use) with *full excision* of the moved bodies from god.
   // 0 @Deprecated shims. 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]' lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final; +1 late final + thins/calls + reset comment syncs only).
   // Stateless/prompt-only (no owned reset/seed/load state for processing — god owns the scalars/flags/cadence; no reset calls needed on leaf).
   // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites (full prior+current list + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + realism_verification (stateless or prompt-only; no reset calls needed) + "incomplete zeroing... now complete (see CLAUDE.md)"; both startNew branches explicit; cross-refs e.g. setActiveCharacter:1572).
+  // The two periodic cadence counters (_userMessagesSinceLastPeriodicEval for facts, _userMessagesSinceLastEvolution for evolution) are zeroed at every one of these sites (in addition to the flags) to keep independent schedules in sync after chat switches / 0-session / group entry. "incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)" covers the evolution counter too.
   // 1:1 vs group parity for fact extraction (rejection of current+group char names must work identically; dispatch preserved via cbs; facts are user-global but context for extraction/rejection is chat-specific).
   // aug/integration tests receive *only* qualified passive notes in headers/comments (exact precedent phrasing from step 12: "aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent)"); no leaf-specific logic edits.
   // Anti-accumulation/dead-code audit (explicit greps of affected methods in god; no new _Fact/*Fact/ExtractFact privates in god; deletion of moved + any dead/vestigial as part of task).
@@ -1133,7 +1136,9 @@ class ChatService extends ChangeNotifier {
   // + group per-char counts + LLM for traits + status/error.
   // Periodic coordination / enabled / trigger call sites / load/save of evolved scalars/maps
   // stay thin in god ("thin delegation here; full character evolution in step 14").
-  // God late final (after _factExtraction) + thins/delegates at *every* prior call site for
+  // Cadence decision (own _userMessagesSinceLastEvolution counter vs evolutionInterval) lives
+  // in the god _maybeRunPeriodicEvals thin coordinator (plus the run sequence thin); evolution
+  // leaf is purely trigger/extract/LLM/persist/layering. God late final (after _factExtraction) + thins/delegates at *every* prior call site for
   // trigger/manual/getEffective* (full excision of moved bodies), 0 @Deprecated shims,
   // 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]'
   // lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final;
@@ -1145,6 +1150,7 @@ class ChatService extends ChangeNotifier {
   // + "incomplete zeroing... now complete (see CLAUDE.md)"
   // + *both* startNewChat branches explicit + cross-refs e.g. setActiveCharacter:1572).
   // Explicit _isEvolvingCharacter=false + _evolutionStatus='' + _evolutionError='' (modeled on _isExtractingFacts) added at 10+ sites + decl + startNew both + common in fix round to make "now complete" hold in *code* (not just comments); maps/counts were already present.
+  // The dedicated _userMessagesSinceLastEvolution cadence counter (vs evolutionInterval) + the facts one are zeroed at the exact same sites (and both startNew) for cadence hygiene: "incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)" applies to the evolution schedule counter as well.
   // 1:1 vs group parity for evolution (per-char counts, effective personality/scenario layering,
   // trigger behavior must be identical whether 1:1 or group per-speaker; dispatch preserved
   // via cbs + god's impersonation dance where needed for target).
@@ -2149,12 +2155,13 @@ class ChatService extends ChangeNotifier {
       _isCheckingCompletion =
           false; // secondary objective flag zero on setActiveCharacter main path (incomplete zeroing hygiene; keep reset blocks)
       _userMessagesSinceLastPeriodicEval = 0;
+      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); fact_extraction)
       _isEvolvingCharacter = false;
       _evolutionStatus = '';
       _evolutionError =
-          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists + " ; no extra zero code, live read; now complete for this secondary config too)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"
+          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists + " ; no extra zero code, live read; now complete for this secondary config too)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete) + evolution cadence counter (_userMessagesSinceLastEvolution vs evolutionInterval) also zeroed here for independent schedule hygiene"
       debugPrint(
         '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
       );
@@ -2259,6 +2266,7 @@ class ChatService extends ChangeNotifier {
         _isSummaryGenerating =
             false; // secondary zero in empty subpath of setActiveCharacter (incomplete zeroing... now complete (see CLAUDE.md))
         _userMessagesSinceLastPeriodicEval = 0;
+        _userMessagesSinceLastEvolution = 0;
         _isExtractingFacts =
             false; // secondary fact flag + counter zero in empty subpath of setActiveCharacter (incomplete zeroing ... now complete; fact_extraction)
         _isEvolvingCharacter = false;
@@ -2426,8 +2434,13 @@ class ChatService extends ChangeNotifier {
         if (_needsSimEnabled) {
           // Seed from group definition's per-char needs baselines (falls back to 80 when absent).
           final defaults = <String, int>{
-            'hunger': 80, 'bladder': 80, 'energy': 80, 'social': 80,
-            'fun': 80, 'hygiene': 80, 'comfort': 80,
+            'hunger': 80,
+            'bladder': 80,
+            'energy': 80,
+            'social': 80,
+            'fun': 80,
+            'hygiene': 80,
+            'comfort': 80,
           };
           _needsSimulation.initializeFreshWithDefaults(defaults);
         }
@@ -2455,6 +2468,7 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // secondary flag zero for summary_service (stateless/prompt-only; see incomplete zeroing ... now complete + keep-sync lists)
     _userMessagesSinceLastPeriodicEval = 0;
+    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero on group fresh entry (incomplete zeroing ... now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -2564,10 +2578,12 @@ class ChatService extends ChangeNotifier {
     // round-robin order (the members table has no explicit sort column), so we
     // insert in exactly that order.
     bool hasEntrance(CharacterCard c) =>
-        (entrances[_getCharacterIdFromCard(c)]?.text.trim().isNotEmpty) ?? false;
+        (entrances[_getCharacterIdFromCard(c)]?.text.trim().isNotEmpty) ??
+        false;
     final entranceArrivals = additionalCharacters.where(hasEntrance).toList();
-    final silentArrivals =
-        additionalCharacters.where((c) => !hasEntrance(c)).toList();
+    final silentArrivals = additionalCharacters
+        .where((c) => !hasEntrance(c))
+        .toList();
     final orderedArrivals = [...entranceArrivals, ...silentArrivals];
 
     // Decoupled model: ensure members exist for the original 1:1 character
@@ -2683,7 +2699,8 @@ class ChatService extends ChangeNotifier {
                 _entranceDirective = null; // don't leak into a later turn
                 _messages.add(
                   ChatMessage(
-                    text: '⚠ ${resolved.name}\'s entrance could not be generated.',
+                    text:
+                        '⚠ ${resolved.name}\'s entrance could not be generated.',
                     sender: 'System',
                     isUser: false,
                   ),
@@ -3248,6 +3265,7 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero in _loadLast empty (0-session for summary flag)
       _userMessagesSinceLastPeriodicEval = 0;
+      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadLast empty early return (0-session path hygiene; fact_extraction)
       _isEvolvingCharacter = false;
@@ -3376,6 +3394,7 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // secondary flag zero for summary_service (stateless/prompt-only; incomplete zeroing ... now complete)
     _userMessagesSinceLastPeriodicEval = 0;
+    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero in _loadLast loaded path (incomplete zeroing ... now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -3603,6 +3622,7 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero for flag on loadSession loaded (symmetric)
       _userMessagesSinceLastPeriodicEval = 0;
+      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; fact_extraction)
       _isEvolvingCharacter = false;
@@ -3797,6 +3817,7 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // zero secondary flag on fork (new branch hygiene, matches summary scalar reset)
     _userMessagesSinceLastPeriodicEval = 0;
+    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero on fork (new branch hygiene + incomplete zeroing now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -3984,6 +4005,7 @@ class ChatService extends ChangeNotifier {
     _isCheckingCompletion =
         false; // see decl + keep reset blocks (incomplete zeroing... now complete (see CLAUDE.md); explicit in both startNew branches)
     _userMessagesSinceLastPeriodicEval = 0;
+    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // explicit secondary fact flag + counter zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -4144,6 +4166,7 @@ class ChatService extends ChangeNotifier {
         _isSummaryGenerating =
             false; // explicit secondary zero in startNew non-ext/group/0-session path (both branches + now complete for summary flag too)
         _userMessagesSinceLastPeriodicEval = 0;
+        _userMessagesSinceLastEvolution = 0;
         _isExtractingFacts =
             false; // explicit secondary fact flag + counter zero in startNew non-ext/group/0-session path (both branches + now complete for fact flag/counter; fact_extraction)
         _isEvolvingCharacter = false;
@@ -4153,7 +4176,10 @@ class ChatService extends ChangeNotifier {
       }
     }
 
-    // Explicit flag zero for evolution (in addition to per-branch) to keep "incomplete zeroing... now complete (see CLAUDE.md)" + both startNew explicit; evolution_service (stateless or prompt-only; no reset calls needed) + " ; no god scalar zero needed -- live ext read; see also setActiveCharacter + group 0-session paths)" + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)".
+    // Explicit flag + cadence counter zero for evolution (in addition to per-branch) to keep "incomplete zeroing... now complete (see CLAUDE.md)" + both startNew explicit; evolution_service (stateless or prompt-only; no reset calls needed) + " ; no god scalar zero needed -- live ext read; see also setActiveCharacter + group 0-session paths)" + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)".
+    // Also zero the facts counter here for symmetric hygiene on the two periodic cadence counters.
+    _userMessagesSinceLastPeriodicEval = 0;
+    _userMessagesSinceLastEvolution = 0;
     _isEvolvingCharacter = false;
     _evolutionStatus = '';
     _evolutionError = '';
@@ -4603,19 +4629,24 @@ class ChatService extends ChangeNotifier {
           // This reduces verifier LLM calls from up to 5 to 1 when the per-char flag is on.
           final collected = _realismEvals.getCollectedForBatch();
           if (collected.isNotEmpty) {
-            final items = collected.map((p) => (
-              evalKind: p['kind'] as String,
-              rawOutput: p['raw'] as String,
-              sceneResponse: p['scene'] as String,
-              preState: null,
-              activeChar: _activeCharacter,
-              activeGroup: _activeGroup,
-              recentMessages: _messages,
-              promptText: p['prompt'] as String?,
-              injections: (p['injections'] as Map?)?.cast<String, String>(),
-              strictnessOverride: null,
-              maxPassesOverride: null,
-            )).toList();
+            final items = collected
+                .map(
+                  (p) => (
+                    evalKind: p['kind'] as String,
+                    rawOutput: p['raw'] as String,
+                    sceneResponse: p['scene'] as String,
+                    preState: null,
+                    activeChar: _activeCharacter,
+                    activeGroup: _activeGroup,
+                    recentMessages: _messages,
+                    promptText: p['prompt'] as String?,
+                    injections: (p['injections'] as Map?)
+                        ?.cast<String, String>(),
+                    strictnessOverride: null,
+                    maxPassesOverride: null,
+                  ),
+                )
+                .toList();
             final batchRes = await _realismVerifier.verifyBatch(items);
             await _realismEvals.applyBatchResults(batchRes);
           }
@@ -4690,12 +4721,14 @@ class ChatService extends ChangeNotifier {
         // then to the vector embedded in the per-speaker realism_state snapshot.
         Map<String, int> preVec = groupSpeakerPreDecayNeeds ?? const {};
         if (preVec.isEmpty) {
-          preVec = _coerceNeedsVector(_messages.last.activeMetadata?['needs_pre_turn_vector']);
+          preVec = _coerceNeedsVector(
+            _messages.last.activeMetadata?['needs_pre_turn_vector'],
+          );
         }
         if (preVec.isEmpty) {
           preVec = _coerceNeedsVector(
             ((_messages.last.activeMetadata?['realism_state']
-                    as Map<String, dynamic>?)?['needs']?['vector']),
+                as Map<String, dynamic>?)?['needs']?['vector']),
           );
         }
         if (preVec.isNotEmpty) {
@@ -4770,16 +4803,16 @@ class ChatService extends ChangeNotifier {
   Future<void> manualReprocessNeeds(int index, String critique) async {
     if (index < 0 || index >= _messages.length) return;
     if (index != _messages.length - 1) return;
-    
+
     final msg = _messages[index];
     if (msg.isUser || msg.sender == 'System') return;
-    
+
     final meta = msg.activeMetadata;
     if (meta == null || !meta.containsKey('realism_state')) return;
-    
+
     final preState = meta['realism_state'];
     if (preState is! Map || preState['needs'] == null) return;
-    
+
     final oldNeedsDeltas = <String, int>{};
     if (meta.containsKey('needs_deltas')) {
       final oldMap = meta['needs_deltas'] as Map;
@@ -4789,30 +4822,37 @@ class ChatService extends ChangeNotifier {
         }
       }
     }
-    
+
     _needsSimulation.restoreFromSnapshot(preState['needs']);
-    final Map<String, int> restoredPreVector = Map<String, int>.from(_needsSimulation.vector);
-    
+    final Map<String, int> restoredPreVector = Map<String, int>.from(
+      _needsSimulation.vector,
+    );
+
     _isVerifyingRealism = true;
     _verificationPass = 1;
     _verificationMaxPasses = 1;
     notifyListeners();
-    
+
     _pendingRealismMetadata = null;
-    
-    await _needsImpactEvaluator.reprocessWithUserCritique(msg.displayText, oldNeedsDeltas, critique);
-    
+
+    await _needsImpactEvaluator.reprocessWithUserCritique(
+      msg.displayText,
+      oldNeedsDeltas,
+      critique,
+    );
+
     final updatedMeta = Map<String, dynamic>.from(meta);
-    updatedMeta['needs_deltas'] = _needsSimulation.computeNeedsDeltasWithReasons(restoredPreVector);
-    
+    updatedMeta['needs_deltas'] = _needsSimulation
+        .computeNeedsDeltasWithReasons(restoredPreVector);
+
     if (_pendingRealismMetadata != null) {
       for (final e in _pendingRealismMetadata!.entries) {
         updatedMeta[e.key] = e.value;
       }
     }
-    
+
     msg.swipeMetadata[msg.swipeIndex] = updatedMeta;
-    
+
     _isVerifyingRealism = false;
     _pendingRealismMetadata = null;
     await _saveChat();
@@ -5021,19 +5061,24 @@ class ChatService extends ChangeNotifier {
           // are produced for swiped/regenerated assistant messages too.
           final collected = _realismEvals.getCollectedForBatch();
           if (collected.isNotEmpty) {
-            final items = collected.map((p) => (
-              evalKind: p['kind'] as String,
-              rawOutput: p['raw'] as String,
-              sceneResponse: p['scene'] as String,
-              preState: null,
-              activeChar: _activeCharacter,
-              activeGroup: _activeGroup,
-              recentMessages: _messages,
-              promptText: p['prompt'] as String?,
-              injections: (p['injections'] as Map?)?.cast<String, String>(),
-              strictnessOverride: null,
-              maxPassesOverride: null,
-            )).toList();
+            final items = collected
+                .map(
+                  (p) => (
+                    evalKind: p['kind'] as String,
+                    rawOutput: p['raw'] as String,
+                    sceneResponse: p['scene'] as String,
+                    preState: null,
+                    activeChar: _activeCharacter,
+                    activeGroup: _activeGroup,
+                    recentMessages: _messages,
+                    promptText: p['prompt'] as String?,
+                    injections: (p['injections'] as Map?)
+                        ?.cast<String, String>(),
+                    strictnessOverride: null,
+                    maxPassesOverride: null,
+                  ),
+                )
+                .toList();
             final batchRes = await _realismVerifier.verifyBatch(items);
             await _realismEvals.applyBatchResults(batchRes);
           }
@@ -5912,7 +5957,9 @@ class ChatService extends ChangeNotifier {
         // the output with "Rachel:" or the speaker name.
         // CRITICAL RULE: Strictly forbid the model from writing *anything* for {{user}} (actions, dialogue, thoughts, "he said", "you feel", etc.).
         // This is a cardinal sin in AI RP. Only extend the provided partial text from the current speaker's POV and voice.
-        suffix = "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for {{user}} or from {{user}}'s point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require {{user}} content.]\n" + partial;
+        suffix =
+            "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for {{user}} or from {{user}}'s point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require {{user}} content.]\n" +
+            partial;
       }
 
       // Declare variables before try block so they're accessible after finally
@@ -6188,13 +6235,17 @@ class ChatService extends ChangeNotifier {
       // in that character's voice without the name stop cutting it off mid-continuation.
       // We still stop on other speakers or the user (to catch unwanted new turns).
       String? continueSpeakerName;
-      if (mode == GenerationMode.continue_ && _messages.isNotEmpty && !_messages.last.isUser) {
+      if (mode == GenerationMode.continue_ &&
+          _messages.isNotEmpty &&
+          !_messages.last.isUser) {
         continueSpeakerName = _messages.last.sender;
       }
 
       if (_activeGroup != null) {
         for (final ch in _groupCharacters) {
-          if (continueSpeakerName != null && ch.name == continueSpeakerName) continue;
+          if (continueSpeakerName != null && ch.name == continueSpeakerName) {
+            continue;
+          }
           stopSequences.add('\n${ch.name}:');
         }
       } else {
@@ -6245,7 +6296,9 @@ class ChatService extends ChangeNotifier {
         // This tells supported models (Kimi K2 Thinking, DeepSeek hybrid reasoning models, certain Qwen3 etc.)
         // to spend 0 tokens on internal reasoning and answer directly, preventing the model from dumping
         // its next analysis/think block into the visible character response.
-        reasoningMaxTokens: (_callMode || mode == GenerationMode.continue_) ? 0 : null,
+        reasoningMaxTokens: (_callMode || mode == GenerationMode.continue_)
+            ? 0
+            : null,
         bannedPhrases: g2.resolveBannedPhrases(_storageService).isNotEmpty
             ? g2.resolveBannedPhrases(_storageService)
             : null,
@@ -6763,8 +6816,9 @@ class ChatService extends ChangeNotifier {
         // Embed messages for RAG memory (fire-and-forget)
         _maybeEmbedMessages();
 
-        // Periodic evaluations: extract user facts + evolve character personality
-        // Both run on the same cadence (every N user messages), sequentially.
+        // Periodic evaluations coordinator (facts + character evolution).
+        // Each now respects its own interval (autoPersonaInterval / evolutionInterval)
+        // via dedicated god-owned counters. Sequenced here when they coincide.
         _maybeRunPeriodicEvals();
 
         // (Task completion check now runs pre-generation in sendMessage)
@@ -7291,6 +7345,7 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero in _loadActiveObjectives empty (0-session hygiene for summary flag)
       _userMessagesSinceLastPeriodicEval = 0;
+      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadActiveObjectives empty (0-session hygiene; fact_extraction)
       _isEvolvingCharacter = false;
@@ -7608,58 +7663,96 @@ class ChatService extends ChangeNotifier {
   Future<void> _checkTaskCompletionInBackground() =>
       _objectiveProposal.checkTaskCompletionInBackground();
 
-  int _userMessagesSinceLastPeriodicEval = 0;
+  // Two god-owned "since last" counters for the independent periodic features.
+  // Facts/auto-persona uses the first (tied to autoPersonaInterval).
+  // Character evolution uses its own (tied to evolutionInterval) so the UI slider
+  // and setting actually control when evolution fires.
+  // Both must be zeroed on *all* the same reset/new-chat/group/load paths as the
+  // flags (see every "keep reset blocks in sync" + "incomplete zeroing... now complete"
+  // + explicit sites below and in the evolution/fact wiring sections).
+  int _userMessagesSinceLastPeriodicEval = 0; // facts / auto-persona cadence
+  int _userMessagesSinceLastEvolution = 0; // dedicated evolution cadence
   bool _isExtractingFacts =
-      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see CLAUDE.md "keep reset blocks in sync" + "incomplete zeroing..." (leaves incl fact/evo/verif + needs_impact etc)). The counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch).
+      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see CLAUDE.md "keep reset blocks in sync" + "incomplete zeroing..." (leaves incl fact/evo/verif + needs_impact etc)). The facts counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch). The sibling _userMessagesSinceLastEvolution counter (for character evolution vs its own evolutionInterval) is zeroed at the identical sites + both startNew for the same reason ("incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)").
 
-  /// Unified periodic evaluation: runs fact extraction + character evolution
-  /// sequentially on the same cadence (every N user messages).
-  // Thin delegation / coord (cadence count + guards + auto*Enabled/Interval/llmProvider
-  // here; full _extractFactsInBackground + quality/consolidate + prompt/LLM/stream/JSON/gate
-  // in fact_extraction step 13 ("thin delegation here; full fact extraction in step 13");
-  // evolution trigger in evolution_service step 14 ("thin delegation here; full character
-  // evolution in step 14")).
+  /// Coordinator for the two independent periodic background evals (fact extraction + character evolution).
+  /// Each feature now fires on *its own* configured interval (autoPersonaInterval vs evolutionInterval)
+  /// using dedicated counters. When both happen to be due on the exact same exchange they are still
+  /// run sequentially (facts then evolution) via the run helper. This fixes the long-standing bug where
+  /// the evolution slider / evolutionInterval had no effect.
+  // Thin delegation / coord (per-feature cadence counts + per-feature guards + enabled/Interval checks
+  // + call to sequence or direct thins here; full work in the step 13/14 leaves;
+  // "thin delegation here; full fact extraction in step 13"; "thin delegation here; full character evolution in step 14").
+  // 0 new god private _ methods (only edits to these two existing coordinators + thins).
   void _maybeRunPeriodicEvals() {
     final autoPersona = _storageService.memorySettings.autoPersonaEnabled;
     final autoEvolution =
         _storageService.memorySettings.characterEvolutionEnabled;
     if (!autoPersona && !autoEvolution) return;
     if (_llmProvider == null) return;
-    if (_isExtractingFacts || _isEvolvingCharacter) return;
 
     // Note: this path is *not* gated on !_observerMode.
     // Character evolution is deliberately allowed in Director Mode (see
     // _triggerCharacterEvolution for rationale). Realism/Needs simulation is
     // the only system that pauses in Director Mode.
 
-    _userMessagesSinceLastPeriodicEval++;
-    if (_userMessagesSinceLastPeriodicEval <
-        _storageService.memorySettings.autoPersonaInterval) {
-      return;
-    }
-    _userMessagesSinceLastPeriodicEval = 0;
+    // Per-feature advance + due checks. Use the *specific* busy flag so one feature
+    // can make progress even if the other is currently running (independent schedules).
+    bool factsDue = false;
+    bool evoDue = false;
 
-    debugPrint(
-      '[Periodic] ▶ Triggering periodic evals (every ${_storageService.memorySettings.autoPersonaInterval} user messages)',
-    );
-    _runPeriodicEvalsInSequence();
+    if (autoPersona && !_isExtractingFacts) {
+      _userMessagesSinceLastPeriodicEval++;
+      if (_userMessagesSinceLastPeriodicEval >=
+          _storageService.memorySettings.autoPersonaInterval) {
+        _userMessagesSinceLastPeriodicEval = 0;
+        factsDue = true;
+      }
+    }
+
+    if (autoEvolution && !_isEvolvingCharacter) {
+      _userMessagesSinceLastEvolution++;
+      if (_userMessagesSinceLastEvolution >=
+          _storageService.memorySettings.evolutionInterval) {
+        _userMessagesSinceLastEvolution = 0;
+        evoDue = true;
+      }
+    }
+
+    if (!factsDue && !evoDue) return;
+
+    if (factsDue && evoDue) {
+      debugPrint(
+        '[Periodic] ▶ Triggering periodic evals (facts every ${_storageService.memorySettings.autoPersonaInterval}, evolution every ${_storageService.memorySettings.evolutionInterval} user messages)',
+      );
+    } else if (factsDue) {
+      debugPrint(
+        '[Periodic] ▶ Triggering fact extraction (every ${_storageService.memorySettings.autoPersonaInterval} user messages)',
+      );
+    } else {
+      debugPrint(
+        '[Periodic] ▶ Triggering character evolution (every ${_storageService.memorySettings.evolutionInterval} user messages)',
+      );
+    }
+
+    _runPeriodicEvalsInSequence(runFacts: factsDue, runEvolution: evoDue);
   }
 
-  /// Run fact extraction first, then character evolution, sequentially.
-  // Thin delegation / coord (if autoPersonaEnabled guard + debug + await _extract call here;
-  // full extract + consolidate + gate in fact_extraction step 13; "thin delegation here;
-  // full fact extraction in step 13"). Evolution: if enabled guard + debug + _trigger thin here;
-  // full trigger/extract/LLM/persist/layering in evolution_service step 14 ("thin delegation here;
-  // full character evolution in step 14").
-  Future<void> _runPeriodicEvalsInSequence() async {
-    // Step 1: Extract user facts
-    if (_storageService.memorySettings.autoPersonaEnabled) {
-      debugPrint('[Periodic] Step 1/2: Extracting user facts...');
+  /// Run the due steps (facts then evolution when both due) to preserve sequencing
+  /// on coincident turns while allowing independent cadences.
+  // Thin delegation / coord (the if(enabled) + await + thin calls here;
+  // full extract in fact leaf step 13; full trigger/extract/LLM/persist/layering in evolution leaf step 14).
+  Future<void> _runPeriodicEvalsInSequence({
+    bool runFacts = false,
+    bool runEvolution = false,
+  }) async {
+    if (runFacts && _storageService.memorySettings.autoPersonaEnabled) {
+      debugPrint('[Periodic] Step: Extracting user facts...');
       await _extractFactsInBackground();
     }
-    // Step 2: Evolve character
-    if (_storageService.memorySettings.characterEvolutionEnabled) {
-      debugPrint('[Periodic] Step 2/2: Evolving character...');
+    if (runEvolution &&
+        _storageService.memorySettings.characterEvolutionEnabled) {
+      debugPrint('[Periodic] Step: Evolving character...');
       _triggerCharacterEvolution();
     }
   }
@@ -7676,10 +7769,13 @@ class ChatService extends ChangeNotifier {
   // full character evolution in step 14". State (flags/maps/counts/status/error)
   // + loadGroupEvolvedFields + session load/save + reset/update (user edit) + public
   // surface coordination stay in god.
-  // (Evolution counter unified with fact in _userMessagesSinceLastPeriodicEval)
+  // Cadence for evolution is now its own god-owned _userMessagesSinceLastEvolution counter
+  // compared against evolutionInterval inside the _maybeRunPeriodicEvals thin coordinator
+  // (independent of the facts counter vs autoPersonaInterval). Both counters zeroed at the
+  // identical hygiene sites as the flags. (Previously the evolution slider was dead.)
 
   bool _isEvolvingCharacter =
-      false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing... now complete (see CLAUDE.md)" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch).
+      false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing... now complete (see CLAUDE.md)" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch). Its sibling cadence counter _userMessagesSinceLastEvolution is zeroed at the same sites (see keep-sync lists + both startNew + "incomplete zeroing of secondary config... now complete").
   // Explicit zero sites for evolution flag/status/error (12+ documented; part of "all ~15+" hygiene with briefing lists at 17+ / 31 phrase matches):
   // - startNewChat both branches (fresh + load path)
   // - setActiveCharacter main + empty session
@@ -7690,7 +7786,7 @@ class ChatService extends ChangeNotifier {
   // - deleteSession / fork paths
   // - decl init + common reset blocks
   // - _maybeRunPeriodicEvals early guard
-  // Cross-refs e.g. setActiveCharacter ~1572 (precedent; lines may shift post edits -- verified live at doc time).
+  // The dedicated _userMessagesSinceLastEvolution cadence counter (vs evolutionInterval) is zeroed at *exactly* the same sites (plus the facts counter) so independent schedules don't leak stale "due soon" state after context switch. Cross-refs e.g. setActiveCharacter ~1572 (precedent; lines may shift post edits -- verified live at doc time).
   String _evolutionStatus = '';
   String _evolutionError = '';
 
@@ -8226,7 +8322,10 @@ class ChatService extends ChangeNotifier {
       final currentForSpeaker = _getGroupNeeds(sidForDecay);
       final preDecay = currentForSpeaker.isNotEmpty
           ? Map<String, int>.from(currentForSpeaker)
-          : {for (final k in NeedsSimulation.needKeys) k: NeedsSimulation.needDefaults[k] ?? 80};
+          : {
+              for (final k in NeedsSimulation.needKeys)
+                k: NeedsSimulation.needDefaults[k] ?? 80,
+            };
       // Stash the true pre-decay for this speaker so post-gen chip delta computation
       // (and regen) see the correct baseline including the decay portion of the turn.
       _pendingRealismMetadata ??= {};
@@ -8504,6 +8603,7 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene for summary flag)
       _userMessagesSinceLastPeriodicEval = 0;
+      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; fact_extraction)
       _isEvolvingCharacter = false;
@@ -8792,7 +8892,7 @@ class ChatService extends ChangeNotifier {
     if (_characterRepository != null) {
       final v2Service = V2CardService();
       final db = await AppDatabase.instance();
-      
+
       for (final char in _groupCharacters) {
         final ext = char.frontPorchExtensions ?? FrontPorchExtensions();
         final newExt = ext.copyWith(
@@ -8809,7 +8909,11 @@ class ChatService extends ChangeNotifier {
         if (char.imagePath != null) {
           final file = File(char.imagePath!);
           if (await file.exists()) {
-            await v2Service.saveCardAsPng(char, char.imagePath!, char.imagePath!);
+            await v2Service.saveCardAsPng(
+              char,
+              char.imagePath!,
+              char.imagePath!,
+            );
           }
         }
 
@@ -8832,7 +8936,8 @@ class ChatService extends ChangeNotifier {
   Future<void> setNeedsDecayRate(String key, int value) async {
     if (_activeCharacter == null || _characterRepository == null) return;
 
-    final ext = _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
+    final ext =
+        _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
     final newExt = ext.copyWith(
       needsDecayHunger: key == 'hunger' ? value : null,
       needsDecayBladder: key == 'bladder' ? value : null,

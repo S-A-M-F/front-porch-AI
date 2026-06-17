@@ -24,12 +24,13 @@ import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/grpc/draw_things_grpc_service.dart';
+import 'package:front_porch_ai/services/image_prompt/image_gen_context.dart';
+import 'package:front_porch_ai/services/image_prompt/image_prompt_builder.dart';
 
 /// Available image generation modes.
 enum ImageGenMode {
   customPrompt,
   visualizeScene,
-  fromLastMessage,
   characterPortrait,
   chatBackground,
   userAvatar,
@@ -146,6 +147,19 @@ class ImageGenService extends ChangeNotifier {
   }
 
   DrawThingsGrpcService? _drawThingsGrpc;
+
+  // Thin delegation hook for prompt construction.
+  // Full ownership of ImageGenContext mapping semantics, mode contracts (visualizeScene N-slider
+  // now covers the former fromLastMessage "Message Illustration" distillation; no-personality portraits,
+  // no-people backgrounds, etc.), style enforcement, LLM smart path, and static fallbacks lives in
+  // ImagePromptBuilder.
+  // Keep prompt blocks in sync: changes to ctx construction here must be mirrored in
+  // builder tests (roundtrips), any direct ImageGenContext sites, and the builder's own
+  // _buildStatic / buildPrompt / _generateSmartWith. The builder is stateless/prompt-only
+  // (no reset calls needed). ImageGenService owns no prompt scalars that require zeroing
+  // on chat startNew / setActive / load (per-call snapshot from _storage is authoritative).
+  // See ImagePromptBuilder for the authoritative mode semantics and style rules.
+  late final ImagePromptBuilder _promptBuilder = ImagePromptBuilder();
 
   DrawThingsGrpcService get _ensureDrawThingsGrpc {
     final h = _storage.imageGenSettings.drawThingsGrpcHost;
@@ -586,49 +600,13 @@ class ImageGenService extends ChangeNotifier {
     return apiModels;
   }
 
-  /// Max prompt length for image generation APIs.
-  /// Most models cap at 1000-1200 chars; we target 1000 to be safe.
-  static const _maxPromptLength = 1000;
+  // NOTE (Stage 2 image prompt refactor): _maxPromptLength and _truncate moved into
+  // ImageGenContext / ImagePromptBuilder (the single source of truth). The old copies
+  // were dead after delegation and have been deleted as part of hygiene.
 
-  /// Truncate a string to a maximum length, breaking at a word boundary.
-  static String _truncate(String text, int maxLen) {
-    if (text.length <= maxLen) return text;
-    final cut = text.substring(0, maxLen);
-    final lastSpace = cut.lastIndexOf(' ');
-    return '${lastSpace > maxLen ~/ 2 ? cut.substring(0, lastSpace) : cut}...';
-  }
-
-  /// Style suffixes appended to the final image prompt.
-  /// Written as natural language so they work with FLUX, SD3, and SDXL
-  /// as well as older SD 1.5-based models.
-  static const Map<String, String> styleModifiers = {
-    'photorealistic':
-        'Photorealistic with cinematic lighting, sharp focus, and highly detailed textures.',
-    'anime':
-        'Anime-style illustration with clean linework, expressive eyes, vibrant colors, and cel shading.',
-    'fantasy_art':
-        'Epic fantasy digital art with dramatic lighting, rich environmental detail, and a painterly quality.',
-    'oil_painting':
-        'Classical oil painting with visible brushstrokes, rich color depth, and fine art composition.',
-    'digital_art':
-        'Polished digital art with vibrant colors, clean lines, and professional illustration quality.',
-    'watercolor':
-        'Soft watercolor illustration with flowing color washes, delicate edges, and gentle translucent tones.',
-  };
-
-  /// Legacy comma-separated tag modifiers for SD 1.5 / Illustrious models.
-  static const Map<String, String> legacyStyleModifiers = {
-    'photorealistic':
-        'photorealistic, cinematic lighting, sharp focus, highly detailed, 8k',
-    'anime':
-        'anime style, masterpiece, best quality, highly detailed, cel shading',
-    'fantasy_art':
-        'fantasy art, epic, dramatic lighting, highly detailed, painterly',
-    'oil_painting': 'oil painting, traditional media, brushstrokes, fine art',
-    'digital_art': 'digital art, polished, vibrant, illustration, high quality',
-    'watercolor':
-        'watercolor, translucent, soft washes, pastel, traditional media',
-  };
+  // NOTE (Stage 2): styleModifiers and legacyStyleModifiers have been moved to
+  // ImagePromptBuilder (the canonical owner). Old copies deleted here as dead duplication.
+  // styleLabels kept for UI (studio + any other surfaces).
 
   /// Available style labels for UI display.
   static const Map<String, String> styleLabels = {
@@ -642,7 +620,29 @@ class ImageGenService extends ChangeNotifier {
 
   /// Use the active LLM to craft a concise, effective image prompt from raw context.
   ///
-  /// Falls back to the static [buildPrompt] if [llmService] is null or unavailable.
+  /// Thin delegation to ImagePromptBuilder — see there for mode semantics and style rules
+  /// (visualizeScene N-slider now covers former fromLastMessage/Message Illustration; portrait = appearance+expression only, background
+  /// = environment only with strong NO PEOPLE, visualize = current scene distillation, style
+  /// enforcement for both paradigms, etc.).
+  /// Old inline implementation (switch cases, raw dumps, personality injection, "Depict the
+  /// following scene", fragile substring style) removed in Stage 2.
+  /// Keep prompt blocks in sync with ImagePromptBuilder (and ctx construction in call sites
+  /// like chat_page._showImageGenDialog and web chargen paths). Builder is stateless/prompt-only.
+  ///
+  /// NOTE on duplication fix (Stage 2 review): the ternary + 15+ field bag construction that
+  /// used to be repeated in happy path, ultimate fallback, and buildPrompt is now in the
+  /// tiny pure helper _buildPromptContext below. This is *thin coordination only* (data bag
+  /// assembly + the custom vs lastMessage rule from the original thins). It contains ZERO
+  /// prompt logic, distillation, style, or LLM — all of that stays in ImagePromptBuilder.
+  /// This does not violate the "0 new god private _ methods for prompt logic" rule.
+  /// MUST KEEP IN SYNC with roundtrips (especially the new customPrompt ternary test) and
+  /// future call-site enrichment (currentExpression etc.).
+  ///
+  /// Stage 4 user spec continuation (no boilerplate pregen in box; visualize slider N + simple `<think>` strip on pre-generated msgs;
+  /// user box text + User persona + char visual info (no personality) + style sent to LLM on Craft to produce the visual prompt;
+  /// 6 types now buttons inside studio, launch neutral): added userInstruction (box text before craft), visualizeNumMessages (slider).
+  /// Forwarded to thin _build + ctx + builder. Keep all thins + ctx ctor + studio craft + launcher collection + builder assembly in sync.
+  /// (0 new private _ methods — only extended existing _buildPromptContext thin; void _ count stable at baseline.)
   Future<String> generateSmartPrompt({
     required ImageGenMode mode,
     required String style,
@@ -651,315 +651,165 @@ class ImageGenService extends ChangeNotifier {
     String? lastMessage,
     String? characterName,
     String? characterDescription,
-    String? characterPersonality,
+    String?
+    characterPersonality, // kept for signature compatibility during transition (ignored for visuals)
     String? scenario,
     String? worldInfo,
     String? personaName,
     String? personaText,
     List<String>? recentMessages,
+    // Stage 4: richer optional fields for better prompts (expression/pose, time/lighting, group speaker targeting).
+    // Forwarded to thin ctx builder. Keep in sync with buildPrompt sig, _buildPromptContext, studio craft/ctor/show, chat_page launch.
+    String? currentExpression,
+    String? timeOfDay,
+    String? lightingHint,
+    bool isGroupNonObserver = false,
+    String? currentSpeakerId,
+    // User spec: text user typed in studio box pre-Craft (passed to LLM as instr to "parse into" image prompt).
+    // visualize N: slider value (only meaningful for visualizeScene); messages stripped simply since already generated.
+    String? userInstruction,
+    int? visualizeNumMessages,
   }) async {
-    final paradigm =
-        _storage.imageGenSettings.imageGenPromptParadigm; // 'natural' or 'tags'
-    final modifiers = paradigm == 'tags'
-        ? legacyStyleModifiers
-        : styleModifiers;
+    final paradigm = _storage.imageGenSettings.imageGenPromptParadigm;
 
-    // Custom prompt mode — no LLM needed, just append style
-    if (mode == ImageGenMode.customPrompt) {
-      final styleSuffix = modifiers[style] ?? '';
-      final glue = paradigm == 'tags' ? ', ' : '. ';
-      final raw = '${customPrompt ?? ''}$glue$styleSuffix';
-      return _truncate(raw, _maxPromptLength);
-    }
+    // Build the rich typed context (builder owns all distillation + style rules).
+    // Uses the thin coordination helper (see _buildPromptContext) to keep the customPrompt
+    // ternary + future-hint mapping in one place. Expanded for future visual hints...
+    final ctx = _buildPromptContext(
+      mode: mode,
+      style: style,
+      paradigm: paradigm,
+      customPrompt: customPrompt,
+      lastMessage: lastMessage,
+      characterName: characterName,
+      characterDescription: characterDescription,
+      scenario: scenario,
+      worldInfo: worldInfo,
+      personaName: personaName,
+      personaText: personaText,
+      recentMessages: recentMessages,
+      // Stage 4 richer fields forwarded (keep in sync with other _build calls, studio, launch site, builder).
+      currentExpression: currentExpression,
+      timeOfDay: timeOfDay,
+      lightingHint: lightingHint,
+      isGroupNonObserver: isGroupNonObserver,
+      currentSpeakerId: currentSpeakerId,
+      // User spec continuation (no pregen boiler; N slider for visualize + user box text + persona+char visual no pers + style on craft/LLM).
+      // Keep thin + ctx + studio craft call + builder _generateSmartWith parts + chat launcher in sync (both startNew equiv N/A for snapshot).
+      userInstruction: userInstruction,
+      visualizeNumMessages: visualizeNumMessages,
+    );
 
-    // Replace {{user}}/{{char}} macros in raw context
-    String resolve(String? text) {
-      if (text == null || text.isEmpty) return '';
-      return text
-          .replaceAll('{{user}}', personaName ?? 'User')
-          .replaceAll('{{char}}', characterName ?? 'Character');
-    }
-
-    // Build raw context block for the LLM
-    final contextParts = <String>[];
-    if (characterName != null && characterName.isNotEmpty) {
-      contextParts.add('Character: $characterName');
-    }
-    if (characterDescription != null && characterDescription.isNotEmpty) {
-      contextParts.add('Appearance: ${resolve(characterDescription)}');
-    }
-    if (scenario != null && scenario.isNotEmpty) {
-      contextParts.add('Scenario: ${resolve(scenario)}');
-    }
-    if (worldInfo != null && worldInfo.isNotEmpty) {
-      contextParts.add('Setting: ${resolve(worldInfo)}');
-    }
-    if (recentMessages != null && recentMessages.isNotEmpty) {
-      final resolved = recentMessages.map((m) => resolve(m)).join('\n');
-      contextParts.add('Recent events:\n$resolved');
-    }
-    if (lastMessage != null && lastMessage.isNotEmpty) {
-      contextParts.add('Latest message: ${resolve(lastMessage)}');
-    }
-    if (personaName != null && personaName.isNotEmpty) {
-      contextParts.add('User character: $personaName');
-    }
-
-    final rawContext = _truncate(contextParts.join('\n'), 2000);
-    final styleSuffix = modifiers[style] ?? '';
-
-    // If no LLM available, fall back to static prompt builder
-    if (llmService == null || !llmService.isReady) {
-      debugPrint('ImageGen: LLM unavailable, falling back to static prompt');
-      final fallback = buildPrompt(
-        mode: mode,
-        customPrompt: customPrompt,
-        lastMessage: lastMessage,
-        characterName: characterName,
-        characterDescription: characterDescription,
-        characterPersonality: characterPersonality,
-        scenario: scenario,
-        worldInfo: worldInfo,
-        personaName: personaName,
-        personaText: personaText,
-        recentMessages: recentMessages,
-      );
-      return _truncate('$fallback. $styleSuffix', _maxPromptLength);
-    }
-
-    // Mode-specific instruction
-    String modeInstruction;
-    switch (mode) {
-      case ImageGenMode.visualizeScene:
-        modeInstruction =
-            'Describe the current scene as a vivid image — environment, characters present, lighting, mood.';
-      case ImageGenMode.fromLastMessage:
-        modeInstruction =
-            'Describe the scene depicted in the latest message as a vivid image.';
-      case ImageGenMode.characterPortrait:
-        modeInstruction =
-            'Describe a portrait of the character — their appearance, expression, clothing, and pose.';
-      case ImageGenMode.chatBackground:
-        modeInstruction =
-            'Describe the environment/setting as a wide panoramic landscape. Do NOT include any characters or people.';
-      case ImageGenMode.userAvatar:
-        modeInstruction =
-            'Describe a portrait of the user character — their appearance, expression, and pose.';
-      default:
-        modeInstruction = 'Describe the scene as a vivid image.';
-    }
-
-    // Determine prompt instruction based on selected paradigm
-    final isTags = paradigm == 'tags';
-    final formatInstruction = isTags
-        ? 'Write a flat, comma-separated list of visual danbooru tags describing the scene and characters — NO prose. NO sentences. ONLY tags.\nExample: masterpiece, best quality, 1girl, blonde hair, blue eyes, dynamic pose, outdoors'
-        : 'Write a single paragraph in natural, descriptive English — NOT a comma-separated tag list.\nBe vivid and specific about visual details: physical appearance, clothing, lighting, mood, setting.';
-
-    final llmPrompt =
-        'You are writing an image generation prompt for an AI image model.\n'
-        'Respond with ONLY a JSON object, no other text.\n'
-        'Format: {"prompt": "your image prompt here"}\n\n'
-        '$formatInstruction\n'
-        '$modeInstruction\n'
-        'Keep it under 100 words. Do not include any character names. '
-        'End with the art style description.${styleSuffix.isNotEmpty ? " Art style: $styleSuffix" : ""}\n\n'
-        'Context:\n$rawContext';
+    // Pass an LLM only if the caller supplied a ready one (builder will use it for smart path).
+    // We create a fresh builder with the provided LLM for this call so existing call sites that
+    // sometimes pass a different llmService continue to work exactly as before.
+    final effectiveBuilder = (llmService != null && llmService.isReady)
+        ? ImagePromptBuilder(llmService: llmService)
+        : _promptBuilder;
 
     try {
-      debugPrint('ImageGen: Crafting smart prompt via LLM...');
-      String accumulated = '';
-      await for (final token in llmService.generateStream(
-        GenerationParams(
-          prompt: llmPrompt,
-          maxLength:
-              2000, // Generous budget: some models think extensively before generating the prompt
-          temperature: 0.2,
-          repeatPenalty: 1.0,
-          reasoningEnabled: false,
-          stopSequences: ['\n\n', '<END>', '</END>'],
-        ),
-      )) {
-        accumulated += token;
-      }
-
-      // ── Parse JSON response ──
-      String smartPrompt = accumulated.trim();
-      debugPrint('ImageGen: Raw output length: ${smartPrompt.length}');
-
-      try {
-        // Try to extract JSON from the response (may be wrapped in thinking or extra text)
-        // Look for JSON object pattern: {...}
-        final jsonMatch = RegExp(
-          r'\{[^{}]*"prompt"[^{}]*\}',
-          dotAll: true,
-        ).firstMatch(smartPrompt);
-
-        if (jsonMatch != null) {
-          final jsonStr = jsonMatch.group(0)!;
-          final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
-          final prompt = parsed['prompt']?.toString() ?? '';
-
-          if (prompt.isNotEmpty) {
-            smartPrompt = prompt;
-            debugPrint(
-              'ImageGen: Successfully parsed JSON prompt (${smartPrompt.length} chars)',
-            );
-          } else {
-            throw Exception('JSON prompt field was empty');
-          }
-        } else {
-          // No JSON found - fall back to static generation
-          throw Exception('No JSON object found in response');
-        }
-      } catch (e) {
-        debugPrint(
-          'ImageGen: Failed to parse JSON ($e), falling back to static prompt',
-        );
-        final fallback = buildPrompt(
-          mode: mode,
-          customPrompt: customPrompt,
-          lastMessage: lastMessage,
-          characterName: characterName,
-          characterDescription: characterDescription,
-          characterPersonality: characterPersonality,
-          scenario: scenario,
-          worldInfo: worldInfo,
-          personaName: personaName,
-          personaText: personaText,
-          recentMessages: recentMessages,
-        );
-        return _truncate('$fallback. $styleSuffix', _maxPromptLength);
-      }
-
-      // Clean up the extracted prompt
-      smartPrompt = smartPrompt
-          .replaceAll(RegExp(r'\n+'), ' ')
-          .replaceAll(RegExp(r'\s{2,}'), ' ')
-          .trim();
-
-      // Ensure style is present
-      if (styleSuffix.isNotEmpty &&
-          !smartPrompt.toLowerCase().contains(
-            styleSuffix.toLowerCase().substring(0, 5),
-          )) {
-        final glue = isTags ? ', ' : '. ';
-        smartPrompt = '${smartPrompt.trim()}$glue$styleSuffix';
-      }
-
-      if (isTags) {
-        // Tag paradigm logic (e.g. remove trailing periods, ensure commas)
-        smartPrompt = smartPrompt.replaceAll('.', ',');
-      }
-
-      debugPrint(
-        'ImageGen: Smart prompt crafted (${smartPrompt.length} chars)',
-      );
-      return _truncate(smartPrompt, _maxPromptLength);
+      return await effectiveBuilder.buildPrompt(ctx);
     } catch (e) {
-      debugPrint('ImageGen: Smart prompt failed ($e), falling back to static');
-      final fallback = buildPrompt(
+      debugPrint('ImageGen: Builder failed ($e), using ultimate fallback');
+      // Ultimate safety fallback (should almost never be reached).
+      // Uses the same thin helper for exact parity with happy path (style honored via arg).
+      final fbCtx = _buildPromptContext(
         mode: mode,
+        style: style,
+        paradigm: paradigm,
         customPrompt: customPrompt,
         lastMessage: lastMessage,
         characterName: characterName,
         characterDescription: characterDescription,
-        characterPersonality: characterPersonality,
         scenario: scenario,
         worldInfo: worldInfo,
         personaName: personaName,
         personaText: personaText,
         recentMessages: recentMessages,
+        // Stage 4 richer fields (keep blocks in sync with happy ctx, buildPrompt ctx, studio, chat_page launch, ctx ctor).
+        currentExpression: currentExpression,
+        timeOfDay: timeOfDay,
+        lightingHint: lightingHint,
+        isGroupNonObserver: isGroupNonObserver,
+        currentSpeakerId: currentSpeakerId,
+        // User spec (userInstruction for craft box text, visualizeNum for slider N stripped msgs). Sync with happy path above + builder.
+        userInstruction: userInstruction,
+        visualizeNumMessages: visualizeNumMessages,
       );
-      return _truncate('$fallback. $styleSuffix', _maxPromptLength);
+      return effectiveBuilder.buildStaticPrompt(fbCtx);
     }
   }
 
   /// Build a prompt for the given generation mode.
+  ///
+  /// Thin delegation to ImagePromptBuilder (full implementation + contracts live there).
+  /// Old switch body deleted as part of Stage 2 of the image prompt refactor.
+  /// See ImagePromptBuilder for the authoritative mode semantics and style rules.
+  /// Keep prompt blocks in sync: this thin + generateSmartPrompt's ctx mapping must stay
+  /// aligned with builder._buildStatic + _ensureStyleAndCap. No new _private methods were
+  /// added for prompt logic (only the pre-existing _promptBuilder late final hook).
+  ///
+  /// User spec (visualize slider, user box as instr to LLM craft, buttons inside studio instead of popup, no boilerplate pregen):
+  /// forward userInstruction + visualizeNumMessages (edit to existing thin only; 0 new _privs).
   String buildPrompt({
     required ImageGenMode mode,
     String? customPrompt,
     String? lastMessage,
     String? characterName,
     String? characterDescription,
-    String? characterPersonality,
+    String?
+    characterPersonality, // signature compat only (personality is never visual)
     String? scenario,
     String? worldInfo,
     String? personaName,
     String? personaText,
     List<String>? recentMessages,
+    // Stage 4: richer optional fields (see generateSmartPrompt). Keep ctx construction / studio / launch / builder in sync.
+    String? currentExpression,
+    String? timeOfDay,
+    String? lightingHint,
+    bool isGroupNonObserver = false,
+    String? currentSpeakerId,
+    String? userInstruction,
+    int? visualizeNumMessages,
   }) {
-    String raw;
-    switch (mode) {
-      case ImageGenMode.customPrompt:
-        raw = customPrompt ?? '';
+    final paradigm = _storage.imageGenSettings.imageGenPromptParadigm;
+    final style = _storage.imageGenSettings.imageGenStyle;
 
-      case ImageGenMode.visualizeScene:
-        final parts = <String>[];
-        if (scenario != null && scenario.isNotEmpty) {
-          parts.add('Scene: ${_truncate(scenario, 300)}');
-        }
-        if (worldInfo != null && worldInfo.isNotEmpty) {
-          parts.add('Setting: ${_truncate(worldInfo, 200)}');
-        }
-        if (recentMessages != null && recentMessages.isNotEmpty) {
-          parts.add(
-            'Recent events: ${_truncate(recentMessages.join(" "), 300)}',
-          );
-        }
-        parts.add(
-          'A wide establishing shot of the scene. Cinematic composition with atmospheric lighting.',
-        );
-        raw = parts.join(' ');
+    // Uses the thin coordination helper (dedup; see _buildPromptContext javadoc).
+    final ctx = _buildPromptContext(
+      mode: mode,
+      style: style,
+      paradigm: paradigm,
+      customPrompt: customPrompt,
+      lastMessage: lastMessage,
+      characterName: characterName,
+      characterDescription: characterDescription,
+      scenario: scenario,
+      worldInfo: worldInfo,
+      personaName: personaName,
+      personaText: personaText,
+      recentMessages: recentMessages,
+      // Stage 4 richer fields forwarded for builder use in static path (keep in sync with generateSmart ctx sites + launch + studio ctx + builder consumption).
+      currentExpression: currentExpression,
+      timeOfDay: timeOfDay,
+      lightingHint: lightingHint,
+      isGroupNonObserver: isGroupNonObserver,
+      currentSpeakerId: currentSpeakerId,
+      // User spec: forward box text + viz N (for static fallback parity on visualize limit + instr if used in static; main is LLM craft path).
+      userInstruction: userInstruction,
+      visualizeNumMessages: visualizeNumMessages,
+    );
 
-      case ImageGenMode.fromLastMessage:
-        if (lastMessage == null || lastMessage.isEmpty) return '';
-        raw = 'Depict the following scene: ${_truncate(lastMessage, 500)}';
-
-      case ImageGenMode.characterPortrait:
-        final parts = <String>[];
-        if (characterName != null && characterName.isNotEmpty) {
-          parts.add('Character portrait of $characterName.');
-        }
-        if (characterDescription != null && characterDescription.isNotEmpty) {
-          parts.add(_truncate(characterDescription, 400));
-        }
-        if (characterPersonality != null && characterPersonality.isNotEmpty) {
-          parts.add('Personality: ${_truncate(characterPersonality, 200)}');
-        }
-        parts.add(
-          'A detailed close-up portrait, expressive face, high quality rendering.',
-        );
-        raw = parts.join(' ');
-
-      case ImageGenMode.chatBackground:
-        final parts = <String>[];
-        if (scenario != null && scenario.isNotEmpty) {
-          parts.add('Environment: ${_truncate(scenario, 300)}');
-        }
-        if (worldInfo != null && worldInfo.isNotEmpty) {
-          parts.add('Setting: ${_truncate(worldInfo, 300)}');
-        }
-        parts.add(
-          'Wide panoramic landscape, atmospheric lighting, no people or characters, suitable as a scene background.',
-        );
-        raw = parts.join(' ');
-
-      case ImageGenMode.userAvatar:
-        final parts = <String>[];
-        if (personaName != null && personaName.isNotEmpty) {
-          parts.add('Portrait of $personaName.');
-        }
-        if (personaText != null && personaText.isNotEmpty) {
-          parts.add(_truncate(personaText, 400));
-        }
-        parts.add(
-          'A detailed close-up portrait, expressive face, high quality rendering.',
-        );
-        raw = parts.join(' ');
+    // buildPrompt remains the synchronous "static quality" path (used by fallbacks and any direct callers).
+    // It now gets the improved static builder logic (no LLM). The async generateSmartPrompt
+    // is the one that may use the caller's LLM for higher quality.
+    try {
+      // We added a small sync static helper on the builder in the same change.
+      return _promptBuilder.buildStaticPrompt(ctx);
+    } catch (_) {
+      return (customPrompt ?? lastMessage ?? 'a scene');
     }
-
-    // Final safety cap
-    return _truncate(raw, _maxPromptLength);
   }
 
   // ── Private helpers ────────────────────────────────────────────────
@@ -973,6 +823,69 @@ class ImageGenService extends ChangeNotifier {
       return (w, h);
     }
     return (1024, 1024);
+  }
+
+  /// Tiny pure helper: assembles ImageGenContext from the flat params the thins receive.
+  /// This is *thin coordination/wiring only* — no distillation, no style rules, no LLM,
+  /// no mode semantics. All of that is in ImagePromptBuilder (the single source of truth).
+  /// The only "logic" here is the original customPrompt ? customPrompt : lastMessage
+  /// ternary (plus the paradigm read that was already here).
+  /// MUST KEEP IN SYNC with: builder_test roundtrips (including the customPrompt ternary
+  /// test + new field roundtrips for expression/time/group), any direct ImageGenContext
+  /// construction (chat_page launch, studio init, studio _craft path), studio ctx build,
+  /// and call sites. Keep blocks in sync with ImageGenContext ctor, studio _ctx=,
+  /// chat_page _showImageGenDialog collection, and builder consumption sites.
+  /// (incomplete zeroing of secondary config on resets not applicable here; ctx is per-invocation snapshot).
+  /// Stage 4 complete for richer fields wiring.
+  ///
+  /// User spec (Stage 4 continuation): extended for userInstruction (typed box text pre-Craft, sent to LLM "to parse into the image gen prompt")
+  /// + visualizeNumMessages (slider for N recent msgs to include for visualize; stripped of all `<think>` simply — messages pre-generated).
+  /// No new private _ methods (this is edit to the sole existing thin _buildPromptContext; live grep count of _ methods stable post-edit).
+  /// 1:1/group parity qualified via existing speaker/flag paths (visualize N applies to provided recent snapshot regardless of 1:1 vs group).
+  /// Keep launcher collection (now take(12) for slider headroom), studio (internal mode + slider + craft pass of current box + active), builder assembly in sync.
+  ImageGenContext _buildPromptContext({
+    required ImageGenMode mode,
+    required String style,
+    required String paradigm,
+    String? customPrompt,
+    String? lastMessage,
+    String? characterName,
+    String? characterDescription,
+    String? scenario,
+    String? worldInfo,
+    String? personaName,
+    String? personaText,
+    List<String>? recentMessages,
+    String? currentExpression,
+    String? timeOfDay,
+    String? lightingHint,
+    bool isGroupNonObserver = false,
+    String? currentSpeakerId,
+    String? userInstruction,
+    int? visualizeNumMessages,
+  }) {
+    return ImageGenContext(
+      mode: mode,
+      style: style,
+      paradigm: paradigm,
+      characterName: characterName,
+      characterDescription: characterDescription,
+      lastMessage: (mode == ImageGenMode.customPrompt
+          ? customPrompt
+          : lastMessage),
+      scenario: scenario,
+      worldInfo: worldInfo,
+      personaName: personaName,
+      personaText: personaText,
+      recentMessages: recentMessages,
+      currentExpression: currentExpression,
+      timeOfDay: timeOfDay,
+      lightingHint: lightingHint,
+      isGroupNonObserver: isGroupNonObserver,
+      currentSpeakerId: currentSpeakerId,
+      userInstruction: userInstruction,
+      visualizeNumMessages: visualizeNumMessages,
+    );
   }
 
   /// Test whether a local image-gen server is reachable.

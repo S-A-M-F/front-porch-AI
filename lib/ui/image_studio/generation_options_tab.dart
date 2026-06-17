@@ -1,0 +1,1151 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Generation options (tab content extracted for studio). AppColors only.
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+
+const List<({String label, int value})> _drawThingsSamplers = [
+  (label: 'DDIM Trailing', value: 16),
+  (label: 'UniPC Trailing', value: 17),
+  (label: 'Euler a Trailing', value: 10),
+  (label: 'DPM++ 2M Trailing', value: 15),
+  (label: 'DPM++ SDE Trailing', value: 11),
+  (label: 'UniPC AYS', value: 18),
+  (label: 'Euler a AYS', value: 13),
+  (label: 'DPM++ 2M AYS', value: 12),
+  (label: 'DPM++ SDE AYS', value: 14),
+  (label: 'DPM++ 2M Karras', value: 0),
+  (label: 'DPM++ SDE Karras', value: 4),
+  (label: 'Euler a', value: 1),
+  (label: 'UniPC', value: 5),
+  (label: 'DDIM', value: 2),
+  (label: 'PLMS', value: 3),
+  (label: 'LCM', value: 6),
+  (label: 'TCD', value: 9),
+  (label: 'Euler a Substep', value: 7),
+  (label: 'DPM++ SDE Substep', value: 8),
+];
+
+class GenerationOptionsTab extends StatefulWidget {
+  final bool showEnableToggle;
+  const GenerationOptionsTab({super.key, this.showEnableToggle = true});
+  @override
+  State<GenerationOptionsTab> createState() => _GenerationOptionsTabState();
+}
+
+class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
+  List<ImageModelInfo> _models = [];
+  bool _loadingModels = false;
+  final _negativePromptController = TextEditingController();
+  final _localUrlController = TextEditingController();
+  List<String> _localModels = [];
+  bool _loadingLocalModels = false;
+  bool? _connectionOk;
+  bool _testingConnection = false;
+  bool _unloadingModel = false;
+  bool _switchingModel = false;
+  List<String> _localSamplers = [];
+  List<String> _localLoras = [];
+  bool _loadingLoras = false;
+  final _seedController = TextEditingController();
+  final _dtHostController = TextEditingController();
+  final _dtPortController = TextEditingController();
+  double? _dragLoraWeight;
+  double? _dragSteps;
+  double? _dragCfgScale;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = Provider.of<StorageService>(context, listen: false);
+    _negativePromptController.text = s.imageGenNegativePrompt;
+    _localUrlController.text = s.localImageGenUrl;
+    _seedController.text = s.imageGenSeed.toString();
+    _dtHostController.text = s.drawThingsGrpcHost;
+    _dtPortController.text = s.drawThingsGrpcPort.toString();
+    _fetchModels();
+    if (s.imageGenBackend != 'remote') {
+      _fetchLocalModels(s.localImageGenUrl);
+      _fetchLocalSamplers(s.localImageGenUrl);
+      if (s.imageGenBackend != 'drawthings') _fetchLocalLoras(s.localImageGenUrl);
+    }
+  }
+
+  @override
+  void dispose() {
+    _negativePromptController.dispose();
+    _localUrlController.dispose();
+    _seedController.dispose();
+    _dtHostController.dispose();
+    _dtPortController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchModels() async {
+    setState(() => _loadingModels = true);
+    final svc = Provider.of<ImageGenService>(context, listen: false);
+    final m = await svc.fetchImageModels();
+    if (mounted) {
+      setState(() {
+        _models = m;
+        _loadingModels = false;
+      });
+    }
+  }
+
+  Future<void> _fetchLocalModels(String url) async {
+    if (url.isEmpty) return;
+    setState(() => _loadingLocalModels = true);
+    final svc = Provider.of<ImageGenService>(context, listen: false);
+    final st = Provider.of<StorageService>(context, listen: false);
+    final ms = st.imageGenBackend == 'drawthings'
+        ? await svc.fetchDrawThingsModels(url)
+        : await svc.fetchA1111Models(url);
+    if (mounted) {
+      setState(() {
+        _localModels = ms;
+        _loadingLocalModels = false;
+      });
+    }
+  }
+
+  Future<void> _fetchLocalSamplers(String url) async {
+    if (url.isEmpty) return;
+    final svc = Provider.of<ImageGenService>(context, listen: false);
+    final ss = await svc.fetchA1111Samplers(url);
+    if (mounted) {
+      setState(() {
+        _localSamplers = ss;
+      });
+    }
+  }
+
+  Future<void> _fetchLocalLoras(String url) async {
+    if (url.isEmpty) return;
+    setState(() => _loadingLoras = true);
+    final svc = Provider.of<ImageGenService>(context, listen: false);
+    final loras = await svc.fetchA1111Loras(url);
+    if (mounted) {
+      setState(() {
+        _localLoras = loras;
+        _loadingLoras = false;
+      });
+    }
+  }
+
+  void _randomizeSeed() {
+    final sd = DateTime.now().millisecondsSinceEpoch & 0x7FFFFFFF;
+    _seedController.text = sd.toString();
+    Provider.of<StorageService>(context, listen: false).setImageGenSeed(sd);
+  }
+
+  Future<void> _testConnection() async {
+    final st = Provider.of<StorageService>(context, listen: false);
+    final isDT = st.imageGenBackend == 'drawthings';
+    String u = _localUrlController.text.trim();
+    if (isDT) u = u.isNotEmpty ? u : '127.0.0.1:7859';
+    if (u.isEmpty) return;
+    setState(() {
+      _testingConnection = true;
+      _connectionOk = null;
+    });
+    final svc = Provider.of<ImageGenService>(context, listen: false);
+    final ok = await svc.testLocalConnection(u);
+    if (mounted) {
+      setState(() {
+        _connectionOk = ok;
+        _testingConnection = false;
+      });
+      if (ok) {
+        _fetchLocalModels(u);
+        _fetchLocalSamplers(u);
+        if (!isDT) _fetchLocalLoras(u);
+      }
+    }
+  }
+
+  Future<void> _unloadModel() async {
+    final u = _localUrlController.text.trim();
+    if (u.isEmpty) return;
+    setState(() => _unloadingModel = true);
+    await Provider.of<ImageGenService>(
+      context,
+      listen: false,
+    ).unloadLocalModel(u);
+    if (mounted) {
+      setState(() => _unloadingModel = false);
+    }
+  }
+
+  Future<void> _switchModel() async {
+    final u = _localUrlController.text.trim();
+    final st = Provider.of<StorageService>(context, listen: false);
+    final m = st.imageGenModel;
+    if (u.isEmpty || m.isEmpty) return;
+    setState(() => _switchingModel = true);
+    if (st.imageGenBackend != 'drawthings') {
+      await Provider.of<ImageGenService>(
+        context,
+        listen: false,
+      ).switchLocalModel(u, m);
+    }
+    if (mounted) {
+      setState(() => _switchingModel = false);
+    }
+  }
+
+  InputDecoration _deco({String? hint}) => InputDecoration(
+    hintText: hint,
+    hintStyle: TextStyle(color: AppColors.textTertiary(context)),
+    filled: true,
+    fillColor: AppColors.surfaceContainerOf(context),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide.none,
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    isDense: true,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<StorageService>(
+      builder: (context, storage, child) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.showEnableToggle) ...[
+              SwitchListTile(
+                title: Text(
+                  'Enable Image Generation',
+                  style: TextStyle(color: AppColors.textPrimary(context)),
+                ),
+                subtitle: Text(
+                  'Add image button to toolbar',
+                  style: TextStyle(
+                    color: AppColors.textSecondary(context),
+                    fontSize: 12,
+                  ),
+                ),
+                value: storage.imageGenEnabled,
+                activeTrackColor: AppColors.presetColors[6],
+                contentPadding: EdgeInsets.zero,
+                onChanged: (v) => storage.setImageGenEnabled(v),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Text(
+              'Image Source',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _buildBackendSelector(storage),
+            const SizedBox(height: 12),
+            if (storage.imageGenBackend == 'remote')
+              _buildRemotePanel(storage)
+            else
+              _buildLocalPanel(storage),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBackendSelector(StorageService st) {
+    final bs = ImageGenBackend.values;
+    final ac = AppColors.formMasterAccent;
+    return Row(
+      children: bs.map((b) {
+        final sel = st.imageGenBackend == b.key;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: b == bs.last ? 0 : 8),
+            child: GestureDetector(
+              onTap: () {
+                st.setImageGenBackend(b.key);
+                if (b != ImageGenBackend.remote) {
+                  _fetchLocalModels(st.localImageGenUrl);
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: sel ? AppColors.cardOf(context) : AppColors.surfaceContainerOf(context),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: sel ? ac : AppColors.borderOf(context),
+                    width: sel ? 1.5 : 1,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      b == ImageGenBackend.remote
+                          ? Icons.cloud_outlined
+                          : b == ImageGenBackend.drawThings
+                          ? Icons.apple
+                          : Icons.computer_outlined,
+                      size: 16,
+                      color: sel ? ac : AppColors.iconSecondary(context),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      b.label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: sel ? ac : AppColors.textTertiary(context),
+                        fontWeight: sel ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildRemotePanel(StorageService st) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Image Model',
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                initialValue: _models.any((m) => m.id == st.imageGenModel)
+                    ? st.imageGenModel
+                    : null,
+                dropdownColor: AppColors.surfaceContainerOf(context),
+                style: TextStyle(color: AppColors.textPrimary(context)),
+                isExpanded: true,
+                menuMaxHeight: 400,
+                decoration: _deco(
+                  hint: _loadingModels
+                      ? 'Loading...'
+                      : (_models.isEmpty ? 'No models' : 'Select'),
+                ),
+                items: _models
+                    .map(
+                      (m) => DropdownMenuItem(
+                        value: m.id,
+                        child: Text(
+                          m.displayName.isNotEmpty ? m.displayName : m.id,
+                          style: TextStyle(
+                            color: AppColors.textPrimary(context),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) st.setImageGenModel(v);
+                },
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton(
+              icon: _loadingModels
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.formMasterAccent,
+                      ),
+                    )
+                  : Icon(
+                      Icons.refresh,
+                      color: AppColors.iconSecondary(context),
+                      size: 18,
+                    ),
+              onPressed: _loadingModels ? null : _fetchModels,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildSharedFields(st),
+      ],
+    );
+  }
+
+  Widget _buildLocalPanel(StorageService st) {
+    final isDT = st.imageGenBackend == 'drawthings';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerOf(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border(
+              left: BorderSide(
+                color: isDT ? AppColors.formMasterAccent : AppColors.userBubble,
+                width: 3,
+              ),
+            ),
+          ),
+          child: Text(
+            isDT
+                ? 'Draw Things gRPC (port 7859). Test to list models.'
+                : 'A1111 --api. Test to list/switch.',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 10,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (isDT) ...[
+          Text(
+            'gRPC Host / Port',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _dtHostController,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 12,
+                  ),
+                  decoration: _deco(hint: '127.0.0.1'),
+                  onChanged: (v) {
+                    st.setDrawThingsGrpcHost(v.trim());
+                    setState(() {
+                      _connectionOk = null;
+                      _localModels = [];
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 70,
+                child: TextField(
+                  controller: _dtPortController,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 12,
+                  ),
+                  keyboardType: TextInputType.number,
+                  decoration: _deco(),
+                  onChanged: (v) {
+                    st.setDrawThingsGrpcPort(int.tryParse(v) ?? 7859);
+                    setState(() {
+                      _connectionOk = null;
+                      _localModels = [];
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed: _testingConnection ? null : _testConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.surfaceContainerOf(context),
+                  foregroundColor: AppColors.textPrimary(context),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                ),
+                child: _testingConnection
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.formMasterAccent,
+                        ),
+                      )
+                    : const Text('Test', style: TextStyle(fontSize: 11)),
+              ),
+              const SizedBox(width: 6),
+              if (_connectionOk != null)
+                Icon(
+                  _connectionOk! ? Icons.check_circle : Icons.cancel,
+                  color: _connectionOk!
+                      ? AppColors.logReady
+                      : AppColors.logError,
+                  size: 16,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Checkpoint Model',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (_loadingLocalModels)
+            const Center(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.formMasterAccent,
+                ),
+              ),
+            )
+          else if (_localModels.isEmpty)
+            Text(
+              'Test to list models.',
+              style: TextStyle(
+                color: AppColors.textTertiary(context),
+                fontSize: 10,
+              ),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _localModels.contains(st.imageGenModel)
+                  ? st.imageGenModel
+                  : null,
+              dropdownColor: AppColors.surfaceContainerOf(context),
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
+                fontSize: 11,
+              ),
+              isExpanded: true,
+              decoration: _deco(hint: 'Select'),
+              items: _localModels
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) st.setImageGenModel(v);
+              },
+            ),
+          ElevatedButton(
+            onPressed: (_switchingModel || st.imageGenModel.isEmpty)
+                ? null
+                : _switchModel,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.cardOf(context),
+              foregroundColor: AppColors.textPrimary(context),
+            ),
+            child: const Text(
+              'Load Selected (DT)',
+              style: TextStyle(fontSize: 11),
+            ),
+          ),
+        ] else ...[
+          Text(
+            'Server URL',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _localUrlController,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
+                    fontSize: 12,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'http://127.0.0.1:7860',
+                    hintStyle: TextStyle(
+                      color: AppColors.textTertiary(context),
+                    ),
+                    filled: true,
+                    fillColor: AppColors.surfaceContainerOf(context),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    isDense: true,
+                    suffixIcon: _connectionOk == null
+                        ? null
+                        : Icon(
+                            _connectionOk! ? Icons.check_circle : Icons.cancel,
+                            color: _connectionOk!
+                                ? AppColors.logReady
+                                : AppColors.logError,
+                            size: 16,
+                          ),
+                  ),
+                  onChanged: (v) {
+                    st.setLocalImageGenUrl(v.trim());
+                    setState(() => _connectionOk = null);
+                  },
+                  onSubmitted: (_) => _testConnection(),
+                ),
+              ),
+              const SizedBox(width: 6),
+              ElevatedButton(
+                onPressed: _testingConnection ? null : _testConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.surfaceContainerOf(context),
+                  foregroundColor: AppColors.textPrimary(context),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                ),
+                child: _testingConnection
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.formMasterAccent,
+                        ),
+                      )
+                    : const Text('Test', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Checkpoint Model',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (_loadingLocalModels)
+            const Center(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.formMasterAccent,
+                ),
+              ),
+            )
+          else if (_localModels.isEmpty)
+            Text(
+              'Test to list models.',
+              style: TextStyle(
+                color: AppColors.textTertiary(context),
+                fontSize: 10,
+              ),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _localModels.contains(st.imageGenModel)
+                  ? st.imageGenModel
+                  : null,
+              dropdownColor: AppColors.surfaceContainerOf(context),
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
+                fontSize: 11,
+              ),
+              isExpanded: true,
+              decoration: _deco(hint: 'Select'),
+              items: _localModels
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) st.setImageGenModel(v);
+              },
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: (_unloadingModel || _switchingModel)
+                      ? null
+                      : _unloadModel,
+                  child: const Text('Unload', style: TextStyle(fontSize: 11)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed:
+                      (_unloadingModel ||
+                          _switchingModel ||
+                          st.imageGenModel.isEmpty)
+                      ? null
+                      : _switchModel,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardOf(context),
+                    foregroundColor: AppColors.textPrimary(context),
+                  ),
+                  child: const Text('Switch', style: TextStyle(fontSize: 11)),
+                ),
+              ),
+            ],
+          ),
+        ],
+        // LoRA restored for non-DT fidelity (name + weight slider)
+        if (!isDT) ...[
+          Divider(color: AppColors.borderOf(context)),
+          const SizedBox(height: 4),
+          Text('LoRA', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 11, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text('Via &lt;lora:name:weight&gt; in prompt.', style: TextStyle(color: AppColors.textTertiary(context), fontSize: 9)),
+          const SizedBox(height: 2),
+          if (_loadingLoras)
+            const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.formMasterAccent))
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _localLoras.contains(st.imageGenLora) ? st.imageGenLora : (st.imageGenLora.isEmpty ? '' : null),
+              dropdownColor: AppColors.surfaceContainerOf(context),
+              style: TextStyle(color: AppColors.textPrimary(context), fontSize: 10),
+              isExpanded: true,
+              decoration: _deco(hint: _localLoras.isEmpty ? 'Test conn for LoRAs' : 'LoRA (opt)'),
+              items: [
+                DropdownMenuItem(value: '', child: Text('— None —', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 10))),
+                ..._localLoras.map((l) => DropdownMenuItem(value: l, child: Text(l, style: TextStyle(color: AppColors.textPrimary(context), fontSize: 10)))),
+              ],
+              onChanged: (val) { if (val != null) st.setImageGenLora(val); },
+            ),
+          if (st.imageGenLora.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Text('Wt', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 9)),
+              Expanded(child: Slider(value: _dragLoraWeight ?? st.imageGenLoraWeight, min: 0, max: 1, divisions: 20, activeColor: AppColors.formMasterAccent, onChanged: (v) => setState(() => _dragLoraWeight = v), onChangeEnd: (v) { _dragLoraWeight = null; st.setImageGenLoraWeight(v); })),
+              SizedBox(width: 24, child: Text((_dragLoraWeight ?? st.imageGenLoraWeight).toStringAsFixed(2), style: TextStyle(fontSize: 8), textAlign: TextAlign.end)),
+            ]),
+          ],
+        ],
+        const SizedBox(height: 8),
+        _buildSharedFields(st),
+      ],
+    );
+  }
+
+  Widget _buildSharedFields(StorageService st) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Image Size',
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        _buildSizeSelector(st),
+        const SizedBox(height: 8),
+        Text(
+          'Default Style',
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        DropdownButtonFormField<String>(
+          initialValue:
+              ImageGenService.styleLabels.containsKey(st.imageGenStyle)
+              ? st.imageGenStyle
+              : 'photorealistic',
+          dropdownColor: AppColors.surfaceContainerOf(context),
+          style: TextStyle(color: AppColors.textPrimary(context)),
+          isExpanded: true,
+          decoration: _deco(),
+          items: ImageGenService.styleLabels.entries
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e.key,
+                  child: Text(
+                    e.value,
+                    style: TextStyle(color: AppColors.textPrimary(context)),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (v) {
+            if (v != null) st.setImageGenStyle(v);
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Prompt Format',
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        DropdownButtonFormField<String>(
+          initialValue: st.imageGenPromptParadigm,
+          dropdownColor: AppColors.surfaceContainerOf(context),
+          style: TextStyle(color: AppColors.textPrimary(context)),
+          isExpanded: true,
+          decoration: _deco(),
+          items: const [
+            DropdownMenuItem(
+              value: 'natural',
+              child: Text('Natural Language (FLUX / SD3)'),
+            ),
+            DropdownMenuItem(
+              value: 'tags',
+              child: Text('Danbooru Tags (SD 1.5 / Anime)'),
+            ),
+          ],
+          onChanged: (v) {
+            if (v != null) st.setImageGenPromptParadigm(v);
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Default Negative Prompt',
+          style: TextStyle(
+            color: AppColors.textSecondary(context),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        TextField(
+          controller: _negativePromptController,
+          maxLines: 2,
+          style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
+          decoration: _deco(hint: 'e.g. blurry...'),
+          onChanged: (v) => st.setImageGenNegativePrompt(v),
+        ),
+        const SizedBox(height: 8),
+        Consumer<StorageService>(
+          builder: (ctx, st2, c) {
+            final local = st2.imageGenBackend != 'remote';
+            return ExpansionTile(
+              title: Text(
+                'Advanced',
+                style: TextStyle(
+                  color: AppColors.textSecondary(context),
+                  fontSize: 12,
+                ),
+              ),
+              tilePadding: EdgeInsets.zero,
+              children: local
+                  ? _buildAdvancedFields(
+                      st2,
+                      isDrawThings: st2.imageGenBackend == 'drawthings',
+                    )
+                  : [
+                      Text(
+                        'Local backend required.',
+                        style: TextStyle(
+                          color: AppColors.textTertiary(context),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSizeSelector(StorageService st) {
+    const sizes = ['512x512', '768x768', '1024x1024', '1536x1024', '1024x1536'];
+    const labels = ['512²', '768²', '1024²', '1536×1024', '1024×1536'];
+    final ac = AppColors.formMasterAccent;
+    final kids = <Widget>[];
+    for (var i = 0; i < sizes.length; i++) {
+      final sel = st.imageGenSize == sizes[i];
+      kids.add(
+        GestureDetector(
+          onTap: () => st.setImageGenSize(sizes[i]),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: sel
+                  ? AppColors.cardOf(context)
+                  : AppColors.surfaceContainerOf(context),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: sel ? ac : AppColors.borderOf(context)),
+            ),
+            child: Text(
+              labels[i],
+              style: TextStyle(
+                color: sel ? ac : AppColors.textSecondary(context),
+                fontSize: 10,
+                fontWeight: sel ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return Wrap(spacing: 6, children: kids);
+  }
+
+  List<Widget> _buildAdvancedFields(
+    StorageService st, {
+    required bool isDrawThings,
+  }) {
+    return [
+      Row(
+        children: [
+          Text(
+            'Steps',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 10,
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              value: _dragSteps ?? st.imageGenSteps.toDouble(),
+              min: 5,
+              max: 50,
+              divisions: 45,
+              activeColor: AppColors.formMasterAccent,
+              inactiveColor: AppColors.borderOf(context),
+              onChanged: (v) => setState(() => _dragSteps = v),
+              onChangeEnd: (v) {
+                _dragSteps = null;
+                st.setImageGenSteps(v.round());
+              },
+            ),
+          ),
+          SizedBox(
+            width: 26,
+            child: Text(
+              (_dragSteps ?? st.imageGenSteps.toDouble()).round().toString(),
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 9,
+              ),
+              textAlign: TextAlign.end,
+            ),
+          ),
+        ],
+      ),
+      Row(
+        children: [
+          Text(
+            'CFG',
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
+              fontSize: 10,
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              value: _dragCfgScale ?? st.imageGenCfgScale,
+              min: 1,
+              max: 20,
+              divisions: 190,
+              activeColor: AppColors.formMasterAccent,
+              inactiveColor: AppColors.borderOf(context),
+              onChanged: (v) => setState(() => _dragCfgScale = v),
+              onChangeEnd: (v) {
+                _dragCfgScale = null;
+                st.setImageGenCfgScale(v);
+              },
+            ),
+          ),
+          SizedBox(
+            width: 30,
+            child: Text(
+              (_dragCfgScale ?? st.imageGenCfgScale).toStringAsFixed(1),
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 9,
+              ),
+              textAlign: TextAlign.end,
+            ),
+          ),
+        ],
+      ),
+      Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Sampler',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 10,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: isDrawThings
+                ? DropdownButtonFormField<int>(
+                    initialValue: st.drawThingsSampler,
+                    dropdownColor: AppColors.surfaceContainerOf(context),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 10,
+                    ),
+                    isExpanded: true,
+                    decoration: _deco(hint: 'DT'),
+                    items: _drawThingsSamplers
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s.value,
+                            child: Text(
+                              s.label,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: AppColors.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) st.setDrawThingsSampler(v);
+                    },
+                  )
+                : DropdownButtonFormField<String>(
+                    initialValue: _localSamplers.contains(st.imageGenSampler)
+                        ? st.imageGenSampler
+                        : (st.imageGenSampler.isNotEmpty ? null : 'Euler a'),
+                    dropdownColor: AppColors.surfaceContainerOf(context),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 10,
+                    ),
+                    isExpanded: true,
+                    decoration: _deco(hint: 'sampler'),
+                    items: _localSamplers
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(
+                              s,
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: AppColors.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) st.setImageGenSampler(v);
+                    },
+                  ),
+          ),
+        ],
+      ),
+      Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Seed',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 10,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _seedController,
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 10,
+                    ),
+                    keyboardType: TextInputType.number,
+                    decoration: _deco(hint: '-1=random'),
+                    onChanged: (v) {
+                      st.setImageGenSeed(int.tryParse(v) ?? -1);
+                    },
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.casino_outlined,
+                    size: 14,
+                    color: AppColors.formMasterAccent,
+                  ),
+                  onPressed: _randomizeSeed,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      if (isDrawThings) ...[
+        const SizedBox(height: 6),
+        Text('DT Advanced', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 9, fontWeight: FontWeight.w600)),
+        Row(children: [Text('Shift', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 9)), Expanded(child: Slider(value: st.drawThingsShift, min: 0, max: 10, divisions: 100, activeColor: AppColors.formMasterAccent, onChanged: (v) => st.setDrawThingsShift(v))), SizedBox(width: 24, child: Text(st.drawThingsShift.toStringAsFixed(1), style: TextStyle(fontSize: 8), textAlign: TextAlign.end)) ]),
+        Row(children: [Text('Str', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 9)), Expanded(child: Slider(value: st.drawThingsStrength, min: 0, max: 2, divisions: 40, activeColor: AppColors.formMasterAccent, onChanged: (v) => st.setDrawThingsStrength(v))), SizedBox(width: 24, child: Text(st.drawThingsStrength.toStringAsFixed(1), style: TextStyle(fontSize: 8), textAlign: TextAlign.end)) ]),
+        Row(children: [
+          Text('SeedMode', style: TextStyle(color: AppColors.textSecondary(context), fontSize: 9)),
+          DropdownButton<int>(value: st.drawThingsSeedMode, style: TextStyle(fontSize: 9), items: const [DropdownMenuItem(value: 0, child: Text('Rand', style: TextStyle(fontSize: 8))), DropdownMenuItem(value: 1, child: Text('Const', style: TextStyle(fontSize: 8))), DropdownMenuItem(value: 2, child: Text('PerImg', style: TextStyle(fontSize: 8))), DropdownMenuItem(value: 3, child: Text('Prompt', style: TextStyle(fontSize: 8)))], onChanged: (v) { if (v != null) st.setDrawThingsSeedMode(v); }),
+          Checkbox(value: st.drawThingsTeaCache, onChanged: (v) => st.setDrawThingsTeaCache(v ?? false), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          Text('Tea', style: TextStyle(fontSize: 8)),
+          Checkbox(value: st.drawThingsCfgZeroStar, onChanged: (v) => st.setDrawThingsCfgZeroStar(v ?? false), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          Text('Zero', style: TextStyle(fontSize: 8)),
+        ]),
+      ],
+    ];
+  }
+}

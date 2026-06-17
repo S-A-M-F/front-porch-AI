@@ -40,6 +40,9 @@ import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
 import 'package:front_porch_ai/ui/settings/tabs/general_tab.dart';
 
 import 'package:front_porch_ai/ui/settings/tabs/voice_media_tab.dart';
+// Note: Image Generation config options were moved out of Voice & Media into a first-class
+// tab-like panel inside the Image Studio (see generation_options_tab.dart + studio integration).
+// The "Configure Image Gen" entry point and section were removed (deletion part of task).
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -1653,25 +1656,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       )
                     else
                       ElevatedButton(
-                        onPressed:
-                            backendManager.backendPath == null
-                                ? () => backendManager.downloadBackend()
-                                : backendManager.versionError != null ||
-                                        backendManager.remoteVersion == null
-                                    ? () => backendManager.checkForUpdates()
-                                    : backendManager.isUpdateAvailable
-                                        ? () => backendManager.downloadBackend()
-                                        : null,
+                        onPressed: backendManager.backendPath == null
+                            ? () => backendManager.downloadBackend()
+                            : backendManager.versionError != null ||
+                                  backendManager.remoteVersion == null
+                            ? () => backendManager.checkForUpdates()
+                            : backendManager.isUpdateAvailable
+                            ? () => backendManager.downloadBackend()
+                            : null,
                         child: Text(
                           backendManager.backendPath == null
                               ? 'Download'
                               : backendManager.versionError != null
-                                  ? 'Check (failed)'
-                                  : backendManager.remoteVersion == null
-                                      ? 'Check for Updates'
-                                      : backendManager.isUpdateAvailable
-                                          ? 'Update to v${backendManager.remoteVersion}'
-                                          : 'Up to date',
+                              ? 'Check (failed)'
+                              : backendManager.remoteVersion == null
+                              ? 'Check for Updates'
+                              : backendManager.isUpdateAvailable
+                              ? 'Update to v${backendManager.remoteVersion}'
+                              : 'Up to date',
                         ),
                       ),
                   ],

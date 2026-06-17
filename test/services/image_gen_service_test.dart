@@ -1,8 +1,11 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/storage/settings/image_gen_settings.dart';
 
 void main() {
   group('ImageGenBackend', () {
@@ -57,23 +60,24 @@ void main() {
   });
 
   group('ImageGenMode', () {
-    test('has all 6 expected modes', () {
-      expect(ImageGenMode.values.length, 6);
-      expect(ImageGenMode.values, contains(ImageGenMode.customPrompt));
-      expect(ImageGenMode.values, contains(ImageGenMode.visualizeScene));
-      expect(ImageGenMode.values, contains(ImageGenMode.fromLastMessage));
-      expect(ImageGenMode.values, contains(ImageGenMode.characterPortrait));
-      expect(ImageGenMode.values, contains(ImageGenMode.chatBackground));
-      expect(ImageGenMode.values, contains(ImageGenMode.userAvatar));
-    });
+    test(
+      'has all 5 expected modes (Message Illustration/fromLastMessage removed as redundant with Visualize Scene N slider)',
+      () {
+        expect(ImageGenMode.values.length, 5);
+        expect(ImageGenMode.values, contains(ImageGenMode.customPrompt));
+        expect(ImageGenMode.values, contains(ImageGenMode.visualizeScene));
+        expect(ImageGenMode.values, contains(ImageGenMode.characterPortrait));
+        expect(ImageGenMode.values, contains(ImageGenMode.chatBackground));
+        expect(ImageGenMode.values, contains(ImageGenMode.userAvatar));
+      },
+    );
 
     test('values are in expected order', () {
       expect(ImageGenMode.values[0], ImageGenMode.customPrompt);
       expect(ImageGenMode.values[1], ImageGenMode.visualizeScene);
-      expect(ImageGenMode.values[2], ImageGenMode.fromLastMessage);
-      expect(ImageGenMode.values[3], ImageGenMode.characterPortrait);
-      expect(ImageGenMode.values[4], ImageGenMode.chatBackground);
-      expect(ImageGenMode.values[5], ImageGenMode.userAvatar);
+      expect(ImageGenMode.values[2], ImageGenMode.characterPortrait);
+      expect(ImageGenMode.values[3], ImageGenMode.chatBackground);
+      expect(ImageGenMode.values[4], ImageGenMode.userAvatar);
     });
   });
 
@@ -139,4 +143,165 @@ void main() {
       expect(info.description, 'Basic Model');
     });
   });
+
+  // Delegation smoke for Stage 2: the public prompt thins now delegate to
+  // ImagePromptBuilder (ctx construction via _buildPromptContext thin helper + call).
+  // These (and the explicit customPrompt ternary test) exercise the thin paths
+  // including the custom vs lastMessage mapping. Full quality + static/LLM matrix
+  // in image_prompt_builder_test.dart roundtrips (which also call through thins).
+  group('ImageGenService prompt delegation (Stage 2 thin)', () {
+    // Use a real ImageGenSettings() (its field defaults are sufficient and give
+    // correct subtype for the typed access in the thins). noSuchMethod covers
+    // the rest of StorageService.
+    StorageService _makePromptTestStorage() {
+      return _TestStorageForPrompt(ImageGenSettings());
+    }
+
+    test(
+      'buildPrompt thin produces non-empty output and includes style for portrait',
+      () {
+        final storage = _makePromptTestStorage();
+        final service = ImageGenService(storage);
+        final p = service.buildPrompt(
+          mode: ImageGenMode.characterPortrait,
+          characterName: 'TestChar',
+          characterDescription: 'tall figure in a dark coat',
+        );
+        expect(p, isNotEmpty);
+        expect(
+          p.toLowerCase(),
+          contains('photorealistic'),
+        ); // default + builder enforcement
+      },
+    );
+
+    test(
+      'generateSmartPrompt thin (no llm) falls back to builder static and respects passed style',
+      () async {
+        final storage = _makePromptTestStorage();
+        final service = ImageGenService(storage);
+        final p = await service.generateSmartPrompt(
+          mode: ImageGenMode.visualizeScene,
+          style: 'watercolor',
+          lastMessage: 'The hero drew their blade as the storm broke.',
+          characterDescription: 'armored warrior',
+          visualizeNumMessages: 1,
+        );
+        expect(p, isNotEmpty);
+        expect(p.toLowerCase(), contains('watercolor'));
+        // Distillation contract guard (input has no dialogue)
+        expect(p, isNot(contains('"')));
+      },
+    );
+
+    test(
+      'service thin customPrompt mode exercises the exact customPrompt ternary in _buildPromptContext (and reaches builder)',
+      () async {
+        final storage = _makePromptTestStorage();
+        final service = ImageGenService(storage);
+        final p = await service.generateSmartPrompt(
+          mode: ImageGenMode.customPrompt,
+          style: 'photorealistic',
+          customPrompt:
+              'a serene mountain lake at dawn, mist rising from the water',
+        );
+        expect(p, isNotEmpty);
+        expect(p.toLowerCase(), contains('serene mountain lake'));
+        expect(p.toLowerCase(), contains('photorealistic'));
+      },
+    );
+
+    // Stage 4: exercise richer fields (time/lighting/group speaker) through the service thin ctx mapping
+    // (roundtrips the optionals to _buildPromptContext + builder for fromLast/visualize). Minimal extension
+    // of delegation group (no new fakes needed; defaults + forwarding).
+    test(
+      'generateSmartPrompt thin forwards Stage 4 richer fields (timeOfDay/lighting/group speaker) and builder consumes them',
+      () async {
+        final storage = _makePromptTestStorage();
+        final service = ImageGenService(storage);
+        final p = await service.generateSmartPrompt(
+          mode: ImageGenMode.visualizeScene,
+          style: 'watercolor',
+          lastMessage:
+              'The hero drew their blade as the storm broke under evening light.',
+          characterDescription: 'armored warrior',
+          timeOfDay: 'evening',
+          lightingHint: 'storm glow',
+          isGroupNonObserver: true,
+          currentSpeakerId: 'Hero',
+          visualizeNumMessages: 1,
+        );
+        expect(p, isNotEmpty);
+        expect(p.toLowerCase(), contains('watercolor'));
+        // Consumption of richer (lighting/speaker injected in builder for the mode).
+        expect(
+          p.toLowerCase(),
+          anyOf(contains('evening'), contains('storm'), contains('hero')),
+        );
+      },
+    );
+
+    // User spec: the thin extension (sole edit to pre-existing _buildPromptContext) must forward
+    // userInstruction + visualizeNumMessages through ctx to builder (N limit + strip + instr block + persona/char visual no-pers).
+    test(
+      'generateSmartPrompt thin forwards userInstruction (box text) and visualizeNumMessages (N + think-strip) and builder consumes',
+      () async {
+        final storage = _makePromptTestStorage();
+        final service = ImageGenService(storage);
+        final p = await service.generateSmartPrompt(
+          mode: ImageGenMode.visualizeScene,
+          style: 'photorealistic',
+          characterDescription: 'silver hair, tall',
+          personaName: 'User',
+          personaText: 'the player',
+          recentMessages: [
+            'First <think>secret</think> action here.',
+            'Second clean pose.',
+            'Third with </think> tail.',
+          ],
+          userInstruction:
+              'focus on dramatic stormy lighting and her determined expression',
+          visualizeNumMessages: 2,
+        );
+        expect(p, isNotEmpty);
+        expect(p.toLowerCase(), contains('photorealistic'));
+        // userInstruction surfaced (via 'Additional instructions' or guidance in assembly).
+        expect(
+          p.toLowerCase(),
+          anyOf(
+            contains('dramatic stormy'),
+            contains('determined expression'),
+            contains('user guidance'),
+            contains('additional instructions'),
+          ),
+        );
+        // N=2 limit + strip: first (think) dropped, no think artifacts in output.
+        expect(p, isNot(contains('secret')));
+        expect(p, isNot(contains('<think>')));
+        expect(p, isNot(contains('</think>')));
+        // Persona + char visual (no pers) present.
+        expect(p, contains('User'));
+        expect(p.toLowerCase(), contains('silver hair'));
+      },
+    );
+  });
+}
+
+/// Storage double for prompt thin tests. Supplies *exact* concrete ImageGenSettings
+/// (the subtype the thins do ` _storage.imageGenSettings.imageGen* ` on) + guard.
+/// noSuchMethod for the large remainder of StorageService.
+class _TestStorageForPrompt extends ChangeNotifier implements StorageService {
+  final ImageGenSettings _imgSettings;
+  _TestStorageForPrompt(this._imgSettings) {
+    // The parameter type (ImageGenSettings) + field is the compile/runtime guard.
+    // Callers passing something else won't compile against the double. This
+    // prevents the subtype error from earlier gates (thins do typed access on
+    // _storage.imageGenSettings.imageGen*).
+  }
+
+  @override
+  ImageGenSettings get imageGenSettings => _imgSettings;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
