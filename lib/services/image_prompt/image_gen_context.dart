@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 
 /// Immutable, typed context bag for image prompt generation.
 ///
@@ -111,11 +112,13 @@ class ImageGenContext {
   /// Safe no-op on null/empty.
   String resolveMacros(String? text) {
     if (text == null || text.isEmpty) return '';
-    return text
-        .replaceAll('{{user}}', personaName ?? 'User')
-        .replaceAll('{{char}}', characterName ?? 'Character')
-        .replaceAll('{{User}}', personaName ?? 'User')
-        .replaceAll('{{Char}}', characterName ?? 'Character');
+    return MacroResolver().resolve(
+      text,
+      MacroContext(
+        userName: personaName ?? 'User',
+        characterName: characterName ?? 'Character',
+      ),
+    );
   }
 
   /// Truncate helper that tries to break at a word boundary.

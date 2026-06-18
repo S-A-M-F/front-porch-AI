@@ -35,6 +35,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
 
 // Specific dialogs and modules not covered by the barrels (or intentionally direct)
+import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
@@ -2881,9 +2882,10 @@ class _ChatPageState extends State<ChatPage> {
       listen: false,
     ).persona.name;
     String replace(String text) {
-      return text
-          .replaceAll('{{char}}', character.name)
-          .replaceAll('{{user}}', userName);
+      return MacroResolver().resolve(
+        text,
+        MacroContext(userName: userName, characterName: character.name),
+      );
     }
 
     return Container(

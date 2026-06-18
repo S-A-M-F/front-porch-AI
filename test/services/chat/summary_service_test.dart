@@ -39,6 +39,7 @@ import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat/summary_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 
 /// Minimal fake LLMService for summary tests (real stream control for gen).
 class _FakeLlmForSummary extends LLMService {
@@ -112,6 +113,7 @@ SummaryService createTestSummaryService({
   List<bool>? flagHistory,
   List<String>? saveCalls,
   List<String>? notifyCalls,
+  MacroResolver? macroResolver,
 }) {
   final prompts = capturedPrompts ?? <String>[];
   final saved = savedSummaries ?? <String>[];
@@ -161,6 +163,7 @@ SummaryService createTestSummaryService({
     getMemorySourceIds: () async => memorySourceIds?.call() ?? <String>[],
     getAllContentForCharacters: (ids) async =>
         allContent?.call(ids) ?? <String>[],
+    getMacroResolver: () => macroResolver ?? MacroResolver(),
   );
 }
 

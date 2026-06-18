@@ -18,6 +18,7 @@
 
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -513,11 +514,10 @@ class CharacterCard {
   }
 
   String replacePlaceholders(String text, {String userName = 'You'}) {
-    return text
-        .replaceAll(RegExp(r'\{\{char\}\}', caseSensitive: false), name)
-        .replaceAll(RegExp(r'<char>', caseSensitive: false), name)
-        .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
-        .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
+    return MacroResolver().resolve(
+      text,
+      MacroContext(userName: userName, characterName: name),
+    );
   }
 
   String get formattedDescription => replacePlaceholders(description);

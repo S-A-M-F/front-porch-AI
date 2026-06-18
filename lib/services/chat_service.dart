@@ -73,6 +73,7 @@ import 'package:front_porch_ai/services/chat/objective_proposal.dart';
 import 'package:front_porch_ai/services/chat/summary_service.dart';
 import 'package:front_porch_ai/services/chat/fact_extraction.dart';
 import 'package:front_porch_ai/services/chat/evolution_service.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -502,6 +503,9 @@ class ChatService extends ChangeNotifier {
     resolveWorld: (name) =>
         _worldRepository.worlds.where((w) => w.name == name).firstOrNull,
   );
+
+  /// Central macro resolver for prompt template expansion.
+  late final _macroResolver = MacroResolver();
 
   late final _needsSimulation = NeedsSimulation(
     onNotify: notifyListeners,
@@ -1043,6 +1047,7 @@ class ChatService extends ChangeNotifier {
   // deletion of moved bodies as part of task.
   // Barrel not added (internal to ChatService; per "unless 3+ locations").
   late final _summaryService = SummaryService(
+    getMacroResolver: () => _macroResolver,
     getLlmService: () =>
         testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
     getSummaryEnabled: () => _storageService.memorySettings.summaryEnabled,
@@ -4400,22 +4405,26 @@ class ChatService extends ChangeNotifier {
 
   String _buildFirstMessage(CharacterCard character, {String? greetingText}) {
     String msg = greetingText ?? character.firstMessage;
-    // Use the robust replacement logic from the model
-    return character.replacePlaceholders(
+    return _macroResolver.resolve(
       msg,
-      userName: _userPersonaService.persona.name,
+      MacroContext(
+        userName: _userPersonaService.persona.name,
+        characterName: character.name,
+      ),
     );
   }
 
   /// Applies {{user}} / `<user>` replacement using the current persona.
   /// Used for group-level overrides (firstMessage, scenario, systemPrompt)
   /// which are not tied to a specific CharacterCard.
+  /// Deprecated: use _macroResolver.resolve() directly.
   String _applyUserReplacement(String text) {
     if (text.isEmpty) return text;
     final userName = _userPersonaService.persona.name;
-    return text
-        .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
-        .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
+    return _macroResolver.resolve(
+      text,
+      MacroContext(userName: userName),
+    );
   }
 
   Future<void> sendMessage(String text) async {
@@ -5559,9 +5568,12 @@ class ChatService extends ChangeNotifier {
 
       if (activeLoreStrings.isNotEmpty) {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
-        loreContent = speakingCharacter.replacePlaceholders(
+        loreContent = _macroResolver.resolve(
           loreContent,
-          userName: userName,
+          MacroContext(
+            userName: userName,
+            characterName: speakingCharacter.name,
+          ),
         );
       }
 
@@ -5572,13 +5584,13 @@ class ChatService extends ChangeNotifier {
         final personas = _groupCharacters
             .map(
               (ch) =>
-                  "${ch.name}'s Persona: ${ch.replacePlaceholders(_getEffectivePersonality(ch), userName: userName)}",
+                  "${ch.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(ch), MacroContext(userName: userName, characterName: ch.name))}",
             )
             .toList();
         personaBlock = personas.join('\n');
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${speakingCharacter.replacePlaceholders(_getEffectivePersonality(speakingCharacter), userName: userName)}";
+            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name))}";
       }
 
       // User persona — inject user's self-description + learned facts
@@ -5593,9 +5605,9 @@ class ChatService extends ChangeNotifier {
             : speakingCharacter;
         rawScenario = _getEffectiveScenario(scenarioChar);
       }
-      final scenario = speakingCharacter.replacePlaceholders(
+      final scenario = _macroResolver.resolve(
         rawScenario,
-        userName: userName,
+        MacroContext(userName: userName, characterName: speakingCharacter.name),
       );
 
       String history = _buildChatHistory();
@@ -5611,7 +5623,10 @@ class ChatService extends ChangeNotifier {
         final examples = _groupCharacters
             .where((ch) => ch.mesExample.isNotEmpty)
             .map(
-              (ch) => ch.replacePlaceholders(ch.mesExample, userName: userName),
+              (ch) => _macroResolver.resolve(
+                ch.mesExample,
+                MacroContext(userName: userName, characterName: ch.name),
+              ),
             )
             .toList();
         if (examples.isNotEmpty) {
@@ -5619,14 +5634,14 @@ class ChatService extends ChangeNotifier {
         }
       } else if (speakingCharacter.mesExample.isNotEmpty) {
         mesExampleBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.mesExample, userName: userName)}\n';
+            '${_macroResolver.resolve(speakingCharacter.mesExample, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
       }
 
       String postHistoryBlock = '';
       if (_activeGroup == null &&
           speakingCharacter.postHistoryInstructions.isNotEmpty) {
         postHistoryBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
+            '${_macroResolver.resolve(speakingCharacter.postHistoryInstructions, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
       }
 
       String authorNoteBlock = '';
@@ -6023,9 +6038,12 @@ class ChatService extends ChangeNotifier {
 
       // Apply replacements to lore content
       if (loreContent.isNotEmpty) {
-        loreContent = speakingCharacter.replacePlaceholders(
+        loreContent = _macroResolver.resolve(
           loreContent,
-          userName: userName,
+          MacroContext(
+            userName: userName,
+            characterName: speakingCharacter.name,
+          ),
         );
       }
 
@@ -6034,16 +6052,19 @@ class ChatService extends ChangeNotifier {
       if (_activeGroup != null) {
         personaBlock = _groupCharacters
             .map((ch) {
-              final persona = ch.replacePlaceholders(
+              final persona = _macroResolver.resolve(
                 _getEffectivePersonality(ch),
-                userName: userName,
+                MacroContext(
+                  userName: userName,
+                  characterName: ch.name,
+                ),
               );
               return "${ch.name}'s Persona: $persona";
             })
             .join('\n');
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${speakingCharacter.replacePlaceholders(_getEffectivePersonality(speakingCharacter), userName: userName)}";
+            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name))}";
       }
 
       // User persona — inject user's self-description + learned facts
@@ -6059,9 +6080,12 @@ class ChatService extends ChangeNotifier {
             : speakingCharacter;
         rawScenario = _getEffectiveScenario(scenarioChar);
       }
-      final scenario = speakingCharacter.replacePlaceholders(
+      final scenario = _macroResolver.resolve(
         rawScenario,
-        userName: userName,
+        MacroContext(
+          userName: userName,
+          characterName: speakingCharacter.name,
+        ),
       );
 
       String suffix = "";
@@ -6081,7 +6105,10 @@ class ChatService extends ChangeNotifier {
         final examples = _groupCharacters
             .where((ch) => ch.mesExample.isNotEmpty)
             .map(
-              (ch) => ch.replacePlaceholders(ch.mesExample, userName: userName),
+              (ch) => _macroResolver.resolve(
+                ch.mesExample,
+                MacroContext(userName: userName, characterName: ch.name),
+              ),
             )
             .toList();
         if (examples.isNotEmpty) {
@@ -6089,7 +6116,7 @@ class ChatService extends ChangeNotifier {
         }
       } else if (speakingCharacter.mesExample.isNotEmpty) {
         mesExampleBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.mesExample, userName: userName)}\n';
+            '${_macroResolver.resolve(speakingCharacter.mesExample, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
       }
 
       // Build post-history instructions block
@@ -6097,7 +6124,7 @@ class ChatService extends ChangeNotifier {
       if (_activeGroup == null &&
           speakingCharacter.postHistoryInstructions.isNotEmpty) {
         postHistoryBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
+            '${_macroResolver.resolve(speakingCharacter.postHistoryInstructions, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
       }
 
       // Author's note — placed right before the character speaks for maximum influence
