@@ -24,6 +24,7 @@ import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/tts_voice_info.dart';
 import 'package:front_porch_ai/services/elevenlabs_tts_engine.dart';
 import 'package:front_porch_ai/ui/dialogs/voice_browser_dialog.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Dialog for configuring TTS settings with multi-engine support.
 class TtsSettingsDialog extends StatefulWidget {
@@ -405,14 +406,17 @@ class _TtsSettingsDialogState extends State<TtsSettingsDialog> {
                               storage.setTtsIgnoreAsterisks(val),
                         ),
                         SwitchListTile(
-                          title: const Text(
+                          title: Text(
                             'Replace curly quotation marks',
-                            style: TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                            ),
                           ),
-                          subtitle: const Text(
+                          subtitle: Text(
                             'Converts “curly quotes” to "straight quotes" before sending to TTS',
                             style: TextStyle(
-                              color: Colors.white54,
+                              color: AppColors.textSecondary(context),
                               fontSize: 11,
                             ),
                           ),
