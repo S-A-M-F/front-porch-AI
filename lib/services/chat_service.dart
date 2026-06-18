@@ -4292,9 +4292,11 @@ class ChatService extends ChangeNotifier {
     _isProcessingGreeting = true;
     notifyListeners();
     try {
-      // Sequential for reliability (post-greeting baseline).
-      await _evaluateEmotionalStateCall();
-      await _evaluateRelationshipCall();
+      await Future.wait([
+        // delegates to _llmEvalEngine (step 9 thins; full bodies excised)
+        _evaluateEmotionalStateCall(),
+        Future.delayed(_kEvalDispatchStagger, () => _evaluateRelationshipCall()),
+      ]);
 
       if (_realismEvalCancelled) {
         debugPrint('[Realism] Post-greeting eval cancelled');
@@ -4354,11 +4356,12 @@ class ChatService extends ChangeNotifier {
           return;
         }
       } else {
-        // Sequential for reliable structured outputs (deltas + emotion).
-        await _evaluateRelationshipCall();
-        await _evaluateEmotionalStateCall();
-        await _evaluatePhysicalStateCall();
-        await _evaluateNarrativeCall();
+        await Future.wait([
+          _evaluateRelationshipCall(),
+          Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall()),
+          Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall()),
+          Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall()),
+        ]);
 
         if (_realismEvalCancelled) {
           debugPrint('[Realism] Retroactive scan cancelled');
@@ -4619,14 +4622,14 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           _realismEvals.beginCollectForBatchedVerification();
-          // Sequential (not concurrent) to ensure each structured eval gets a clean
-          // backend response without contention. Parallel fires were causing
-          // occasional empty responses (esp. on local backends), making relationship
-          // deltas (bond/trust) hit-or-miss while emotion label often still updated.
-          await _evaluateRelationshipCall(onChunk: handleChunk);
-          await _evaluateEmotionalStateCall(onChunk: handleChunk);
-          await _evaluatePhysicalStateCall(onChunk: handleChunk);
-          await _evaluateNarrativeCall(onChunk: handleChunk);
+          await Future.wait([
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 10 thins (full in realism_evals)
+            Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall(onChunk: handleChunk)),
+          ]);
           await _realismEvals.finalizeBatchedRealismVerifications();
 
           // One-shot director batch (user proposal): after the mains, use the collected from the leaf
@@ -5252,14 +5255,14 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           _realismEvals.beginCollectForBatchedVerification();
-          // Sequential (not concurrent) to ensure each structured eval gets a clean
-          // backend response without contention. Parallel fires were causing
-          // occasional empty responses (esp. on local backends), making relationship
-          // deltas (bond/trust) hit-or-miss while emotion label often still updated.
-          await _evaluateRelationshipCall(onChunk: handleChunk);
-          await _evaluateEmotionalStateCall(onChunk: handleChunk);
-          await _evaluatePhysicalStateCall(onChunk: handleChunk);
-          await _evaluateNarrativeCall(onChunk: handleChunk);
+          await Future.wait([
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 10 thins (full in realism_evals)
+            Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall(onChunk: handleChunk)),
+          ]);
           await _realismEvals.finalizeBatchedRealismVerifications();
 
           // Mirror of the primary send path: apply the one director batch (or the cheap
@@ -8368,6 +8371,14 @@ class ChatService extends ChangeNotifier {
   bool? _extractJsonBool(String text, String key) =>
       _llmEvalEngine.extractJsonBool(text, key);
 
+  // KoboldCpp receives HTTP requests in wire order via loopback.
+  // A small stagger prevents TCP timing from reordering concurrent
+  // eval dispatches, ensuring KoboldCpp's FIFO queue (which serializes
+  // internally) processes evals in our intended order rather than
+  // reverse or interleaved. Zero wall time added — KoboldCpp serializes
+  // anyway, so the stagger just ensures already-in-flight ordering.
+  static const _kEvalDispatchStagger = Duration(milliseconds: 50);
+
   Future<void> _evaluateRelationshipCall({void Function(String)? onChunk}) =>
       _realismEvals.evaluateRelationshipCall(onChunk: onChunk);
 
@@ -8631,11 +8642,12 @@ class ChatService extends ChangeNotifier {
       if (_storageService.realismSettings.realismOneShotEval) {
         await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
-        // Sequential to prevent backend contention dropping relationship deltas.
-        await _evaluateRelationshipCall(onChunk: handleChunk);
-        await _evaluateEmotionalStateCall(onChunk: handleChunk);
-        await _evaluatePhysicalStateCall(onChunk: handleChunk);
-        await _evaluateNarrativeCall(onChunk: handleChunk);
+        await Future.wait([
+          _evaluateRelationshipCall(onChunk: handleChunk),
+          Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall(onChunk: handleChunk)),
+          Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall(onChunk: handleChunk)),
+          Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall(onChunk: handleChunk)),
+        ]);
       }
 
       // Handle cancellation after the eval calls
