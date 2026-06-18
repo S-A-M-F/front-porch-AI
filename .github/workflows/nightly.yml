@@ -152,6 +152,21 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build artifacts (embed_server + ort prebuilts)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "tools/embed_server"
+
+      - name: Cache ML Engines (Kokoro TTS, Piper TTS, Whisper STT, etc.)
+        id: ml-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ml-engines-cache
+          key: ml-engines-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/embed_server/Cargo.lock', 'tools/dt-grpc-python/**') }}
+          restore-keys: |
+            ml-engines-${{ matrix.platform }}-
+
       - name: Build Application
         if: matrix.platform != 'linux'
         run: flutter build ${{ matrix.platform }} --release
@@ -175,11 +190,19 @@ jobs:
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
-          echo "Building ML engines from source"
-          DEST="${{ matrix.build_path }}/piper"
-          mkdir -p "$DEST"
+          CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
+          CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
 
-          # Install TTS dependencies + PyInstaller
+          if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
+            echo "ML engines cache hit — skipping PyInstaller + Rust builds"
+            mkdir -p "${{ matrix.build_path }}"
+            cp -r "$CACHE_DIR/"* "${{ matrix.build_path }}/" || true
+          else
+            echo "ML engines cache miss — building from source"
+            DEST="${{ matrix.build_path }}/piper"
+            mkdir -p "$DEST"
+
+            # Install TTS dependencies + PyInstaller
             pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
             # Build Kokoro TTS as a standalone directory bundle
@@ -250,9 +273,26 @@ jobs:
             echo "Whisper STT built at: $STT_DEST/whisper_stt/"
 
             # Build Embedding Server (Rust binary)
+            # NOTE: Uses prebuilt ONNX Runtime static libs downloaded by ort-sys from
+            # parcel.pyke.io. These downloads are occasionally flaky (timeouts/5xx).
+            # We retry + rely on rust-cache + ML-engines-cache to avoid repeated downloads.
             echo "Building Embedding Server (Rust)..."
             cd tools/embed_server
-            cargo build --release
+            for attempt in 1 2 3; do
+              if cargo build --release; then
+                echo "cargo build succeeded on attempt $attempt"
+                break
+              else
+                echo "cargo build attempt $attempt failed"
+                if [ $attempt -lt 3 ]; then
+                  echo "Retrying in 15s..."
+                  sleep 15
+                else
+                  echo "ERROR: cargo build failed after 3 attempts"
+                  exit 1
+                fi
+              fi
+            done
             cd ../..
             EMBED_BINARY="tools/embed_server/target/release/embed_server"
             if [ "${{ matrix.platform }}" = "windows" ]; then
@@ -345,6 +385,11 @@ jobs:
               --exclude-module torchaudio \
               --noconfirm
             echo "Draw Things gRPC client built at: $STT_DEST/dt_grpc_client/"
+
+            # Populate ML cache for future runs (same source hash = instant reuse)
+            mkdir -p "$CACHE_DIR"
+            cp -r "${{ matrix.build_path }}/"* "$CACHE_DIR/" || true
+          fi
 
           # For macOS, copy into the app bundle Resources (always runs)
           if [ "${{ matrix.platform }}" = "macos" ]; then
@@ -454,19 +499,15 @@ jobs:
 
           echo "✓ Certificate identity found in keychain"
 
-      # macOS notarization flow:
+      # macOS signing + PKG notarization flow (PKG is now primary):
       #
       # 1. Clean xattrs from the built .app (must be before codesigning).
       # 2. Sign the .app bundle (inside-out: frameworks → Resources Mach-O → app).
-      # 3. Notarize the .app directly (via zip) and staple it — this embeds the
-      #    ticket INTO the .app bundle before it is packaged into the DMG.
-      #    This is the critical step for Gatekeeper on user machines: when a user
-      #    drags the .app from the mounted DMG to /Applications, macOS copies the
-      #    DMG's internal .app. That copy must already have the staple ticket
-      #    embedded in it so Gatekeeper can verify offline without phoning home.
-      # 4. Create the DMG — now contains the pre-stapled .app. ✓
-      # 5. Notarize the DMG — covers the DMG as a download artifact.
-      # 6. Staple the DMG — so Gatekeeper accepts the DMG itself at mount time.
+      # 3. (Legacy DMG comments removed — we now build bare .pkg + staple it.)
+      # 4. pkgbuild + productsign the .pkg (using Installer cert).
+      # 5. Notarize + staple the .pkg.
+      # 6. Separately: build unsigned shim .dmg (see step below) for updater compat only.
+      # The shim is never signed/notarized; the real .pkg is.
       - name: Clean xattrs from app bundle (before code signing)
         if: matrix.platform == 'macos'
         run: |
@@ -610,6 +651,36 @@ jobs:
           
           echo "✓ Build complete: PKG and inner .app are fully notarized and stapled!"
 
+      # One last unsigned shim DMG (transitional). Produced from the exact same
+      # .app bundle that went into the .pkg. Deliberately no codesign/notarize
+      # so the legacy hdiutil attach path in UpdateService works on any macOS
+      # (including old clients). Named exactly as the legacy consts so both old
+      # and new client _platformAsset / fallback logic find it.
+      - name: Build unsigned shim DMG (last bridge for in-app updater from .dmg/.app installs)
+        if: matrix.platform == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          APP_NAME=$(ls -d *.app | head -1)
+          # Absolute via GITHUB_WORKSPACE (robust against relative path drift;
+          # addresses review issue 9). Produces exact legacy name at root.
+          SHIM_DMG="${GITHUB_WORKSPACE}/Front_Porch_AI_Nightly.dmg"
+          echo "==> Building unsigned/un-notarized shim DMG $SHIM_DMG from $APP_NAME"
+          # Stage so .app is at the volume root (client's find -maxdepth 1 expects it)
+          SHIM_ROOT="/tmp/shim-$$"
+          rm -rf "$SHIM_ROOT"
+          mkdir -p "$SHIM_ROOT"
+          cp -R "$APP_NAME" "$SHIM_ROOT/"
+          # Direct minimal hdiutil — no create-dmg fanciness, no --codesign, no --notarize
+          if hdiutil create -volname "Front Porch AI" -srcfolder "$SHIM_ROOT" -ov -format UDZO "$SHIM_DMG" 2>&1 | tail -5; then
+            echo "✓ Shim DMG created"
+          else
+            echo "hdiutil failed for shim; trying create-dmg --skip-jenkins as fallback"
+            brew install create-dmg || true
+            "${GITHUB_WORKSPACE}/create-dmg.sh" --skip-jenkins "$SHIM_DMG" "$SHIM_ROOT" || true  # absolute for consistency (Issue B)
+          fi
+          rm -rf "$SHIM_ROOT"
+          ls -l "$SHIM_DMG" || echo "(shim not present)"
+
       - name: Package Linux Nightly (AppImage + tar.gz)
         if: matrix.platform == 'linux'
         env:
@@ -661,6 +732,7 @@ jobs:
           path: |
             Front_Porch_AI_Nightly_Setup.exe
             Front_Porch_AI_Nightly.pkg
+            Front_Porch_AI_Nightly.dmg
             Front_Porch_AI_Nightly-Linux.AppImage
             Front_Porch_AI_Nightly-Linux.tar.gz
           if-no-files-found: ignore
@@ -730,6 +802,7 @@ jobs:
           files: |
             Front_Porch_AI_Nightly_Setup.exe
             Front_Porch_AI_Nightly.pkg
+            Front_Porch_AI_Nightly.dmg
             Front_Porch_AI_Nightly-Linux.AppImage
             Front_Porch_AI_Nightly-Linux.tar.gz
           body: |
