@@ -507,6 +507,11 @@ class ChatService extends ChangeNotifier {
   /// Central macro resolver for prompt template expansion.
   late final _macroResolver = MacroResolver();
 
+  /// Regex matching any `{{macro}}` or `{{macro::args}}` pattern.
+  /// Used to detect stray unresolved macros in chat history.
+  static final _macroPattern =
+      RegExp(r'\{\{(\w+)(?:::(.+?))?\}\}');
+
   late final _needsSimulation = NeedsSimulation(
     onNotify: notifyListeners,
     onSaveChat: _saveChat,
@@ -2501,7 +2506,10 @@ class ChatService extends ChangeNotifier {
 
       if (group.firstMessage.isNotEmpty) {
         // Use custom group first message — attribute to "Narrator" or group name
-        greetingText = _applyUserReplacement(group.firstMessage);
+        greetingText = _macroResolver.resolve(
+          group.firstMessage,
+          MacroContext(userName: _userPersonaService.persona.name),
+        );
         greetingSender = group.name;
         greetingCharId = null;
       } else {
@@ -4207,7 +4215,10 @@ class ChatService extends ChangeNotifier {
       String? greetingCharId;
 
       if (_activeGroup!.firstMessage.isNotEmpty) {
-        greetingText = _applyUserReplacement(_activeGroup!.firstMessage);
+        greetingText = _macroResolver.resolve(
+          _activeGroup!.firstMessage,
+          MacroContext(userName: _userPersonaService.persona.name),
+        );
         greetingSender = _activeGroup!.name;
         greetingCharId = null;
       } else {
@@ -4411,19 +4422,6 @@ class ChatService extends ChangeNotifier {
         userName: _userPersonaService.persona.name,
         characterName: character.name,
       ),
-    );
-  }
-
-  /// Applies {{user}} / `<user>` replacement using the current persona.
-  /// Used for group-level overrides (firstMessage, scenario, systemPrompt)
-  /// which are not tied to a specific CharacterCard.
-  /// Deprecated: use _macroResolver.resolve() directly.
-  String _applyUserReplacement(String text) {
-    if (text.isEmpty) return text;
-    final userName = _userPersonaService.persona.name;
-    return _macroResolver.resolve(
-      text,
-      MacroContext(userName: userName),
     );
   }
 
@@ -5478,7 +5476,7 @@ class ChatService extends ChangeNotifier {
       // Path B clean hierarchy (same as the main generation path)
       String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
+        systemPrompt = _activeGroup!.systemPrompt;
       } else if (_activeGroup != null) {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
@@ -5568,13 +5566,6 @@ class ChatService extends ChangeNotifier {
 
       if (activeLoreStrings.isNotEmpty) {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
-        loreContent = _macroResolver.resolve(
-          loreContent,
-          MacroContext(
-            userName: userName,
-            characterName: speakingCharacter.name,
-          ),
-        );
       }
 
       // Persona & scenario
@@ -5605,10 +5596,7 @@ class ChatService extends ChangeNotifier {
             : speakingCharacter;
         rawScenario = _getEffectiveScenario(scenarioChar);
       }
-      final scenario = _macroResolver.resolve(
-        rawScenario,
-        MacroContext(userName: userName, characterName: speakingCharacter.name),
-      );
+      String scenario = rawScenario;
 
       String history = _buildChatHistory();
 
@@ -5633,20 +5621,36 @@ class ChatService extends ChangeNotifier {
           mesExampleBlock = '${examples.join('\n')}\n';
         }
       } else if (speakingCharacter.mesExample.isNotEmpty) {
-        mesExampleBlock =
-            '${_macroResolver.resolve(speakingCharacter.mesExample, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
+        mesExampleBlock = '${speakingCharacter.mesExample}\n';
       }
 
       String postHistoryBlock = '';
       if (_activeGroup == null &&
           speakingCharacter.postHistoryInstructions.isNotEmpty) {
-        postHistoryBlock =
-            '${_macroResolver.resolve(speakingCharacter.postHistoryInstructions, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
+        postHistoryBlock = '${speakingCharacter.postHistoryInstructions}\n';
       }
 
       String authorNoteBlock = '';
       if (_authorNote.isNotEmpty) {
         authorNoteBlock = _buildAuthorNoteBlock();
+      }
+
+      // ── Macro resolution pass ──
+      final macroCtx = MacroContext(
+        userName: userName,
+        characterName: speakingCharacter.name,
+        summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
+      );
+      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx);
+      if (loreContent.isNotEmpty) {
+        loreContent = _macroResolver.resolve(loreContent, macroCtx);
+      }
+      scenario = _macroResolver.resolve(scenario, macroCtx);
+      if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
+        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx);
+      }
+      if (postHistoryBlock.isNotEmpty) {
+        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx);
       }
 
       // Impersonate instruction — comprehensive guidance for writing as the user
@@ -5936,7 +5940,7 @@ class ChatService extends ChangeNotifier {
       String systemPrompt;
 
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
+        systemPrompt = _activeGroup!.systemPrompt;
       } else if (_activeGroup != null) {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
@@ -6036,17 +6040,6 @@ class ChatService extends ChangeNotifier {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
       }
 
-      // Apply replacements to lore content
-      if (loreContent.isNotEmpty) {
-        loreContent = _macroResolver.resolve(
-          loreContent,
-          MacroContext(
-            userName: userName,
-            characterName: speakingCharacter.name,
-          ),
-        );
-      }
-
       // Build persona block(s)
       String personaBlock;
       if (_activeGroup != null) {
@@ -6080,13 +6073,7 @@ class ChatService extends ChangeNotifier {
             : speakingCharacter;
         rawScenario = _getEffectiveScenario(scenarioChar);
       }
-      final scenario = _macroResolver.resolve(
-        rawScenario,
-        MacroContext(
-          userName: userName,
-          characterName: speakingCharacter.name,
-        ),
-      );
+      String scenario = rawScenario;
 
       String suffix = "";
 
@@ -6115,16 +6102,14 @@ class ChatService extends ChangeNotifier {
           mesExampleBlock = '${examples.join('\n')}\n';
         }
       } else if (speakingCharacter.mesExample.isNotEmpty) {
-        mesExampleBlock =
-            '${_macroResolver.resolve(speakingCharacter.mesExample, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
+        mesExampleBlock = '${speakingCharacter.mesExample}\n';
       }
 
       // Build post-history instructions block
       String postHistoryBlock = '';
       if (_activeGroup == null &&
           speakingCharacter.postHistoryInstructions.isNotEmpty) {
-        postHistoryBlock =
-            '${_macroResolver.resolve(speakingCharacter.postHistoryInstructions, MacroContext(userName: userName, characterName: speakingCharacter.name))}\n';
+        postHistoryBlock = '${speakingCharacter.postHistoryInstructions}\n';
       }
 
       // Author's note — placed right before the character speaks for maximum influence
@@ -6187,6 +6172,25 @@ class ChatService extends ChangeNotifier {
         suffix =
             "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for {{user}} or from {{user}}'s point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require {{user}} content.]\n" +
             partial;
+      }
+
+      // ── Macro resolution pass ──
+      final macroCtx = MacroContext(
+        userName: userName,
+        characterName: speakingCharacter.name,
+        summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
+      );
+      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx);
+      if (loreContent.isNotEmpty) {
+        loreContent = _macroResolver.resolve(loreContent, macroCtx);
+      }
+      // personaBlock and group-mode examples are resolved per-character above
+      scenario = _macroResolver.resolve(scenario, macroCtx);
+      if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
+        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx);
+      }
+      if (postHistoryBlock.isNotEmpty) {
+        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx);
       }
 
       // Declare variables before try block so they're accessible after finally
@@ -7200,6 +7204,9 @@ class ChatService extends ChangeNotifier {
       }
       return '${m.sender}: ${m.text}';
     }).toList();
+    if (lines.any((l) => _macroPattern.hasMatch(l))) {
+      debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
+    }
     return lines.join("\n");
   }
 
@@ -7217,6 +7224,9 @@ class ChatService extends ChangeNotifier {
       }
       return '${m.sender}: ${m.text}';
     }).toList();
+    if (formatted.any((l) => _macroPattern.hasMatch(l))) {
+      debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
+    }
 
     // If budget is very large or negative (unlimited), return everything
     if (tokenBudget <= 0) {

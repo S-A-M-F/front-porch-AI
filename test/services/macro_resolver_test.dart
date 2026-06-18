@@ -88,5 +88,27 @@ void main() {
         'a,b,c',
       );
     });
+
+    test('per-character {{char}} in group mode simulation', () {
+      final aliceCtx = MacroContext(userName: 'User', characterName: 'Alice');
+      final bobCtx = MacroContext(userName: 'User', characterName: 'Bob');
+
+      expect(resolver.resolve('{{char}} is a cat.', aliceCtx), 'Alice is a cat.');
+      expect(resolver.resolve('{{char}} is a dog.', bobCtx), 'Bob is a dog.');
+    });
+
+    test('{{user}} is same across all group member contexts', () {
+      final ctx1 = MacroContext(userName: 'Player1', characterName: 'Alice');
+      final ctx2 = MacroContext(userName: 'Player1', characterName: 'Bob');
+
+      expect(
+        resolver.resolve('{{user}} talks to {{char}}', ctx1),
+        'Player1 talks to Alice',
+      );
+      expect(
+        resolver.resolve('{{user}} talks to {{char}}', ctx2),
+        'Player1 talks to Bob',
+      );
+    });
   });
 }
