@@ -144,6 +144,11 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build artifacts (embed_server + ort prebuilts)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "tools/embed_server"
+
       - name: Setup Python (with pip cache)
         uses: actions/setup-python@v5
         with:
@@ -232,9 +237,25 @@ jobs:
             echo "Whisper STT built at: $STT_DEST/whisper_stt/"
 
             # Build Embedding Server (Rust binary)
+            # NOTE: ort-sys downloads static ONNX from parcel.pyke.io (can be flaky on Windows).
+            # rust-cache + retries protect release builds.
             echo "Building Embedding Server (Rust)..."
             cd tools/embed_server
-            cargo build --release
+            for attempt in 1 2 3; do
+              if cargo build --release; then
+                echo "cargo build succeeded on attempt $attempt"
+                break
+              else
+                echo "cargo build attempt $attempt failed"
+                if [ $attempt -lt 3 ]; then
+                  echo "Retrying in 15s..."
+                  sleep 15
+                else
+                  echo "ERROR: cargo build failed after 3 attempts"
+                  exit 1
+                fi
+              fi
+            done
             cd ../.. 
             EMBED_BINARY="tools/embed_server/target/release/embed_server"
             if [ "${{ matrix.platform }}" = "windows" ]; then

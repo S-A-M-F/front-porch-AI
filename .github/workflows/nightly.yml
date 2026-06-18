@@ -152,6 +152,21 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build artifacts (embed_server + ort prebuilts)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "tools/embed_server"
+
+      - name: Cache ML Engines (Kokoro TTS, Piper TTS, Whisper STT, etc.)
+        id: ml-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ml-engines-cache
+          key: ml-engines-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/embed_server/Cargo.lock', 'tools/dt-grpc-python/**') }}
+          restore-keys: |
+            ml-engines-${{ matrix.platform }}-
+
       - name: Build Application
         if: matrix.platform != 'linux'
         run: flutter build ${{ matrix.platform }} --release
@@ -175,11 +190,19 @@ jobs:
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
-          echo "Building ML engines from source"
-          DEST="${{ matrix.build_path }}/piper"
-          mkdir -p "$DEST"
+          CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
+          CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
 
-          # Install TTS dependencies + PyInstaller
+          if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
+            echo "ML engines cache hit — skipping PyInstaller + Rust builds"
+            mkdir -p "${{ matrix.build_path }}"
+            cp -r "$CACHE_DIR/"* "${{ matrix.build_path }}/" || true
+          else
+            echo "ML engines cache miss — building from source"
+            DEST="${{ matrix.build_path }}/piper"
+            mkdir -p "$DEST"
+
+            # Install TTS dependencies + PyInstaller
             pip install pyinstaller kokoro-onnx soundfile piper_tts pathvalidate faster-whisper numpy onnxruntime transformers huggingface_hub
 
             # Build Kokoro TTS as a standalone directory bundle
@@ -250,9 +273,26 @@ jobs:
             echo "Whisper STT built at: $STT_DEST/whisper_stt/"
 
             # Build Embedding Server (Rust binary)
+            # NOTE: Uses prebuilt ONNX Runtime static libs downloaded by ort-sys from
+            # parcel.pyke.io. These downloads are occasionally flaky (timeouts/5xx).
+            # We retry + rely on rust-cache + ML-engines-cache to avoid repeated downloads.
             echo "Building Embedding Server (Rust)..."
             cd tools/embed_server
-            cargo build --release
+            for attempt in 1 2 3; do
+              if cargo build --release; then
+                echo "cargo build succeeded on attempt $attempt"
+                break
+              else
+                echo "cargo build attempt $attempt failed"
+                if [ $attempt -lt 3 ]; then
+                  echo "Retrying in 15s..."
+                  sleep 15
+                else
+                  echo "ERROR: cargo build failed after 3 attempts"
+                  exit 1
+                fi
+              fi
+            done
             cd ../..
             EMBED_BINARY="tools/embed_server/target/release/embed_server"
             if [ "${{ matrix.platform }}" = "windows" ]; then
@@ -345,6 +385,11 @@ jobs:
               --exclude-module torchaudio \
               --noconfirm
             echo "Draw Things gRPC client built at: $STT_DEST/dt_grpc_client/"
+
+            # Populate ML cache for future runs (same source hash = instant reuse)
+            mkdir -p "$CACHE_DIR"
+            cp -r "${{ matrix.build_path }}/"* "$CACHE_DIR/" || true
+          fi
 
           # For macOS, copy into the app bundle Resources (always runs)
           if [ "${{ matrix.platform }}" = "macos" ]; then
