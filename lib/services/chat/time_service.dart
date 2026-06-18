@@ -425,7 +425,8 @@ class TimeService {
           '- Within the same scene, maintain natural continuity (don\'t jump locations).\n'
           '- Across scene breaks or time jumps, update to the new context.\n\n'
           'Recent conversation:\n$recent\n\n'
-          'Respond with ONLY valid JSON like: {"posture": "standing by the window"} or {"posture": "none"}';
+          'Respond with ONLY valid JSON. Do NOT use markdown code blocks — return raw JSON only.\n'
+          'Example: {"posture": "standing by the window"} or {"posture": "none"}';
 
       try {
         final raw = await fireLLMEval(posturePrompt, onChunk: onChunk);
@@ -484,7 +485,8 @@ class TimeService {
           '   - Maintain continuity only within the SAME scene — do NOT anchor them to a position from a previous scene.\n'
           '   - Avoid sudden jumps without setup, but DO update when the narrative context clearly shifted.\n\n'
           'Recent conversation:\n$recent\n\n'
-          'Respond with ONLY a flat JSON object containing "hold_time", "new_day", and "posture".';
+          'Respond with ONLY a flat JSON object containing "hold_time", "new_day", and "posture". '
+          'Do NOT use markdown code blocks — return raw JSON only.';
       try {
         final raw = await fireLLMEval(holdPrompt, onChunk: onChunk);
         if (raw != null) {
@@ -565,7 +567,8 @@ class TimeService {
           '- Within the same scene, maintain natural continuity (don\'t jump locations).\n'
           '- Across scene breaks or time jumps, update to the new context.\n\n'
           'Recent conversation:\n$recent\n\n'
-          'Respond with ONLY valid JSON like: {"posture": "standing by the window"} or {"posture": "none"}';
+          'Respond with ONLY valid JSON. Do NOT use markdown code blocks — return raw JSON only.\n'
+          'Example: {"posture": "standing by the window"} or {"posture": "none"}';
 
       try {
         final raw = await fireLLMEval(posturePrompt, onChunk: onChunk);

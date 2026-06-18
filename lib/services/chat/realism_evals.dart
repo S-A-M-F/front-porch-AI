@@ -625,7 +625,8 @@ class RealismEvals {
         '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
         '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
+        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason". '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism] Evaluating relationship dynamic...');
@@ -737,7 +738,8 @@ class RealismEvals {
         '2. "emotion_intensity": mild, moderate, or strong\n'
         '$arousalInstr'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
+        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField. '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism] Evaluating emotional state...');
@@ -856,7 +858,8 @@ class RealismEvals {
         '$oPrompt'
         '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
+        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic". '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
@@ -1009,7 +1012,8 @@ class RealismEvals {
         '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
         '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object containing all fields above$arousalField.';
+        'Respond with ONLY a JSON object containing all fields above$arousalField. '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism:OneShot] Evaluating (fused call)...');

@@ -349,6 +349,11 @@ class LlmEvalEngine {
           debugPrint('[Realism] streaming terminated via cancel (early exit)');
           return null;
         }
+        // Ensure visual separation between concurrent eval outputs in stream display
+        if (!response.endsWith('\n') && onChunk != null) {
+          onChunk('\n');
+          response += '\n';
+        }
         break; // stream completed cleanly — exit retry loop
       } catch (e) {
         debugPrint('[Realism:Eval] Stream error on attempt ${attempt + 1}: $e');
@@ -437,7 +442,7 @@ class LlmEvalEngine {
           'Examples of valid correction output:\n'
           '{"hunger_delta": 8, "energy_delta": 0, "hygiene_delta": -2, "fun_delta": 5, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 1, "reason": "ate snack per critique", "is_climax": false}\n'
           '{"hunger_delta": 0, "energy_delta": 0, "hygiene_delta": 0, "fun_delta": 0, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 0, "reason": "no notable need impact", "is_climax": false}\n\n'
-          'Respond with ONLY a flat JSON object:\n'
+              'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
           '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
           '"intensity": 1-10, '
           '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
@@ -458,7 +463,7 @@ class LlmEvalEngine {
           strength.toString() +
           'x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x). The Director (if reviewing) also receives this strength and will correct at the requested scale.\n\n'
               'The optional Director/Verifier (when enabled with authority on needs) will correct you if your structured output does not match the actual narrative you just wrote.\n\n'
-              'Respond with ONLY a flat JSON object:\n'
+          'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
               '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
               '"intensity": 1-10, '
               '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '

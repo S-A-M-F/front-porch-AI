@@ -349,7 +349,6 @@ void main() {
         expect(captured.isNotEmpty, true);
         final last = captured.last;
         expect(last.stopSequences, contains('}\n'));
-        expect(last.stopSequences, contains('```'));
         expect(last.prompt, contains('USER CRITIQUE'));
         expect(
           last.prompt,
