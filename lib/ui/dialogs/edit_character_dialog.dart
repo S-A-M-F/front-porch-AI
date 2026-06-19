@@ -32,6 +32,7 @@ import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 
 // Specific dialogs not in barrels
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class EditCharacterDialog extends StatefulWidget {
@@ -325,10 +326,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  void _addLoreEntry() {
-    setState(() {
-      _loreEntries.add(LorebookEntry(key: 'New Key', content: 'New Content'));
-    });
+  Future<void> _addLoreEntry() async {
+    final result = await showLorebookEntryDialog(context: context);
+    if (result != null) {
+      setState(() => _loreEntries.add(result));
+    }
   }
 
   void _removeLoreEntry(int index) {
@@ -401,204 +403,16 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  void _editLoreEntry(int index) {
+  Future<void> _editLoreEntry(int index) async {
     final entry = _loreEntries[index];
-    final keyController = TextEditingController(text: entry.key);
-    final contentController = TextEditingController(text: entry.content);
-    final nameController = TextEditingController(text: entry.name);
-    bool isConstant = entry.constant;
-    int stickyDepth = entry.stickyDepth;
-
-    showDialog(
+    final result = await showLorebookEntryDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            backgroundColor: AppColors.cardOf(context),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Row(
-              children: [
-                const Icon(Icons.menu_book, color: Colors.blueAccent, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Edit Lorebook Entry',
-                  style: TextStyle(color: AppColors.textPrimary(context)),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isConstant
-                            ? Colors.amberAccent.withValues(alpha: 0.3)
-                            : Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.push_pin,
-                          size: 16,
-                          color: isConstant
-                              ? Colors.amberAccent
-                              : Colors.white38,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Always Active',
-                          style: TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
-                        const Spacer(),
-                        Switch(
-                          value: isConstant,
-                          onChanged: (val) =>
-                              setStateDialog(() => isConstant = val),
-                          activeTrackColor: Colors.amberAccent.withValues(
-                            alpha: 0.5,
-                          ),
-                          activeThumbColor: Colors.amberAccent,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isConstant) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.layers,
-                          size: 14,
-                          color: Colors.white38,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Trigger Depth: $stickyDepth ${stickyDepth == 1 ? "message" : "messages"}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SliderTheme(
-                      data: SliderThemeData(
-                        activeTrackColor: Colors.blueAccent,
-                        inactiveTrackColor: Colors.white12,
-                        thumbColor: Colors.blueAccent,
-                        trackHeight: 3,
-                      ),
-                      child: Slider(
-                        value: stickyDepth.toDouble(),
-                        min: 1,
-                        max: 100,
-                        divisions: 99,
-                        label: stickyDepth.toString(),
-                        onChanged: (val) =>
-                            setStateDialog(() => stickyDepth = val.toInt()),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: nameController,
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    decoration: InputDecoration(
-                      labelText: 'Name (optional)',
-                      filled: true,
-                      fillColor: AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: keyController,
-                    enabled: !isConstant,
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    decoration: InputDecoration(
-                      labelText: isConstant
-                          ? 'Keywords (Disabled — Always Active)'
-                          : 'Keywords (comma separated)',
-                      filled: true,
-                      fillColor: isConstant
-                          ? AppColors.surfaceContainerOf(
-                              context,
-                            ).withValues(alpha: 0.5)
-                          : AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: contentController,
-                    maxLines: 5,
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    decoration: InputDecoration(
-                      labelText: 'Content',
-                      filled: true,
-                      fillColor: AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  keyController.dispose();
-                  contentController.dispose();
-                  nameController.dispose();
-                  Navigator.pop(context);
-                },
-                style: TextButton.styleFrom(foregroundColor: Colors.white38),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    entry.name = nameController.text;
-                    entry.key = keyController.text;
-                    entry.content = contentController.text;
-                    entry.constant = isConstant;
-                    entry.stickyDepth = stickyDepth;
-                  });
-                  keyController.dispose();
-                  contentController.dispose();
-                  nameController.dispose();
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
+      existing: entry,
+      showEnabled: true,
     );
+    if (result != null) {
+      setState(() => _loreEntries[index] = result);
+    }
   }
 
   @override
@@ -1531,6 +1345,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
+          width: 1.5,
           color: entry.constant
               ? Colors.amberAccent.withValues(alpha: 0.3)
               : entry.enabled
@@ -1604,16 +1419,21 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   ),
                 ),
               const SizedBox(width: 4),
-              Switch(
-                value: entry.enabled,
-                onChanged: (val) {
-                  setState(() {
-                    entry.enabled = val;
-                  });
-                },
-                activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
-                activeThumbColor: Colors.blueAccent,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              Tooltip(
+                message: entry.enabled
+                    ? 'Disable — entry won\'t be matched'
+                    : 'Enable — entry will match on its keys',
+                child: Switch(
+                  value: entry.enabled,
+                  onChanged: (val) {
+                    setState(() {
+                      entry.enabled = val;
+                    });
+                  },
+                  activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
+                  activeThumbColor: Colors.blueAccent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
               IconButton(
                 onPressed: () => _editLoreEntry(index),

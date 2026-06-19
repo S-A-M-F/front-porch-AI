@@ -18,3 +18,11 @@ These notes feed the in-app "Update Available" dialog for STMacro / cutting-edge
   - `{{pick::option1::option2::option3}}` — picks deterministically: same card, same position, same choice every time
   - `{{roll::2d6+3}}` — roll dice; `{{roll::bad}}` stays as-is in the prompt
   - `{{time}}` / `{{date}}` / `{{weekday}}` — live clock values in your character's text
+
+## Lorebook & macro editor improvements
+
+- 🎯 **Lorebook entry editing is now unified** — A single dialog handles all lorebook entry creation and editing, shared by the character dialog, full-page character editor, create-character wizard, group chat creator, and world manager. Every editor now supports `{{macro}}` highlighting in the content field and has an expand-to-fullscreen button.
+- 🏷️ **All lorebook entry lists now show enable/disable toggle** — Every lorebook entry card includes a switch to quickly enable or disable an entry. Disabled entries are visually dimmed (duller border, gray icon and text) and are **not injected into prompts**. A tooltip explains the toggle: "Disable — entry won't be matched".
+- 🖊️ **Edit character page gains lorebook entry name field** — The full-page character editor now shows and edits the name field in the lorebook entry dialog (was silently using the key as display name).
+- 📦 **World lore entries moved to compact preview cards** — Instead of inline editing, world lore entries now show a compact preview card and open the shared dialog on edit — consistent with all other editors.
+- 🔲 **Borders are just a bit thicker (1.5px)** — Lorebook entry cards now have a slightly thicker border so the enabled (blue accent) vs disabled (neutral) state is easier to distinguish at a glance.

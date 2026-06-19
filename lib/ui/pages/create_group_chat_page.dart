@@ -25,6 +25,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
@@ -545,258 +546,21 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     LorebookEntry? existing,
     int? index,
   }) async {
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final keyCtrl = TextEditingController(text: existing?.key ?? '');
-    final contentCtrl = TextEditingController(text: existing?.content ?? '');
-
-    // Use StatefulBuilder so the toggles and slider update live inside the dialog.
-    // The previous Row + Expanded + SwitchListTile pattern caused horrific wrapping
-    // ("Enable d", "Consta nt") and the switches/slider never responded visually.
-    bool enabled = existing?.enabled ?? true;
-    bool constant = existing?.constant ?? false;
-    int sticky = existing?.stickyDepth ?? 1;
-
-    final ok = await showDialog<bool>(
+    final result = await showLorebookEntryDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceOf(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          existing == null ? 'Add Group Lore Entry' : 'Edit Group Lore Entry',
-        ),
-        content: StatefulBuilder(
-          builder: (innerCtx, setInnerState) {
-            return SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppTextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Entry Name (optional)',
-                    ),
-                  ),
-                  if (!constant) ...[
-                    const SizedBox(height: 12),
-                    AppTextField(
-                      controller: keyCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Trigger Keys (comma or space separated)',
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  AppTextField(
-                    controller: contentCtrl,
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                      labelText: 'Content (injected when triggered)',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Clean, non-wrapping toggle section (replaces the broken SwitchListTile rows)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardOf(context),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.borderOf(context)),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Enabled',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary(context),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'This entry can be injected when its keys match',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary(context),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: enabled,
-                              onChanged: (v) =>
-                                  setInnerState(() => enabled = v),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Divider(color: AppColors.borderOf(context), height: 1),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Constant',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary(context),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Always considered active (ignores trigger keys)',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary(context),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: constant,
-                              onChanged: (v) =>
-                                  setInnerState(() => constant = v),
-                            ),
-                          ],
-                        ),
-                        if (!constant) ...[
-                          const SizedBox(height: 12),
-                          Divider(
-                            color: AppColors.borderOf(context),
-                            height: 1,
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Sticky Depth — clean slider presentation
-                          // (hidden when Constant is on, since constant entries never decay)
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    'Sticky Depth',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary(context),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surfaceContainerOf(
-                                        context,
-                                      ),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      '$sticky',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.textPrimary(context),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'How many turns the entry stays active after triggering',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary(context),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              SliderTheme(
-                                data: SliderThemeData(
-                                  activeTrackColor: AppColors.resolve(
-                                    context,
-                                    Colors.tealAccent,
-                                    Colors.teal.shade700,
-                                  ),
-                                  inactiveTrackColor: AppColors.borderOf(
-                                    context,
-                                  ).withValues(alpha: 0.4),
-                                  thumbColor: AppColors.resolve(
-                                    context,
-                                    Colors.tealAccent,
-                                    Colors.teal.shade700,
-                                  ),
-                                  trackHeight: 3,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 7,
-                                  ),
-                                ),
-                                child: Slider(
-                                  value: sticky.toDouble().clamp(0, 12),
-                                  min: 0,
-                                  max: 12,
-                                  divisions: 12,
-                                  label: sticky.toString(),
-                                  onChanged: (v) =>
-                                      setInnerState(() => sticky = v.round()),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      existing: existing,
+      showEnabled: true,
     );
-
-    if (ok != true) return;
-
-    final entry = LorebookEntry(
-      name: nameCtrl.text.trim(),
-      key: keyCtrl.text.trim(),
-      content: contentCtrl.text.trim(),
-      enabled: enabled,
-      constant: constant,
-      stickyDepth: sticky,
-    );
-
-    setState(() {
-      if (index != null && index >= 0 && index < _groupLoreEntries.length) {
-        _groupLoreEntries[index] = entry;
-      } else {
-        _groupLoreEntries.add(entry);
-      }
-      _updateEstimates();
-    });
+    if (result != null) {
+      setState(() {
+        if (index != null && index >= 0 && index < _groupLoreEntries.length) {
+          _groupLoreEntries[index] = result;
+        } else {
+          _groupLoreEntries.add(result);
+        }
+        _updateEstimates();
+      });
+    }
   }
 
   void _deleteLoreEntry(int index) {
@@ -1929,25 +1693,151 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
             ..._groupLoreEntries.asMap().entries.map((e) {
               final i = e.key;
               final entry = e.value;
-              return ListTile(
-                title: Text(entry.name.isNotEmpty ? entry.name : entry.key),
-                subtitle: Text(
-                  entry.content.length > 80
-                      ? '${entry.content.substring(0, 80)}...'
-                      : entry.content,
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.cardOf(context),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    width: 1.5,
+                    color: entry.constant
+                        ? Colors.amberAccent.withValues(alpha: 0.3)
+                        : entry.enabled
+                        ? Colors.blueAccent.withValues(alpha: 0.15)
+                        : AppColors.borderOf(context).withValues(alpha: 0.5),
+                  ),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () =>
-                          _showLoreEntryEditor(existing: entry, index: i),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.menu_book,
+                          size: 14,
+                          color: entry.constant
+                              ? Colors.amberAccent
+                              : entry.enabled
+                              ? Colors.blueAccent
+                              : AppColors.iconSecondary(context),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            entry.displayName,
+                            style: TextStyle(
+                              color: entry.enabled
+                                  ? AppColors.textPrimary(context)
+                                  : AppColors.textSecondary(context),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        if (entry.constant)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.amberAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Always Active',
+                              style: TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        if (!entry.constant)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blueAccent.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Depth ${entry.stickyDepth}',
+                              style: const TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 4),
+                        Tooltip(
+                          message: entry.enabled
+                              ? 'Disable — entry won\'t be matched'
+                              : 'Enable — entry will match on its keys',
+                          child: Switch(
+                            value: entry.enabled,
+                            onChanged: (val) {
+                              setState(() {
+                                entry.enabled = val;
+                              });
+                            },
+                            activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
+                            activeThumbColor: Colors.blueAccent,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.white38),
+                          onPressed: () =>
+                              _showLoreEntryEditor(existing: entry, index: i),
+                          tooltip: 'Edit entry',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                          onPressed: () => _deleteLoreEntry(i),
+                          tooltip: 'Delete entry',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(4),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => _deleteLoreEntry(i),
-                    ),
+                    if (entry.key.isNotEmpty && !entry.constant) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 3,
+                        children: entry.key
+                            .split(',')
+                            .map(
+                              (k) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  k.trim(),
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
                   ],
                 ),
               );
