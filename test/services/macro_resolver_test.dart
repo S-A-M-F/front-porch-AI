@@ -221,6 +221,43 @@ void main() {
       }
     });
 
+    test('{{pick}} defaults to empty section matching between resolve() calls', () {
+      final pCtx = MacroContext(
+        userName: 'U', characterName: 'C',
+        chatId: 'chat1', characterId: 'char1',
+      );
+      expect(
+        resolver.resolve('{{pick::a::b::c}}', pCtx),
+        resolver.resolve('{{pick::a::b::c}}', pCtx),
+      );
+    });
+
+    test('{{pick}} empty section matches explicit section:""', () {
+      final pCtx = MacroContext(
+        userName: 'U', characterName: 'C',
+        chatId: 'chat1', characterId: 'char1',
+      );
+      expect(
+        resolver.resolve('{{pick::a::b::c}}', pCtx),
+        resolver.resolve('{{pick::a::b::c}}', pCtx, section: ''),
+      );
+    });
+
+    test('{{pick}} differs across sections with same context and position', () {
+      final pCtx = MacroContext(
+        userName: 'U', characterName: 'C',
+        chatId: 'chat1', characterId: 'char1',
+      );
+      final results = <String>{};
+      for (int i = 0; i < 100; i++) {
+        results.add(
+          resolver.resolve('{{pick::a::b::c::d::e::f}}', pCtx, section: 's$i'),
+        );
+      }
+      // With 6 options and 100 different sections, at least 2 distinct values
+      expect(results.length, greaterThan(1));
+    });
+
     // ── Phase 2 P0: roll ──
 
     test('{{roll::1d20}} produces values 1-20', () {

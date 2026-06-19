@@ -92,7 +92,10 @@ class MacroResolver {
   /// Replaces all known `{{...}}` macros and legacy `<user>`/`<char>` syntax.
   /// Unknown macros pass through unchanged.
   /// Returns empty string for null/empty input.
-  String resolve(String text, MacroContext context) {
+  /// [section] differentiates [{{pick}}] seeding across prompt sections
+  /// (e.g. systemPrompt vs scenario) so the same position in different
+  /// sections produces a different result.
+  String resolve(String text, MacroContext context, {String section = ''}) {
     if (text.isEmpty) return text;
 
     _pickCounter = 0;
@@ -124,7 +127,7 @@ class MacroResolver {
 
       if (name == 'pick') {
         // Deterministic per chatId + characterId + position
-        final seedKey = '${context.chatId}_${context.characterId}_$_pickCounter';
+        final seedKey = '${context.chatId}_${context.characterId}_${section}_$_pickCounter';
         _pickCounter++;
         final h = seedKey.hashCode.abs();
         return args.isEmpty ? '' : args[h % args.length];

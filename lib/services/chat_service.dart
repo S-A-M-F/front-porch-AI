@@ -2509,6 +2509,7 @@ class ChatService extends ChangeNotifier {
         greetingText = _macroResolver.resolve(
           group.firstMessage,
           MacroContext(userName: _userPersonaService.persona.name),
+          section: 'greeting',
         );
         greetingSender = group.name;
         greetingCharId = null;
@@ -4218,6 +4219,7 @@ class ChatService extends ChangeNotifier {
         greetingText = _macroResolver.resolve(
           _activeGroup!.firstMessage,
           MacroContext(userName: _userPersonaService.persona.name),
+          section: 'greeting',
         );
         greetingSender = _activeGroup!.name;
         greetingCharId = null;
@@ -4425,6 +4427,7 @@ class ChatService extends ChangeNotifier {
         userName: _userPersonaService.persona.name,
         characterName: character.name,
       ),
+      section: 'firstMessage',
     );
   }
 
@@ -5578,13 +5581,13 @@ class ChatService extends ChangeNotifier {
         final personas = _groupCharacters
             .map(
               (ch) =>
-                  "${ch.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(ch), MacroContext(userName: userName, characterName: ch.name))}",
+                  "${ch.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(ch), MacroContext(userName: userName, characterName: ch.name), section: 'persona')}",
             )
             .toList();
         personaBlock = personas.join('\n');
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name))}";
+            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name), section: 'persona')}";
       }
 
       // User persona — inject user's self-description + learned facts
@@ -5617,6 +5620,7 @@ class ChatService extends ChangeNotifier {
               (ch) => _macroResolver.resolve(
                 ch.mesExample,
                 MacroContext(userName: userName, characterName: ch.name),
+                section: 'mesExample',
               ),
             )
             .toList();
@@ -5646,16 +5650,20 @@ class ChatService extends ChangeNotifier {
         chatId: _currentSessionId,
         characterId: speakingCharacter.dbId,
       );
-      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx);
+      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx,
+          section: 'systemPrompt');
       if (loreContent.isNotEmpty) {
-        loreContent = _macroResolver.resolve(loreContent, macroCtx);
+        loreContent = _macroResolver.resolve(loreContent, macroCtx,
+            section: 'lore');
       }
-      scenario = _macroResolver.resolve(scenario, macroCtx);
+      scenario = _macroResolver.resolve(scenario, macroCtx, section: 'scenario');
       if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
-        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx);
+        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx,
+            section: 'mesExample');
       }
       if (postHistoryBlock.isNotEmpty) {
-        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx);
+        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx,
+            section: 'postHistory');
       }
 
       // Impersonate instruction — comprehensive guidance for writing as the user
@@ -6056,13 +6064,14 @@ class ChatService extends ChangeNotifier {
                   userName: userName,
                   characterName: ch.name,
                 ),
+                section: 'persona',
               );
               return "${ch.name}'s Persona: $persona";
             })
             .join('\n');
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name))}";
+            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name), section: 'persona')}";
       }
 
       // User persona — inject user's self-description + learned facts
@@ -6100,6 +6109,7 @@ class ChatService extends ChangeNotifier {
               (ch) => _macroResolver.resolve(
                 ch.mesExample,
                 MacroContext(userName: userName, characterName: ch.name),
+                section: 'mesExample',
               ),
             )
             .toList();
@@ -6187,17 +6197,21 @@ class ChatService extends ChangeNotifier {
         chatId: _currentSessionId,
         characterId: speakingCharacter.dbId,
       );
-      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx);
+      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx,
+          section: 'systemPrompt');
       if (loreContent.isNotEmpty) {
-        loreContent = _macroResolver.resolve(loreContent, macroCtx);
+        loreContent = _macroResolver.resolve(loreContent, macroCtx,
+            section: 'lore');
       }
       // personaBlock and group-mode examples are resolved per-character above
-      scenario = _macroResolver.resolve(scenario, macroCtx);
+      scenario = _macroResolver.resolve(scenario, macroCtx, section: 'scenario');
       if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
-        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx);
+        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx,
+            section: 'mesExample');
       }
       if (postHistoryBlock.isNotEmpty) {
-        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx);
+        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx,
+            section: 'postHistory');
       }
 
       // Declare variables before try block so they're accessible after finally
