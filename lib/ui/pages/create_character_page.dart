@@ -2460,7 +2460,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             _inputLabel(label),
             const Spacer(),
             IconButton(
-              onPressed: () => _openExpandedEditor(label, controller),
+              onPressed: () => showExpandedEditorDialog(
+                context: context,
+                title: label,
+                controller: controller,
+              ),
               icon: const Icon(
                 Icons.open_in_full,
                 size: 16,
@@ -2487,91 +2491,6 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  Future<void> _openExpandedEditor(
-    String label,
-    TextEditingController controller,
-  ) async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final editController = TextEditingController(text: controller.text);
-        return Dialog(
-          backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Container(
-            width: 700,
-            height: 500,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close, color: Colors.white38),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: AppTextField(
-                    controller: editController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    spellCheckConfiguration: AppTextField.platformSpellCheck(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.6,
-                    ),
-                    decoration: _inputDecoration(''),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, editController.text),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                      ),
-                      child: const Text('Apply'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (result != null) {
-      controller.text = result;
-    }
-  }
 }
 
 /// Holds a pending expression image with its assigned emotion label.

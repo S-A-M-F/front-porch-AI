@@ -42,6 +42,7 @@ export 'onnx_download_overlay.dart';
 export 'remote_lock_overlay.dart';
 export 'setup_overlay.dart';
 
+export 'expanded_editor_dialog.dart';
 export 'realism_progress_row.dart';
 export 'needs_bar.dart';
 export 'fixation_chip.dart';

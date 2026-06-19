@@ -315,122 +315,6 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  EXPANDED EDITOR DIALOG
-  // ═══════════════════════════════════════════════════════════════
-
-  void _openExpandedEditor(String title, TextEditingController controller) {
-    final expandedController = TextEditingController(text: controller.text);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        backgroundColor: _bgDeep,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SizedBox(
-          width: double.infinity,
-          height: double.infinity,
-          child: Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: _bgSurface,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.edit_note,
-                      color: Colors.white70,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Cancel'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.white38,
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Apply'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                      ),
-                      onPressed: () {
-                        controller.text = expandedController.text;
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              // Editor body
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: AppTextField(
-                    controller: expandedController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.6,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Enter $title...',
-                      hintStyle: const TextStyle(color: Colors.white24),
-                      filled: true,
-                      fillColor: _bgSurface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: _borderSubtle),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: _borderSubtle),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: _borderFocus),
-                      ),
-                      contentPadding: const EdgeInsets.all(16),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════
   //  SAVE
   // ═══════════════════════════════════════════════════════════════
 
@@ -2128,7 +2012,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             if (expandable) ...[
               const SizedBox(width: 8),
               InkWell(
-                onTap: () => _openExpandedEditor(label, controller),
+                onTap: () => showExpandedEditorDialog(
+                  context: context,
+                  title: label,
+                  controller: controller,
+                  hintText: 'Enter $label...',
+                ),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
                   padding: const EdgeInsets.all(2),

@@ -250,95 +250,6 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  void _openExpandedEditor(
-    String title,
-    TextEditingController controller, {
-    String? hintText,
-  }) {
-    final expandedController = TextEditingController(text: controller.text);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        backgroundColor: AppColors.surfaceOf(ctx),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SizedBox(
-          width: double.infinity,
-          height: double.infinity,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.edit_note,
-                      color: AppColors.iconSecondary(ctx),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: AppColors.textPrimary(ctx),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('Done'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.greenAccent,
-                      ),
-                      onPressed: () {
-                        controller.text = expandedController.text;
-                        Navigator.pop(ctx);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: AppColors.borderOf(ctx)),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: AppTextField(
-                    controller: expandedController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: TextStyle(
-                      color: AppColors.textPrimary(ctx),
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: hintText,
-                      hintStyle: TextStyle(color: AppColors.textSecondary(ctx)),
-                      filled: true,
-                      fillColor: AppColors.surfaceContainerOf(ctx),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.blueAccent),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _saveCharacter() async {
     // Update model
     widget.character.name = _nameController.text;
@@ -1845,8 +1756,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             if (expandable) ...[
               const SizedBox(width: 6),
               InkWell(
-                onTap: () =>
-                    _openExpandedEditor(label, controller, hintText: hintText),
+                onTap: () => showExpandedEditorDialog(
+                  context: context,
+                  title: label,
+                  controller: controller,
+                  hintText: hintText ?? '',
+                ),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
                   padding: const EdgeInsets.all(2),
