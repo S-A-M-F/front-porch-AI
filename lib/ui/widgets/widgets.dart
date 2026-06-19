@@ -29,6 +29,7 @@
 // ```
 
 export 'app_text_field.dart';
+export 'styled_text_controller.dart';
 export 'sidebar.dart';
 export 'model_selector.dart';
 export 'kcpps_selector.dart';

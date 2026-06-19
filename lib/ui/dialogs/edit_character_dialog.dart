@@ -46,14 +46,14 @@ class EditCharacterDialog extends StatefulWidget {
 class _EditCharacterDialogState extends State<EditCharacterDialog>
     with SingleTickerProviderStateMixin {
   late TextEditingController _nameController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _personalityController;
-  late TextEditingController _scenarioController;
-  late TextEditingController _firstMessageController;
-  late TextEditingController _exampleDialoguesController;
-  late TextEditingController _systemPromptController;
-  late TextEditingController _postHistoryController;
-  List<TextEditingController> _altGreetingControllers = [];
+  late StyledTextController _descriptionController;
+  late StyledTextController _personalityController;
+  late StyledTextController _scenarioController;
+  late StyledTextController _firstMessageController;
+  late StyledTextController _exampleDialoguesController;
+  late StyledTextController _systemPromptController;
+  late StyledTextController _postHistoryController;
+  List<StyledTextController> _altGreetingControllers = [];
 
   late TabController _tabController;
   List<LorebookEntry> _loreEntries = [];
@@ -94,30 +94,37 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.character.name);
-    _descriptionController = TextEditingController(
+    _descriptionController = StyledTextController(
       text: widget.character.description,
+      preset: StyledTextPreset.macros,
     );
-    _personalityController = TextEditingController(
+    _personalityController = StyledTextController(
       text: widget.character.personality,
+      preset: StyledTextPreset.macros,
     );
-    _scenarioController = TextEditingController(
+    _scenarioController = StyledTextController(
       text: widget.character.scenario,
+      preset: StyledTextPreset.macros,
     );
-    _firstMessageController = TextEditingController(
+    _firstMessageController = StyledTextController(
       text: widget.character.firstMessage,
+      preset: StyledTextPreset.prose,
     );
-    _exampleDialoguesController = TextEditingController(
+    _exampleDialoguesController = StyledTextController(
       text: widget.character.mesExample,
+      preset: StyledTextPreset.prose,
     );
-    _systemPromptController = TextEditingController(
+    _systemPromptController = StyledTextController(
       text: widget.character.systemPrompt,
+      preset: StyledTextPreset.macros,
     );
-    _postHistoryController = TextEditingController(
+    _postHistoryController = StyledTextController(
       text: widget.character.postHistoryInstructions,
+      preset: StyledTextPreset.macros,
     );
 
     _altGreetingControllers = widget.character.alternateGreetings
-        .map((g) => TextEditingController(text: g))
+        .map((g) => StyledTextController(text: g, preset: StyledTextPreset.prose))
         .toList();
 
     if (widget.character.lorebook != null) {
@@ -898,7 +905,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 ),
                 onPressed: () {
                   setState(() {
-                    _altGreetingControllers.add(TextEditingController());
+                    _altGreetingControllers.add(
+                      StyledTextController(preset: StyledTextPreset.prose),
+                    );
                   });
                 },
               ),

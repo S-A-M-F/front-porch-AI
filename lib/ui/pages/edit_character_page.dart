@@ -23,7 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -57,18 +57,18 @@ class EditCharacterPage extends StatefulWidget {
 class _EditCharacterPageState extends State<EditCharacterPage>
     with SingleTickerProviderStateMixin {
   late TextEditingController _nameController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _personalityController;
-  late TextEditingController _scenarioController;
-  late TextEditingController _firstMessageController;
-  late TextEditingController _mesExampleController;
-  late TextEditingController _systemPromptController;
-  late TextEditingController _postHistoryController;
+  late StyledTextController _descriptionController;
+  late StyledTextController _personalityController;
+  late StyledTextController _scenarioController;
+  late StyledTextController _firstMessageController;
+  late StyledTextController _mesExampleController;
+  late StyledTextController _systemPromptController;
+  late StyledTextController _postHistoryController;
 
   late TabController _tabController;
   List<LorebookEntry> _loreEntries = [];
   List<String> _selectedWorldNames = [];
-  List<TextEditingController> _altGreetingControllers = [];
+  List<StyledTextController> _altGreetingControllers = [];
   List<String> _tags = [];
   final _tagController = TextEditingController();
   final ValueNotifier<int> _tokenNotifier = ValueNotifier<int>(0);
@@ -118,26 +118,33 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.character.name);
-    _descriptionController = TextEditingController(
+    _descriptionController = StyledTextController(
       text: widget.character.description,
+      preset: StyledTextPreset.macros,
     );
-    _personalityController = TextEditingController(
+    _personalityController = StyledTextController(
       text: widget.character.personality,
+      preset: StyledTextPreset.macros,
     );
-    _scenarioController = TextEditingController(
+    _scenarioController = StyledTextController(
       text: widget.character.scenario,
+      preset: StyledTextPreset.macros,
     );
-    _firstMessageController = TextEditingController(
+    _firstMessageController = StyledTextController(
       text: widget.character.firstMessage,
+      preset: StyledTextPreset.prose,
     );
-    _mesExampleController = TextEditingController(
+    _mesExampleController = StyledTextController(
       text: widget.character.mesExample,
+      preset: StyledTextPreset.prose,
     );
-    _systemPromptController = TextEditingController(
+    _systemPromptController = StyledTextController(
       text: widget.character.systemPrompt,
+      preset: StyledTextPreset.macros,
     );
-    _postHistoryController = TextEditingController(
+    _postHistoryController = StyledTextController(
       text: widget.character.postHistoryInstructions,
+      preset: StyledTextPreset.macros,
     );
 
     if (widget.character.lorebook != null) {
@@ -150,7 +157,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     _selectedWorldNames = List.from(widget.character.worldNames);
 
     _altGreetingControllers = widget.character.alternateGreetings
-        .map((g) => TextEditingController(text: g))
+        .map((g) => StyledTextController(text: g, preset: StyledTextPreset.prose))
         .toList();
 
     _tags = List.from(widget.character.tags);
@@ -1315,7 +1322,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                 trailing: TextButton.icon(
                   onPressed: () {
                     setState(() {
-                      final c = TextEditingController();
+                      final c = StyledTextController(preset: StyledTextPreset.prose);
                       c.addListener(_updateTokenCount);
                       _altGreetingControllers.add(c);
                     });

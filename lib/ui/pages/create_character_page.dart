@@ -29,7 +29,7 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
@@ -61,16 +61,16 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   final _tagController = TextEditingController();
 
   // ── Personality (Step 1) ──
-  final _descriptionController = TextEditingController();
-  final _personalityController = TextEditingController();
-  final _scenarioController = TextEditingController();
-  final _systemPromptController = TextEditingController();
-  final _postHistoryController = TextEditingController();
+  final _descriptionController = StyledTextController(preset: StyledTextPreset.macros);
+  final _personalityController = StyledTextController(preset: StyledTextPreset.macros);
+  final _scenarioController = StyledTextController(preset: StyledTextPreset.macros);
+  final _systemPromptController = StyledTextController(preset: StyledTextPreset.macros);
+  final _postHistoryController = StyledTextController(preset: StyledTextPreset.macros);
 
   // ── Dialogue (Step 2) ──
-  final _firstMessageController = TextEditingController();
-  final _exampleDialogueController = TextEditingController();
-  final List<TextEditingController> _altGreetingControllers = [];
+  final _firstMessageController = StyledTextController(preset: StyledTextPreset.prose);
+  final _exampleDialogueController = StyledTextController(preset: StyledTextPreset.prose);
+  final List<StyledTextController> _altGreetingControllers = [];
 
   // ── Lorebook (Step 3) ──
   final List<LorebookEntry> _lorebookEntries = [];
@@ -798,7 +798,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   TextButton.icon(
                     onPressed: () {
                       setState(() {
-                        final ctrl = TextEditingController();
+                        final ctrl = StyledTextController(preset: StyledTextPreset.prose);
                         ctrl.addListener(_updateTokenEstimate);
                         _altGreetingControllers.add(ctrl);
                       });
