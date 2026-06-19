@@ -362,6 +362,245 @@ void main() {
     });
   });
 
+  group('buildTextSpan — priority tokenization {{}} > "" > **', () {
+    testWidgets('macro inside dialogue keeps macro coloring', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: '"Hello {{name}}"');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      expect(span.children, hasLength(3));
+      final children = span.children!.map((c) => c as TextSpan).toList();
+      expect(children[0].text, '"Hello ');
+      expect(children[0].style?.color, const Color(0xFFB45309));
+      expect(children[1].text, '{{name}}');
+      expect(children[1].style?.color, const Color(0xFF0D9488));
+      expect(children[2].text, '"');
+      expect(children[2].style?.color, const Color(0xFFB45309));
+      ctrl.dispose();
+    });
+
+    testWidgets('macro inside action keeps macro coloring', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: '*waves {{name}}*');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      expect(span.children, hasLength(3));
+      final children = span.children!.map((c) => c as TextSpan).toList();
+      expect(children[0].text, '*waves ');
+      expect(children[0].style?.color, const Color(0xFF1565C0));
+      expect(children[1].text, '{{name}}');
+      expect(children[1].style?.color, const Color(0xFF0D9488));
+      expect(children[2].text, '*');
+      expect(children[2].style?.color, const Color(0xFF1565C0));
+      ctrl.dispose();
+    });
+
+    testWidgets('macro and dialogue inside action', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: '*"{{x}}"*');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      expect(span.children, hasLength(5));
+      final children = span.children!.map((c) => c as TextSpan).toList();
+      expect(children[0].text, '*');
+      expect(children[0].style?.color, const Color(0xFF1565C0));
+      expect(children[1].text, '"');
+      expect(children[1].style?.color, const Color(0xFFB45309));
+      expect(children[2].text, '{{x}}');
+      expect(children[2].style?.color, const Color(0xFF0D9488));
+      expect(children[3].text, '"');
+      expect(children[3].style?.color, const Color(0xFFB45309));
+      expect(children[4].text, '*');
+      expect(children[4].style?.color, const Color(0xFF1565C0));
+      ctrl.dispose();
+    });
+
+    testWidgets('macro inside dialogue in mixed text', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(
+        text: '"He said {{name}}" and *{{verb}}*',
+      );
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final childrenTexts =
+          span.children!.map((c) => (c as TextSpan).text).toList();
+      expect(childrenTexts, [
+        '"He said ',
+        '{{name}}',
+        '"',
+        ' and ',
+        '*',
+        '{{verb}}',
+        '*',
+      ]);
+      ctrl.dispose();
+    });
+
+    testWidgets('unclosed macro inside dialogue does not break', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: '"hello {{name"');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final childrenTexts =
+          span.children!.map((c) => (c as TextSpan).text).toList();
+      expect(childrenTexts, ['"hello {{name"']);
+      ctrl.dispose();
+    });
+
+    testWidgets('* inside "" is literal, does not split action', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: '*waves "*Hello {{user}}"*');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final childrenTexts =
+          span.children!.map((c) => (c as TextSpan).text).toList();
+      expect(childrenTexts, [
+        '*waves ',
+        '"*Hello ',
+        '{{user}}',
+        '"',
+        '*',
+      ]);
+      // Verify macro keeps teal regardless of nesting
+      final macroChild = span.children!
+          .map((c) => c as TextSpan)
+          .firstWhere((c) => c.text == '{{user}}');
+      expect(macroChild.style?.color, const Color(0xFF0D9488));
+      ctrl.dispose();
+    });
+
+    testWidgets('* inside "" is just text, no action match', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: '"hello *world*"');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final childrenTexts =
+          span.children!.map((c) => (c as TextSpan).text).toList();
+      // The * inside quotes is just text — the whole thing is one dialogue span
+      expect(childrenTexts, ['"hello *world*"']);
+      ctrl.dispose();
+    });
+
+    testWidgets('" inside {{}} is just text, not dialogue delimiter',
+        (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(text: 'before {{name"value"}} after');
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final childrenTexts =
+          span.children!.map((c) => (c as TextSpan).text).toList();
+      expect(childrenTexts, ['before ', '{{name"value"}}', ' after']);
+      ctrl.dispose();
+    });
+
+    testWidgets(
+        'dialogue after macro split does not start with " but is still dialogue',
+        (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(
+        text:
+            '"A special request from the Polish ambassador—for our new President and esteemed chief of staff, {{char}}. \'Nie Bądź Taka\' by Lil\' Wally."',
+      );
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final children = span.children!.map((c) => c as TextSpan).toList();
+      final childrenTexts = children.map((c) => c.text).toList();
+      expect(childrenTexts, [
+        '"A special request from the Polish ambassador—for our new President and esteemed chief of staff, ',
+        '{{char}}',
+        '. \'Nie Bądź Taka\' by Lil\' Wally."',
+      ]);
+      // The trailing dialogue (does not start with ") must still be amber
+      expect(children[0].style?.color, const Color(0xFFB45309));
+      expect(children[1].style?.color, const Color(0xFF0D9488));
+      expect(children[2].style?.color, const Color(0xFFB45309));
+      ctrl.dispose();
+    });
+
+    testWidgets(
+        'two macros in one dialogue — middle split does not start or end with delimiter',
+        (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(
+        text: '"hello {{x}} middle {{y}} world."',
+      );
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final children = span.children!.map((c) => c as TextSpan).toList();
+      final childrenTexts = children.map((c) => c.text).toList();
+      expect(childrenTexts, [
+        '"hello ',
+        '{{x}}',
+        ' middle ',
+        '{{y}}',
+        ' world."',
+      ]);
+      // Middle segment " middle " is dialogue despite no " at either edge
+      expect(children[2].style?.color, const Color(0xFFB45309));
+      ctrl.dispose();
+    });
+
+    testWidgets('action after macro+dialogue split does not start with *',
+        (tester) async {
+      await tester.pumpWidget(_buildApp());
+      final ctrl = StyledTextController(
+        text: '*"{{x}}" and {{y}}*',
+      );
+      final span = ctrl.buildTextSpan(
+        context: _pumpContext(tester),
+        style: const TextStyle(color: Colors.white),
+        withComposing: false,
+      );
+      final children = span.children!.map((c) => c as TextSpan).toList();
+      final childrenTexts = children.map((c) => c.text).toList();
+      expect(childrenTexts, [
+        '*',
+        '"',
+        '{{x}}',
+        '"',
+        ' and ',
+        '{{y}}',
+        '*',
+      ]);
+      // The tail action " and {{y}}" — the split before {{y}} starts with ' and '
+      // which is not *, yet must be action-colored
+      final actionChild =
+          children.firstWhere((c) => c.text == ' and ');
+      expect(actionChild.style?.color, const Color(0xFF1565C0));
+      ctrl.dispose();
+    });
+  });
+
   // ── Lifecycle & spell check (with method channel mock) ──
 
   group('StyledTextController lifecycle & spell check', () {

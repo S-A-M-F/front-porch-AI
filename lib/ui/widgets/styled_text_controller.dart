@@ -7,11 +7,15 @@ import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 
+/// Discriminated token type returned by [_StyledPriorityTokenizer].
+enum StyledTokenType { macro, dialogue, action }
+
 class StyledTextPreset {
   final RegExp pattern;
   final TextStyle Function(BuildContext context, String match, TextStyle? base) styler;
+  final bool usePriorityTokenization;
 
-  const StyledTextPreset(this.pattern, this.styler);
+  const StyledTextPreset(this.pattern, this.styler, {this.usePriorityTokenization = false});
 
   static final prose = StyledTextPreset(
     RegExp(r'("[^"]*")|(\*[^*]*\*)|({{[^}]*}})'),
@@ -31,6 +35,7 @@ class StyledTextPreset {
         color: AppColors.resolve(ctx, Colors.tealAccent, const Color(0xFF0D9488)),
       );
     },
+    usePriorityTokenization: true,
   );
 
   static final macros = StyledTextPreset(
@@ -151,7 +156,6 @@ class StyledTextController extends TextEditingController
     required bool withComposing,
   }) {
     final text = this.text;
-    final matches = preset.pattern.allMatches(text);
     final useSpellCheck =
         _lastCheckedText == text && _misspelledRanges.isNotEmpty;
 
@@ -162,24 +166,50 @@ class StyledTextController extends TextEditingController
       segments.add((text: segText, style: segStyle, offset: segOffset));
     }
 
-    if (matches.isEmpty) {
-      addSegment(text, style, 0);
-    } else {
-      for (final match in matches) {
+    if (preset.usePriorityTokenization) {
+      for (final match in _tokenizeWithPriority(text)) {
         if (match.start > lastEnd) {
           addSegment(text.substring(lastEnd, match.start), style, lastEnd);
         }
-        final matchText = match.group(0)!;
-        addSegment(
-          matchText,
-          preset.styler(context, matchText, style),
-          match.start,
-        );
+        TextStyle? segStyle;
+        switch (match.type) {
+          case StyledTokenType.dialogue:
+            segStyle = (style ?? const TextStyle()).copyWith(
+              color: AppColors.resolve(
+                  context, Colors.amberAccent, const Color(0xFFB45309)),
+              fontWeight: FontWeight.w500,
+            );
+          case StyledTokenType.action:
+            segStyle = (style ?? const TextStyle()).copyWith(
+              color: AppColors.resolve(
+                  context, const Color(0xFF90CAF9), const Color(0xFF1565C0)),
+            );
+          case StyledTokenType.macro:
+            segStyle = (style ?? const TextStyle()).copyWith(
+              color: AppColors.resolve(
+                  context, Colors.tealAccent, const Color(0xFF0D9488)),
+            );
+        }
+        addSegment(match.matchText, segStyle, match.start);
         lastEnd = match.end;
       }
-      if (lastEnd < text.length) {
-        addSegment(text.substring(lastEnd), style, lastEnd);
+    } else {
+      for (final m in preset.pattern.allMatches(text)) {
+        if (m.start > lastEnd) {
+          addSegment(text.substring(lastEnd, m.start), style, lastEnd);
+        }
+        addSegment(
+          m.group(0)!,
+          preset.styler(context, m.group(0)!, style),
+          m.start,
+        );
+        lastEnd = m.end;
       }
+    }
+    if (segments.isEmpty) {
+      addSegment(text, style, 0);
+    } else if (lastEnd < text.length) {
+      addSegment(text.substring(lastEnd), style, lastEnd);
     }
 
     if (!useSpellCheck) {
@@ -251,5 +281,123 @@ class StyledTextController extends TextEditingController
   void dispose() {
     _spellDebounce?.cancel();
     super.dispose();
+  }
+
+  /// Tokenizes [text] with priority: [{{}}] > [""] > [**].
+  ///
+  /// Uses char-by-char scanning for [""] and [**] so that their delimiters
+  /// are ignored when they fall inside already-matched higher-priority spans.
+  /// This ensures macros always retain teal coloring even when nested
+  /// inside quotes or asterisks, and vice versa.
+  Iterable<({int start, int end, String matchText, StyledTokenType type})>
+      _tokenizeWithPriority(
+    String text,
+  ) {
+    // Phase 1: Macro (highest priority) — regex is safe, no delimiter overlap.
+    final macroMatches = RegExp(r'{{[^}]*}}').allMatches(text).toList();
+    final macroRanges = <({int start, int end})>[
+      for (final mm in macroMatches) (start: mm.start, end: mm.end),
+    ];
+
+    // Phase 2: Dialogue (medium priority) — char-by-char scan,
+    // skipping " delimiters that land inside macro spans.
+    final dialogueRanges = _scanDelimited(text, '"', '"', macroRanges);
+
+    // Phase 3: Action (lowest priority) — char-by-char scan,
+    // skipping * delimiters that land inside macro or dialogue spans.
+    final combinedSkip = <({int start, int end})>[
+      ...macroRanges,
+      ...dialogueRanges,
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    final actionRanges = _scanDelimited(text, '*', '*', combinedSkip);
+
+    // Split dialogue ranges around macro ranges inside them.
+    final dialogueSplits = <({int start, int end})>[];
+    for (final dr in dialogueRanges) {
+      int segStart = dr.start;
+      for (final mr in macroRanges) {
+        if (mr.start >= dr.start && mr.end <= dr.end) {
+          if (segStart < mr.start) {
+            dialogueSplits.add((start: segStart, end: mr.start));
+          }
+          segStart = mr.end;
+        }
+      }
+      if (segStart < dr.end) {
+        dialogueSplits.add((start: segStart, end: dr.end));
+      }
+    }
+
+    // Split action ranges around macro and dialogue splits inside them.
+    final actionSplitRanges = <({int start, int end})>[
+      ...macroRanges,
+      ...dialogueSplits,
+    ]..sort((a, b) => a.start.compareTo(b.start));
+
+    final actionSplits = <({int start, int end})>[];
+    for (final ar in actionRanges) {
+      int segStart = ar.start;
+      for (final sr in actionSplitRanges) {
+        if (sr.start >= ar.start && sr.end <= ar.end) {
+          if (segStart < sr.start) {
+            actionSplits.add((start: segStart, end: sr.start));
+          }
+          segStart = sr.end;
+        }
+      }
+      if (segStart < ar.end) {
+        actionSplits.add((start: segStart, end: ar.end));
+      }
+    }
+
+    return <({int start, int end, String matchText, StyledTokenType type})>[
+      for (final mm in macroMatches)
+        (start: mm.start, end: mm.end, matchText: mm.group(0)!,
+          type: StyledTokenType.macro),
+      for (final d in dialogueSplits)
+        (start: d.start, end: d.end, matchText: text.substring(d.start, d.end),
+          type: StyledTokenType.dialogue),
+      for (final a in actionSplits)
+        (start: a.start, end: a.end, matchText: text.substring(a.start, a.end),
+          type: StyledTokenType.action),
+    ]..sort((a, b) => a.start.compareTo(b.start));
+  }
+
+  /// Scans [text] left-to-right for [openChar]…[closeChar] pairs,
+  /// skipping any delimiter that falls inside [skipRanges].
+  List<({int start, int end})> _scanDelimited(
+    String text,
+    String openChar,
+    String closeChar,
+    List<({int start, int end})> skipRanges,
+  ) {
+    final ranges = <({int start, int end})>[];
+    int i = 0;
+    while (i < text.length) {
+      if (text[i] == openChar && !_inRanges(i, skipRanges)) {
+        final start = i;
+        i++;
+        while (i < text.length) {
+          if (text[i] == closeChar && !_inRanges(i, skipRanges)) {
+            ranges.add((start: start, end: i + 1));
+            i++;
+            break;
+          }
+          i++;
+        }
+      } else {
+        i++;
+      }
+    }
+    return ranges;
+  }
+
+  /// Returns true when [pos] falls inside any range in [ranges].
+  bool _inRanges(int pos, List<({int start, int end})> ranges) {
+    for (final r in ranges) {
+      if (pos >= r.start && pos < r.end) return true;
+      if (r.start > pos) break;
+    }
+    return false;
   }
 }
