@@ -60,6 +60,7 @@ class StyledTextController extends TextEditingController
   final Map<int, List<String>> _suggestions = {};
   Timer? _spellDebounce;
   bool _spellCheckInFlight = false;
+  bool _ignoreTextChange = false;
 
   void applySpellResults(String checkedText, List<SuggestionSpan> spans) {
     _lastCheckedText = checkedText;
@@ -92,6 +93,7 @@ class StyledTextController extends TextEditingController
   // ── Spell check orchestration ──
 
   void _onTextChanged() {
+    if (_ignoreTextChange) return;
     _spellDebounce?.cancel();
     _spellDebounce = Timer(const Duration(milliseconds: 300), _trySpellCheck);
   }
@@ -106,6 +108,7 @@ class StyledTextController extends TextEditingController
     if (_spellCheckInFlight) return;
     _spellCheckInFlight = true;
     final text = this.text;
+    _ignoreTextChange = true;
     try {
       if (text.trim().isEmpty) {
         clearSpellResults();
@@ -127,6 +130,7 @@ class StyledTextController extends TextEditingController
       clearSpellResults();
       notifyListeners();
     } finally {
+      _ignoreTextChange = false;
       _spellCheckInFlight = false;
       if (text != this.text) {
         _spellDebounce?.cancel();
