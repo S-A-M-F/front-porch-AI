@@ -279,14 +279,19 @@ class RealismEvals {
   Future<void> _applyNarrativeResults(String text) async {
     // Robust extraction (survives Director reprocess/correction which may reformat/partial JSON).
     // Inline (no new named helper/method per rules for god; private here in leaf is fine).
+    // Parse JSON once (both keys live in the same payload) rather than twice.
     String fixationRaw = '';
+    String objectiveRaw = '';
     try {
       final noFence = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
       final si = noFence.indexOf('{');
       final ei = noFence.lastIndexOf('}');
       if (si >= 0 && ei > si) {
         final obj = jsonDecode(noFence.substring(si, ei + 1));
-        if (obj is Map && obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
+        if (obj is Map) {
+          if (obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
+          if (obj['proposed_objective'] != null) objectiveRaw = obj['proposed_objective'].toString().trim();
+        }
       }
     } catch (_) {}
     if (fixationRaw.isEmpty) {
@@ -295,16 +300,6 @@ class RealismEvals {
     }
     relationshipService.updateFixationFromEvalResult(fixationRaw.isNotEmpty ? fixationRaw : '');
 
-    String objectiveRaw = '';
-    try {
-      final noFence2 = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
-      final si2 = noFence2.indexOf('{');
-      final ei2 = noFence2.lastIndexOf('}');
-      if (si2 >= 0 && ei2 > si2) {
-        final obj2 = jsonDecode(noFence2.substring(si2, ei2 + 1));
-        if (obj2 is Map && obj2['proposed_objective'] != null) objectiveRaw = obj2['proposed_objective'].toString().trim();
-      }
-    } catch (_) {}
     if (objectiveRaw.isEmpty) {
       final m2 = RegExp('"proposed_objective"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
       objectiveRaw = m2?.group(1)?.trim() ?? '';
