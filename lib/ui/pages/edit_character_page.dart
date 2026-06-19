@@ -71,7 +71,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   List<TextEditingController> _altGreetingControllers = [];
   List<String> _tags = [];
   final _tagController = TextEditingController();
-  int _estimatedTokens = 0;
+  final ValueNotifier<int> _tokenNotifier = ValueNotifier<int>(0);
   String? _newAvatarPath;
 
   // ── Realism Engine state ──
@@ -230,6 +230,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       c.dispose();
     }
     _tagController.dispose();
+    _tokenNotifier.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -251,15 +252,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     for (final c in _altGreetingControllers) {
       totalChars += c.text.length;
     }
-    setState(() {
-      _estimatedTokens = (totalChars / 4).ceil();
-    });
-  }
-
-  Color _tokenColor() {
-    if (_estimatedTokens > 4000) return Colors.redAccent;
-    if (_estimatedTokens > 2000) return Colors.orangeAccent;
-    return Colors.blueAccent;
+    _tokenNotifier.value = (totalChars / 4).ceil();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -942,14 +935,26 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             ],
           ),
           // Floating token counter
-          Positioned(right: 24, bottom: 24, child: _buildTokenBadge()),
+          Positioned(
+            right: 24,
+            bottom: 24,
+            child: ValueListenableBuilder<int>(
+              valueListenable: _tokenNotifier,
+              builder: (context, tokens, child) =>
+                  _buildTokenBadge(tokens),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTokenBadge() {
-    final color = _tokenColor();
+  Widget _buildTokenBadge(int estimatedTokens) {
+    final color = estimatedTokens > 4000
+        ? Colors.redAccent
+        : estimatedTokens > 2000
+        ? Colors.orangeAccent
+        : Colors.blueAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -970,7 +975,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           Icon(Icons.token, size: 14, color: color),
           const SizedBox(width: 6),
           Text(
-            '~$_estimatedTokens tokens',
+            '~$estimatedTokens tokens',
             style: TextStyle(
               color: color,
               fontSize: 12,

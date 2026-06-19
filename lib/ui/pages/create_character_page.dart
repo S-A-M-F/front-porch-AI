@@ -117,7 +117,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   int _needsDecayComfort = 5;
 
   // ── Token counter ──
-  int _totalTokenEstimate = 0;
+  final ValueNotifier<int> _tokenNotifier = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -152,8 +152,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           ((entry.name.length + entry.key.length + entry.content.length) / 4)
               .ceil();
     }
-    if (mounted && total != _totalTokenEstimate) {
-      setState(() => _totalTokenEstimate = total);
+    if (mounted) {
+      _tokenNotifier.value = total;
     }
   }
 
@@ -171,6 +171,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     for (final c in _altGreetingControllers) {
       c.dispose();
     }
+    _tokenNotifier.dispose();
     super.dispose();
   }
 
@@ -218,7 +219,15 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 : _buildReviewStep(),
           ),
           // Floating token counter
-          Positioned(right: 24, bottom: 24, child: _buildTokenBadge()),
+          Positioned(
+            right: 24,
+            bottom: 24,
+            child: ValueListenableBuilder<int>(
+              valueListenable: _tokenNotifier,
+              builder: (context, tokens, child) =>
+                  _buildTokenBadge(tokens),
+            ),
+          ),
         ],
       ),
     );
@@ -308,10 +317,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  Widget _buildTokenBadge() {
-    final color = _totalTokenEstimate > 4000
+  Widget _buildTokenBadge(int estimatedTokens) {
+    final color = estimatedTokens > 4000
         ? Colors.redAccent
-        : _totalTokenEstimate > 2000
+        : estimatedTokens > 2000
         ? Colors.orangeAccent
         : Colors.blueAccent;
     return Container(
@@ -334,7 +343,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           Icon(Icons.token, size: 14, color: color),
           const SizedBox(width: 6),
           Text(
-            '~$_totalTokenEstimate tokens',
+            '~$estimatedTokens tokens',
             style: TextStyle(
               color: color,
               fontSize: 12,
@@ -2369,7 +2378,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           _realismVerificationMaxReprocesses = 1;
           _realismVerificationStrictness = 3;
           _realismNeedsDirectorAuthority = false;
-          _totalTokenEstimate = 0;
+          _tokenNotifier.value = 0;
         });
       }
     } catch (e) {
