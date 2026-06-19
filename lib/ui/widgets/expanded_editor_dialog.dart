@@ -129,4 +129,5 @@ Future<void> showExpandedEditorDialog({
       ),
     ),
   );
+  expandedController.dispose();
 }
