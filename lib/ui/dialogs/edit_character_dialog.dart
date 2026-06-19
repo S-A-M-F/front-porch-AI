@@ -65,7 +65,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   int _realismVerificationMaxReprocesses = 1;
   int _realismVerificationStrictness = 3;
   bool _realismNeedsDirectorAuthority = false;
-  int _needsSimStrength = 1; // 1-5. Injected to first model call (+ Director when authority on) so they emit at the requested magnitude. Numbers returned by (Director-corrected) call are applied directly; no second multiply on top of already-scaled deltas.
+  int _needsSimStrength =
+      1; // 1-5. Injected to first model call (+ Director when authority on) so they emit at the requested magnitude. Numbers returned by (Director-corrected) call are applied directly; no second multiply on top of already-scaled deltas.
 
   // Needs Simulation state
   bool _needsSimEnabled = false;
@@ -1255,7 +1256,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     },
                   ),
                   const SizedBox(height: 16),
-                  Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
+                  Divider(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                  ),
                   const SizedBox(height: 12),
                   // Enjoys low hygiene
                   RealismFormSection.buildToggleRow(
@@ -1271,7 +1274,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     context: context,
                   ),
                   const SizedBox(height: 16),
-                  Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
+                  Divider(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                  ),
                   const SizedBox(height: 12),
                   // Needs delta strength
                   Text(
@@ -1898,7 +1903,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         SliderTheme(
           data: SliderThemeData(
             activeTrackColor: AppColors.formMasterAccent,
-            inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+            inactiveTrackColor: AppColors.borderOf(
+              context,
+            ).withValues(alpha: 0.3),
             thumbColor: AppColors.formMasterAccent,
             trackHeight: 3,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
@@ -1949,7 +1956,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   Text(
                     'Decay Rate / Turn',
                     style: TextStyle(
-                      color: AppColors.textSecondary(context).withValues(alpha: 0.7),
+                      color: AppColors.textSecondary(
+                        context,
+                      ).withValues(alpha: 0.7),
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1958,7 +1967,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   Text(
                     decayDescription,
                     style: TextStyle(
-                      color: AppColors.textSecondary(context).withValues(alpha: 0.7),
+                      color: AppColors.textSecondary(
+                        context,
+                      ).withValues(alpha: 0.7),
                       fontSize: 10,
                     ),
                   ),
@@ -1966,12 +1977,20 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               ),
               SliderTheme(
                 data: SliderThemeData(
-                  activeTrackColor: AppColors.formMasterAccent.withValues(alpha: 0.5),
-                  inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.15),
+                  activeTrackColor: AppColors.formMasterAccent.withValues(
+                    alpha: 0.5,
+                  ),
+                  inactiveTrackColor: AppColors.borderOf(
+                    context,
+                  ).withValues(alpha: 0.15),
                   thumbColor: AppColors.formMasterAccent.withValues(alpha: 0.7),
                   trackHeight: 2,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 5,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 10,
+                  ),
                 ),
                 child: Slider(
                   value: decayValue.toDouble(),
@@ -2018,6 +2037,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
 
     widget.character.frontPorchExtensions = extensions;
+    extensions.ensureStableId();
 
     // Save to PNG so changes persist
     try {
@@ -2058,6 +2078,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     extensions.needsSimStrength = _needsSimStrength;
 
     widget.character.frontPorchExtensions = extensions;
+    extensions.ensureStableId();
 
     // Save to PNG so changes persist (same as colors)
     try {
@@ -2109,6 +2130,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     extensions.needsDecayComfort = _needsDecayComfort;
 
     widget.character.frontPorchExtensions = extensions;
+    extensions.ensureStableId();
 
     // Save to PNG so changes persist (same as colors)
     try {

@@ -144,6 +144,7 @@ void main() {
           realismEnabled: true,
           shortTermBond: 42,
           trustLevel: 15,
+          stableId: 'staleness-stable-test',
         ),
       )..dbId = 'char-001';
 
@@ -151,6 +152,7 @@ void main() {
       expect(stub.activeCharacter!.frontPorchExtensions, isNotNull);
       expect(stub.activeCharacter!.frontPorchExtensions!.realismEnabled, true);
       expect(stub.activeCharacter!.frontPorchExtensions!.shortTermBond, 42);
+      expect(stub.activeCharacter!.frontPorchExtensions!.stableId, 'staleness-stable-test');
     });
   });
 

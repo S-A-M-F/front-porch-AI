@@ -909,6 +909,8 @@ class WebServerService extends ChangeNotifier {
               ? List<String>.from(jsonDecode(character.tags))
               : [],
         );
+        fullCard.frontPorchExtensions ??= FrontPorchExtensions();
+        fullCard.frontPorchExtensions!.ensureStableId();
         await V2CardService().saveCardAsPng(fullCard, destPath, destPath);
       } catch (e) {
         debugPrint('[WebServer] Failed to embed V2 card data: $e');

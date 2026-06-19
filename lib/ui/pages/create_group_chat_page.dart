@@ -1028,6 +1028,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           needsDecayComfort: (seed['needsDecayComfort'] as int?) ?? 5,
           needsSimStrength: (seed['needsSimStrength'] as int?) ?? 1,
         );
+        memberFp.ensureStableId();
       }
 
       // Insert typed GroupMember row using the database instance.
@@ -2448,15 +2449,13 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                                 setState(() => _needsSimEnabled = v),
                             enjoysLowHygiene:
                                 _memberNeedsBaselines[id]?['enjoysLowHygiene'] ==
-                                    1,
+                                1,
                             onEnjoysLowHygieneChanged: (v) {
                               setState(() {
-                                _memberNeedsBaselines[id]![
-                                    'enjoysLowHygiene'] = v ? 1 : 0;
+                                _memberNeedsBaselines[id]!['enjoysLowHygiene'] =
+                                    v ? 1 : 0;
                               });
-                              _updateMemberRealism(id, {
-                                'enjoysLowHygiene': v,
-                              });
+                              _updateMemberRealism(id, {'enjoysLowHygiene': v});
                             },
                             needsSimStrength:
                                 (seed['needsSimStrength'] as int?) ?? 1,
@@ -2509,9 +2508,7 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                               setState(() {
                                 _memberNeedsBaselines[id]!['fun'] = v;
                               });
-                              _updateMemberRealism(id, {
-                                'needsBaselineFun': v,
-                              });
+                              _updateMemberRealism(id, {'needsBaselineFun': v});
                             },
                             baselineHygiene:
                                 _memberNeedsBaselines[id]?['hygiene'] ?? 80,

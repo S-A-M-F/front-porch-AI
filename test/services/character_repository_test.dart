@@ -12,6 +12,7 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/database/database.dart';
 
 /// Mock path_provider so StorageService can resolve
@@ -289,6 +290,40 @@ void main() {
       expect(card.replacePlaceholders('{{CHAR}}', userName: 'Alex'), 'Luna');
       expect(card.replacePlaceholders('{{USER}}', userName: 'Alex'), 'Alex');
     });
+
+    // --- New coverage for stableId + duplicate/persist paths (review Issues 5-8,14) ---
+    test('duplicateCharacter (real call) produces fresh stableId', () async {
+      _setupPathProviderMock();
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.initialized;
+      final testDb = AppDatabase.forTesting();
+      final testRepo = CharacterRepository(testDb, storage);
+      await Future<void>.delayed(Duration.zero);
+      final card = CharacterCard(
+        name: 'DupStableTest',
+        frontPorchExtensions: FrontPorchExtensions(
+          realismEnabled: true,
+          stableId: 'existing-stable-for-dup',
+        ),
+      );
+      final v2 = V2CardService();
+      final tmpDir = Directory.systemTemp.createTempSync('dup_test_');
+      final pngPath = '${tmpDir.path}/duptest.png';
+      await v2.saveCardAsPng(card, pngPath, null);
+      card.imagePath = pngPath;
+      await testRepo.addCharacter(card);
+      final cloned = await testRepo.duplicateCharacter(card);
+      expect(cloned != null, true);
+      expect(cloned!.name, contains('duplicate'));
+      expect(
+        cloned.frontPorchExtensions?.stableId,
+        isNot('existing-stable-for-dup'),
+      );
+      expect(cloned.frontPorchExtensions?.stableId != null, true);
+      expect(cloned.frontPorchExtensions!.stableId!.isNotEmpty, true);
+      await testDb.close();
+    });
   });
 
   // ── DB integration tests ────────────────────────────────────────────
@@ -426,6 +461,110 @@ void main() {
         expect(repo.isLoading, isFalse);
         expect(repo.characters.length, lenBefore); // no corruption/duplication
         expect(repo.characters.any((c) => c.name == 'Test Character'), isTrue);
+      },
+    );
+
+    // --- Coverage for stableId collision paths, ensure, session preserve, legacy (review Issues) ---
+    test(
+      'import with stable match reuses dbId and injects/carries stable (no new id, no nuke)',
+      () async {
+        _setupPathProviderMock();
+        SharedPreferences.setMockInitialValues({});
+        final storage = StorageService();
+        await storage.initialized;
+
+        // pre-create char with stable
+        final preCard = CharacterCard(
+          name: 'StableMatchTarget',
+          description: 'target',
+          frontPorchExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            stableId: 'reimport-stable-uuid-abc',
+          ),
+        );
+        final v2 = V2CardService();
+        final tmpDir = Directory.systemTemp.createTempSync(
+          'import_stable_test_',
+        );
+        final importPng = '${tmpDir.path}/reimport.png';
+        await v2.saveCardAsPng(preCard, importPng, null);
+        await repo.addCharacter(preCard);
+        // use the added or reload
+        await repo.loadCharacters();
+        await _waitUntilNotLoading(repo);
+        final existing = repo.characters.firstWhere(
+          (c) => c.name == 'StableMatchTarget',
+        );
+        final preId = existing.dbId!;
+
+        // create a session for the pre char to verify preservation (minimal)
+        final sessId =
+            'sess-' + DateTime.now().millisecondsSinceEpoch.toString();
+        await db.insertSession(
+          SessionsCompanion(
+            id: Value(sessId),
+            characterId: Value(preId),
+            name: const Value('history session'),
+          ),
+        );
+        final preSessions = await db.getSessionsForCharacter(preId);
+        final preCount = preSessions.length;
+
+        // re-"import" a card with same stable (simulates edit export reimport)
+        final cardWithStable = CharacterCard(
+          name: 'StableMatchTarget',
+          description: 'target updated',
+          frontPorchExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            stableId: 'reimport-stable-uuid-abc',
+          ),
+        );
+        final reimportPng = '${tmpDir.path}/reimport2.png';
+        await v2.saveCardAsPng(cardWithStable, reimportPng, null);
+
+        final imported = await repo.importCharacter(File(reimportPng));
+        expect(imported != null, true);
+        expect(imported!.dbId, preId); // key: reused, no new id from collision
+        expect(
+          imported.frontPorchExtensions?.stableId,
+          'reimport-stable-uuid-abc',
+        );
+
+        // verify session count preserved for the (reused) dbId
+        final postSessions = await db.getSessionsForCharacter(preId);
+        expect(postSessions.length, preCount);
+
+        await tmpDir.delete(recursive: true);
+      },
+    );
+
+    test(
+      'legacy name-only import (no stable) still works, ensure injects on touch',
+      () async {
+        _setupPathProviderMock();
+        SharedPreferences.setMockInitialValues({});
+        final storage = StorageService();
+        await storage.initialized;
+
+        final legacyCard = CharacterCard(
+          name: 'LegacyNoStable',
+          description: 'no stable yet',
+        );
+        final v2 = V2CardService();
+        final tmpDir = Directory.systemTemp.createTempSync('legacy_import_');
+        final png = '${tmpDir.path}/legacy.png';
+        await v2.saveCardAsPng(legacyCard, png, null);
+
+        final imported = await repo.importCharacter(File(png));
+        expect(imported != null, true);
+        expect(imported!.frontPorchExtensions != null, true);
+        expect(
+          imported.frontPorchExtensions!.stableId != null,
+          true,
+        ); // injected
+        expect(imported.frontPorchExtensions!.stableId!.isNotEmpty, true);
+
+        await tmpDir.delete(recursive: true);
       },
     );
   });

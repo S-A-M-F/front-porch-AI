@@ -94,7 +94,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   int _realismVerificationMaxReprocesses = 1;
   int _realismVerificationStrictness = 3;
   bool _realismNeedsDirectorAuthority = false;
-  int _needsSimStrength = 1; // 1-5 multiplier for needs deltas (injected to model + Director)
+  int _needsSimStrength =
+      1; // 1-5 multiplier for needs deltas (injected to model + Director)
 
   // Per-need baseline values (0-100).
   int _needsBaselineHunger = 80;
@@ -458,7 +459,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       debugPrint(
         '[_saveCharacter] Saving realism: enabled=$_realismEnabled, modified=$_realismSettingsModified',
       );
-      widget.character.frontPorchExtensions = FrontPorchExtensions(
+      // Use copyWith from existing (if any) to preserve non-realism FP state
+      // (colors, font, avatarLocked, etc.) that the bare ctor would drop.
+      // stableId is carried by copyWith; ensure after (addresses review Issue 1).
+      final base =
+          widget.character.frontPorchExtensions ?? FrontPorchExtensions();
+      widget.character.frontPorchExtensions = base.copyWith(
         realismEnabled: _realismEnabled,
         shortTermBond: _realismShortTermBond,
         longTermBond: _realismLongTermBond,
@@ -493,6 +499,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
         needsDecayHygiene: _needsDecayHygiene,
         needsDecayComfort: _needsDecayComfort,
       );
+      widget.character.frontPorchExtensions!.ensureStableId();
     }
 
     // Update avatar if changed — store the *full* absolute path in the

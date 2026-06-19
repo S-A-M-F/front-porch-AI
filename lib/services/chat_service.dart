@@ -9107,6 +9107,7 @@ class ChatService extends ChangeNotifier {
           needsDecayHygiene: key == 'hygiene' ? value : null,
           needsDecayComfort: key == 'comfort' ? value : null,
         );
+        newExt.ensureStableId();
         char.frontPorchExtensions = newExt;
 
         if (char.imagePath != null) {
@@ -9150,6 +9151,7 @@ class ChatService extends ChangeNotifier {
       needsDecayHygiene: key == 'hygiene' ? value : null,
       needsDecayComfort: key == 'comfort' ? value : null,
     );
+    newExt.ensureStableId();
     _activeCharacter!.frontPorchExtensions = newExt;
 
     await _characterRepository!.updateCharacter(_activeCharacter!);

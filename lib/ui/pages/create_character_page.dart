@@ -1342,8 +1342,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   onDecaySocialChanged: (v) =>
                       setState(() => _needsDecaySocial = v),
                   decayFun: _needsDecayFun,
-                  onDecayFunChanged: (v) =>
-                      setState(() => _needsDecayFun = v),
+                  onDecayFunChanged: (v) => setState(() => _needsDecayFun = v),
                   decayHygiene: _needsDecayHygiene,
                   onDecayHygieneChanged: (v) =>
                       setState(() => _needsDecayHygiene = v),
@@ -2243,6 +2242,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         needsDecayHygiene: _needsDecayHygiene,
         needsDecayComfort: _needsDecayComfort,
       );
+
+      fpExt.ensureStableId();
 
       final card = CharacterCard(
         name: name,
