@@ -38,6 +38,22 @@ class StyledTextPreset {
     usePriorityTokenization: true,
   );
 
+  static final chat = StyledTextPreset(
+    RegExp(r'("[^"]*")|(\*[^*]*\*)'),
+    (ctx, match, base) {
+      if (match.startsWith('"')) {
+        return (base ?? const TextStyle()).copyWith(
+          color: AppColors.resolve(ctx, Colors.amberAccent, const Color(0xFFB45309)),
+          fontWeight: FontWeight.w500,
+        );
+      }
+      return (base ?? const TextStyle()).copyWith(
+        color: AppColors.resolve(ctx, const Color(0xFF90CAF9), const Color(0xFF1565C0)),
+      );
+    },
+    usePriorityTokenization: true,
+  );
+
   static final macros = StyledTextPreset(
     RegExp(r'({{[^}]*}})'),
     (ctx, match, base) {
@@ -301,7 +317,7 @@ class StyledTextController extends TextEditingController
 
     // Phase 2: Dialogue (medium priority) — char-by-char scan,
     // skipping " delimiters that land inside macro spans.
-    final dialogueRanges = _scanDelimited(text, '"', '"', macroRanges);
+    final dialogueRanges = scanDelimited(text, '"', '"', macroRanges);
 
     // Phase 3: Action (lowest priority) — char-by-char scan,
     // skipping * delimiters that land inside macro or dialogue spans.
@@ -309,7 +325,7 @@ class StyledTextController extends TextEditingController
       ...macroRanges,
       ...dialogueRanges,
     ]..sort((a, b) => a.start.compareTo(b.start));
-    final actionRanges = _scanDelimited(text, '*', '*', combinedSkip);
+    final actionRanges = scanDelimited(text, '*', '*', combinedSkip);
 
     // Split dialogue ranges around macro ranges inside them.
     final dialogueSplits = <({int start, int end})>[];
@@ -362,42 +378,78 @@ class StyledTextController extends TextEditingController
           type: StyledTokenType.action),
     ]..sort((a, b) => a.start.compareTo(b.start));
   }
+}
 
-  /// Scans [text] left-to-right for [openChar]…[closeChar] pairs,
-  /// skipping any delimiter that falls inside [skipRanges].
-  List<({int start, int end})> _scanDelimited(
-    String text,
-    String openChar,
-    String closeChar,
-    List<({int start, int end})> skipRanges,
-  ) {
-    final ranges = <({int start, int end})>[];
-    int i = 0;
-    while (i < text.length) {
-      if (text[i] == openChar && !_inRanges(i, skipRanges)) {
-        final start = i;
-        i++;
-        while (i < text.length) {
-          if (text[i] == closeChar && !_inRanges(i, skipRanges)) {
-            ranges.add((start: start, end: i + 1));
-            i++;
-            break;
-          }
-          i++;
+/// Tokenizes [text] with priority: "dialogue" > *action*.
+/// Dialogue is found first (no skips), then action scans skipping dialogue.
+/// Action ranges are split around dialogue ranges inside them.
+/// Used by [StyledTextController] (chat preset) and [StyledChatMessage].
+List<({int start, int end, String matchText, StyledTokenType type})>
+    tokenizeChat(String text) {
+  final dialogueRanges = scanDelimited(text, '"', '"', []);
+  final actionRanges = scanDelimited(text, '*', '*', dialogueRanges);
+
+  // Split action ranges around dialogue ranges inside them
+  final actionSplits = <({int start, int end})>[];
+  for (final ar in actionRanges) {
+    int segStart = ar.start;
+    for (final dr in dialogueRanges) {
+      if (dr.start >= ar.start && dr.end <= ar.end) {
+        if (segStart < dr.start) {
+          actionSplits.add((start: segStart, end: dr.start));
         }
-      } else {
-        i++;
+        segStart = dr.end;
       }
     }
-    return ranges;
+    if (segStart < ar.end) {
+      actionSplits.add((start: segStart, end: ar.end));
+    }
   }
 
-  /// Returns true when [pos] falls inside any range in [ranges].
-  bool _inRanges(int pos, List<({int start, int end})> ranges) {
-    for (final r in ranges) {
-      if (pos >= r.start && pos < r.end) return true;
-      if (r.start > pos) break;
+  return <({int start, int end, String matchText, StyledTokenType type})>[
+    for (final d in dialogueRanges)
+      (start: d.start, end: d.end, matchText: text.substring(d.start, d.end),
+        type: StyledTokenType.dialogue),
+    for (final a in actionSplits)
+      (start: a.start, end: a.end, matchText: text.substring(a.start, a.end),
+        type: StyledTokenType.action),
+  ]..sort((a, b) => a.start.compareTo(b.start));
+}
+
+/// Scans [text] left-to-right for [openChar]…[closeChar] pairs,
+/// skipping any delimiter that falls inside [skipRanges].
+List<({int start, int end})> scanDelimited(
+  String text,
+  String openChar,
+  String closeChar,
+  List<({int start, int end})> skipRanges,
+) {
+  final ranges = <({int start, int end})>[];
+  int i = 0;
+  while (i < text.length) {
+    if (text[i] == openChar && !inRanges(i, skipRanges)) {
+      final start = i;
+      i++;
+      while (i < text.length) {
+        if (text[i] == closeChar && !inRanges(i, skipRanges)) {
+          ranges.add((start: start, end: i + 1));
+          i++;
+          break;
+        }
+        i++;
+      }
+    } else {
+      i++;
     }
-    return false;
   }
+  return ranges;
+}
+
+/// Returns true when [pos] falls inside any range in [ranges].
+bool inRanges(int pos, List<({int start, int end})> ranges) {
+  for (final r in ranges) {
+    if (pos >= r.start && pos < r.end) return true;
+    if (r.start > pos) break;
+  }
+  return false;
 }

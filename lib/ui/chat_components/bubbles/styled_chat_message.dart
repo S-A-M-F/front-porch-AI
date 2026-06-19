@@ -23,6 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 
+import 'package:front_porch_ai/ui/widgets/styled_text_controller.dart';
 import 'external_image_widget.dart';
 
 /// Applies a Google Font to a base TextStyle dynamically. (moved from chat_page god file; only used by styled messages)
@@ -181,38 +182,28 @@ class StyledChatMessage extends StatelessWidget {
       ),
     );
 
-    final quoteRegex = RegExp(r'"[^"]*"');
-    final asteriskRegex = RegExp(r'\*[^*]+\*', dotAll: true);
+    final tokens = tokenizeChat(segment);
 
-    List<TextSpan> spans = [];
-
-    // Pass 1: Split on quotes (outer container — quotes always win)
+    final spans = <TextSpan>[];
     int lastEnd = 0;
-    for (final match in quoteRegex.allMatches(segment)) {
-      // Non-quoted text before this quote — parse for actions
-      if (match.start > lastEnd) {
-        _addColorizedActions(
-          spans,
-          segment.substring(lastEnd, match.start),
-          plainStyle,
-          actionStyle,
-          asteriskRegex,
-        );
+    for (final t in tokens) {
+      if (t.start > lastEnd) {
+        spans.add(TextSpan(
+          text: segment.substring(lastEnd, t.start),
+          style: plainStyle,
+        ));
       }
-      // Quoted text — all dialogue style (yellow), even if it contains *actions*
-      spans.add(TextSpan(text: match.group(0)!, style: dialogueStyle));
-      lastEnd = match.end;
+      spans.add(TextSpan(
+        text: t.matchText,
+        style: t.type == StyledTokenType.dialogue ? dialogueStyle : actionStyle,
+      ));
+      lastEnd = t.end;
     }
-
-    // Remaining non-quoted text after last quote — parse for actions
     if (lastEnd < segment.length) {
-      _addColorizedActions(
-        spans,
-        segment.substring(lastEnd),
-        plainStyle,
-        actionStyle,
-        asteriskRegex,
-      );
+      spans.add(TextSpan(
+        text: segment.substring(lastEnd),
+        style: plainStyle,
+      ));
     }
 
     if (spans.isEmpty) {
@@ -238,31 +229,5 @@ class StyledChatMessage extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// Parse *action* blocks within a non-quoted text segment.
-  void _addColorizedActions(
-    List<TextSpan> spans,
-    String segment,
-    TextStyle plainStyle,
-    TextStyle actionStyle,
-    RegExp asteriskRegex,
-  ) {
-    int lastEnd = 0;
-    for (final match in asteriskRegex.allMatches(segment)) {
-      if (match.start > lastEnd) {
-        spans.add(
-          TextSpan(
-            text: segment.substring(lastEnd, match.start),
-            style: plainStyle,
-          ),
-        );
-      }
-      spans.add(TextSpan(text: match.group(0)!, style: actionStyle));
-      lastEnd = match.end;
-    }
-    if (lastEnd < segment.length) {
-      spans.add(TextSpan(text: segment.substring(lastEnd), style: plainStyle));
-    }
   }
 }
