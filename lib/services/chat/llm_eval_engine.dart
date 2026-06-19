@@ -30,7 +30,7 @@ import 'package:front_porch_ai/models/group_chat.dart';
 
 /// Plain (non-ChangeNotifier) domain service owning the central LLM eval
 /// firing (_fireLLMEval with full streaming + retry loop + cancel support,
-/// fixed params maxLength:4000 / temp 0.1 / reasoningEnabled:false / stop []),
+/// fixed params maxLength:4000 / temp 0.1 / reasoningEnabled:false / stop: []),
 /// the tiny _extractJsonInt/_extractJsonBool helpers, the central
 /// _stripThinkBlocks (handles completed + unclosed &lt;think&gt; prefix).
 /// (The 5 realism eval prompt builders + call methods (relationship, emotional,
@@ -244,11 +244,12 @@ class LlmEvalEngine {
 
   /// Shared helper: fire a lightweight LLM eval call and return the raw response.
   ///
-  /// Stop sequences include JSON-friendly terminators (}\n, ```) so models halt
-  /// promptly after emitting the expected structure for all Realism/Needs evals.
-  /// Safe for both local Kobold and remote (prevents run-on tokens that can lead
-  /// to empty/fragile parses). Thinking models still produce &lt;think&gt; freely before JSON.
-  /// (Post-0.9.8: rely on stops + regex; no GBNF.)
+  /// No stop sequences (see implementation). We rely on the "ONLY the JSON" instruction
+  /// in the eval prompts + temp 0.1 + the post-response strip + regex extractors.
+  /// Old }\n stops were causing truncation / "stop string" problems when reason fields
+  /// contained similar sequences or when models emitted compact JSON.
+  /// Thinking models still produce &lt;think&gt; freely before JSON (handled by strip).
+  /// (Post-0.9.8: regex-based; no GBNF.)
   Future<String?> fireLLMEval(
     String prompt, {
     void Function(String)? onChunk,
@@ -282,9 +283,15 @@ class LlmEvalEngine {
       topP: 0.5,
       xtcProbability: 0.0,
       reasoningEnabled: false,
-      stopSequences: const ['}\n', '}\r\n', '```'],
+      // No stop sequences for structured realism/impact evals.
+      // Previous ['}\n', '}\r\n'] stops were a common source of "stop string" truncation
+      // errors (premature stop if a reason field contained "}\n", or no stop if model
+      // emitted compact JSON with no trailing newline). We rely on the prompt's
+      // "Respond with ONLY ..." instruction + low temperature + regex extraction.
+      // (See also: other leaves like objective_proposal use [] for their LLM calls.)
+      stopSequences: const [],
       banEosToken: false,
-      trimStop: true,
+      trimStop: false,
     );
 
     String response = '';
