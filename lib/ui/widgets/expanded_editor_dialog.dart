@@ -129,5 +129,7 @@ Future<void> showExpandedEditorDialog({
       ),
     ),
   );
-  expandedController.dispose();
+  // Defer disposal to end of frame so the dialog's widget tree fully detaches
+  // before the controller is invalidated.
+  WidgetsBinding.instance.addPostFrameCallback((_) => expandedController.dispose());
 }
