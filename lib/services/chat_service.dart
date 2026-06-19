@@ -5643,6 +5643,8 @@ class ChatService extends ChangeNotifier {
         userName: userName,
         characterName: speakingCharacter.name,
         summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
+        chatId: _currentSessionId,
+        characterId: speakingCharacter.dbId,
       );
       systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx);
       if (loreContent.isNotEmpty) {
@@ -6182,6 +6184,8 @@ class ChatService extends ChangeNotifier {
         userName: userName,
         characterName: speakingCharacter.name,
         summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
+        chatId: _currentSessionId,
+        characterId: speakingCharacter.dbId,
       );
       systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx);
       if (loreContent.isNotEmpty) {

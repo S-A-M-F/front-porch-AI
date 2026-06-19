@@ -110,5 +110,176 @@ void main() {
         'Player1 talks to Bob',
       );
     });
+
+    // ── Phase 2 P0: Escape & Comments ──
+
+    test('\\{{ escape produces literal {{', () {
+      expect(resolver.resolve('\\{{char}}', ctx), '{{char}}');
+    });
+
+    test('\\{{ escape works in mixed text', () {
+      expect(
+        resolver.resolve('Hello \\{{char}} world', ctx),
+        'Hello {{char}} world',
+      );
+    });
+
+    test('{{//}} comment is stripped', () {
+      expect(resolver.resolve('{{// note}}', ctx), '');
+    });
+
+    test('{{//}} comment inline is stripped', () {
+      expect(
+        resolver.resolve('before {{// note}} after', ctx),
+        'before  after',
+      );
+    });
+
+    // ── Phase 2 P0: newline, space, noop ──
+
+    test('{{newline}} produces \\n', () {
+      expect(resolver.resolve('a{{newline}}b', ctx), 'a\nb');
+    });
+
+    test('{{newline::3}} produces 3 newlines', () {
+      expect(resolver.resolve('a{{newline::3}}b', ctx), 'a\n\n\nb');
+    });
+
+    test('{{newline::0}} is clamped to 1', () {
+      expect(resolver.resolve('{{newline::0}}', ctx), '\n');
+    });
+
+    test('{{space}} produces single space', () {
+      expect(resolver.resolve('a{{space}}b', ctx), 'a b');
+    });
+
+    test('{{space::4}} produces 4 spaces', () {
+      expect(resolver.resolve('a{{space::4}}b', ctx), 'a    b');
+    });
+
+    test('{{noop}} produces empty string', () {
+      expect(resolver.resolve('a{{noop}}b', ctx), 'ab');
+    });
+
+    // ── Phase 2 P0: random ──
+
+    test('{{random::a::b::c}} always picks from given options', () {
+      for (var i = 0; i < 100; i++) {
+        final result = resolver.resolve('{{random::a::b::c}}', ctx);
+        expect(['a', 'b', 'c'], contains(result));
+      }
+    });
+
+    test('{{random::single}} picks the only option', () {
+      for (var i = 0; i < 10; i++) {
+        expect(resolver.resolve('{{random::single}}', ctx), 'single');
+      }
+    });
+
+    test('{{random}} with no args returns empty', () {
+      expect(resolver.resolve('{{random}}', ctx), '');
+    });
+
+    // ── Phase 2 P0: pick ──
+
+    test('{{pick}} same context returns same value', () {
+      final pCtx = MacroContext(
+        userName: 'U', characterName: 'C',
+        chatId: 'chat1', characterId: 'char1',
+      );
+      final r1 = resolver.resolve('{{pick::a::b::c}}', pCtx);
+      final r2 = resolver.resolve('{{pick::a::b::c}}', pCtx);
+      expect(r1, r2);
+    });
+
+    test('{{pick}} multiple in one resolve() vary by counter', () {
+      final pCtx = MacroContext(
+        userName: 'U', characterName: 'C',
+        chatId: 'chat1', characterId: 'char1',
+      );
+      // Multiple {{pick}} within one resolve() — each gets a different counter
+      final result = resolver.resolve(
+        '{{pick::a::b::c}} ' * 99,
+        pCtx,
+      );
+      final parts = result.trim().split(' ');
+      // With 99 picks and 3 options, at least 2 different values should appear
+      expect(parts.toSet().length, greaterThan(1));
+    });
+
+    test('{{pick}} across 300 contexts each option appears', () {
+      final results = <String>{};
+      for (var i = 0; i < 300; i++) {
+        final c = MacroContext(
+          userName: 'U', characterName: 'C',
+          chatId: 'id$i', characterId: 'char$i',
+        );
+        results.add(resolver.resolve('{{pick::a::b::c}}', c));
+      }
+      for (final opt in ['a', 'b', 'c']) {
+        expect(results, contains(opt));
+      }
+    });
+
+    // ── Phase 2 P0: roll ──
+
+    test('{{roll::1d20}} produces values 1-20', () {
+      for (var i = 0; i < 50; i++) {
+        final result = int.parse(resolver.resolve('{{roll::1d20}}', ctx));
+        expect(result, inInclusiveRange(1, 20));
+      }
+    });
+
+    test('{{roll::2d6+3}} produces values 5-15', () {
+      for (var i = 0; i < 50; i++) {
+        final result = int.parse(resolver.resolve('{{roll::2d6+3}}', ctx));
+        expect(result, inInclusiveRange(5, 15));
+      }
+    });
+
+    test('{{roll::bad}} passes through', () {
+      expect(resolver.resolve('{{roll::bad}}', ctx), '{{roll::bad}}');
+    });
+
+    // ── Phase 2 P0: time/date ──
+
+    test('{{time}} matches HH:mm format', () {
+      expect(resolver.resolve('{{time}}', ctx), matches(RegExp(r'^\d{2}:\d{2}$')));
+    });
+
+    test('{{date}} matches yyyy-MM-dd format', () {
+      expect(
+        resolver.resolve('{{date}}', ctx),
+        matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+      );
+    });
+
+    test('{{weekday}} is a valid day name', () {
+      final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      expect(days, contains(resolver.resolve('{{weekday}}', ctx)));
+    });
+
+    test('{{isotime}} matches HH:mm:ss format', () {
+      expect(
+        resolver.resolve('{{isotime}}', ctx),
+        matches(RegExp(r'^\d{2}:\d{2}:\d{2}$')),
+      );
+    });
+
+    test('{{isodate}} matches yyyy-MM-dd', () {
+      expect(
+        resolver.resolve('{{isodate}}', ctx),
+        matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+      );
+    });
+
+    // ── Phase 2 P0: mixed ──
+
+    test('escaped, unknown, and newline interact correctly', () {
+      expect(
+        resolver.resolve('\\{{char}} {{unknown}} {{newline}}', ctx),
+        '{{char}} {{unknown}} \n',
+      );
+    });
   });
 }
