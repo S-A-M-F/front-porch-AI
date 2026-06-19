@@ -1918,7 +1918,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           maxLines: maxLines,
           enabled: enabled,
           style: TextStyle(
-            color: enabled ? Colors.white : Colors.white38,
+            color: enabled ? AppColors.textPrimary(context) : AppColors.textTertiary(context),
             fontSize: 14,
           ),
           decoration: _inputDecoration(hint ?? 'Enter $label...'),
@@ -1930,8 +1930,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   Widget _fieldLabel(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Colors.white70,
+      style: TextStyle(
+        color: AppColors.textSecondary(context),
         fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.5,

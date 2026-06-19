@@ -25,6 +25,8 @@ Future<void> showExpandedEditorDialog({
     barrierDismissible: false,
     builder: (ctx) => Dialog(
       insetPadding: const EdgeInsets.all(16),
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
       backgroundColor: AppColors.surfaceOf(ctx),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -44,9 +46,9 @@ Future<void> showExpandedEditorDialog({
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.edit_note,
-                    color: Colors.white70,
+                    color: AppColors.textSecondary(ctx),
                     size: 22,
                   ),
                   const SizedBox(width: 8),
@@ -72,8 +74,8 @@ Future<void> showExpandedEditorDialog({
                     icon: const Icon(Icons.check, size: 16),
                     label: const Text('Apply'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.formMasterAccent,
+                      foregroundColor: AppColors.textPrimary(ctx),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -105,6 +107,7 @@ Future<void> showExpandedEditorDialog({
                     height: 1.6,
                   ),
                   decoration: InputDecoration(
+                    hoverColor: Colors.transparent,
                     hintText: hintText.isNotEmpty ? hintText : null,
                     hintStyle: TextStyle(
                       color: AppColors.textSecondary(ctx),
@@ -117,7 +120,7 @@ Future<void> showExpandedEditorDialog({
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.blueAccent),
+                      borderSide: BorderSide(color: AppColors.formMasterAccent),
                     ),
                     contentPadding: const EdgeInsets.all(16),
                   ),
