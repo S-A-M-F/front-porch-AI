@@ -527,17 +527,16 @@ class _SettingsPageState extends State<SettingsPage> {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final backendManager = Provider.of<BackendManager>(context, listen: false);
 
-    if (llmProvider.activeBackend == BackendType.pseudoRemote) {
-      if (pseudoRemoteService.isRunning) {
-        await pseudoRemoteService.stop();
-        return;
-      }
-    } else {
-      if (koboldService.isRunning) {
-        await koboldService.stopKobold();
-        return;
-      }
+    var stopped = false;
+    if (koboldService.isRunning || koboldService.isStarting) {
+      await koboldService.stopKobold();
+      stopped = true;
     }
+    if (pseudoRemoteService.isRunning || pseudoRemoteService.isStarting) {
+      await pseudoRemoteService.stop();
+      stopped = true;
+    }
+    if (stopped) return;
 
     if (backendManager.backendPath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1835,6 +1834,10 @@ class _SettingsPageState extends State<SettingsPage> {
             // (kcpps has valid model OR model selected manually)
             // For pseudo-remote, also requires a kcpps path.
             ...() {
+              final anyRunning = koboldService.isRunning ||
+                  koboldService.isStarting ||
+                  pseudoRemoteService.isRunning ||
+                  pseudoRemoteService.isStarting;
               final canStartPseudo =
                   llmProvider.activeBackend != BackendType.pseudoRemote ||
                   (storageService.activeKcppsPath != null &&
@@ -1850,28 +1853,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: backendManager.backendPath == null || !canStart
-                        ? null
-                        : () => _toggleManagedBackend(context),
+                    onPressed: anyRunning
+                        ? () => _toggleManagedBackend(context)
+                        : backendManager.backendPath == null || !canStart
+                            ? null
+                            : () => _toggleManagedBackend(context),
                     icon: Icon(
-                      (llmProvider.activeBackend == BackendType.pseudoRemote
-                              ? pseudoRemoteService.isRunning
-                              : koboldService.isRunning)
-                          ? Icons.stop
-                          : Icons.play_arrow,
+                      anyRunning ? Icons.stop : Icons.play_arrow,
                     ),
                     label: Text(
-                      (llmProvider.activeBackend == BackendType.pseudoRemote
-                              ? pseudoRemoteService.isRunning
-                              : koboldService.isRunning)
-                          ? 'Stop Backend'
-                          : 'Start Backend',
+                      anyRunning ? 'Stop Backend' : 'Start Backend',
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          (llmProvider.activeBackend == BackendType.pseudoRemote
-                              ? pseudoRemoteService.isRunning
-                              : koboldService.isRunning)
+                      backgroundColor: anyRunning
                           ? Colors.red.withValues(alpha: 0.8)
                           : Colors.green.withValues(alpha: 0.8),
                       foregroundColor: Colors.white,

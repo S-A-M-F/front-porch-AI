@@ -47,6 +47,8 @@ class KcppsSelector extends StatefulWidget {
     this.browseLabel,
     this.backgroundColor,
     this.onModelStatusChanged,
+    this.nullLabel = 'None (Use App Settings)',
+    this.required = false,
   });
 
   final StorageService storage;
@@ -61,6 +63,13 @@ class KcppsSelector extends StatefulWidget {
   /// Called when the "model defined + file exists" status changes for the
   /// currently selected preset. [true] = valid model ready, [false] = otherwise.
   final ValueChanged<bool>? onModelStatusChanged;
+
+  /// Text shown for the "no selection" dropdown item.
+  final String nullLabel;
+
+  /// When true, shows a "Required" status line below the picker even when
+  /// no preset is selected.
+  final bool required;
 
   @override
   State<KcppsSelector> createState() => _KcppsSelectorState();
@@ -126,7 +135,8 @@ class _KcppsSelectorState extends State<KcppsSelector> {
             _buildBrowseButton(),
           ],
         ),
-        if (activePath != null && activePath.isNotEmpty) ...[
+        if (widget.required ||
+            (activePath != null && activePath.isNotEmpty)) ...[
           const SizedBox(height: 6),
           _buildModelStatus(),
         ],
@@ -135,6 +145,21 @@ class _KcppsSelectorState extends State<KcppsSelector> {
   }
 
   Widget _buildModelStatus() {
+    if (widget.required &&
+        (widget.storage.activeKcppsPath == null ||
+            widget.storage.activeKcppsPath!.isEmpty)) {
+      return Row(
+        children: [
+          Icon(Icons.remove_circle_outline, size: 14, color: Colors.red.shade300),
+          const SizedBox(width: 6),
+          Text(
+            'Required',
+            style: TextStyle(fontSize: 11, color: Colors.red.shade300),
+          ),
+        ],
+      );
+    }
+
     final hasModel = widget.storage.kcppsHasModel;
     final fileExists = widget.storage.kcppsModelFileExists;
 
@@ -253,7 +278,7 @@ class _KcppsSelectorState extends State<KcppsSelector> {
             DropdownMenuItem<String>(
               value: null,
               child: Text(
-                'None (Use App Settings)',
+                widget.nullLabel,
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.textPrimary(context),
