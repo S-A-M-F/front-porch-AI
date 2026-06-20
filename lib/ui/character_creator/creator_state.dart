@@ -25,6 +25,7 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/services/character_gen_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 
@@ -244,6 +245,9 @@ class CreatorState extends ChangeNotifier {
   String koboldStatus = '';
   bool isReloadingPseudoRemote = false;
   List<File> localPresets = [];
+  bool extraSettingsExpanded = false;
+  final gpuLayersController = TextEditingController();
+  final contextSizeController = TextEditingController();
   CharacterGenService? activeGenService;
 
   // Review avatar state
@@ -698,12 +702,18 @@ class CreatorState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void initLocalSettingsControllers(StorageService storage) {
+    gpuLayersController.text = storage.gpuLayers.toString();
+    contextSizeController.text = storage.contextSize.toString();
+  }
+
   // Note: reloadKoboldWithModel, startPseudoRemote, stopPseudoRemote lifted with service params.
   // Full bodies preserved for parity (callers in steps pass providers/storage from their context).
   Future<void> reloadKoboldWithModel(
     String modelPath,
     LLMProvider llmProvider,
     StorageService storage,
+    BackendManager backendManager,
   ) async {
     if (isReloadingKobold) return;
     final kobold = llmProvider.koboldService;
@@ -719,32 +729,26 @@ class CreatorState extends ChangeNotifier {
         await Future.delayed(const Duration(seconds: 1));
       }
 
-      // Find executable
-      final binDir = storage.binDir;
-      String? execPath;
-      if (binDir.existsSync()) {
-        for (final f in binDir.listSync()) {
-          if (f is File &&
-              (f.path.contains('koboldcpp') || f.path.contains('KoboldCpp'))) {
-            execPath = f.path;
-            break;
-          }
-        }
-      }
-
-      if (execPath == null) {
+      // Use BackendManager to find the executable (same pattern as model_settings_dialog & settings_page)
+      if (backendManager.backendPath == null) {
         isReloadingKobold = false;
-        koboldStatus = 'Error: KoboldCpp executable not found';
+        koboldStatus = 'Error: Backend executable not found';
         notifyListeners();
         return;
       }
+      final execPath = backendManager.backendPath!;
 
       koboldStatus = 'Starting KoboldCpp with new model...';
       notifyListeners();
 
+      // If the .kcpps preset owns the model, let it handle model loading
+      final hasValidKcppsModel =
+          storage.kcppsHasModel && storage.kcppsModelFileExists;
+      final effectiveModel = hasValidKcppsModel ? '' : modelPath;
+
       await kobold.startKobold(
         execPath,
-        modelPath,
+        effectiveModel,
         kcppsPath: storage.activeKcppsPath,
         port: 5001,
         gpuLayers: storage.gpuLayers,
@@ -786,7 +790,81 @@ class CreatorState extends ChangeNotifier {
     }
   }
 
-  // Similar for other service-heavy methods (startPseudoRemote etc.) - pure lift.
+  Future<void> startPseudoRemote(
+    LLMProvider llmProvider,
+    StorageService storage,
+    BackendManager backendManager,
+  ) async {
+    if (isReloadingPseudoRemote) return;
+    final pseudoRemote = llmProvider.pseudoRemoteService;
+
+    isReloadingPseudoRemote = true;
+    koboldStatus = 'Starting Pseudo-Remote...';
+    notifyListeners();
+
+    try {
+      if (backendManager.backendPath == null) {
+        isReloadingPseudoRemote = false;
+        koboldStatus = 'Error: Backend executable not found';
+        notifyListeners();
+        return;
+      }
+      if (storage.activeKcppsPath == null ||
+          storage.activeKcppsPath!.isEmpty) {
+        isReloadingPseudoRemote = false;
+        koboldStatus = 'Error: No .kcpps preset selected';
+        notifyListeners();
+        return;
+      }
+
+      // Stop if already running
+      if (pseudoRemote.isRunning) {
+        await pseudoRemote.stop();
+        await Future.delayed(const Duration(seconds: 1));
+      }
+
+      // Override model: if kcpps preset has a valid model, use null (let kcpps manage).
+      // Otherwise use the manually selected model path.
+      final hasValidKcppsModel =
+          storage.kcppsHasModel && storage.kcppsModelFileExists;
+      final overrideModel =
+          hasValidKcppsModel ? null : selectedLocalModelPath;
+
+      await pseudoRemote.start(
+        executablePath: backendManager.backendPath!,
+        kcppsPath: storage.activeKcppsPath!,
+        modelPath:
+            overrideModel?.isNotEmpty == true ? overrideModel : null,
+      );
+
+      koboldStatus = 'Pseudo-Remote started successfully!';
+      isReloadingPseudoRemote = false;
+      notifyListeners();
+    } catch (e) {
+      isReloadingPseudoRemote = false;
+      koboldStatus = 'Error: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> stopPseudoRemote(LLMProvider llmProvider) async {
+    if (isReloadingPseudoRemote) return;
+    final pseudoRemote = llmProvider.pseudoRemoteService;
+
+    isReloadingPseudoRemote = true;
+    koboldStatus = 'Stopping Pseudo-Remote...';
+    notifyListeners();
+
+    try {
+      await pseudoRemote.stop();
+      koboldStatus = 'Pseudo-Remote stopped.';
+    } catch (e) {
+      koboldStatus = 'Error stopping: $e';
+    }
+
+    isReloadingPseudoRemote = false;
+    notifyListeners();
+  }
 
   // Generation orchestration stubs (full lift in practice; here representative to keep shell thin)
   Future<void> startGeneration({
@@ -890,6 +968,8 @@ class CreatorState extends ChangeNotifier {
     guidedNsfwKinksController.dispose();
     guidedNsfwClothingController.dispose();
     guidedNsfwPersonalityController.dispose();
+    gpuLayersController.dispose();
+    contextSizeController.dispose();
     loreUrlsController.dispose();
     customRaceController.dispose();
     customKinksController.dispose();

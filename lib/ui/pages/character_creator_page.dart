@@ -70,6 +70,8 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       try {
         final storage = Provider.of<StorageService>(context, listen: false);
         creatorState.scanLocalModels(storage);
+        creatorState.scanLocalPresets(storage);
+        creatorState.initLocalSettingsControllers(storage);
         final modelManager = Provider.of<ModelManager>(context, listen: false);
         modelManager.refreshModels();
         // If a last used local model exists, preselect it for the picker UI.

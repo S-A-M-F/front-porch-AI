@@ -46,6 +46,7 @@ class KoboldService extends ChangeNotifier
   Timer? _readinessProbe;
 
   bool get isRunning => _isRunning;
+  bool get isStarting => _isStarting;
   List<String> get logs => List.unmodifiable(_logs);
   String get modelLoadingStatus => _modelLoadingStatus;
   bool get modelReady => _modelReady;
