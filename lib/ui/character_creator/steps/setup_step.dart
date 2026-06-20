@@ -5,14 +5,21 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:front_porch_ai/services/backend_manager.dart';
+import 'package:front_porch_ai/services/hardware_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
+import 'package:front_porch_ai/services/optimization_service.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/backend_chip.dart';
 import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/kcpps_selector.dart';
+import 'package:front_porch_ai/ui/widgets/model_selector.dart';
 
 /// Step 0: Backend & Model setup (lifted pure from _buildSetupStep).
 class SetupStep extends StatelessWidget {
@@ -94,8 +101,12 @@ class SetupStep extends StatelessWidget {
                           await llmProvider.setActiveBackend(
                             BackendType.pseudoRemote,
                           );
-                          state
-                              .notify(); // ensure section switches in wizard UI
+                          final storage = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
+                          state.scanLocalPresets(storage);
+                          state.notify();
                         }
                       },
                     ),
@@ -132,13 +143,10 @@ class SetupStep extends StatelessWidget {
                             llmProvider.openRouterService.configure(
                               apiUrl: 'http://localhost:8000/v1',
                               apiKey: llmProvider.openRouterService.apiKey,
-                              modelName:
-                                  llmProvider.openRouterService.modelName,
+                              modelName: llmProvider.openRouterService.modelName,
                             );
                             // Small delay to ensure configuration is applied
-                            await Future.delayed(
-                              const Duration(milliseconds: 100),
-                            );
+                            await Future.delayed(const Duration(milliseconds: 100));
                             state.loadAvailableModels(llmProvider);
                           }
                         },
@@ -158,15 +166,9 @@ class SetupStep extends StatelessWidget {
                 // Identical styled picker field as remote/oMLX
                 InkWell(
                   onTap: () async {
-                    final storage = Provider.of<StorageService>(
-                      context,
-                      listen: false,
-                    );
+                    final storage = Provider.of<StorageService>(context, listen: false);
                     state.scanLocalModels(storage);
-                    final modelManager = Provider.of<ModelManager>(
-                      context,
-                      listen: false,
-                    );
+                    final modelManager = Provider.of<ModelManager>(context, listen: false);
                     await modelManager.refreshModels();
 
                     final models = modelManager.models.isNotEmpty
@@ -200,7 +202,9 @@ class SetupStep extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.surfaceContainerOf(context),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderOf(context)),
+                      border: Border.all(
+                        color: AppColors.borderOf(context),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -240,136 +244,423 @@ class SetupStep extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: state.selectedLocalModelPath.isEmpty
-                      ? null
-                      : () {
-                          final llm = Provider.of<LLMProvider>(
-                            context,
-                            listen: false,
-                          );
-                          final storage = Provider.of<StorageService>(
-                            context,
-                            listen: false,
-                          );
-                          state.reloadKoboldWithModel(
-                            state.selectedLocalModelPath,
-                            llm,
-                            storage,
-                          );
-                        },
-                  child: const Text('Reload Kobold with selected model'),
+                const SizedBox(height: 16),
+                Builder(builder: (ctx) {
+                  final k = Provider.of<KoboldService>(ctx);
+                  final isTransitioning =
+                      k.isStarting || (k.isRunning && !k.modelReady);
+                  final dotColor = k.modelReady
+                      ? Colors.green.shade300
+                      : isTransitioning
+                      ? Colors.orange.shade300
+                      : Colors.red.shade300;
+                  final label = k.modelReady
+                      ? 'Ready'
+                      : k.isStarting
+                      ? 'Starting...'
+                      : k.isRunning
+                      ? 'Loading model...'
+                      : 'Stopped';
+                  return Row(
+                    children: [
+                      _BackendStatusDot(
+                        color: dotColor,
+                        isBlinking: isTransitioning,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        label,
+                        style: TextStyle(color: dotColor, fontSize: 12),
+                      ),
+                    ],
+                  );
+                }),
+                const SizedBox(height: 8),
+                StatefulBuilder(
+                  builder: (context, setLocalState) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.07),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              state.extraSettingsExpanded =
+                                  !state.extraSettingsExpanded;
+                              setLocalState(() {});
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.tune,
+                                    color: Color(0xFF00D4AA),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Text(
+                                    'Extra Settings',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  AnimatedRotation(
+                                    turns: state.extraSettingsExpanded
+                                        ? 0.5
+                                        : 0,
+                                    duration:
+                                        const Duration(milliseconds: 200),
+                                    child: const Icon(
+                                      Icons.keyboard_arrow_down,
+                                      color: Colors.white54,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          AnimatedCrossFade(
+                            firstChild: const SizedBox(height: 0),
+                            secondChild:
+                                _buildExtraSettingsBody(context, state),
+                            crossFadeState: state.extraSettingsExpanded
+                                ? CrossFadeState.showSecond
+                                : CrossFadeState.showFirst,
+                            duration: const Duration(milliseconds: 220),
+                            sizeCurve: Curves.easeInOut,
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-                if (state.koboldStatus.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    state.koboldStatus,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: state.koboldStatus.toLowerCase().contains('error')
-                          ? Colors.redAccent
-                          : AppColors.textSecondary(context),
+                const SizedBox(height: 16),
+                Builder(builder: (ctx) {
+                  final k = Provider.of<KoboldService>(ctx);
+                  final p = Provider.of<PseudoRemoteService>(ctx);
+                  final isAnyRunning =
+                      k.isRunning || k.isStarting || p.isRunning || p.isStarting;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: isAnyRunning
+                          ? () {
+                              if (k.isRunning || k.isStarting) {
+                                k.stopKobold();
+                              }
+                              if (p.isRunning || p.isStarting) {
+                                p.stop();
+                              }
+                            }
+                          : state.selectedLocalModelPath.isEmpty
+                              ? null
+                              : () {
+                                  final llm = Provider.of<LLMProvider>(
+                                    ctx,
+                                    listen: false,
+                                  );
+                                  final storage = Provider.of<StorageService>(
+                                    ctx,
+                                    listen: false,
+                                  );
+                                  final backendManager =
+                                      Provider.of<BackendManager>(
+                                    ctx,
+                                    listen: false,
+                                  );
+                                  state.reloadKoboldWithModel(
+                                    state.selectedLocalModelPath,
+                                    llm,
+                                    storage,
+                                    backendManager,
+                                  );
+                                },
+                      icon: Icon(
+                        isAnyRunning ? Icons.stop : Icons.play_arrow,
+                      ),
+                      label: Text(
+                        isAnyRunning ? 'Stop Backend' : 'Start Backend',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isAnyRunning
+                            ? Colors.redAccent
+                            : Colors.green.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  );
+                }),
+              ] else ...[
+                if (activeBackend == BackendType.pseudoRemote) ...[
+                  const SizedBox(height: 8),
+                  _inputLabel(
+                    context,
+                    'Configuration Preset (.kcpps)',
+                    required: false,
+                  ),
+                  const SizedBox(height: 8),
+                  KcppsSelector(
+                    storage: Provider.of<StorageService>(context, listen: false),
+                    localPresets: state.localPresets,
+                    nullLabel: 'None',
+                    required: true,
+                    hint: 'Required — select a .kcpps preset',
+                    onChanged: (val) {
+                      final s =
+                          Provider.of<StorageService>(context, listen: false);
+                      s.setActiveKcppsPath(val);
+                      if (val != null &&
+                          s.kcppsHasModel &&
+                          s.kcppsModelFileExists) {
+                        state.selectedLocalModelPath = '';
+                        state.notify();
+                      }
+                    },
+                    onExternalClear: () {
+                      Provider.of<StorageService>(context, listen: false)
+                          .setActiveKcppsPath(null);
+                    },
+                    onBrowsePicked: (_) {
+                      final s =
+                          Provider.of<StorageService>(context, listen: false);
+                      if (s.kcppsHasModel && s.kcppsModelFileExists) {
+                        state.selectedLocalModelPath = '';
+                        state.notify();
+                      }
+                    },
+                    onModelStatusChanged: (_) => state.notify(),
+                  ),
+                  const SizedBox(height: 16),
+                  _inputLabel(
+                    context,
+                    'Model Override (optional)',
+                    required: false,
+                  ),
+                  const SizedBox(height: 8),
+                  ModelSelector(
+                    models: Provider.of<ModelManager>(context, listen: false)
+                        .models,
+                    selectedModelPath: state.selectedLocalModelPath.isNotEmpty
+                        ? state.selectedLocalModelPath
+                        : null,
+                    showManagedByKcpps:
+                        Provider.of<StorageService>(context, listen: false)
+                                .kcppsHasModel &&
+                            Provider.of<StorageService>(context, listen: false)
+                                .kcppsModelFileExists,
+                    onChanged: (val) {
+                      if (val == null) {
+                        state.selectedLocalModelPath = '';
+                      } else {
+                        state.selectedLocalModelPath = val;
+                        Provider.of<StorageService>(context, listen: false)
+                            .setLastUsedModelPath(val);
+                      }
+                      state.notify();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Builder(builder: (ctx) {
+                    final p = Provider.of<PseudoRemoteService>(ctx);
+                    final isRunning = p.isRunning || p.isStarting;
+                    final dotColor = p.isReady
+                        ? Colors.green.shade300
+                        : isRunning
+                        ? Colors.orange.shade300
+                        : Colors.red.shade300;
+                    final label = p.isReady
+                        ? 'Ready'
+                        : p.isStarting
+                        ? 'Starting...'
+                        : p.isRunning
+                        ? 'Loading model...'
+                        : 'Stopped';
+
+                    return Row(
+                      children: [
+                        _BackendStatusDot(
+                          color: dotColor,
+                          isBlinking: isRunning && !p.isReady,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: TextStyle(color: dotColor, fontSize: 12),
+                        ),
+                      ],
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  Builder(builder: (ctx) {
+                    final p =
+                        Provider.of<PseudoRemoteService>(ctx);
+                    final k = Provider.of<KoboldService>(ctx);
+                    final isAnyRunning = k.isRunning || k.isStarting ||
+                        p.isRunning || p.isStarting;
+                    return SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: isAnyRunning
+                            ? () {
+                                if (k.isRunning || k.isStarting) {
+                                  k.stopKobold();
+                                }
+                                if (p.isRunning || p.isStarting) {
+                                  state.stopPseudoRemote(
+                                    Provider.of<LLMProvider>(
+                                        ctx, listen: false),
+                                  );
+                                }
+                              }
+                            : (Provider.of<StorageService>(ctx, listen: false)
+                                            .activeKcppsPath ==
+                                        null ||
+                                    Provider.of<StorageService>(ctx,
+                                                listen: false)
+                                            .activeKcppsPath!
+                                            .isEmpty ||
+                                    (!(Provider.of<StorageService>(ctx,
+                                                    listen: false)
+                                                .kcppsHasModel &&
+                                            Provider.of<StorageService>(ctx,
+                                                    listen: false)
+                                                .kcppsModelFileExists) &&
+                                        state.selectedLocalModelPath.isEmpty))
+                                ? null
+                                : () => state.startPseudoRemote(
+                                      Provider.of<LLMProvider>(ctx,
+                                          listen: false),
+                                      Provider.of<StorageService>(ctx,
+                                          listen: false),
+                                      Provider.of<BackendManager>(ctx,
+                                          listen: false),
+                                    ),
+                        icon: Icon(isAnyRunning ? Icons.stop : Icons.play_arrow),
+                        label: Text(
+                          isAnyRunning ? 'Stop Backend' : 'Start Pseudo-Remote',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isAnyRunning
+                              ? Colors.redAccent
+                              : Colors.green.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                    );
+                  }),
+                ] else ...[
+                  // API (remote) and oMLX — restored original searchable model picker.
+                  _inputLabel(
+                    context,
+                    activeBackend == BackendType.omlx
+                        ? 'oMLX Model'
+                        : 'Remote Model',
+                    required: false,
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final llm = Provider.of<LLMProvider>(
+                        context,
+                        listen: false,
+                      );
+                      final storage = Provider.of<StorageService>(
+                        context,
+                        listen: false,
+                      );
+
+                      if (state.availableModels.isEmpty) {
+                        await state.loadAvailableModels(llm);
+                      }
+
+                      if (context.mounted &&
+                          state.availableModels.isNotEmpty) {
+                        showModelSearchDialog(
+                          context,
+                          storage,
+                          state.availableModels.cast<RemoteModelInfo>(),
+                        );
+                        Future.delayed(const Duration(milliseconds: 350), () {
+                          if (context.mounted) {
+                            final s = Provider.of<StorageService>(
+                              context,
+                              listen: false,
+                            );
+                            if (s.remoteModelName.isNotEmpty) {
+                              state.selectedModelId = s.remoteModelName;
+                              state.notify();
+                            }
+                          }
+                        });
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerOf(context),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.borderOf(context),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Model',
+                                  style: TextStyle(
+                                    color: AppColors.textTertiary(context),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  state.selectedModelId.isEmpty
+                                      ? 'Tap to select a model...'
+                                      : state.selectedModelId,
+                                  style: TextStyle(
+                                    color: state.selectedModelId.isEmpty
+                                        ? AppColors.textTertiary(context)
+                                        : AppColors.textPrimary(context),
+                                    fontSize: 14,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            color: AppColors.iconSecondary(context),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
-              ] else ...[
-                // Restored the original nice searchable model picker for API (remote) and oMLX.
-                _inputLabel(
-                  context,
-                  activeBackend == BackendType.omlx
-                      ? 'oMLX Model'
-                      : 'Remote Model',
-                  required: false,
-                ),
-                const SizedBox(height: 8),
-                // Tappable chip/field that opens the searchable model picker dialog (same as before)
-                InkWell(
-                  onTap: () async {
-                    final llm = Provider.of<LLMProvider>(
-                      context,
-                      listen: false,
-                    );
-                    final storage = Provider.of<StorageService>(
-                      context,
-                      listen: false,
-                    );
-
-                    // Fetch models first if none loaded
-                    if (state.availableModels.isEmpty) {
-                      await state.loadAvailableModels(llm);
-                    }
-
-                    // Show the (searchable) model picker dialog
-                    if (context.mounted && state.availableModels.isNotEmpty) {
-                      showModelSearchDialog(
-                        context,
-                        storage,
-                        state.availableModels.cast<RemoteModelInfo>(),
-                      );
-                      // Sync creator display state after user picks (dialog writes storage directly).
-                      Future.delayed(const Duration(milliseconds: 350), () {
-                        if (context.mounted) {
-                          final s = Provider.of<StorageService>(
-                            context,
-                            listen: false,
-                          );
-                          if (s.remoteModelName.isNotEmpty) {
-                            state.selectedModelId = s.remoteModelName;
-                            state.notify();
-                          }
-                        }
-                      });
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerOf(context),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderOf(context)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Model',
-                                style: TextStyle(
-                                  color: AppColors.textTertiary(context),
-                                  fontSize: 11,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                state.selectedModelId.isEmpty
-                                    ? 'Tap to select a model...'
-                                    : state.selectedModelId,
-                                style: TextStyle(
-                                  color: state.selectedModelId.isEmpty
-                                      ? AppColors.textTertiary(context)
-                                      : AppColors.textPrimary(context),
-                                  fontSize: 14,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_drop_down,
-                          color: AppColors.iconSecondary(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
 
               const SizedBox(height: 24),
@@ -429,5 +720,360 @@ class SetupStep extends StatelessWidget {
     } catch (_) {}
     // Fallback: if uname fails, assume it's not Apple Silicon
     return false;
+  }
+
+  Widget _buildExtraSettingsBody(BuildContext context, CreatorState state) {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final hardwareService =
+        Provider.of<HardwareService>(context, listen: false);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          KcppsSelector(
+            storage: storage,
+            localPresets: state.localPresets,
+            hint: 'Optional \u2014 select a .kcpps preset',
+            onChanged: (val) {
+              storage.setActiveKcppsPath(val);
+              if (val != null &&
+                  storage.kcppsHasModel &&
+                  storage.kcppsModelFileExists) {
+                state.selectedLocalModelPath = '';
+                state.notify();
+              }
+            },
+            onExternalClear: () => storage.setActiveKcppsPath(null),
+            onBrowsePicked: (_) {
+              if (storage.kcppsHasModel &&
+                  storage.kcppsModelFileExists) {
+                state.selectedLocalModelPath = '';
+                state.notify();
+              }
+            },
+            onModelStatusChanged: (_) => state.notify(),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerOf(context),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: hardwareService.isDetecting
+                ? const Center(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : hardwareService.hardwareInfo == null
+                    ? const Text(
+                        'Hardware not detected.',
+                        style: TextStyle(color: Colors.redAccent),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInfoRow(
+                            context,
+                            'GPU',
+                            hardwareService.hardwareInfo!.gpuName,
+                          ),
+                          const SizedBox(height: 4),
+                          _buildInfoRow(
+                            context,
+                            'VRAM',
+                            '${hardwareService.hardwareInfo!.vramMb} MB${hardwareService.hardwareInfo!.isSharedMemory ? ' (Shared)' : ''}',
+                          ),
+                        ],
+                      ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSettingsTextField(
+                  context,
+                  label: 'GPU Layers',
+                  controller: state.gpuLayersController,
+                  isNumber: true,
+                  onChanged: (v) {
+                    final val = int.tryParse(v);
+                    if (val != null) storage.setGpuLayers(val);
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildSettingsTextField(
+                  context,
+                  label: 'Context Size',
+                  controller: state.contextSizeController,
+                  isNumber: true,
+                  onChanged: (v) {
+                    final val = int.tryParse(v);
+                    if (val != null) storage.setContextSize(val);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                'KV Quantization:',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary(context),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: storage.kvQuantizationLevel,
+                    isExpanded: true,
+                    dropdownColor:
+                        AppColors.surfaceContainerOf(context),
+                    style: TextStyle(
+                      color: AppColors.textPrimary(context),
+                      fontSize: 13,
+                    ),
+                    onChanged: (val) {
+                      if (val != null) {
+                        storage.setKvQuantizationLevel(val);
+                        state.notify();
+                      }
+                    },
+                    items: const [
+                      DropdownMenuItem(
+                        value: 0,
+                        child: Text('0 - None (FP16)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 1,
+                        child: Text('1 - 8-Bit Q8'),
+                      ),
+                      DropdownMenuItem(
+                        value: 2,
+                        child: Text('2 - 4-Bit Q4'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: () =>
+                    _applyAutoConfigure(context, state, storage),
+                icon: const Icon(
+                  Icons.auto_fix_high,
+                  color: Colors.amber,
+                ),
+                label: const Text(
+                  'Auto-Configure',
+                  style: TextStyle(color: Colors.amber),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textTertiary(context),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
+                fontWeight: FontWeight.bold,
+              ),
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsTextField(
+    BuildContext context, {
+    required String label,
+    required TextEditingController controller,
+    required bool isNumber,
+    required ValueChanged<String> onChanged,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType:
+          isNumber ? TextInputType.number : TextInputType.text,
+      style: TextStyle(color: AppColors.textPrimary(context)),
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle:
+            TextStyle(color: AppColors.textSecondary(context)),
+        filled: true,
+        fillColor: AppColors.surfaceContainerOf(context),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  void _applyAutoConfigure(
+    BuildContext context,
+    CreatorState state,
+    StorageService storage,
+  ) {
+    final hardware =
+        Provider.of<HardwareService>(context, listen: false).hardwareInfo;
+    if (hardware == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hardware not detected yet.')),
+      );
+      return;
+    }
+
+    int modelSize = 5000;
+    if (state.selectedLocalModelPath.isNotEmpty) {
+      try {
+        final file = File(state.selectedLocalModelPath);
+        if (file.existsSync()) {
+          modelSize = (file.lengthSync() / (1024 * 1024)).round();
+        }
+      } catch (_) {}
+    }
+
+    final userContext = int.tryParse(state.contextSizeController.text);
+    final modelManager =
+        Provider.of<ModelManager>(context, listen: false);
+    int? kvBytesPerToken;
+    if (state.selectedLocalModelPath.isNotEmpty) {
+      kvBytesPerToken =
+          modelManager.getCachedModelArchitectureInfo(
+                    state.selectedLocalModelPath,
+                  )?.kvBytesPerToken ??
+              modelManager.getCachedKvBytesPerToken(
+                state.selectedLocalModelPath,
+              );
+    }
+
+    final suggestion = OptimizationService.calculateSettings(
+      hardware,
+      modelSizeMb: modelSize,
+      requestedContextSize: userContext,
+      kvBytesPerToken: kvBytesPerToken,
+      kvQuantizationLevel: storage.kvQuantizationLevel,
+    );
+
+    state.gpuLayersController.text = suggestion.gpuLayers.toString();
+    state.contextSizeController.text = suggestion.contextSize.toString();
+    storage.setGpuLayers(suggestion.gpuLayers);
+    storage.setContextSize(suggestion.contextSize);
+    state.notify();
+  }
+}
+
+/// An 8px pulsing status dot that blinks during transitional states.
+/// Uses the same animation pattern as LogView (800ms easeInOut opacity pulse).
+class _BackendStatusDot extends StatefulWidget {
+  final Color color;
+  final bool isBlinking;
+
+  const _BackendStatusDot({required this.color, required this.isBlinking});
+
+  @override
+  State<_BackendStatusDot> createState() => _BackendStatusDotState();
+}
+
+class _BackendStatusDotState extends State<_BackendStatusDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _updateBlinking();
+  }
+
+  @override
+  void didUpdateWidget(_BackendStatusDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isBlinking != widget.isBlinking) {
+      _updateBlinking();
+    }
+  }
+
+  void _updateBlinking() {
+    if (widget.isBlinking) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(reverse: true);
+      }
+    } else {
+      _controller.stop();
+      _controller.value = 1.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: 13,
+          height: 13,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.color.withValues(alpha: _animation.value),
+          ),
+        );
+      },
+    );
   }
 }
