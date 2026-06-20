@@ -60,7 +60,7 @@ These are the user-facing changes and improvements that have landed on the Rawhi
 
 See `docs/Rawhide.md` for the concise version that feeds the in-app update dialog, and `docs/refactoring-guide.md` + `docs/refactor-god-file-modularization.md` for the technical record of the modularization work.
 
-> **Note for contributors & AI agents**: Per-branch user-facing notes live in `docs/<BranchName>.md` (e.g. `docs/Rawhide.md`). Update it for any user-visible work, just like appending to internal changelogs. Never mix notes across branches.
+> **Note for contributors & AI agents**: User-facing notes for the update dialog live in `docs/Rawhide.md`. Update it for any user-visible work.
 
 ---
 
