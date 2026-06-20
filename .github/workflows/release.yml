@@ -399,40 +399,6 @@ jobs:
 
           echo "ML engine bundling step complete"
 
-          # For macOS, copy into the app bundle Resources
-          if [ "${{ matrix.platform }}" = "macos" ]; then
-            APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
-            if [ -n "$APP_NAME" ]; then
-              RESOURCES="$APP_NAME/Contents/Resources/piper"
-              mkdir -p "$RESOURCES"
-              cp -R "$DEST/kokoro_tts" "$RESOURCES/kokoro_tts"
-              cp -R "$DEST/piper" "$RESOURCES/piper"
-              chmod +x "$RESOURCES/kokoro_tts/kokoro_tts"
-              chmod +x "$RESOURCES/piper/piper"
-
-              STT_RESOURCES="$APP_NAME/Contents/Resources/whisper_stt"
-              mkdir -p "$STT_RESOURCES"
-              cp -R "$STT_DEST/whisper_stt/"* "$STT_RESOURCES/"
-              chmod +x "$STT_RESOURCES/whisper_stt"
-
-              EMBED_RESOURCES="$APP_NAME/Contents/Resources/embed_server"
-              mkdir -p "$EMBED_RESOURCES"
-              cp -R "$STT_DEST/embed_server/"* "$EMBED_RESOURCES/"
-              chmod +x "$EMBED_RESOURCES/embed_server"
-
-              SENTIMENT_RESOURCES="$APP_NAME/Contents/Resources/sentiment_classifier"
-              mkdir -p "$SENTIMENT_RESOURCES"
-              cp -R "$STT_DEST/sentiment_classifier/"* "$SENTIMENT_RESOURCES/"
-              chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier"
-
-              # Draw Things gRPC client (separate folder so it doesn't conflict with other engines)
-              DT_RESOURCES="$APP_NAME/Contents/Resources/dt_grpc"
-              mkdir -p "$DT_RESOURCES"
-              cp -R "$STT_DEST/dt_grpc_client" "$DT_RESOURCES/"
-              chmod +x "$DT_RESOURCES/dt_grpc_client/dt_grpc_client" 2>/dev/null || true
-            fi
-          fi
-
           echo "TTS engines bundled at: $DEST"
           ls -la "$DEST"
           echo "STT engine bundled at: $STT_DEST/whisper_stt/"
