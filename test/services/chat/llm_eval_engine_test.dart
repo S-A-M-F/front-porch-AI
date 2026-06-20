@@ -150,6 +150,7 @@ LlmEvalEngine createTestLlmEvalEngine({
     getMessages: () => messages,
     getLlmService: () => fakeLlm,
     getIsLocal: () => false,
+    getKoboldThinkingModel: () => false,
     getKoboldService: () => null,
     reconnectIfAlive: () async {},
     ensureServerIdle: () async {},
@@ -215,6 +216,7 @@ void main() {
         getMessages: () => [],
         getLlmService: () => _FakeLlmService((p) => Stream.value('{}')),
         getIsLocal: () => false,
+        getKoboldThinkingModel: () => false,
         getKoboldService: () => null,
         reconnectIfAlive: () async {},
         ensureServerIdle: () async {},
@@ -275,7 +277,7 @@ void main() {
     });
 
     test(
-      'evaluateNeedsImpactCall critique branch captures GenerationParams (stops + prompt phrases)',
+      'evaluateNeedsImpactCall critique branch captures GenerationParams (thinking flags + prompt phrases)',
       () async {
         List<GenerationParams> captured = [];
         final e = LlmEvalEngine(
@@ -291,6 +293,7 @@ void main() {
             return Stream.value('{"hunger_delta": 3}');
           }),
           getIsLocal: () => false,
+          getKoboldThinkingModel: () => false,
           getKoboldService: () => null,
           reconnectIfAlive: () async {},
           ensureServerIdle: () async {},
@@ -349,6 +352,10 @@ void main() {
         expect(captured.isNotEmpty, true);
         final last = captured.last;
         expect(last.stopSequences, isEmpty);
+        // These ensure proper params for critique path (aligns with local/non-local
+        // settings and prevents empty responses on thinking models).
+        expect(last.banEosToken, false);
+        expect(last.trimStop, true);
         expect(last.prompt, contains('USER CRITIQUE'));
         expect(
           last.prompt,
@@ -358,6 +365,51 @@ void main() {
         );
       },
     );
+
+    test(
+      'local thinking model sets banEosToken on fireLLMEval params',
+      () async {
+        List<GenerationParams> captured = [];
+        final e = LlmEvalEngine(
+          getActiveCharacter: () => CharacterCard(name: 'c'),
+          getActiveGroup: () => null,
+          getIsObserverMode: () => false,
+          getUserName: () => 'User',
+          getRealismEnabled: () => true,
+          getMessages: () => const [],
+          getLlmService: () => _FakeLlmService((p) {
+            captured.add(p);
+            return Stream.value('{"hunger_delta":1}');
+          }),
+          getIsLocal: () => true,
+          getKoboldThinkingModel: () => true,
+          getKoboldService: () => null,
+          reconnectIfAlive: () async {},
+          ensureServerIdle: () async {},
+          getIsCancellingRealismEval: () => false,
+          getRealismEvalCancelled: () => false,
+          getPendingRealismMetadata: () => null,
+          setPendingRealismMetadata: (_) {},
+          captureRealismState: ({preTurn}) => {},
+          getCharacterEmotion: () => '',
+          setCharacterEmotion: (_) {},
+          getEmotionIntensity: () => '',
+          setEmotionIntensity: (_) {},
+          relationshipService: createTestLlmEvalEngine().relationshipService,
+        );
+        await e.fireLLMEval('p');
+        expect(captured.single.banEosToken, true);
+        expect(captured.single.trimStop, false); // localThinking=true
+      },
+    );
+
+    test('evaluateNeedsImpactCall returns null for think-only output', () async {
+      final e = createTestLlmEvalEngine(
+        getLlmJson: () => '<think>reasoning only</think>',
+      );
+      final res = await e.evaluateNeedsImpactCall('scene', strength: 1);
+      expect(res, isNull);
+    });
 
     // (error paths test for objective excised to step 11 dedicated as part of task.)
   });

@@ -814,6 +814,8 @@ class ChatService extends ChangeNotifier {
     getIsLocal: () => testLlmServiceOverride != null
         ? testIsLocalOverride
         : (_llmProvider?.isLocal ?? false),
+    getKoboldThinkingModel: () =>
+        _storageService.backendSettings.koboldThinkingModel,
     getKoboldService: () => _llmProvider?.koboldService,
     reconnectIfAlive: () async {
       final k = _llmProvider?.koboldService;
@@ -4895,6 +4897,11 @@ class ChatService extends ChangeNotifier {
     }
 
     _pendingRealismMetadata = null;
+    _realismEvalCancelled = false;
+    final koboldForReprocess = _llmProvider?.koboldService;
+    if (koboldForReprocess != null) {
+      await koboldForReprocess.waitForIdle();
+    }
 
     final bool reprocessOk = await _needsImpactEvaluator
         .reprocessWithUserCritique(msg.displayText, oldNeedsDeltas, critique);
@@ -4930,6 +4937,26 @@ class ChatService extends ChangeNotifier {
       restoredPreVector,
     );
     updatedMeta['needs_deltas'] = computed;
+
+    // Keep realism_state['needs'] aligned with manual corrections so swipe
+    // navigation and regen do not resurrect a stale pre-reprocess vector.
+    if (_needsSimEnabled && updatedMeta['realism_state'] is Map) {
+      final postReprocessVector =
+          isGroupNonObs && sid != null && sid.isNotEmpty
+          ? Map<String, int>.from(_getGroupNeeds(sid))
+          : Map<String, int>.from(_needsSimulation.vector);
+      final rs = Map<String, dynamic>.from(
+        updatedMeta['realism_state'] as Map,
+      );
+      final needsSnap = <String, dynamic>{
+        'vector': postReprocessVector,
+      };
+      if (computed.isNotEmpty) {
+        needsSnap['deltas'] = computed;
+      }
+      rs['needs'] = needsSnap;
+      updatedMeta['realism_state'] = rs;
+    }
 
     if (hasPrior) {
       updatedMeta['needs_deltas_pre_reprocess'] = originalNeedsDeltasForStash;
@@ -5051,6 +5078,19 @@ class ChatService extends ChangeNotifier {
     final updated = Map<String, dynamic>.from(meta);
     updated['needs_deltas'] = stashedDeltasMap;
     updated.remove('needs_deltas_pre_reprocess');
+    if (_needsSimEnabled && updated['realism_state'] is Map) {
+      final postRevertVector =
+          isGroupNonObs && sid != null && sid.isNotEmpty
+          ? Map<String, int>.from(_getGroupNeeds(sid))
+          : Map<String, int>.from(_needsSimulation.vector);
+      final rs = Map<String, dynamic>.from(updated['realism_state'] as Map);
+      final needsSnap = <String, dynamic>{'vector': postRevertVector};
+      if (stashedDeltasMap.isNotEmpty) {
+        needsSnap['deltas'] = stashedDeltasMap;
+      }
+      rs['needs'] = needsSnap;
+      updated['realism_state'] = rs;
+    }
     msg.swipeMetadata[msg.swipeIndex] = updated;
 
     if (isLast) {
@@ -5080,6 +5120,22 @@ class ChatService extends ChangeNotifier {
       // Instead of removing the message, we generate a new swipe
       // Temporarily remove the last message so the prompt doesn't include it
       final lastMsg = _messages.removeLast();
+      // Snapshot the rejected swipe's metadata (e.g. manual needs reprocess) before
+      // we add a new swipe — regen must not clobber prior swipe timelines.
+      final rejectedSwipeIndex = lastMsg.swipeIndex;
+      Map<String, dynamic>? preservedRejectedMeta;
+      if (rejectedSwipeIndex >= 0) {
+        if (rejectedSwipeIndex < lastMsg.swipeMetadata.length &&
+            lastMsg.swipeMetadata[rejectedSwipeIndex] != null) {
+          preservedRejectedMeta = Map<String, dynamic>.from(
+            lastMsg.swipeMetadata[rejectedSwipeIndex]!,
+          );
+        } else if (lastMsg.activeMetadata != null) {
+          preservedRejectedMeta = Map<String, dynamic>.from(
+            lastMsg.activeMetadata!,
+          );
+        }
+      }
       notifyListeners();
 
       // In group mode, force the turn manager to the *original* speaker of the
@@ -5373,20 +5429,36 @@ class ChatService extends ChangeNotifier {
           !_messages.last.isUser &&
           _messages.last.sender != 'System') {
         final newText = _messages.last.text;
-        final newMetadata = _messages.last.activeMetadata;
+        final newMetadata = _messages.last.activeMetadata != null
+            ? Map<String, dynamic>.from(_messages.last.activeMetadata!)
+            : null;
         _messages.removeLast();
         lastMsg.swipes.add(newText);
-        lastMsg.swipeIndex = lastMsg.swipes.length - 1;
-        // Merge needs_deltas into the swipe metadata
+        while (lastMsg.swipeDurations.length < lastMsg.swipes.length) {
+          lastMsg.swipeDurations.add(0);
+        }
+        final newSwipeIndex = lastMsg.swipes.length - 1;
+        if (preservedRejectedMeta != null && rejectedSwipeIndex >= 0) {
+          while (lastMsg.swipeMetadata.length <= rejectedSwipeIndex) {
+            lastMsg.swipeMetadata.add(null);
+          }
+          lastMsg.swipeMetadata[rejectedSwipeIndex] = preservedRejectedMeta;
+        }
+        while (lastMsg.swipeMetadata.length <= newSwipeIndex) {
+          lastMsg.swipeMetadata.add(null);
+        }
+        lastMsg.swipeIndex = newSwipeIndex;
+        // New swipe metadata only — prior swipes (incl. manual reprocess) stay intact.
         if (needsDeltas != null && needsDeltas.isNotEmpty) {
-          lastMsg.activeMetadata = {
+          lastMsg.swipeMetadata[newSwipeIndex] = {
             ...(newMetadata ?? {}),
             'needs_deltas': needsDeltas,
           };
-        } else {
-          lastMsg.activeMetadata = newMetadata;
+        } else if (newMetadata != null) {
+          lastMsg.swipeMetadata[newSwipeIndex] = newMetadata;
         }
         _messages.add(lastMsg);
+        _restoreRealismStateFromMessage(lastMsg);
         await _saveChat();
         notifyListeners();
 

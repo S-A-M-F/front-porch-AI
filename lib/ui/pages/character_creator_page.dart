@@ -24,6 +24,8 @@ import 'package:front_porch_ai/services/character_gen_service.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/setup_step.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/mode_select_step.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/quick_config_step.dart';
@@ -60,6 +62,34 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     super.initState();
     creatorState.loadSavedState();
     creatorState.addListener(_onCreatorStateChanged);
+
+    // Ensure local models are scanned for the KoboldCpp picker in Setup (was never called before).
+    // Also refresh the app-wide ModelManager so the picker has data on entry.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        final storage = Provider.of<StorageService>(context, listen: false);
+        creatorState.scanLocalModels(storage);
+        final modelManager = Provider.of<ModelManager>(context, listen: false);
+        modelManager.refreshModels();
+        // If a last used local model exists, preselect it for the picker UI.
+        if (creatorState.selectedLocalModelPath.isEmpty &&
+            storage.lastUsedModelPath != null &&
+            storage.lastUsedModelPath!.isNotEmpty) {
+          creatorState.selectedLocalModelPath = storage.lastUsedModelPath!;
+          creatorState.notify();
+        }
+
+        // Also eagerly load remote models (for API / oMLX pickers) so the list isn't empty on entry.
+        final llm = Provider.of<LLMProvider>(context, listen: false);
+        if (!llm.hasManagedProcess) {
+          // Fire and forget; loadAvailableModels does its own notify + sets initial selection.
+          creatorState.loadAvailableModels(llm);
+        }
+      } catch (_) {
+        // Providers may not be ready in some edge cases; non-fatal.
+      }
+    });
   }
 
   @override

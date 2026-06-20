@@ -157,6 +157,7 @@ class LlmEvalEngine {
   // LLM readiness + cancel (honors test overrides via live closure in god)
   final LLMService Function() getLlmService;
   final bool Function() getIsLocal;
+  final bool Function() getKoboldThinkingModel;
   final KoboldService? Function() getKoboldService;
   final Future<void> Function() reconnectIfAlive;
   final Future<void> Function() ensureServerIdle;
@@ -193,6 +194,7 @@ class LlmEvalEngine {
     required this.getMessages,
     required this.getLlmService,
     required this.getIsLocal,
+    required this.getKoboldThinkingModel,
     required this.getKoboldService,
     required this.reconnectIfAlive,
     required this.ensureServerIdle,
@@ -274,7 +276,9 @@ class LlmEvalEngine {
       if (!llm.isReady) return null;
     }
 
-    //     // Unified eval parameters — API-style works for all backends.
+    // Local Kobold evals always ban EOS (thinking prefill otherwise returns len=0;
+    // koboldThinkingModel flag may be unset since the UI toggle was removed).
+    final localThinking = effectiveIsLocal && getKoboldThinkingModel();
     final params = GenerationParams(
       prompt: prompt,
       maxLength: 4000,
@@ -283,16 +287,15 @@ class LlmEvalEngine {
       topP: 0.5,
       xtcProbability: 0.0,
       reasoningEnabled: false,
-      // No stop sequences for structured realism/impact evals.
-      // Previous ['}\n', '}\r\n'] stops were a common source of "stop string" truncation
-      // errors (premature stop if a reason field contained "}\n", or no stop if model
-      // emitted compact JSON with no trailing newline). We rely on the prompt's
-      // "Respond with ONLY ..." instruction + low temperature + regex extraction.
-      // (See also: other leaves like objective_proposal use [] for their LLM calls.)
       stopSequences: const [],
-      banEosToken: false,
-      trimStop: false,
+      banEosToken: effectiveIsLocal,
+      trimStop: effectiveIsLocal ? !localThinking : true,
     );
+
+    if (effectiveIsLocal) {
+      final k = getKoboldService();
+      if (k != null) await k.waitForIdle();
+    }
 
     String response = '';
     // Retry loop: thinking models can cause KoboldCPP to drop the connection
@@ -349,11 +352,27 @@ class LlmEvalEngine {
           debugPrint('[Realism] streaming terminated via cancel (early exit)');
           return null;
         }
+
+        // Handle empty responses (common with local thinking models during <think> prefill).
+        // Retry once after a short settle + idle wait. Critical for reliable manual
+        // Needs reprocess and other evals on Kobold thinking setups.
+        if (response.trim().isEmpty && attempt < 1) {
+          debugPrint(
+            '[Realism:Eval] Empty stream response, retrying after settle...',
+          );
+          await Future.delayed(const Duration(seconds: 2));
+          if (effectiveIsLocal) await ensureServerIdle();
+          response = '';
+          continue;
+        }
+
         // Ensure visual separation between concurrent eval outputs in stream display
+        // (helps when multiple realism/impact calls are in flight).
         if (!response.endsWith('\n') && onChunk != null) {
           onChunk('\n');
           response += '\n';
         }
+
         break; // stream completed cleanly — exit retry loop
       } catch (e) {
         debugPrint('[Realism:Eval] Stream error on attempt ${attempt + 1}: $e');
@@ -481,7 +500,8 @@ class LlmEvalEngine {
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
       if (raw == null) return null;
       final searchText = stripThinkBlocks(raw);
-      return searchText.isNotEmpty ? searchText : raw;
+      if (searchText.trim().isEmpty) return null;
+      return searchText;
     } catch (e) {
       debugPrint('[Realism:Needs] Engine impact call failed: $e');
       return null;
