@@ -37,6 +37,8 @@ class NeedsImpactEvaluator {
     String responseText, {
     void Function(String)? onChunk,
     int strength,
+    String? userCritique,
+    Map<String, int>? previousDeltas,
   })
   evaluateNeedsImpactCall;
   final Future<VerificationResult> Function({
@@ -54,7 +56,11 @@ class NeedsImpactEvaluator {
   })?
   verifyRealismOutput;
 
-  final Future<String?> Function(String prompt, {void Function(String)? onChunk})? fireLLMEval;
+  final Future<String?> Function(
+    String prompt, {
+    void Function(String)? onChunk,
+  })?
+  fireLLMEval;
 
   final Map<String, dynamic> Function()? getPendingRealismMetadata;
   final void Function(Map<String, dynamic>)? setPendingRealismMetadata;
@@ -116,7 +122,10 @@ class NeedsImpactEvaluator {
 
     final strength = getNeedsSimStrength();
     try {
-      final text = await evaluateNeedsImpactCall(responseText, strength: strength);
+      final text = await evaluateNeedsImpactCall(
+        responseText,
+        strength: strength,
+      );
       if (text == null) return;
 
       String effectiveText = text;
@@ -145,8 +154,8 @@ class NeedsImpactEvaluator {
             recentMessages: getMessages(),
             promptText:
                 'needs impact (straight deltas; Director authority on corrections; user-requested strength ' +
-                    strength.toString() +
-                    'x — emit/correct deltas at this magnitude)',
+                strength.toString() +
+                'x — emit/correct deltas at this magnitude)',
             injections: const {},
           );
           if (vres.correctedRaw != null && vres.correctedRaw!.isNotEmpty) {
@@ -173,7 +182,9 @@ class NeedsImpactEvaluator {
       final deltas = <String, int>{};
       Map<String, dynamic> parsed = {};
       try {
-        final noFence = effectiveText.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+        final noFence = effectiveText
+            .replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ')
+            .trim();
         final si = noFence.indexOf('{');
         final ei = noFence.lastIndexOf('}');
         if (si >= 0 && ei > si) {
@@ -189,7 +200,9 @@ class NeedsImpactEvaluator {
           final v = parsed['${k}_delta'] ?? parsed[k];
           if (v is num) d = v.toInt();
         }
-        d ??= _extractInt(effectiveText, '${k}_delta') ?? _extractInt(effectiveText, k);
+        d ??=
+            _extractInt(effectiveText, '${k}_delta') ??
+            _extractInt(effectiveText, k);
         if (d != null) {
           deltas[k] = d;
         }
@@ -230,14 +243,17 @@ class NeedsImpactEvaluator {
         } else if (c is String) {
           isClimax = c.toLowerCase() == 'true';
         }
-        
+
         final t = parsed['crashTurns'] ?? parsed['refractory_turns'];
         if (t is num) crashTurns = t.toInt();
       } else {
         final re = RegExp(r'"is_climax"\s*:\s*(true|false)');
         final m = re.firstMatch(effectiveText);
         if (m != null) isClimax = m.group(1) == 'true';
-        crashTurns = _extractInt(effectiveText, 'crashTurns') ?? _extractInt(effectiveText, 'refractory_turns') ?? 5;
+        crashTurns =
+            _extractInt(effectiveText, 'crashTurns') ??
+            _extractInt(effectiveText, 'refractory_turns') ??
+            5;
       }
 
       if (isClimax) {
@@ -264,43 +280,49 @@ class NeedsImpactEvaluator {
     return null;
   }
 
-  Future<void> reprocessWithUserCritique(
+  Future<bool> reprocessWithUserCritique(
     String responseText,
     Map<String, int> oldDeltas,
     String critique,
   ) async {
-    if (fireLLMEval == null) return;
+    // Use the injected evaluateNeedsImpactCall (now supports critique/oldDeltas for unified rich prompt + personality/stance/recent/full guidance + MUST + examples).
     final strength = getNeedsSimStrength();
-    final prompt =
-        'You are the Realism Director correcting the previous Needs deltas for a roleplay scene.\n\n'
-        'RESPONSE (the scene that just happened):\n$responseText\n\n'
-        'PREVIOUS DELTAS:\n${jsonEncode(oldDeltas)}\n\n'
-        'USER CRITIQUE (The user noticed an issue with the deltas that MUST be fixed):\n"$critique"\n\n'
-        'Analyze what actually occurred in the scene and output a corrected set of net signed effects (deltas) on each need.\n\n'
-        'Respond with ONLY a flat JSON object correcting the deltas based on the user critique.\n'
-        'User has set Needs delta strength to ${strength}x. Emit deltas with magnitude scaled by this factor so the final applied swings match the user setting (example: a hygiene hit you would normally call -3 at 1x should be around -15 at 5x; small effects stay small at 1x).\n\n'
-        'Format:\n'
-        '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
-        '"intensity": 1-10, '
-        '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
-        '"reason": "<brief grounded reason for the deltas incorporating the critique>", '
-        '"is_climax": true/false }\n';
 
     try {
-      debugPrint('[Realism:Needs] Running manual reprocess impact eval (via engine)...');
-      final raw = await fireLLMEval!(prompt);
-      if (raw == null) return;
-      
-      String effectiveText = raw.replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '').trim();
-      final unclosed = effectiveText.indexOf('<think>');
-      if (unclosed >= 0) {
-        effectiveText = effectiveText.substring(0, unclosed).trim();
+      debugPrint(
+        '[Realism:Needs] Running manual reprocess impact eval (via engine)...',
+      );
+      String? text = await evaluateNeedsImpactCall(
+        responseText,
+        strength: strength,
+        userCritique: critique,
+        previousDeltas: oldDeltas,
+      );
+
+      // C: bounded retry on empty/fragile (one extra attempt with emphasis)
+      if (text == null || text.trim().isEmpty) {
+        debugPrint(
+          '[Realism:Needs] reprocess empty response, retrying once...',
+        );
+        text = await evaluateNeedsImpactCall(
+          responseText,
+          strength: strength,
+          userCritique:
+              '$critique Output ONLY the flat JSON now with all seven _delta keys.',
+          previousDeltas: oldDeltas,
+        );
       }
+
+      if (text == null || text.trim().isEmpty) return false;
+
+      String effectiveText = text; // already stripped by evaluate path
 
       final deltas = <String, int>{};
       Map<String, dynamic> parsed = {};
       try {
-        final noFence = effectiveText.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+        final noFence = effectiveText
+            .replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ')
+            .trim();
         final si = noFence.indexOf('{');
         final ei = noFence.lastIndexOf('}');
         if (si >= 0 && ei > si) {
@@ -316,17 +338,29 @@ class NeedsImpactEvaluator {
           final v = parsed['${k}_delta'] ?? parsed[k];
           if (v is num) d = v.toInt();
         }
-        d ??= _extractInt(effectiveText, '${k}_delta') ?? _extractInt(effectiveText, k);
+        d ??=
+            _extractInt(effectiveText, '${k}_delta') ??
+            _extractInt(effectiveText, k);
         if (d != null) {
           deltas[k] = d;
         }
+      }
+
+      // C: if after strip/parse we got literally no delta keys at all, treat as failure (do not apply empty "correction")
+      if (deltas.isEmpty) {
+        debugPrint(
+          '[Realism:Needs] reprocess parsed no deltas; treating as failure',
+        );
+        return false;
       }
 
       for (final k in deltas.keys.toList()) {
         deltas[k] = deltas[k]!.clamp(-30, 100);
       }
 
-      final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(effectiveText);
+      final reasonMatch = RegExp(
+        r'"reason"\s*:\s*"([^"]*)"',
+      ).firstMatch(effectiveText);
       final reason = reasonMatch?.group(1)?.trim();
 
       bool isClimax = false;
@@ -344,7 +378,10 @@ class NeedsImpactEvaluator {
         final re = RegExp(r'"is_climax"\s*:\s*(true|false)');
         final m = re.firstMatch(effectiveText);
         if (m != null) isClimax = m.group(1) == 'true';
-        crashTurns = _extractInt(effectiveText, 'crashTurns') ?? _extractInt(effectiveText, 'refractory_turns') ?? 5;
+        crashTurns =
+            _extractInt(effectiveText, 'crashTurns') ??
+            _extractInt(effectiveText, 'refractory_turns') ??
+            5;
       }
 
       if (isClimax) {
@@ -353,22 +390,27 @@ class NeedsImpactEvaluator {
 
       final impact = NeedsImpact(
         deltas: deltas,
-        reason: (reason != null && reason.toLowerCase() != 'none') ? reason : null,
+        reason: (reason != null && reason.toLowerCase() != 'none')
+            ? reason
+            : null,
       );
 
       needsSimulation.applySceneImpact(impact);
-      
+
       // Store the metadata for the update
-      final currentMeta = (getPendingRealismMetadata?.call() ?? <String, dynamic>{});
+      final currentMeta =
+          (getPendingRealismMetadata?.call() ?? <String, dynamic>{});
       // We manually construct a fake VerificationResult metadata to display the Director Corrected pill.
       currentMeta[RealismVerification.kMetaKey] = {
         'status': 'Director corrected (manual)',
         'passes': 1,
       };
       setPendingRealismMetadata?.call(currentMeta);
-      
+
+      return true;
     } catch (e) {
       debugPrint('[Realism:Needs] reprocessWithUserCritique error: $e');
+      return false;
     }
   }
 }

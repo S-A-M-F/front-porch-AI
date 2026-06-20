@@ -29,7 +29,8 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
@@ -61,16 +62,16 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   final _tagController = TextEditingController();
 
   // ── Personality (Step 1) ──
-  final _descriptionController = TextEditingController();
-  final _personalityController = TextEditingController();
-  final _scenarioController = TextEditingController();
-  final _systemPromptController = TextEditingController();
-  final _postHistoryController = TextEditingController();
+  final _descriptionController = StyledTextController(preset: StyledTextPreset.macros);
+  final _personalityController = StyledTextController(preset: StyledTextPreset.macros);
+  final _scenarioController = StyledTextController(preset: StyledTextPreset.macros);
+  final _systemPromptController = StyledTextController(preset: StyledTextPreset.macros);
+  final _postHistoryController = StyledTextController(preset: StyledTextPreset.macros);
 
   // ── Dialogue (Step 2) ──
-  final _firstMessageController = TextEditingController();
-  final _exampleDialogueController = TextEditingController();
-  final List<TextEditingController> _altGreetingControllers = [];
+  final _firstMessageController = StyledTextController(preset: StyledTextPreset.prose);
+  final _exampleDialogueController = StyledTextController(preset: StyledTextPreset.prose);
+  final List<StyledTextController> _altGreetingControllers = [];
 
   // ── Lorebook (Step 3) ──
   final List<LorebookEntry> _lorebookEntries = [];
@@ -117,7 +118,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   int _needsDecayComfort = 5;
 
   // ── Token counter ──
-  int _totalTokenEstimate = 0;
+  final ValueNotifier<int> _tokenNotifier = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -152,8 +153,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           ((entry.name.length + entry.key.length + entry.content.length) / 4)
               .ceil();
     }
-    if (mounted && total != _totalTokenEstimate) {
-      setState(() => _totalTokenEstimate = total);
+    if (mounted) {
+      _tokenNotifier.value = total;
     }
   }
 
@@ -171,6 +172,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     for (final c in _altGreetingControllers) {
       c.dispose();
     }
+    _tokenNotifier.dispose();
     super.dispose();
   }
 
@@ -218,7 +220,15 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 : _buildReviewStep(),
           ),
           // Floating token counter
-          Positioned(right: 24, bottom: 24, child: _buildTokenBadge()),
+          Positioned(
+            right: 24,
+            bottom: 24,
+            child: ValueListenableBuilder<int>(
+              valueListenable: _tokenNotifier,
+              builder: (context, tokens, child) =>
+                  _buildTokenBadge(tokens),
+            ),
+          ),
         ],
       ),
     );
@@ -308,10 +318,10 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  Widget _buildTokenBadge() {
-    final color = _totalTokenEstimate > 4000
+  Widget _buildTokenBadge(int estimatedTokens) {
+    final color = estimatedTokens > 4000
         ? Colors.redAccent
-        : _totalTokenEstimate > 2000
+        : estimatedTokens > 2000
         ? Colors.orangeAccent
         : Colors.blueAccent;
     return Container(
@@ -334,7 +344,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           Icon(Icons.token, size: 14, color: color),
           const SizedBox(width: 6),
           Text(
-            '~$_totalTokenEstimate tokens',
+            '~$estimatedTokens tokens',
             style: TextStyle(
               color: color,
               fontSize: 12,
@@ -789,7 +799,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   TextButton.icon(
                     onPressed: () {
                       setState(() {
-                        final ctrl = TextEditingController();
+                        final ctrl = StyledTextController(preset: StyledTextPreset.prose);
                         ctrl.addListener(_updateTokenEstimate);
                         _altGreetingControllers.add(ctrl);
                       });
@@ -962,63 +972,113 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
   Widget _buildLorebookEntryCard(int index, LorebookEntry entry) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
+          width: 1.5,
           color: entry.constant
               ? Colors.amberAccent.withValues(alpha: 0.3)
-              : Colors.blueAccent.withValues(alpha: 0.2),
+              : entry.enabled
+              ? Colors.blueAccent.withValues(alpha: 0.2)
+              : AppColors.borderOf(context).withValues(alpha: 0.5),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
           Row(
             children: [
               Icon(
                 Icons.menu_book,
-                size: 16,
-                color: entry.constant ? Colors.amberAccent : Colors.blueAccent,
+                size: 14,
+                color: entry.constant
+                    ? Colors.amberAccent
+                    : entry.enabled
+                    ? Colors.blueAccent
+                    : Colors.white38,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   entry.displayName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: entry.enabled
+                        ? Colors.white
+                        : Colors.white38,
                     fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
               ),
               if (entry.constant)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 6,
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.amberAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
                     'Always Active',
                     style: TextStyle(
                       color: Colors.amberAccent,
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              const SizedBox(width: 8),
+              if (!entry.constant)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Depth ${entry.stickyDepth}',
+                    style: const TextStyle(
+                      color: Colors.blueAccent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 4),
+              Tooltip(
+                message: entry.enabled
+                    ? 'Disable — entry won\'t be matched'
+                    : 'Enable — entry will match on its keys',
+                child: Switch(
+                  value: entry.enabled,
+                  onChanged: (val) {
+                    setState(() {
+                      entry.enabled = val;
+                      _updateTokenEstimate();
+                    });
+                  },
+                  activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
+                  activeThumbColor: Colors.blueAccent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
               IconButton(
                 onPressed: () => _editLorebookEntry(index),
-                icon: const Icon(Icons.edit, size: 16, color: Colors.white38),
+                icon: const Icon(
+                  Icons.edit_outlined,
+                  size: 16,
+                  color: Colors.white38,
+                ),
                 tooltip: 'Edit entry',
                 visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
               ),
               IconButton(
                 onPressed: () => _deleteLorebookEntry(index),
@@ -1029,27 +1089,38 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                 ),
                 tooltip: 'Delete entry',
                 visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
               ),
             ],
           ),
-          if (!entry.constant && entry.key.isNotEmpty) ...[
+          if (entry.key.isNotEmpty && !entry.constant) ...[
             const SizedBox(height: 6),
-            Text(
-              'Keys: ${entry.key}',
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 11),
-            ),
-          ],
-          if (entry.content.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              entry.content.length > 120
-                  ? '${entry.content.substring(0, 120)}...'
-                  : entry.content,
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 12,
-                height: 1.4,
-              ),
+            Wrap(
+              spacing: 4,
+              runSpacing: 3,
+              children: entry.key
+                  .split(',')
+                  .map(
+                    (k) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        k.trim(),
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ],
         ],
@@ -1057,12 +1128,29 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  void _addLorebookEntry() {
-    _showLorebookEntryDialog(null);
+  Future<void> _addLorebookEntry() async {
+    final result = await showLorebookEntryDialog(context: context);
+    if (result != null) {
+      setState(() {
+        _lorebookEntries.add(result);
+        _updateTokenEstimate();
+      });
+    }
   }
 
-  void _editLorebookEntry(int index) {
-    _showLorebookEntryDialog(index);
+  Future<void> _editLorebookEntry(int index) async {
+    final entry = _lorebookEntries[index];
+    final result = await showLorebookEntryDialog(
+      context: context,
+      existing: entry,
+      showEnabled: true,
+    );
+    if (result != null) {
+      setState(() {
+        _lorebookEntries[index] = result;
+        _updateTokenEstimate();
+      });
+    }
   }
 
   void _deleteLorebookEntry(int index) {
@@ -1070,160 +1158,6 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
       _lorebookEntries.removeAt(index);
       _updateTokenEstimate();
     });
-  }
-
-  void _showLorebookEntryDialog(int? editIndex) {
-    final isEditing = editIndex != null;
-    final entry = isEditing
-        ? _lorebookEntries[editIndex]
-        : LorebookEntry(key: '', content: '');
-
-    final nameCtrl = TextEditingController(text: entry.name);
-    final keyCtrl = TextEditingController(text: entry.key);
-    final contentCtrl = TextEditingController(text: entry.content);
-    bool constant = entry.constant;
-    int stickyDepth = entry.stickyDepth;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
-          backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isEditing ? 'Edit Lorebook Entry' : 'Add Lorebook Entry',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: nameCtrl,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: _inputDecoration('Entry name (display label)'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: keyCtrl,
-                    enabled: !constant,
-                    style: TextStyle(
-                      color: constant ? Colors.white38 : Colors.white,
-                      fontSize: 14,
-                    ),
-                    decoration: _inputDecoration('Keywords (comma-separated)'),
-                  ),
-                  const SizedBox(height: 12),
-                  Flexible(
-                    child: TextField(
-                      controller: contentCtrl,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      decoration: _inputDecoration('Lore content...'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: constant,
-                        activeColor: Colors.amberAccent,
-                        onChanged: (v) =>
-                            setDialogState(() => constant = v ?? false),
-                      ),
-                      const Text(
-                        'Always Active',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                      const Spacer(),
-                      if (!constant) ...[
-                        const Text(
-                          'Depth: ',
-                          style: TextStyle(color: Colors.white38, fontSize: 12),
-                        ),
-                        SizedBox(
-                          width: 50,
-                          child: TextField(
-                            controller: TextEditingController(
-                              text: stickyDepth.toString(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                            ),
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            onChanged: (v) {
-                              final n = int.tryParse(v);
-                              if (n != null && n >= 1) stickyDepth = n;
-                            },
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          final newEntry = LorebookEntry(
-                            name: nameCtrl.text.trim(),
-                            key: keyCtrl.text.trim(),
-                            content: contentCtrl.text.trim(),
-                            constant: constant,
-                            stickyDepth: stickyDepth,
-                          );
-                          setState(() {
-                            if (isEditing) {
-                              _lorebookEntries[editIndex] = newEntry;
-                            } else {
-                              _lorebookEntries.add(newEntry);
-                            }
-                            _updateTokenEstimate();
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                        ),
-                        child: Text(isEditing ? 'Save' : 'Add'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1342,8 +1276,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
                   onDecaySocialChanged: (v) =>
                       setState(() => _needsDecaySocial = v),
                   decayFun: _needsDecayFun,
-                  onDecayFunChanged: (v) =>
-                      setState(() => _needsDecayFun = v),
+                  onDecayFunChanged: (v) => setState(() => _needsDecayFun = v),
                   decayHygiene: _needsDecayHygiene,
                   onDecayHygieneChanged: (v) =>
                       setState(() => _needsDecayHygiene = v),
@@ -2244,6 +2177,8 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
         needsDecayComfort: _needsDecayComfort,
       );
 
+      fpExt.ensureStableId();
+
       final card = CharacterCard(
         name: name,
         description: _descriptionController.text,
@@ -2368,7 +2303,7 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
           _realismVerificationMaxReprocesses = 1;
           _realismVerificationStrictness = 3;
           _realismNeedsDirectorAuthority = false;
-          _totalTokenEstimate = 0;
+          _tokenNotifier.value = 0;
         });
       }
     } catch (e) {
@@ -2450,7 +2385,11 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
             _inputLabel(label),
             const Spacer(),
             IconButton(
-              onPressed: () => _openExpandedEditor(label, controller),
+              onPressed: () => showExpandedEditorDialog(
+                context: context,
+                title: label,
+                controller: controller,
+              ),
               icon: const Icon(
                 Icons.open_in_full,
                 size: 16,
@@ -2477,91 +2416,6 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
     );
   }
 
-  Future<void> _openExpandedEditor(
-    String label,
-    TextEditingController controller,
-  ) async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final editController = TextEditingController(text: controller.text);
-        return Dialog(
-          backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Container(
-            width: 700,
-            height: 500,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close, color: Colors.white38),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: AppTextField(
-                    controller: editController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    spellCheckConfiguration: AppTextField.platformSpellCheck(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.6,
-                    ),
-                    decoration: _inputDecoration(''),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, editController.text),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                      ),
-                      child: const Text('Apply'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (result != null) {
-      controller.text = result;
-    }
-  }
 }
 
 /// Holds a pending expression image with its assigned emotion label.

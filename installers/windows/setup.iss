@@ -14,10 +14,10 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 ; Use user-local install directory so no elevation is needed
-DefaultDirName={#if PRE_RELEASE == "1"}{localappdata}\{#MyAppName} Beta{#else}{localappdata}\{#MyAppName}{#endif}
-DefaultGroupName={#if NIGHTLY == "1"}Front Porch AI Nightly{#else}{#MyAppName}{#endif}
+DefaultDirName={#ifdef PRE_RELEASE}{localappdata}\{#MyAppName} Beta{#else}{localappdata}\{#MyAppName}{#endif}
+DefaultGroupName={#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}
 LicenseFile={#MyAppLicenseFile}
-OutputBaseFilename={#if PRE_RELEASE == "1"}Front_Porch_AI_Beta_Setup{#else}Front_Porch_AI_Setup{#endif}
+OutputBaseFilename={#ifdef PRE_RELEASE}Front_Porch_AI_Beta_Setup{#else}Front_Porch_AI_Setup{#endif}
 OutputDir=.
 Compression=lzma2
 SolidCompression=yes
@@ -42,16 +42,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
-[InstallDelete]
-; Clean up bad desktop shortcuts created by the buggy 0.9.9 stable installer.
-; That installer (due to a packaging bug when porting from the Rawhide nightly
-; build script) created shortcuts named "Front Porch AI" (the stable name)
-; but installed the app into the Beta location and made the .lnk point there.
-; We only target the stable-named desktop shortcut so that legitimate Rawhide
-; "Front Porch AI Nightly" shortcuts are left completely alone.
-; This section runs early during install, before new shortcuts are created.
-Type: files; Name: "{autodesktop}\Front Porch AI.lnk"
-
 [Files]
 ; Main application files
 Source: "{#MyAppBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -65,9 +55,9 @@ Source: "{#MyAppBuildDir}\..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: delete
 Filename: "{app}\.installed"; Section: "install"; Key: "method"; String: "innosetup"
 
 [Icons]
-Name: "{group}\{#if NIGHTLY == "1"}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Uninstall {#if NIGHTLY == "1"}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#if NIGHTLY == "1"}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Uninstall {#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; Install Visual C++ 2015-2022 Redistributable silently first.

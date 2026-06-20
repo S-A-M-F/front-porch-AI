@@ -726,6 +726,7 @@ class _UiSettingsDialogState extends State<UiSettingsDialog> {
     final currentExtensions =
         character.frontPorchExtensions ?? FrontPorchExtensions();
     final updatedExtensions = currentExtensions.copyWith(avatarLocked: locked);
+    updatedExtensions.ensureStableId();
     final updatedCharacter = CharacterCard(
       name: character.name,
       description: character.description,

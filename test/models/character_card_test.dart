@@ -105,11 +105,13 @@ void main() {
         passageOfTimeEnabled: false,
         chaosModeEnabled: true,
         currentTask: 'Patrol the perimeter',
+        stableId: 'explicit-stable-in-all-fields-test',
       );
       final json = ext.toJson();
       final engine = json['realism_engine'] as Map<String, dynamic>;
       expect(engine['enabled'], true);
       expect(engine['short_term_bond'], 10);
+      expect(engine['stable_id'], 'explicit-stable-in-all-fields-test');
       expect(engine['long_term_bond'], -5);
       expect(engine['trust_level'], 20);
       expect(engine['day_count'], 3);
@@ -145,11 +147,13 @@ void main() {
           'needs_decay_fun': 10,
           'needs_decay_hygiene': 12,
           'needs_decay_comfort': 14,
+          'stable_id': 'explicit-stable-in-fromjson-full',
         },
       };
       final ext = FrontPorchExtensions.fromJson(json);
       expect(ext.realismEnabled, true);
       expect(ext.shortTermBond, 25);
+      expect(ext.stableId, 'explicit-stable-in-fromjson-full');
       expect(ext.longTermBond, -15);
       expect(ext.trustLevel, 30);
       expect(ext.dayCount, 5);
@@ -218,57 +222,74 @@ void main() {
         needsDecayFun: 5,
         needsDecayHygiene: 6,
         needsDecayComfort: 7,
+        stableId: 'test-stable-uuid-for-roundtrip',
       );
       final json1 = original.toJson();
       final restored = FrontPorchExtensions.fromJson(json1);
       final json2 = restored.toJson();
       expect(json1, json2);
       expect(restored.needsDecayHunger, 1);
+      expect(restored.stableId, 'test-stable-uuid-for-roundtrip');
+      final engine = json1['realism_engine'] as Map<String, dynamic>;
+      expect(engine['stable_id'], 'test-stable-uuid-for-roundtrip');
     });
 
-    test('roundtrip serialization + copyWith + ctor for realismNeedsDirectorAuthority (Director authority on needs deltas flag; covers model + all seed/reset/copyWith/json sites in creators/editors/dialogs/creator_state/realism_step/group per-member)', () {
-      final original = FrontPorchExtensions(
-        realismEnabled: true,
-        needsSimEnabled: true,
-        realismVerificationEnabled: true,
-        realismNeedsDirectorAuthority: true,
-      );
-      expect(original.realismNeedsDirectorAuthority, true);
-      final json1 = original.toJson();
-      final engine = json1['realism_engine'] as Map<String, dynamic>;
-      expect(engine['realism_needs_director_authority'], true);
-      final restored = FrontPorchExtensions.fromJson(json1);
-      expect(restored.realismNeedsDirectorAuthority, true);
-      final json2 = restored.toJson();
-      expect(json1, json2);
-      final copy = original.copyWith(realismNeedsDirectorAuthority: false);
-      expect(copy.realismNeedsDirectorAuthority, false);
-      expect(copy.realismEnabled, true); // other fields preserved
-      final def = FrontPorchExtensions();
-      expect(def.realismNeedsDirectorAuthority, false);
-      // also via CharacterCard frontPorch
-      final card = CharacterCard(name: 't', frontPorchExtensions: original);
-      final cardJson = card.toJson();
-      expect(
-        cardJson['extensions']['front_porch']['realism_engine']['realism_needs_director_authority'],
-        true,
-      );
-    });
+    test(
+      'roundtrip serialization + copyWith + ctor for realismNeedsDirectorAuthority (Director authority on needs deltas flag; covers model + all seed/reset/copyWith/json sites in creators/editors/dialogs/creator_state/realism_step/group per-member)',
+      () {
+        final original = FrontPorchExtensions(
+          realismEnabled: true,
+          needsSimEnabled: true,
+          realismVerificationEnabled: true,
+          realismNeedsDirectorAuthority: true,
+        );
+        expect(original.realismNeedsDirectorAuthority, true);
+        final json1 = original.toJson();
+        final engine = json1['realism_engine'] as Map<String, dynamic>;
+        expect(engine['realism_needs_director_authority'], true);
+        final restored = FrontPorchExtensions.fromJson(json1);
+        expect(restored.realismNeedsDirectorAuthority, true);
+        final json2 = restored.toJson();
+        expect(json1, json2);
+        final copy = original.copyWith(realismNeedsDirectorAuthority: false);
+        expect(copy.realismNeedsDirectorAuthority, false);
+        expect(copy.realismEnabled, true); // other fields preserved
+        final def = FrontPorchExtensions();
+        expect(def.realismNeedsDirectorAuthority, false);
+        // also via CharacterCard frontPorch
+        final card = CharacterCard(name: 't', frontPorchExtensions: original);
+        final cardJson = card.toJson();
+        expect(
+          cardJson['extensions']['front_porch']['realism_engine']['realism_needs_director_authority'],
+          true,
+        );
+      },
+    );
 
     test('copyWith creates deep copy', () {
-      final ext = FrontPorchExtensions(realismEnabled: true, shortTermBond: 50);
+      final ext = FrontPorchExtensions(
+        realismEnabled: true,
+        shortTermBond: 50,
+        stableId: 'test-stable-uuid-1234',
+      );
       final copy = ext.copyWith();
       expect(copy.realismEnabled, true);
       expect(copy.shortTermBond, 50);
+      expect(copy.stableId, 'test-stable-uuid-1234');
       expect(copy, isNot(same(ext)));
     });
 
     test('copyWith overrides specific fields', () {
-      final ext = FrontPorchExtensions(realismEnabled: false, shortTermBond: 0);
+      final ext = FrontPorchExtensions(
+        realismEnabled: false,
+        shortTermBond: 0,
+        stableId: 'stable-xyz',
+      );
       final copy = ext.copyWith(realismEnabled: true, shortTermBond: 100);
       expect(copy.realismEnabled, true);
       expect(copy.shortTermBond, 100);
       expect(copy.trustLevel, 0);
+      expect(copy.stableId, 'stable-xyz'); // carried
     });
 
     test('copyWith with null uses existing values', () {

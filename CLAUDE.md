@@ -314,6 +314,13 @@ Because the user has **no ability to read or evaluate Dart code**, the following
 - **New private methods are expensive.** Before creating any new private method or helper, you **must first** check whether an existing method can be extended, generalized, or refactored. Creating new methods is a last resort.
 - **Method proliferation is forbidden.** If you introduce more than **two** new private methods while completing a piece of work, you must stop and either consolidate existing logic or explicitly justify in your response why deletion was not possible.
 - **Parallel implementations are banned** unless the user explicitly approves. Do not create separate code paths for 1:1 vs group chat, or old vs new systems, without first attempting to unify them.
+
+- **Overlapping / redundant features — offer deprecation or removal** (mandatory agent behavior). When a user requests a new feature, UI control, slider, mode, dialog, or behavioral change that overlaps with or renders an existing feature redundant, less useful, or non-functional (example: adding an N-message slider to "Visualize Scene" that makes the dedicated "Message Illustration" / `fromLastMessage` path obsolete), **you must proactively offer to deprecate and/or fully remove the now-useless existing feature** as part of the same body of work. 
+  - Do not leave dead enum values, old UI buttons/surfaces, parallel code paths, orphaned tests, or stale docs/comments.
+  - Treat this as a hygiene win (see "Deletion is part of the task" above).
+  - Explicitly document the rationale in your plan/response, the relevant docs/Rawhide.md entry, and any changelog.
+  - Ask the user for confirmation if the removal scope is large, but default to offering the cleanup.
+  This prevents UI bloat, user confusion ("why are there two ways to do almost the same thing?"), and long-term maintenance debt. The Image Studio work (Visualize N-slider vs. old Message Illustration) is the canonical precedent for this rule.
 - **Mandatory commands at the end of non-trivial work** (you must run these and report the results):
   - `flutter analyze --no-fatal-warnings --no-fatal-infos`
   - `dart fix --dry-run` (apply safe fixes where appropriate)

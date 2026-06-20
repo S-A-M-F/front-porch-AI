@@ -909,6 +909,8 @@ class WebServerService extends ChangeNotifier {
               ? List<String>.from(jsonDecode(character.tags))
               : [],
         );
+        fullCard.frontPorchExtensions ??= FrontPorchExtensions();
+        fullCard.frontPorchExtensions!.ensureStableId();
         await V2CardService().saveCardAsPng(fullCard, destPath, destPath);
       } catch (e) {
         debugPrint('[WebServer] Failed to embed V2 card data: $e');
@@ -1668,6 +1670,7 @@ class WebServerService extends ChangeNotifier {
           'elevenlabsStyle': s.elevenlabsStyle,
           'ttsNarrateQuotedOnly': s.ttsNarrateQuotedOnly,
           'ttsIgnoreAsterisks': s.ttsIgnoreAsterisks,
+          'ttsReplaceCurlyQuotes': s.ttsReplaceCurlyQuotes,
           // TTS available voices
           'ttsVoices': _ttsService != null
               ? _ttsService!.activeVoices
@@ -1972,6 +1975,9 @@ class WebServerService extends ChangeNotifier {
       }
       if (body.containsKey('ttsIgnoreAsterisks')) {
         await s.setTtsIgnoreAsterisks(body['ttsIgnoreAsterisks'] as bool);
+      }
+      if (body.containsKey('ttsReplaceCurlyQuotes')) {
+        await s.setTtsReplaceCurlyQuotes(body['ttsReplaceCurlyQuotes'] as bool);
       }
 
       // Image Gen

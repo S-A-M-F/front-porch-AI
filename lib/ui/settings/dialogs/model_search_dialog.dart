@@ -28,6 +28,26 @@ void showModelSearchDialog(
   StorageService storageService,
   List<RemoteModelInfo> availableModels,
 ) {
+  showGenericModelSearchDialog<RemoteModelInfo>(
+    context,
+    availableModels,
+    title: 'Select Model',
+    getTitle: (m) => m.name,
+    getSubtitle: (m) => m.id,
+    onSelected: (m) => storageService.setRemoteModel(m.id),
+  );
+}
+
+/// Generic searchable model picker dialog. Reused for both remote models and local .gguf files
+/// so the UI/UX (search, list, styling) is identical everywhere.
+void showGenericModelSearchDialog<T>(
+  BuildContext context,
+  List<T> availableModels, {
+  required String title,
+  required String Function(T) getTitle,
+  required String Function(T) getSubtitle,
+  required void Function(T) onSelected,
+}) {
   showDialog(
     context: context,
     builder: (ctx) {
@@ -38,14 +58,15 @@ void showModelSearchDialog(
               ? availableModels
               : availableModels.where((m) {
                   final q = searchQuery.toLowerCase();
-                  return m.id.toLowerCase().contains(q) ||
-                      m.name.toLowerCase().contains(q);
+                  final t = getTitle(m).toLowerCase();
+                  final s = getSubtitle(m).toLowerCase();
+                  return t.contains(q) || s.contains(q);
                 }).toList();
 
           return AlertDialog(
             backgroundColor: AppColors.surfaceOf(context),
             title: Text(
-              'Select Model',
+              title,
               style: TextStyle(color: AppColors.textPrimary(context)),
             ),
             content: SizedBox(
@@ -88,20 +109,20 @@ void showModelSearchDialog(
                         final m = filtered[i];
                         return ListTile(
                           title: Text(
-                            m.name,
+                            getTitle(m),
                             style: TextStyle(
                               color: AppColors.textPrimary(context),
                             ),
                           ),
                           subtitle: Text(
-                            m.id,
+                            getSubtitle(m),
                             style: TextStyle(
                               color: AppColors.textTertiary(context),
                               fontSize: 11,
                             ),
                           ),
                           onTap: () {
-                            storageService.setRemoteModel(m.id);
+                            onSelected(m);
                             Navigator.pop(ctx);
                           },
                         );

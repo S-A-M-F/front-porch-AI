@@ -601,7 +601,7 @@ class RealismSectionState extends State<RealismSection> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Tracks hunger, bladder, energy, social, fun, hygiene, comfort. Affects AI prompts & behavior when low.',
+                        'Tracks satisfaction levels (hunger, bladder, energy, social, fun, hygiene, comfort). Higher = more sated / less urgent (100 = full, 0 = critical). Affects prompts & behavior when low.',
                         style: TextStyle(
                           color: AppColors.textTertiary(context),
                           fontSize: 10,

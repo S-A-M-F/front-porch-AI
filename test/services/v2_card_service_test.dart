@@ -66,6 +66,7 @@ void main() {
           emotionIntensity: 'strong',
           chaosModeEnabled: true,
           currentTask: 'Guard the gate',
+          stableId: 'v2-stable-test-id',
         ),
       );
 
@@ -82,6 +83,7 @@ void main() {
       expect(loaded.frontPorchExtensions!.timeOfDay, 'night');
       expect(loaded.frontPorchExtensions!.characterEmotion, 'happy');
       expect(loaded.frontPorchExtensions!.emotionIntensity, 'strong');
+      expect(loaded.frontPorchExtensions!.stableId, 'v2-stable-test-id');
       expect(loaded.frontPorchExtensions!.chaosModeEnabled, true);
       expect(loaded.frontPorchExtensions!.currentTask, 'Guard the gate');
     });

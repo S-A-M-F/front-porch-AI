@@ -1178,7 +1178,9 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
         _groupDayCount = (map['dayCount'] as num?)?.toInt() ?? 1;
       }
     }
-    _groupDayCountController = TextEditingController(text: _groupDayCount.toString());
+    _groupDayCountController = TextEditingController(
+      text: _groupDayCount.toString(),
+    );
 
     // Load immutable creation baseline seeds (only the allowed fields)
     _baselineSeeds.clear();
@@ -1189,10 +1191,14 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       final id = _getCharId(c);
 
       // Load per-member Director/Verifier settings (if present on the member's card ext)
-      _verificationEnabled[id] = c.frontPorchExtensions?.realismVerificationEnabled ?? false;
-      _verificationMaxReprocesses[id] = c.frontPorchExtensions?.realismVerificationMaxReprocesses ?? 1;
-      _verificationStrictness[id] = c.frontPorchExtensions?.realismVerificationStrictness ?? 3;
-      _needsDirectorAuthority[id] = c.frontPorchExtensions?.realismNeedsDirectorAuthority ?? false;
+      _verificationEnabled[id] =
+          c.frontPorchExtensions?.realismVerificationEnabled ?? false;
+      _verificationMaxReprocesses[id] =
+          c.frontPorchExtensions?.realismVerificationMaxReprocesses ?? 1;
+      _verificationStrictness[id] =
+          c.frontPorchExtensions?.realismVerificationStrictness ?? 3;
+      _needsDirectorAuthority[id] =
+          c.frontPorchExtensions?.realismNeedsDirectorAuthority ?? false;
 
       // Load editable realism baselines from baseline seed + card extensions.
       final seed = _baselineSeeds[id]!;
@@ -1200,7 +1206,8 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
       _editLongTermBond[id] = (seed['trust'] as num?)?.toInt() ?? 50;
       _editTrustLevel[id] = (seed['trust'] as num?)?.toInt() ?? 50;
       _editEmotion[id] = (seed['emotion'] as String?) ?? 'neutral';
-      _editEmotionIntensity[id] = (seed['emotionIntensity'] as String?) ?? 'moderate';
+      _editEmotionIntensity[id] =
+          (seed['emotionIntensity'] as String?) ?? 'moderate';
     }
   }
 
@@ -1213,6 +1220,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
             realismVerificationEnabled: value,
           );
+      char.frontPorchExtensions?.ensureStableId();
     });
 
     _persistMemberVerificationPref(id, 'verificationEnabled', value);
@@ -1226,6 +1234,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
             realismVerificationMaxReprocesses: value,
           );
+      char.frontPorchExtensions?.ensureStableId();
     });
 
     _persistMemberVerificationPref(id, 'verificationMaxReprocesses', value);
@@ -1239,6 +1248,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
             realismVerificationStrictness: value,
           );
+      char.frontPorchExtensions?.ensureStableId();
     });
 
     _persistMemberVerificationPref(id, 'verificationStrictness', value);
@@ -1252,6 +1262,7 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
             realismNeedsDirectorAuthority: value,
           );
+      char.frontPorchExtensions?.ensureStableId();
     });
 
     _persistMemberVerificationPref(id, 'needsDirectorAuthority', value);
@@ -1386,14 +1397,25 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     super.dispose();
   }
 
-  Widget _sliderRow(String label, int value, int min, int max, String tierName, Color color, ValueChanged<int> onChanged) {
+  Widget _sliderRow(
+    String label,
+    int value,
+    int min,
+    int max,
+    String tierName,
+    Color color,
+    ValueChanged<int> onChanged,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           SizedBox(
             width: 80,
-            child: Text(label, style: const TextStyle(fontSize: 10, color: Colors.white54)),
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: Colors.white54),
+            ),
           ),
           Expanded(
             child: SliderTheme(
@@ -1473,8 +1495,12 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
     final group = widget.chatService.activeGroup;
     if (group == null) return;
     try {
-      final map = group.defaultMemberRealismState.isNotEmpty && group.defaultMemberRealismState != '{}'
-          ? (jsonDecode(group.defaultMemberRealismState) as Map<String, dynamic>?) ?? {}
+      final map =
+          group.defaultMemberRealismState.isNotEmpty &&
+              group.defaultMemberRealismState != '{}'
+          ? (jsonDecode(group.defaultMemberRealismState)
+                    as Map<String, dynamic>?) ??
+                {}
           : <String, dynamic>{};
       map['timeOfDay'] = _groupTimeOfDay;
       map['dayCount'] = _groupDayCount;
@@ -1701,7 +1727,15 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                   // Time & Day (group-wide)
                   Row(
                     children: [
-                      Icon(Icons.schedule, size: 18, color: AppColors.resolve(context, Colors.lightBlueAccent, Colors.lightBlueAccent)),
+                      Icon(
+                        Icons.schedule,
+                        size: 18,
+                        color: AppColors.resolve(
+                          context,
+                          Colors.lightBlueAccent,
+                          Colors.lightBlueAccent,
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
@@ -1727,14 +1761,32 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                           initialValue: _groupTimeOfDay,
                           decoration: InputDecoration(
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             filled: true,
                             fillColor: AppColors.surfaceOf(context),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                           style: const TextStyle(fontSize: 12),
-                          items: ['morning', 'afternoon', 'evening', 'night'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 12)))).toList(),
-                          onChanged: (v) { if (v != null) _updateGroupTimeOfDay(v); },
+                          items: ['morning', 'afternoon', 'evening', 'night']
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(
+                                    e,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) _updateGroupTimeOfDay(v);
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1744,10 +1796,16 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                           decoration: InputDecoration(
                             hintText: 'Day',
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             filled: true,
                             fillColor: AppColors.surfaceOf(context),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                           style: const TextStyle(fontSize: 12),
                           keyboardType: TextInputType.number,
@@ -1971,27 +2029,86 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                             // Relationship
                             Row(
                               children: [
-                                Icon(Icons.favorite, size: 14, color: AppColors.resolve(context, Colors.pinkAccent, Colors.pinkAccent)),
+                                Icon(
+                                  Icons.favorite,
+                                  size: 14,
+                                  color: AppColors.resolve(
+                                    context,
+                                    Colors.pinkAccent,
+                                    Colors.pinkAccent,
+                                  ),
+                                ),
                                 const SizedBox(width: 6),
-                                Text('Relationship', style: TextStyle(fontSize: 11, color: AppColors.textPrimary(context))),
+                                Text(
+                                  'Relationship',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textPrimary(context),
+                                  ),
+                                ),
                               ],
                             ),
                             Container(
                               margin: const EdgeInsets.only(top: 4, bottom: 8),
                               child: Column(
                                 children: [
-                                  _sliderRow('Short-Term Bond', _editShortTermBond[_getCharId(char)] ?? 50, -300, 300, char.name, _charAccentColor(index), (v) => _updateEditShortTermBond(char, v.round())),
-                                  _sliderRow('Long-Term Bond', _editLongTermBond[_getCharId(char)] ?? 50, -300, 300, char.name, _charAccentColor(index), (v) => _updateEditLongTermBond(char, v.round())),
-                                  _sliderRow('Trust Level', _editTrustLevel[_getCharId(char)] ?? 50, -100, 100, char.name, _charAccentColor(index), (v) => _updateEditTrustLevel(char, v.round())),
+                                  _sliderRow(
+                                    'Short-Term Bond',
+                                    _editShortTermBond[_getCharId(char)] ?? 50,
+                                    -300,
+                                    300,
+                                    char.name,
+                                    _charAccentColor(index),
+                                    (v) => _updateEditShortTermBond(
+                                      char,
+                                      v.round(),
+                                    ),
+                                  ),
+                                  _sliderRow(
+                                    'Long-Term Bond',
+                                    _editLongTermBond[_getCharId(char)] ?? 50,
+                                    -300,
+                                    300,
+                                    char.name,
+                                    _charAccentColor(index),
+                                    (v) => _updateEditLongTermBond(
+                                      char,
+                                      v.round(),
+                                    ),
+                                  ),
+                                  _sliderRow(
+                                    'Trust Level',
+                                    _editTrustLevel[_getCharId(char)] ?? 50,
+                                    -100,
+                                    100,
+                                    char.name,
+                                    _charAccentColor(index),
+                                    (v) =>
+                                        _updateEditTrustLevel(char, v.round()),
+                                  ),
                                 ],
                               ),
                             ),
                             // Starting Emotion
                             Row(
                               children: [
-                                Icon(Icons.mood, size: 14, color: AppColors.resolve(context, Colors.amber, Colors.amber)),
+                                Icon(
+                                  Icons.mood,
+                                  size: 14,
+                                  color: AppColors.resolve(
+                                    context,
+                                    Colors.amber,
+                                    Colors.amber,
+                                  ),
+                                ),
                                 const SizedBox(width: 6),
-                                Text('Starting Emotion', style: TextStyle(fontSize: 11, color: AppColors.textPrimary(context))),
+                                Text(
+                                  'Starting Emotion',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textPrimary(context),
+                                  ),
+                                ),
                               ],
                             ),
                             Container(
@@ -2000,33 +2117,81 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                 children: [
                                   Expanded(
                                     child: TextField(
-                                      controller: _emotionControllers[_getCharId(char)] ??= TextEditingController(text: _editEmotion[_getCharId(char)] ?? 'neutral'),
+                                      controller:
+                                          _emotionControllers[_getCharId(
+                                            char,
+                                          )] ??= TextEditingController(
+                                            text:
+                                                _editEmotion[_getCharId(
+                                                  char,
+                                                )] ??
+                                                'neutral',
+                                          ),
                                       decoration: InputDecoration(
                                         hintText: 'emotion',
                                         isDense: true,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
                                         filled: true,
                                         fillColor: AppColors.surfaceOf(context),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
                                       ),
                                       style: const TextStyle(fontSize: 11),
-                                      onChanged: (v) => _updateEditEmotion(char, v),
+                                      onChanged: (v) =>
+                                          _updateEditEmotion(char, v),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: DropdownButtonFormField<String>(
-                                      initialValue: _editEmotionIntensity[_getCharId(char)] ?? 'moderate',
+                                      initialValue:
+                                          _editEmotionIntensity[_getCharId(
+                                            char,
+                                          )] ??
+                                          'moderate',
                                       decoration: InputDecoration(
                                         isDense: true,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
                                         filled: true,
                                         fillColor: AppColors.surfaceOf(context),
-                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
                                       ),
                                       style: const TextStyle(fontSize: 11),
-                                      items: ['calm', 'moderate', 'intense'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 11)))).toList(),
-                                      onChanged: (v) { if (v != null) _updateEditEmotionIntensity(char, v); },
+                                      items: ['calm', 'moderate', 'intense']
+                                          .map(
+                                            (e) => DropdownMenuItem(
+                                              value: e,
+                                              child: Text(
+                                                e,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (v) {
+                                        if (v != null) {
+                                          _updateEditEmotionIntensity(char, v);
+                                        }
+                                      },
                                     ),
                                   ),
                                 ],
@@ -2052,10 +2217,17 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                   height: 20,
                                   width: 20,
                                   child: Checkbox(
-                                    value: _verificationEnabled[_getCharId(char)] ?? false,
+                                    value:
+                                        _verificationEnabled[_getCharId(
+                                          char,
+                                        )] ??
+                                        false,
                                     onChanged: (v) {
                                       if (v != null) {
-                                        _updateMemberVerificationEnabled(char, v);
+                                        _updateMemberVerificationEnabled(
+                                          char,
+                                          v,
+                                        );
                                       }
                                     },
                                     materialTapTargetSize:
@@ -2067,13 +2239,17 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                             ),
                             // Compact sliders + authority toggle for the Director settings.
                             // Only shown when Director/Verifier is enabled for this member.
-                            if (_verificationEnabled[_getCharId(char)] ?? false) ...[
+                            if (_verificationEnabled[_getCharId(char)] ??
+                                false) ...[
                               const SizedBox(height: 2),
                               Row(
                                 children: [
                                   Text(
                                     'Max: ${_verificationMaxReprocesses[_getCharId(char)] ?? 1}',
-                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white54,
+                                    ),
                                   ),
                                   const SizedBox(width: 4),
                                   SizedBox(
@@ -2081,16 +2257,29 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                     child: SliderTheme(
                                       data: SliderTheme.of(context).copyWith(
                                         trackHeight: 2,
-                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-                                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 4,
+                                        ),
+                                        overlayShape:
+                                            const RoundSliderOverlayShape(
+                                              overlayRadius: 8,
+                                            ),
                                       ),
                                       child: Slider(
-                                        value: (_verificationMaxReprocesses[_getCharId(char)] ?? 1).toDouble(),
+                                        value:
+                                            (_verificationMaxReprocesses[_getCharId(
+                                                      char,
+                                                    )] ??
+                                                    1)
+                                                .toDouble(),
                                         min: 1,
                                         max: 5,
                                         divisions: 4,
                                         onChanged: (d) {
-                                          _updateMemberVerificationMaxReprocesses(char, d.round());
+                                          _updateMemberVerificationMaxReprocesses(
+                                            char,
+                                            d.round(),
+                                          );
                                         },
                                       ),
                                     ),
@@ -2098,7 +2287,10 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                   const SizedBox(width: 8),
                                   Text(
                                     'Strict: ${_verificationStrictness[_getCharId(char)] ?? 3}',
-                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white54,
+                                    ),
                                   ),
                                   const SizedBox(width: 4),
                                   SizedBox(
@@ -2106,15 +2298,25 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                     child: SliderTheme(
                                       data: SliderTheme.of(context).copyWith(
                                         trackHeight: 2,
-                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 4,
+                                        ),
                                       ),
                                       child: Slider(
-                                        value: (_verificationStrictness[_getCharId(char)] ?? 3).toDouble(),
+                                        value:
+                                            (_verificationStrictness[_getCharId(
+                                                      char,
+                                                    )] ??
+                                                    3)
+                                                .toDouble(),
                                         min: 1,
                                         max: 5,
                                         divisions: 4,
                                         onChanged: (d) {
-                                          _updateMemberVerificationStrictness(char, d.round());
+                                          _updateMemberVerificationStrictness(
+                                            char,
+                                            d.round(),
+                                          );
                                         },
                                       ),
                                     ),
@@ -2126,20 +2328,31 @@ class _RealismNeedsTabState extends State<_RealismNeedsTab> {
                                 children: [
                                   const Text(
                                     'Director authority (needs)',
-                                    style: TextStyle(fontSize: 10, color: Colors.white54),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white54,
+                                    ),
                                   ),
                                   const SizedBox(width: 4),
                                   SizedBox(
                                     height: 18,
                                     width: 18,
                                     child: Checkbox(
-                                      value: _needsDirectorAuthority[_getCharId(char)] ?? false,
+                                      value:
+                                          _needsDirectorAuthority[_getCharId(
+                                            char,
+                                          )] ??
+                                          false,
                                       onChanged: (v) {
                                         if (v != null) {
-                                          _updateMemberNeedsDirectorAuthority(char, v);
+                                          _updateMemberNeedsDirectorAuthority(
+                                            char,
+                                            v,
+                                          );
                                         }
                                       },
-                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                       visualDensity: VisualDensity.compact,
                                     ),
                                   ),
@@ -2272,7 +2485,8 @@ class _NeedsTabState extends State<_NeedsTab> {
 
       // Load per-member Director/Verifier settings.
       _verificationEnabled[id] = ext?.realismVerificationEnabled ?? false;
-      _verificationMaxReprocesses[id] = ext?.realismVerificationMaxReprocesses ?? 1;
+      _verificationMaxReprocesses[id] =
+          ext?.realismVerificationMaxReprocesses ?? 1;
       _verificationStrictness[id] = ext?.realismVerificationStrictness ?? 3;
       _needsDirectorAuthority[id] = ext?.realismNeedsDirectorAuthority ?? false;
     }
@@ -2291,22 +2505,20 @@ class _NeedsTabState extends State<_NeedsTab> {
 
   void _updateNeedsBaseline(String id, String field, int value) {
     setState(() {
-      _needsBaselines[id] = {
-        ...?_needsBaselines[id],
-        field: value,
-      };
+      _needsBaselines[id] = {...?_needsBaselines[id], field: value};
       final char = _findCharById(id);
       if (char != null) {
         char.frontPorchExtensions =
             (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-          needsBaselineHunger: _needsBaselines[id]?[_kHunger] ?? 80,
-          needsBaselineBladder: _needsBaselines[id]?[_kBladder] ?? 80,
-          needsBaselineEnergy: _needsBaselines[id]?[_kEnergy] ?? 80,
-          needsBaselineSocial: _needsBaselines[id]?[_kSocial] ?? 80,
-          needsBaselineFun: _needsBaselines[id]?[_kFun] ?? 80,
-          needsBaselineHygiene: _needsBaselines[id]?[_kHygiene] ?? 80,
-          needsBaselineComfort: _needsBaselines[id]?[_kComfort] ?? 80,
-        );
+              needsBaselineHunger: _needsBaselines[id]?[_kHunger] ?? 80,
+              needsBaselineBladder: _needsBaselines[id]?[_kBladder] ?? 80,
+              needsBaselineEnergy: _needsBaselines[id]?[_kEnergy] ?? 80,
+              needsBaselineSocial: _needsBaselines[id]?[_kSocial] ?? 80,
+              needsBaselineFun: _needsBaselines[id]?[_kFun] ?? 80,
+              needsBaselineHygiene: _needsBaselines[id]?[_kHygiene] ?? 80,
+              needsBaselineComfort: _needsBaselines[id]?[_kComfort] ?? 80,
+            );
+        char.frontPorchExtensions?.ensureStableId();
       }
     });
     _persistMemberNeedsPref(id, field, value);
@@ -2318,8 +2530,9 @@ class _NeedsTabState extends State<_NeedsTab> {
       _enjoysLowHygiene[id] = value;
       char.frontPorchExtensions =
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-        enjoysLowHygiene: value,
-      );
+            enjoysLowHygiene: value,
+          );
+        char.frontPorchExtensions?.ensureStableId();
     });
     _persistMemberVerificationPref(id, 'enjoysLowHygiene', value);
   }
@@ -2330,8 +2543,9 @@ class _NeedsTabState extends State<_NeedsTab> {
       _verificationMaxReprocesses[id] = value;
       char.frontPorchExtensions =
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-        realismVerificationMaxReprocesses: value,
-      );
+            realismVerificationMaxReprocesses: value,
+          );
+        char.frontPorchExtensions?.ensureStableId();
     });
     _persistMemberVerificationPref(id, 'maxReprocesses', value);
   }
@@ -2342,8 +2556,9 @@ class _NeedsTabState extends State<_NeedsTab> {
       _verificationStrictness[id] = value;
       char.frontPorchExtensions =
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-        realismVerificationStrictness: value,
-      );
+            realismVerificationStrictness: value,
+          );
+        char.frontPorchExtensions?.ensureStableId();
     });
     _persistMemberVerificationPref(id, 'strictness', value);
   }
@@ -2354,8 +2569,9 @@ class _NeedsTabState extends State<_NeedsTab> {
       _needsDirectorAuthority[id] = value;
       char.frontPorchExtensions =
           (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-        realismNeedsDirectorAuthority: value,
-      );
+            realismNeedsDirectorAuthority: value,
+          );
+        char.frontPorchExtensions?.ensureStableId();
     });
     _persistMemberVerificationPref(id, 'needsDirectorAuthority', value);
   }
@@ -2627,7 +2843,7 @@ class _NeedsTabState extends State<_NeedsTab> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Simulates hunger, bladder, energy, social, fun, hygiene, and comfort. Low needs influence AI behavior and prompt injections.',
+                    'Simulates need satisfaction (hunger, bladder, energy, social, fun, hygiene, comfort). Higher = more sated (100=full, 0=critical). Low values influence AI behavior and prompt injections.',
                     style: TextStyle(fontSize: 11, color: Colors.white54),
                   ),
                 ],
@@ -2907,17 +3123,16 @@ class _NeedsTabState extends State<_NeedsTab> {
                               child: SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
                                   trackHeight: 2,
-                                  thumbShape:
-                                      const RoundSliderThumbShape(
-                                          enabledThumbRadius: 4),
-                                  overlayShape:
-                                      const RoundSliderOverlayShape(
-                                          overlayRadius: 8),
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 4,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 8,
+                                  ),
                                 ),
                                 child: Slider(
-                                  value:
-                                      (_verificationMaxReprocesses[id] ?? 1)
-                                          .toDouble(),
+                                  value: (_verificationMaxReprocesses[id] ?? 1)
+                                      .toDouble(),
                                   min: 1,
                                   max: 5,
                                   divisions: 4,
@@ -2944,14 +3159,13 @@ class _NeedsTabState extends State<_NeedsTab> {
                               child: SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
                                   trackHeight: 2,
-                                  thumbShape:
-                                      const RoundSliderThumbShape(
-                                          enabledThumbRadius: 4),
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 4,
+                                  ),
                                 ),
                                 child: Slider(
-                                  value:
-                                      (_verificationStrictness[id] ?? 3)
-                                          .toDouble(),
+                                  value: (_verificationStrictness[id] ?? 3)
+                                      .toDouble(),
                                   min: 1,
                                   max: 5,
                                   divisions: 4,
@@ -2983,7 +3197,10 @@ class _NeedsTabState extends State<_NeedsTab> {
                                 value: _needsDirectorAuthority[id] ?? false,
                                 onChanged: (v) {
                                   if (v != null) {
-                                    _updateMemberNeedsDirectorAuthority(char, v);
+                                    _updateMemberNeedsDirectorAuthority(
+                                      char,
+                                      v,
+                                    );
                                   }
                                 },
                                 materialTapTargetSize:
@@ -3006,11 +3223,7 @@ class _NeedsTabState extends State<_NeedsTab> {
     );
   }
 
-  Widget _needsSlider(
-    String label,
-    int value,
-    ValueChanged<int> onChanged,
-  ) {
+  Widget _needsSlider(String label, int value, ValueChanged<int> onChanged) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

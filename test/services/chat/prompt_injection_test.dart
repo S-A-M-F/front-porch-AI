@@ -615,7 +615,7 @@ void main() {
           groupNeeds: gneeds,
         );
         final txt = b.buildNeedsInjection();
-        expect(txt, contains('Background State for G1'));
+        expect(txt, contains('Current Needs Status for G1'));
         // 1:1 path
         final ne2 = NeedsSimulation(
           onNotify: () {},

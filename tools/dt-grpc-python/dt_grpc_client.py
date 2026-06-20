@@ -196,8 +196,13 @@ def main():
                     lower = str(f).lower()
                     if any(k in lower for k in skip_keywords):
                         continue
-                    if str(f).endswith((".ckpt", ".safetensors", ".pt")):
-                        models.append(str(f))
+                    # Return anything that survived the skip list.
+                    # Draw Things Echo("models") can return bare names, full paths,
+                    # or names with various extensions (.safetensors, .ckpt, .pth, etc.).
+                    # We no longer require specific extensions here; the caller (UI)
+                    # presents them as the checkpoint picker. Over-filtering was
+                    # the main reason users saw an empty list after a successful Test.
+                    models.append(str(f))
                 print(json.dumps({"success": True, "models": models}), flush=True)
                 sys.exit(0)
             except Exception as e:

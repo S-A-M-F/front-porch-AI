@@ -17,11 +17,9 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:ui';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -35,8 +33,8 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
 
 // Specific dialogs and modules not covered by the barrels (or intentionally direct)
+import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/services/desktop_spell_check_service.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/edit_character_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/ui_settings_dialog.dart';
@@ -47,175 +45,12 @@ import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_objectives_dialog.dart';
-import 'package:front_porch_ai/ui/dialogs/image_gen_dialog.dart';
+// Old ImageGenDialog removed in Stage 3 (full from-scratch Image Studio).
+// Studio launched below; see lib/ui/image_studio/ and _showImageGenDialog.
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
 import 'package:front_porch_ai/ui/pages/fork_to_group_page.dart';
-
-class StyledTextController extends TextEditingController
-    implements SpellCheckResultsProvider {
-  static final _pattern = RegExp(r'("[^"]*")|(\*[^*]*\*)');
-
-  // Custom spell check cache (populated by the debounced spell runner).
-  String? _lastCheckedText;
-  final List<TextRange> _misspelledRanges = [];
-  final Map<int, List<String>> _suggestions = {};
-
-  void applySpellResults(String checkedText, List<SuggestionSpan> spans) {
-    _lastCheckedText = checkedText;
-    _misspelledRanges
-      ..clear()
-      ..addAll(spans.map((s) => s.range));
-    _misspelledRanges.sort((a, b) => a.start.compareTo(b.start));
-    _suggestions
-      ..clear()
-      ..addEntries(spans.map((s) => MapEntry(s.range.start, s.suggestions)));
-  }
-
-  void clearSpellResults() {
-    _lastCheckedText = null;
-    _misspelledRanges.clear();
-    _suggestions.clear();
-  }
-
-  @override
-  SpellCheckResults? get spellCheckResults {
-    if (_misspelledRanges.isEmpty || _lastCheckedText != text) return null;
-    return SpellCheckResults(
-      _lastCheckedText!,
-      _misspelledRanges.map((r) {
-        return SuggestionSpan(r, _suggestions[r.start] ?? <String>[]);
-      }).toList(),
-    );
-  }
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    final text = this.text;
-    final matches = _pattern.allMatches(text);
-    final useSpellCheck =
-        _lastCheckedText == text && _misspelledRanges.isNotEmpty;
-
-    // Build a list of (text, style, offset) for each colored segment.
-    final segments = <({String text, TextStyle? style, int offset})>[];
-    int lastEnd = 0;
-
-    void addSegment(String segText, TextStyle? segStyle, int segOffset) {
-      segments.add((text: segText, style: segStyle, offset: segOffset));
-    }
-
-    if (matches.isEmpty) {
-      addSegment(text, style, 0);
-    } else {
-      for (final match in matches) {
-        if (match.start > lastEnd) {
-          addSegment(text.substring(lastEnd, match.start), style, lastEnd);
-        }
-        final matchText = match.group(0)!;
-        if (matchText.startsWith('"')) {
-          addSegment(
-            matchText,
-            style?.copyWith(
-              color: AppColors.resolve(
-                context,
-                Colors.amberAccent,
-                const Color(0xFFB45309),
-              ),
-              fontWeight: FontWeight.w500,
-            ),
-            match.start,
-          );
-        } else {
-          addSegment(
-            matchText,
-            style?.copyWith(
-              color: AppColors.resolve(
-                context,
-                const Color(0xFF90CAF9),
-                const Color(0xFF1565C0),
-              ),
-            ),
-            match.start,
-          );
-        }
-        lastEnd = match.end;
-      }
-      if (lastEnd < text.length) {
-        addSegment(text.substring(lastEnd), style, lastEnd);
-      }
-    }
-
-    if (!useSpellCheck) {
-      return TextSpan(
-        children: segments
-            .map((s) => TextSpan(text: s.text, style: s.style))
-            .toList(),
-        style: style,
-      );
-    }
-
-    // Apply spell check: split colored segments at misspelled boundaries
-    // and add wavy red decoration to the intersecting portions while
-    // preserving each segment's base color.
-    const misspelledTextStyle = TextStyle(
-      decoration: TextDecoration.underline,
-      decorationColor: Colors.redAccent,
-      decorationStyle: TextDecorationStyle.wavy,
-    );
-
-    final children = <TextSpan>[];
-    for (final seg in segments) {
-      final spanStart = seg.offset;
-      final spanEnd = seg.offset + seg.text.length;
-
-      // Collect intersecting misspelled ranges in this segment.
-      final intersecting = <({int start, int end})>[];
-      for (final range in _misspelledRanges) {
-        final isectStart = range.start > spanStart ? range.start : spanStart;
-        final isectEnd = range.end < spanEnd ? range.end : spanEnd;
-        if (isectStart < isectEnd) {
-          intersecting.add((start: isectStart, end: isectEnd));
-        }
-      }
-
-      if (intersecting.isEmpty) {
-        children.add(TextSpan(text: seg.text, style: seg.style));
-        continue;
-      }
-
-      int splitAt = 0;
-      for (final isect in intersecting) {
-        final localStart = (isect.start - seg.offset).clamp(0, seg.text.length);
-        if (localStart > splitAt) {
-          children.add(
-            TextSpan(
-              text: seg.text.substring(splitAt, localStart),
-              style: seg.style,
-            ),
-          );
-        }
-        final localEnd = (isect.end - seg.offset).clamp(0, seg.text.length);
-        children.add(
-          TextSpan(
-            text: seg.text.substring(localStart, localEnd),
-            style: seg.style?.merge(misspelledTextStyle) ?? misspelledTextStyle,
-          ),
-        );
-        splitAt = localEnd;
-      }
-      if (splitAt < seg.text.length) {
-        children.add(
-          TextSpan(text: seg.text.substring(splitAt), style: seg.style),
-        );
-      }
-    }
-
-    return TextSpan(children: children, style: style);
-  }
-}
+// Stage 3 Image Studio (replaces old image_gen_dialog completely)
+import 'package:front_porch_ai/ui/image_studio/image_studio.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -225,7 +60,7 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final StyledTextController _controller = StyledTextController();
+  final StyledTextController _controller = StyledTextController(preset: StyledTextPreset.chat);
   final ScrollController _scrollController = ScrollController();
   late final FocusNode _chatFocusNode;
   bool _autoScroll = true;
@@ -237,8 +72,6 @@ class _ChatPageState extends State<ChatPage> {
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
   ChatService? _chatService;
-  final DesktopSpellCheckService _spellService = DesktopSpellCheckService();
-  Timer? _spellDebounce;
 
   // Slider drag tracking — store live value during drag, null on release
   double? _dragDirectorDelay;
@@ -276,9 +109,6 @@ class _ChatPageState extends State<ChatPage> {
         return KeyEventResult.ignored;
       },
     );
-
-    // Listen for custom spell check triggered by text changes.
-    _controller.addListener(_onComposerTextChanged);
 
     // Listen for TTS errors (e.g. ElevenLabs quota exceeded) and show a snackbar.
     final tts = Provider.of<TtsService>(context, listen: false);
@@ -376,8 +206,6 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
-    _spellDebounce?.cancel();
-    _controller.removeListener(_onComposerTextChanged);
     _ttsService?.removeListener(_onTtsChanged);
     _chatService?.removeListener(_onChatServiceChanged);
     _chatFocusNode.dispose();
@@ -394,60 +222,6 @@ class _ChatPageState extends State<ChatPage> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
-    }
-  }
-
-  void _onComposerTextChanged() {
-    _spellDebounce?.cancel();
-    _spellDebounce = Timer(const Duration(milliseconds: 300), _trySpellCheck);
-  }
-
-  bool _spellCheckInFlight = false;
-
-  void _trySpellCheck() {
-    if (!_spellCheckInFlight) {
-      _runCustomSpellCheck();
-    }
-    // If in-flight, the completion handler will auto-retry below.
-  }
-
-  Future<void> _runCustomSpellCheck() async {
-    if (_spellCheckInFlight) return;
-    _spellCheckInFlight = true;
-    final text = _controller.text;
-    try {
-      if (text.trim().isEmpty) {
-        _controller.clearSpellResults();
-        if (mounted) setState(() {});
-        return;
-      }
-      final locale = PlatformDispatcher.instance.locale;
-      final results = await _spellService.fetchSpellCheckSuggestions(
-        locale,
-        text,
-      );
-      if (!mounted) return;
-      if (text != _controller.text) return;
-      if (results != null && results.isNotEmpty) {
-        _controller.applySpellResults(text, results);
-      } else {
-        _controller.clearSpellResults();
-      }
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('Spell check error: $e');
-      _controller.clearSpellResults();
-      if (mounted) setState(() {});
-    } finally {
-      _spellCheckInFlight = false;
-      // If text changed during the request, schedule a retry.
-      if (_controller.text != text) {
-        _spellDebounce?.cancel();
-        _spellDebounce = Timer(
-          const Duration(milliseconds: 300),
-          _trySpellCheck,
-        );
-      }
     }
   }
 
@@ -2095,13 +1869,18 @@ class _ChatPageState extends State<ChatPage> {
   void _showImageGenDialog(
     BuildContext context,
     ChatService chatService,
-    ImageGenMode mode,
   ) async {
+    // Note: mode param removed (user spec: types are buttons inside Image Studio now; launcher is neutral).
+    // We launch with customPrompt as safe neutral starter; user taps a type button inside immediately.
+    // Special pre-dialog for "custom" removed (typing in the main prompt box + Craft covers it cleanly, no boiler).
+    // onAccept captured here is for legacy direct callers; studio _accept now uses _activeMode for side effects
+    // where possible (bg set, user avatar) via providers. Portrait set (needs full Character) kept for launch-time
+    // wiring if provided. Keep thin launcher + sync comments with studio show/ctor/_active, service, builder, ctx.
+
     final personaService = Provider.of<UserPersonaService>(
       context,
       listen: false,
     );
-    final storage = Provider.of<StorageService>(context, listen: false);
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
     final character = chatService.activeCharacter;
 
@@ -2124,144 +1903,129 @@ class _ChatPageState extends State<ChatPage> {
     List<String>? recentMessages;
     String? lastMessage;
     final messages = chatService.messages;
+
+    String _cleanImageSourceText(String text) {
+      if (text.isEmpty) return text;
+      // Remove think blocks (completed + unclosed tails) and "Auto-imported from character card: ..." lines
+      // so polluted card import junk and internal <think> never reach the Image Studio context, pills, or prompts.
+      // This directly addresses the original "Aerin" / "</think>" / raw thoughts garbage leaking into visualize.
+      text = text.replaceAll(
+        RegExp(r'<\/?think>.*?<\/think>', dotAll: true, caseSensitive: false),
+        '',
+      );
+      final idx = text.toLowerCase().lastIndexOf('<think>');
+      if (idx != -1) text = text.substring(0, idx);
+      text = text.replaceAll(
+        RegExp(r'<\/?think[^>]*>', caseSensitive: false),
+        '',
+      );
+      text = text.replaceAll(
+        RegExp(
+          r'Auto-imported from character card:.*?(?:\n|$)',
+          caseSensitive: false,
+        ),
+        '',
+      );
+      text = text.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+      return text;
+    }
+
     if (messages.isNotEmpty) {
-      lastMessage = messages.last.displayText;
+      // User spec: collect more (12) so the visualize slider (1-10) in studio has headroom. The N chosen
+      // is stripped of <think> in builder (simple, pre-generated msgs). Keep collection + studio slider + builder
+      // recent limit + service ctx + ImageGenContext in sync. (1:1/group via same public surface + speaker preference).
       recentMessages = messages.reversed
-          .take(5)
+          .take(12)
           .map((m) => m.displayText)
+          .where((m) => m.isNotEmpty)
+          .map(_cleanImageSourceText)
           .where((m) => m.isNotEmpty)
           .toList()
           .reversed
           .toList();
+
+      // For visualizeScene (N=1 is the spiritual successor to the removed "Message Illustration" / fromLastMessage
+      // mode), prefer the most recent *AI/non-user* turn's displayText as a strong narrative anchor.
+      // This ensures the visualization is based on the character's described action/scene/pose rather than
+      // the user's just-typed input (common when studio is opened immediately after user send).
+      // In normal 1:1 the absolute last is usually the AI response. Safe fallback to absolute last.
+      // Mirrors the currentSpeakerId preference (below) for group under non-observer. Keep in sync with
+      // ModeInfoCard, builder visualize handling, studio _ctx, service thin, and tests.
+      final userName = personaService.persona.name;
+      for (final m in messages.reversed) {
+        final txt = _cleanImageSourceText(m.displayText);
+        if (txt.isNotEmpty && m.sender != userName) {
+          lastMessage = txt;
+          break;
+        }
+      }
+      lastMessage ??= _cleanImageSourceText(messages.last.displayText);
     }
 
-    // For custom prompt, show a text input dialog first
-    String? customPrompt;
-    if (mode == ImageGenMode.customPrompt) {
-      final promptController = TextEditingController();
-      customPrompt = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surfaceOf(context),
-          title: const Row(
-            children: [
-              Icon(Icons.brush, color: Colors.purpleAccent),
-              SizedBox(width: 12),
-              Text(
-                'Custom Image Prompt',
-                style: TextStyle(color: Colors.white),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: 400,
-            child: AppTextField(
-              controller: promptController,
-              maxLines: 4,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Describe the image you want to generate...',
-                hintStyle: const TextStyle(color: Colors.white30),
-                filled: true,
-                fillColor: const Color(0xFF374151),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white54),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, promptController.text),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purpleAccent,
-              ),
-              child: const Text(
-                'Generate',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      );
-      if (customPrompt == null || customPrompt.trim().isEmpty) return;
-      customPrompt = customPrompt.trim();
+    // Stage 4: collect richer context from public ChatService surface for ImageStudio (expression from Realism/ExpressionClassifier,
+    // timeOfDay from TimeService, group non-observer + speaker id for correct char targeting in fromLast/visualize under impersonation).
+    // Keep collection + ImageStudio.show call + studio ctor/_ctx + service thins/_build + builder use "in sync".
+    // currentSpeakerId prefers the *most recent AI (non-user) sender* for illustration modes (fromLast/visualize) when in group
+    // (so "Focus on X" targets the character whose narrative is being illustrated, not the user if last turn was user).
+    // Iterate reversed; fall back safely. Qualifies 1:1 vs group dispatch (flag + speaker only relevant under non-obs group).
+    // No private _ methods touched in chat god; only public getters (currentExpressionLabel, timeService, isGroupMode, observerMode).
+    // Keep blocks in sync with ImageGenContext ctor, service _buildPromptContext (all 3 sites), studio _ctx + _craft, builder
+    // consumption (static + _generateSmartWith), workspace pills, and builder_test roundtrips/edges. (incomplete zeroing of
+    // secondary config on group/0-session/new-chat now complete — N/A for per-invocation stateless snapshot; see both
+    // startNew paths + setActiveGroup + load in chat_service for precedent).
+    final currentExpression = chatService.currentExpressionLabel;
+    final timeOfDay = chatService.timeService.timeOfDay;
+    final bool isGroupNonObserver =
+        chatService.isGroupMode && !chatService.observerMode;
+    String? currentSpeakerId;
+    if (isGroupNonObserver && messages.isNotEmpty) {
+      final userName = personaService.persona.name; // already obtained above
+      for (final m in messages.reversed) {
+        final s = m.sender;
+        if (s.isNotEmpty && s != userName) {
+          currentSpeakerId = s;
+          break;
+        }
+      }
     }
+    // lightingHint intentionally omitted at launch (timeOfDay primary from chatService.timeService; richer lightingHint
+    // support available via ctx for future callers). Stage 4 wiring complete for all declared fields
+    // (currentExpression/timeOfDay/isGroupNonObserver/currentSpeakerId + optional lightingHint); see _showImageGenDialog
+    // + ImageGenContext + service thins + builder.
 
     if (!context.mounted) return;
 
-    // Accept callback for avatar/background modes
+    // onAccept: for legacy direct launchers. For the new button-inside flow the studio _accept decides
+    // crop/saveAvatar vs bg set vs user avatar update based on the *chosen* _activeMode at accept time
+    // (using providers for storage/persona; portrait char set requires full object so limited here).
+    // Pass null for the neutral launch (custom starter); sides for special types work via internal studio logic or save.
     void Function(String path)? onAccept;
-    if (mode == ImageGenMode.characterPortrait && character != null) {
-      onAccept = (imagePath) async {
-        final charRepo = Provider.of<CharacterRepository>(
-          context,
-          listen: false,
-        );
-        await charRepo.setCharacterImagePath(character, imagePath);
 
-        // Highly likely redundant — updateCharacter() (called by
-        // setCharacterImagePath) already writes V2 data via
-        // V2CardService.saveCardAsPng().  Keeping for reference.
-        //
-        // try {
-        //   final v2Service = V2CardService();
-        //   final card = CharacterCard(
-        //     name: character.name,
-        //     description: character.description,
-        //     personality: character.personality,
-        //     scenario: character.scenario,
-        //     firstMessage: character.firstMessage,
-        //     mesExample: character.mesExample,
-        //     systemPrompt: character.systemPrompt,
-        //     postHistoryInstructions: character.postHistoryInstructions,
-        //     alternateGreetings: character.alternateGreetings,
-        //     tags: character.tags,
-        //   );
-        //   await v2Service.saveCardAsPng(card, imagePath, imagePath);
-        //   debugPrint('Embedded V2 card data into avatar: $imagePath');
-        // } catch (e) {
-        //   debugPrint('Failed to embed V2 card data: $e');
-        // }
-      };
-    } else if (mode == ImageGenMode.chatBackground) {
-      onAccept = (path) {
-        storage.setChatBackground(path);
-      };
-    } else if (mode == ImageGenMode.userAvatar) {
-      onAccept = (path) {
-        final updatedPersona = personaService.persona.copyWith(
-          avatarPath: path,
-        );
-        personaService.updatePersona(updatedPersona);
-      };
-    }
-
-    // Pass raw context to the dialog — it will use the LLM to craft the prompt
-    ImageGenDialog.show(
+    // Stage 3: launch the new from-scratch Image Studio (pre-gen editable workspace first-class).
+    // User spec: neutral open (custom as starter), types via internal buttons (popup removed), no pregen boilerplate,
+    // visualize uses slider N + think strip on craft, user box text + persona + char visual (no pers) + style to LLM.
+    // Re-uses collected raw context. No new private methods added to this surface (thin).
+    await ImageStudio.show(
       context,
-      mode: mode,
-      customPrompt: customPrompt,
+      mode: ImageGenMode.customPrompt,
+      customPrompt: null,
       lastMessage: lastMessage,
       characterName: character?.name,
       characterDescription: character?.description,
       characterPersonality: character?.personality,
-      scenario: character?.scenario,
-      worldInfo: worldInfo,
+      scenario: _cleanImageSourceText(character?.scenario ?? ''),
+      worldInfo: _cleanImageSourceText(worldInfo ?? ''),
       personaName: personaService.persona.name,
       personaText: personaService.persona.persona,
       recentMessages: recentMessages,
       llmService: llmService,
       onAccept: onAccept,
+      // Stage 4: pass collected richer fields (keep launch site + studio show/ctor/_ctx + service thins + builder + workspace pills in sync).
+      currentExpression: currentExpression,
+      timeOfDay: timeOfDay,
+      lightingHint: null,
+      isGroupNonObserver: isGroupNonObserver,
+      currentSpeakerId: currentSpeakerId,
     );
   }
 
@@ -2531,104 +2295,30 @@ class _ChatPageState extends State<ChatPage> {
                     ],
                   ),
 
-                  // Image Generation Menu
+                  // Image Generation (user spec): direct button (no PopupMenuButton<ImageGenMode>).
+                  // The 6 types are now buttons *inside* the Image Studio UI. Magic wand opens neutral studio
+                  // (starter mode custom; user picks type button immediately for clean UX). All assembly (incl.
+                  // visualize N slider + think strip + user box as instr + persona + char visual no pers + style)
+                  // handled inside on Craft. Keep launcher thin + "keep in sync" with studio show/ctor, service thins,
+                  // builder, ImageGenContext, ModeInfoCard, _show (now mode-less).
                   Consumer<StorageService>(
                     builder: (context, storage, _) {
                       if (!storage.imageGenEnabled) {
                         return const SizedBox.shrink();
                       }
-                      return PopupMenuButton<ImageGenMode>(
-                        icon: const Icon(
+                      return IconButton(
+                        icon: Icon(
                           Icons.auto_awesome,
-                          color: Colors.purpleAccent,
+                          color: AppColors.resolve(
+                            context,
+                            AppColors.formMasterAccent,
+                            AppColors.formMasterAccent,
+                          ),
                         ),
                         padding: EdgeInsets.zero,
-                        tooltip: 'Generate Image',
-                        onSelected: (mode) =>
-                            _showImageGenDialog(context, chatService, mode),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: ImageGenMode.customPrompt,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.brush,
-                                  size: 20,
-                                  color: Colors.purpleAccent,
-                                ),
-                                SizedBox(width: 12),
-                                Text('Custom Prompt'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: ImageGenMode.visualizeScene,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.landscape,
-                                  size: 20,
-                                  color: Colors.green,
-                                ),
-                                SizedBox(width: 12),
-                                Text('Visualize Scene'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: ImageGenMode.fromLastMessage,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.chat_bubble_outline,
-                                  size: 20,
-                                  color: Colors.blueAccent,
-                                ),
-                                SizedBox(width: 12),
-                                Text('From Last Message'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuDivider(),
-                          PopupMenuItem(
-                            value: ImageGenMode.characterPortrait,
-                            child: Row(
-                              children: [
-                                Icon(Icons.face, size: 20, color: Colors.amber),
-                                SizedBox(width: 12),
-                                Text('Character Portrait'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: ImageGenMode.chatBackground,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.wallpaper,
-                                  size: 20,
-                                  color: Colors.teal,
-                                ),
-                                SizedBox(width: 12),
-                                Text('Chat Background'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: ImageGenMode.userAvatar,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.person,
-                                  size: 20,
-                                  color: Colors.orange,
-                                ),
-                                SizedBox(width: 12),
-                                Text('User Avatar'),
-                              ],
-                            ),
-                          ),
-                        ],
+                        tooltip: 'Image Studio',
+                        onPressed: () =>
+                            _showImageGenDialog(context, chatService),
                       );
                     },
                   ),
@@ -2962,9 +2652,10 @@ class _ChatPageState extends State<ChatPage> {
       listen: false,
     ).persona.name;
     String replace(String text) {
-      return text
-          .replaceAll('{{char}}', character.name)
-          .replaceAll('{{user}}', userName);
+      return MacroResolver().resolve(
+        text,
+        MacroContext(userName: userName, characterName: character.name),
+      );
     }
 
     return Container(

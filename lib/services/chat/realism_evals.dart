@@ -164,6 +164,168 @@ class RealismEvals {
   })?
   verifyRealismOutput;
 
+  // Support for the "fire the 5 mains (parallel), then one director/verifier pass on the whole set"
+  // (user proposal to cut roundtrips on remote APIs when per-char realismVerificationEnabled is on).
+  // beginCollectForBatchedVerification() is called by god before the 4-eval Future.wait (only in !oneShot path).
+  // The evaluate* methods short-circuit their per-eval _verifyAndApply + parse when the flag is active,
+  // stashing raw + context into _pendingBatchEvals. finalize flips the flag off (god then pulls via
+  // getCollectedForBatch, runs verifyBatch on the god _realismVerifier for at most one combined critique,
+  // then applyBatchResults which does the per-kind parse/side-effects using corrected or original eff).
+  // The fast-path (flag off, the common case) is inside verifyBatch itself (returns accepted map of
+  // originals with zero LLM cost or captures); apply then drives the normal _parseAndApplyRelationshipDeltas
+  // etc. so bond/trust/arousal (Lust) chips, emotion, fixation, and autonomous objectives are produced exactly
+  // as the direct paths. Physical stays delegated; oneShot path stays single-eval for now.
+  bool _batchCollectActive = false;
+  final List<Map<String, dynamic>> _pendingBatchEvals = []; // kind, stripped, prompt, scene, injections (for batch director after mains)
+
+  void beginCollectForBatchedVerification() {
+    _batchCollectActive = true;
+    _pendingBatchEvals.clear();
+  }
+
+  Future<void> finalizeBatchedRealismVerifications() async {
+    _batchCollectActive = false;
+    // Do NOT clear _pendingBatchEvals here.
+    // God (chat_service) follows with:
+    //   final collected = _realismEvals.getCollectedForBatch();
+    //   if (collected.isNotEmpty) {
+    //     ... map to items ...
+    //     final batchRes = await _realismVerifier.verifyBatch(items);
+    //     await _realismEvals.applyBatchResults(batchRes);
+    //   }
+    // This is what feeds _parseAndApplyRelationshipDeltas (bond/trust/arousal deltas + pending
+    // for chips) and the emotional/narrative side effects for the !oneShot pre-response path.
+    // The previous unconditional clear here (plus wouldVerify early-out) caused collected to
+    // always be empty for the default 4-eval path, so the parse/apply never ran and bond/trust/lust
+    // delta chips stopped appearing (only the post-eval emotion_label synthesis remained).
+    // verifyBatch itself provides the cheap no-op (accepted originals, no LLM) when the per-char
+    // realismVerificationEnabled flag is off.
+  }
+
+  List<Map<String, dynamic>> getCollectedForBatch() => List<Map<String, dynamic>>.from(_pendingBatchEvals);
+
+  Future<void> applyBatchResults(Map<String, VerificationResult> results) async {
+    // Snapshot to survive any concurrent mutation and to allow apply to clear at end.
+    final pending = List<Map<String, dynamic>>.from(_pendingBatchEvals);
+    for (final p in pending) {
+      final kind = p['kind'] as String;
+      final raw = p['raw'] as String;
+      final eff = results[kind]?.correctedRaw ?? raw;
+      switch (kind) {
+        case 'relationship':
+          _parseAndApplyRelationshipDeltas(eff);
+          break;
+        case 'emotional_state':
+          await _applyEmotionalResults(eff);
+          break;
+        case 'narrative':
+          await _applyNarrativeResults(eff);
+          break;
+        case 'oneShot':
+          // Future-proof: oneShot path currently bypasses batch collection (god only begins
+          // collect in the !oneShot 4-eval branch), but if collected treat as combined.
+          _parseAndApplyRelationshipDeltas(eff);
+          await _applyEmotionalResults(eff);
+          await _applyNarrativeResults(eff);
+          // posture/fixation/objective/reason handled inside _applyNarrative + rel parse
+          break;
+        default:
+          break;
+      }
+    }
+    _pendingBatchEvals.clear();
+  }
+
+  /// Apply emotional scalar + arousal pending updates from a (possibly corrected) eval text.
+  /// Mirrors the direct-path logic after _verify in evaluateEmotionalStateCall so batch and
+  /// direct produce identical emotion/arousal side effects and chip metadata.
+  Future<void> _applyEmotionalResults(String text) async {
+    final emotionMatch = RegExp(
+      r'"emotion"\s*:\s*"([^"]+)"',
+    ).firstMatch(text);
+    if (emotionMatch != null) {
+      setCharacterEmotion(emotionMatch.group(1)!.toLowerCase().trim());
+    }
+
+    final intensityMatch = RegExp(
+      r'"emotion_intensity"\s*:\s*"([^"]+)"',
+    ).firstMatch(text);
+    if (intensityMatch != null) {
+      setEmotionIntensity(intensityMatch.group(1)!.toLowerCase().trim());
+    }
+
+    if (nsfwService.nsfwCooldownEnabled) {
+      final arDelta = extractJsonInt(text, 'arousal_delta');
+      if (arDelta != null) {
+        final arousalDelta = arDelta.clamp(
+          kMinArousalDelta,
+          kMaxArousalDelta,
+        );
+        nsfwService.setArousalLevel(
+          (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
+        );
+        if (arousalDelta != 0) {
+          var pending = getPendingRealismMetadata() ?? {};
+          pending['arousal_delta'] = arousalDelta;
+          setPendingRealismMetadata(pending);
+        }
+      }
+    }
+  }
+
+  /// Apply fixation update + autonomous objective proposal (if any) from a (possibly director-corrected)
+  /// narrative eval text. Extracted here so the batch apply path can reuse the exact same
+  /// side-effect logic (and dedup) without growing god or duplicating the json+regex fallbacks.
+  Future<void> _applyNarrativeResults(String text) async {
+    // Robust extraction (survives Director reprocess/correction which may reformat/partial JSON).
+    // Inline (no new named helper/method per rules for god; private here in leaf is fine).
+    // Parse JSON once (both keys live in the same payload) rather than twice.
+    String fixationRaw = '';
+    String objectiveRaw = '';
+    try {
+      final noFence = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
+      final si = noFence.indexOf('{');
+      final ei = noFence.lastIndexOf('}');
+      if (si >= 0 && ei > si) {
+        final obj = jsonDecode(noFence.substring(si, ei + 1));
+        if (obj is Map) {
+          if (obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
+          if (obj['proposed_objective'] != null) objectiveRaw = obj['proposed_objective'].toString().trim();
+        }
+      }
+    } catch (_) {}
+    if (fixationRaw.isEmpty) {
+      final m = RegExp('"fixation_topic"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
+      fixationRaw = m?.group(1)?.trim() ?? '';
+    }
+    relationshipService.updateFixationFromEvalResult(fixationRaw.isNotEmpty ? fixationRaw : '');
+
+    if (objectiveRaw.isEmpty) {
+      final m2 = RegExp('"proposed_objective"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
+      objectiveRaw = m2?.group(1)?.trim() ?? '';
+    }
+    if (objectiveRaw.toLowerCase() != 'none' && objectiveRaw.isNotEmpty) {
+      final active = getActiveObjectives();
+      final isDuplicate = active.any(
+        (o) => o.objective.toLowerCase() == objectiveRaw.toLowerCase(),
+      );
+      if (!isDuplicate) {
+        debugPrint(
+          '[Realism:Narrative] Autonomous objective proposed: $objectiveRaw',
+        );
+        // Pass autoGenerateTasks:true so the character's self-initiated goal gets
+        // concrete subtasks (making autonomous objectives feel like real pursuits
+        // with steps the character can accomplish).
+        // (thin delegation to god setObjective per plan for step9; full proposal logic here)
+        await setObjective(
+          objectiveRaw,
+          isPrimary: false,
+          autoGenerateTasks: true,
+        );
+      }
+    }
+  }
+
   // Messages for recent context in evals
   final List<ChatMessage> Function() getMessages;
 
@@ -239,6 +401,22 @@ class RealismEvals {
     Map<String, String>? injections,
   }) async {
     if (verifyRealismOutput == null) return textAfterStrip;
+
+    // Fast-path when the per-character "Director / Verifier" (realismVerificationEnabled) is off
+    // (the default). This skips expensive work that was previously done for every one of the
+    // 5 pre-response realism evals (and the post-gen needs impact): captureRealismState() (full
+    // scalar + needs vector + time snapshot), getMessages() list, frontPorchExtensions.toJson(),
+    // building the rich latent bundle, etc. The inner verifier also early-returns when disabled,
+    // but we avoid the call-site cost entirely. On remote APIs (e.g. nano-gpt) this keeps the
+    // "Realism Engine processing" phase for the 5 evals at the original speed. When the flag is
+    // on for a character (opt-in for higher-fidelity reviewed deltas), the full verification
+    // (rule checks + possible LLM critique + re-fire up to max reprocesses) still runs.
+    final char = getActiveCharacter();
+    final verifOn = (char?.frontPorchExtensions?.realismVerificationEnabled ?? false) &&
+        getRealismEnabled() &&
+        (getActiveGroup() == null || !getIsObserverMode());
+    if (!verifOn) return textAfterStrip;
+
     try {
       final vres = await verifyRealismOutput!(
         evalKind: evalKind,
@@ -442,7 +620,8 @@ class RealismEvals {
         '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
         '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
+        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason". '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism] Evaluating relationship dynamic...');
@@ -454,6 +633,19 @@ class RealismEvals {
 
       // Verifier (if wired and per-char enabled): receives full latent (prompt + pre + char + *all* injections at fire + scene + kind).
       // Effective text (original or corrected) used for parse/apply/side effects + metadata for chip.
+      if (_batchCollectActive) {
+        _pendingBatchEvals.add({
+          'kind': 'relationship',
+          'raw': text,
+          'prompt': prompt,
+          'scene': recent,
+          'injections': {'personality': personalityInjection},
+        });
+        // Defer verify + parse/apply (_parseAndApplyRelationshipDeltas for bond/trust/arousal chips) to the
+        // god post-mains batch (getCollected + verifyBatch + applyBatchResults). Direct path does it inline.
+        return;
+      }
+
       final effectiveText = await _verifyAndApply(
         evalKind: 'relationship',
         textAfterStrip: text,
@@ -541,7 +733,8 @@ class RealismEvals {
         '2. "emotion_intensity": mild, moderate, or strong\n'
         '$arousalInstr'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
+        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField. '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism] Evaluating emotional state...');
@@ -550,6 +743,22 @@ class RealismEvals {
 
       final searchText = stripThinkBlocks(raw);
       var text = searchText.isNotEmpty ? searchText : raw;
+
+      if (_batchCollectActive) {
+        _pendingBatchEvals.add({
+          'kind': 'emotional_state',
+          'raw': text,
+          'prompt': prompt,
+          'scene': recent,
+          'injections': {
+            'personality': personalityInjection,
+            'relationship': relationshipCtx,
+            'arousal': arousalField,
+            if (getExpressionEnabled()) 'emotion_constraint': '⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.',
+          },
+        });
+        return;
+      }
 
       final effectiveText = await _verifyAndApply(
         evalKind: 'emotional_state',
@@ -565,37 +774,7 @@ class RealismEvals {
       );
       text = effectiveText; // rebind (var allows)
 
-      final emotionMatch = RegExp(
-        r'"emotion"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (emotionMatch != null) {
-        setCharacterEmotion(emotionMatch.group(1)!.toLowerCase().trim());
-      }
-
-      final intensityMatch = RegExp(
-        r'"emotion_intensity"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      if (intensityMatch != null) {
-        setEmotionIntensity(intensityMatch.group(1)!.toLowerCase().trim());
-      }
-
-      if (nsfwService.nsfwCooldownEnabled) {
-        final arDelta = extractJsonInt(text, 'arousal_delta');
-        if (arDelta != null) {
-          final arousalDelta = arDelta.clamp(
-            kMinArousalDelta,
-            kMaxArousalDelta,
-          );
-          nsfwService.setArousalLevel(
-            (nsfwService.arousalLevel + arousalDelta).clamp(-100, 100),
-          );
-          if (arousalDelta != 0) {
-            var pending = getPendingRealismMetadata() ?? {};
-            pending['arousal_delta'] = arousalDelta;
-            setPendingRealismMetadata(pending);
-          }
-        }
-      }
+      await _applyEmotionalResults(text);
       debugPrint(
         '[Realism:Emotion] Emotion: ${getCharacterEmotion()} (${getEmotionIntensity()})',
       );
@@ -674,12 +853,24 @@ class RealismEvals {
         '$oPrompt'
         '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
+        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic". '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
       if (raw == null) return;
       var text = stripThinkBlocks(raw).isNotEmpty ? stripThinkBlocks(raw) : raw;
+      if (_batchCollectActive) {
+        _pendingBatchEvals.add({
+          'kind': 'narrative',
+          'raw': text,
+          'prompt': prompt,
+          'scene': recent,
+          'injections': {'objective_proposal': oPrompt},
+        });
+        return;
+      }
+
       final effectiveText = await _verifyAndApply(
         evalKind: 'narrative',
         textAfterStrip: text,
@@ -689,58 +880,7 @@ class RealismEvals {
       );
       text = effectiveText; // rebind for downstream (no other code change)
 
-      // Robust extraction (survives Director reprocess/correction which may reformat/partial JSON).
-      // Inline (no new named helper/method per rules). JSON attempt + fence strip + regex fallback.
-      String fixationRaw = '';
-      try {
-        final noFence = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
-        final si = noFence.indexOf('{');
-        final ei = noFence.lastIndexOf('}');
-        if (si >= 0 && ei > si) {
-          final obj = jsonDecode(noFence.substring(si, ei + 1));
-          if (obj is Map && obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
-        }
-      } catch (_) {}
-      if (fixationRaw.isEmpty) {
-        final m = RegExp('"fixation_topic"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
-        fixationRaw = m?.group(1)?.trim() ?? '';
-      }
-      relationshipService.updateFixationFromEvalResult(fixationRaw.isNotEmpty ? fixationRaw : '');
-
-      String objectiveRaw = '';
-      try {
-        final noFence2 = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
-        final si2 = noFence2.indexOf('{');
-        final ei2 = noFence2.lastIndexOf('}');
-        if (si2 >= 0 && ei2 > si2) {
-          final obj2 = jsonDecode(noFence2.substring(si2, ei2 + 1));
-          if (obj2 is Map && obj2['proposed_objective'] != null) objectiveRaw = obj2['proposed_objective'].toString().trim();
-        }
-      } catch (_) {}
-      if (objectiveRaw.isEmpty) {
-        final m2 = RegExp('"proposed_objective"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
-        objectiveRaw = m2?.group(1)?.trim() ?? '';
-      }
-      if (objectiveRaw.toLowerCase() != 'none' && objectiveRaw.isNotEmpty) {
-        final active = getActiveObjectives();
-        final isDuplicate = active.any(
-          (o) => o.objective.toLowerCase() == objectiveRaw.toLowerCase(),
-        );
-        if (!isDuplicate) {
-          debugPrint(
-            '[Realism:Narrative] Autonomous objective proposed: $objectiveRaw',
-          );
-          // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-          // concrete subtasks (making autonomous objectives feel like real pursuits
-          // with steps the character can accomplish).
-          // (thin delegation to god setObjective per plan for step9; full proposal logic here)
-          await setObjective(
-            objectiveRaw,
-            isPrimary: false,
-            autoGenerateTasks: true,
-          );
-        }
-      }
+      await _applyNarrativeResults(text);
     } catch (e) {
       debugPrint('[Realism:Narrative] Failed: $e');
     }
@@ -867,7 +1007,8 @@ class RealismEvals {
         '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
         '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object containing all fields above$arousalField.';
+        'Respond with ONLY a JSON object containing all fields above$arousalField. '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism:OneShot] Evaluating (fused call)...');
@@ -876,6 +1017,22 @@ class RealismEvals {
 
       final searchText = stripThinkBlocks(raw);
       final text = searchText.isNotEmpty ? searchText : raw;
+
+      if (_batchCollectActive) {
+        _pendingBatchEvals.add({
+          'kind': 'oneShot',
+          'raw': text,
+          'prompt': prompt,
+          'scene': recent,
+          'injections': {
+            'arousal': arousalInstr,
+            'objective': (primary != null ? '$objNum. ...' : '$objNum. ...'),
+            'fixation': '$fixNum. ...',
+            if (getExpressionEnabled()) 'emotion_constraint': '⚠ YOU MUST choose EXACTLY ONE of these labels: ${EmotionLabels.all.join(", ")}. No other words allowed.',
+          },
+        });
+        return;
+      }
 
       final effectiveText = await _verifyAndApply(
         evalKind: 'oneShot',

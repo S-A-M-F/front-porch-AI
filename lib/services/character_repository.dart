@@ -31,7 +31,6 @@ import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
-import 'package:image/image.dart' as img;
 
 class CharacterRepository extends ChangeNotifier {
   AppDatabase _db;
@@ -426,11 +425,15 @@ class CharacterRepository extends ChangeNotifier {
   }
 
   /// Internal helper that persists an already-parsed CharacterCard (from file or from
-  /// embedded group card data). Handles collision soft-delete, PNG copy, DB insert,
-  /// linked world creation, and in-memory list update.
+  /// embedded group card data). Handles collision detection (now by stableId when present,
+  /// falling back to name), update-in-place reuse of dbId+PNG for matching identity (so
+  /// sessions/chat history survive realism/needs edits), or fresh insert.
+  /// Only true non-matched name dups still get soft-deleted.
   ///
-  /// When [sourceFileForCopy] is provided we copy from that file. Otherwise we expect
-  /// [card.imagePath] to already point at a valid PNG we can copy (used by group import).
+  /// Ensures stableId is present before embedding via saveCardAsPng.
+  ///
+  /// When [sourceFileForCopy] is provided we use it as visual source for V2 embed.
+  /// Otherwise we expect [card.imagePath] ...
   Future<CharacterCard?> _persistImportedCharacterCard(
     CharacterCard card, {
     File? sourceFileForCopy,
@@ -445,10 +448,32 @@ class CharacterRepository extends ChangeNotifier {
         .replaceAll(RegExp(r'[^\w\s\-]'), '')
         .replaceAll(' ', '_');
 
-    // Collision handling (same logic as before)
+    // Collision handling: prefer stableId match (from PNG realism_engine) for identity
+    // preservation across edits/reimports; fallback to name for legacy cards.
+    // Refactored from always-nuke to update-in-place reuse of dbId for target match.
+    // Only non-target name dups (extra collisions) are soft-deleted + removed.
+    final incomingStable = card.frontPorchExtensions?.stableId;
+    CharacterCard? stableMatch;
     final cardName = card.name;
-    final existing = _characters.where((c) => c.name == cardName).toList();
-    for (final oldChar in existing) {
+    final nameMatches = _characters.where((c) => c.name == cardName).toList();
+    if (incomingStable != null && incomingStable.isNotEmpty) {
+      for (final c in _characters) {
+        if (c.frontPorchExtensions?.stableId == incomingStable) {
+          stableMatch = c;
+          break;
+        }
+      }
+    }
+    final target =
+        stableMatch ?? (nameMatches.isNotEmpty ? nameMatches.first : null);
+
+    // Soft-delete + remove ONLY non-target name collisions (true dups or old name-only)
+    // Note: stableMatch may have different .name than incoming (name drift); we still reuse
+    // its dbId via target and replace in list by dbId later. nameMatches snapshot + remove by ref is safe here.
+    for (final oldChar in nameMatches) {
+      if (target != null && oldChar.dbId == target.dbId) {
+        continue; // preserve the matched target; we will update it in place
+      }
       if (oldChar.dbId != null) {
         try {
           await _db.softDeleteCharacterById(oldChar.dbId!);
@@ -475,29 +500,39 @@ class CharacterRepository extends ChangeNotifier {
       _characters.remove(oldChar);
     }
 
+    // Ensure stableId is generated/carried before any save/embed (for new or update paths).
+    // (Harmless if later write fails; in-memory card gets identity, which is fine and matches plan.)
+    card.frontPorchExtensions ??= FrontPorchExtensions();
+    card.frontPorchExtensions!.ensureStableId();
+
     String destPath;
-    if (sourceFileForCopy != null) {
+    // For stable target match, prefer reusing the existing target's imagePath (overwrite in place)
+    // to avoid unnecessary filename churn on reimport of edited cards (e.g. realism settings).
+    // Fallback to fresh timestamped name for new entries or non-matches (historical).
+    if (target != null && target.imagePath != null) {
+      destPath = target.imagePath!;
+    } else if (sourceFileForCopy != null) {
       destPath =
           '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
-      await sourceFileForCopy.copy(destPath);
+      // Do NOT raw copy here; use v2 saveCardAsPng below to embed stable + FP data
+      // (pixels preserved by resolve logic inside saveCardAsPng using source).
     } else if (card.imagePath != null) {
       // Already have a file (e.g. from group card member extraction)
-      final src = File(card.imagePath!);
       destPath =
           '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
-      await src.copy(destPath);
     } else {
-      // No image at all — create a tiny placeholder
-      final placeholder = img.Image(width: 400, height: 600);
-      img.fill(placeholder, color: img.ColorRgb8(50, 50, 50));
+      // No image at all — create a tiny placeholder (will be overwritten by savePng)
       destPath =
           '${charDir.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.png';
-      await File(destPath).writeAsBytes(img.encodePng(placeholder));
     }
+
+    final v2Service = V2CardService();
+    final sourcePathForEmbed = sourceFileForCopy?.path ?? card.imagePath;
+    await v2Service.saveCardAsPng(card, destPath, sourcePathForEmbed);
 
     final destFile = File(destPath);
     if (!destFile.existsSync() || destFile.lengthSync() == 0) {
-      debugPrint('[Import] Copied file missing or empty: $destPath');
+      debugPrint('[Import] Written file missing or empty: $destPath');
     }
 
     card.imagePath = destPath;
@@ -506,27 +541,64 @@ class CharacterRepository extends ChangeNotifier {
         ? _toBasename(card.imagePath!)
         : null;
 
-    final dbId = await _db.insertCharacterReturningId(
-      CharactersCompanion(
-        name: Value(card.name),
-        description: Value(card.description),
-        personality: Value(card.personality),
-        scenario: Value(card.scenario),
-        firstMessage: Value(card.firstMessage),
-        mesExample: Value(card.mesExample),
-        systemPrompt: Value(card.systemPrompt),
-        postHistoryInstructions: Value(card.postHistoryInstructions),
-        alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
-        tags: Value(jsonEncode(card.tags)),
-        imagePath: Value(dbImagePath),
-        ttsVoice: Value(card.ttsVoice),
-        lorebook: Value(
-          card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
+    if (target != null) {
+      // Update-in-place for stable or name match: reuse dbId (prevents data loss)
+      // Delete old PNG only if its basename differs from the (new) dest we wrote.
+      if (target.imagePath != null) {
+        final oldBase = _toBasename(target.imagePath!);
+        final newBase = _toBasename(destPath);
+        if (oldBase != newBase) {
+          try {
+            final oldFile = File(target.imagePath!);
+            if (await oldFile.exists()) {
+              await oldFile.delete();
+              debugPrint(
+                '[Import] Deleted previous PNG for matched identity ' +
+                    card.name +
+                    ' (old=' +
+                    oldBase +
+                    ')',
+              );
+            }
+          } catch (e) {
+            debugPrint(
+              '[Import] Could not delete previous PNG on reimport: $e',
+            );
+          }
+        }
+      }
+      card.dbId = target.dbId;
+
+      // Reuse updateCharacter for the DB update (exact companion + updatedAt) + list replace.
+      // (png already embedded above via saveCardAsPng for stable; update will re-embed same, harmless).
+      // This eliminates the inlined companion duplication. Minor: double notify/_isLoading possible in import context but semantics/observables unchanged.
+      await updateCharacter(card);
+    } else {
+      // No match: fresh insert path (original behavior)
+      final dbId = await _db.insertCharacterReturningId(
+        CharactersCompanion(
+          name: Value(card.name),
+          description: Value(card.description),
+          personality: Value(card.personality),
+          scenario: Value(card.scenario),
+          firstMessage: Value(card.firstMessage),
+          mesExample: Value(card.mesExample),
+          systemPrompt: Value(card.systemPrompt),
+          postHistoryInstructions: Value(card.postHistoryInstructions),
+          alternateGreetings: Value(jsonEncode(card.alternateGreetings)),
+          tags: Value(jsonEncode(card.tags)),
+          imagePath: Value(dbImagePath),
+          ttsVoice: Value(card.ttsVoice),
+          lorebook: Value(
+            card.lorebook != null ? jsonEncode(card.lorebook!.toJson()) : null,
+          ),
+          worldNames: Value(jsonEncode(card.worldNames)),
         ),
-        worldNames: Value(jsonEncode(card.worldNames)),
-      ),
-    );
-    card.dbId = dbId;
+      );
+      card.dbId = dbId;
+
+      _characters.add(card);
+    }
 
     if (card.lorebook != null &&
         card.lorebook!.entries.isNotEmpty &&
@@ -541,7 +613,8 @@ class CharacterRepository extends ChangeNotifier {
       await worldRepo.saveWorld(world);
     }
 
-    _characters.add(card);
+    // Note: list management (add or replace) happens inside the target/!target branches above
+    // so that we reuse dbId for matches without duplication.
     return card;
   }
 
@@ -610,6 +683,9 @@ class CharacterRepository extends ChangeNotifier {
           ? card.imagePath!
           : _resolveImagePath(card.imagePath!);
       card.imagePath = fsPath;
+
+      // Ensure stableId before embedding (carries for existing, generates for legacy on touch).
+      card.frontPorchExtensions?.ensureStableId();
 
       // Overwrite the existing file with updated data (now using a guaranteed
       // absolute path that lands in the correct Characters/ directory).
@@ -717,6 +793,12 @@ class CharacterRepository extends ChangeNotifier {
             ? Map<String, dynamic>.from(card.rawExtensions!)
             : null,
       );
+
+      // Force a fresh stableId for the duplicate (new library identity + independent history).
+      // CopyWith would have carried source's; explicit new UUID here per plan.
+      if (clonedCard.frontPorchExtensions != null) {
+        clonedCard.frontPorchExtensions!.stableId = const Uuid().v4();
+      }
 
       // Handle image file duplication if exists (generalized target)
       if (card.imagePath != null) {

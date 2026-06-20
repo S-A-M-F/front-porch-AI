@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
@@ -69,8 +70,15 @@ class SetupStep extends StatelessWidget {
                           await llmProvider.setActiveBackend(
                             BackendType.kobold,
                           );
-                          // scan would be called via state if wired
-                          // state.scanLocalModels(...); but service passed from caller in full
+                          // Trigger scan (was never wired) + notify so Kobold model list appears
+                          // and the conditional picker UI switches. This was the root of the
+                          // "KoboldCpp model picker completely broken" bug.
+                          final storage = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
+                          state.scanLocalModels(storage);
+                          state.notify();
                         }
                       },
                     ),
@@ -86,6 +94,7 @@ class SetupStep extends StatelessWidget {
                           await llmProvider.setActiveBackend(
                             BackendType.pseudoRemote,
                           );
+                          state.notify(); // ensure section switches in wizard UI
                         }
                       },
                     ),
@@ -136,55 +145,134 @@ class SetupStep extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              // Model selection (full lift from pre-extraction _buildSetupStep, bound to state, using passed services in onTap via Provider for fidelity)
+              // Model selection — both Kobold (local) and remote/oMLX now use the *exact same*
+              // tappable selector field + searchable dialog (the one the user liked for API/oMLX).
+              // This reuses the existing model picker UX for local .gguf files too.
               if (isKobold) ...[
                 _inputLabel(context, 'Local Model (.gguf)', required: false),
                 const SizedBox(height: 8),
-                // List of local .gguf (lifted)
-                if (state.localModels.isNotEmpty)
-                  ...state.localModels.map((f) {
-                    final path = f.path;
-                    final isSel = state.selectedLocalModelPath == path;
-                    return ListTile(
-                      title: Text(
-                        p.basename(path),
-                        style: TextStyle(color: AppColors.textPrimary(context)),
+                // Identical styled picker field as remote/oMLX
+                InkWell(
+                  onTap: () async {
+                    final storage = Provider.of<StorageService>(context, listen: false);
+                    state.scanLocalModels(storage);
+                    final modelManager = Provider.of<ModelManager>(context, listen: false);
+                    await modelManager.refreshModels();
+
+                    final models = modelManager.models.isNotEmpty
+                        ? modelManager.models
+                        : state.localModels;
+
+                    if (context.mounted) {
+                      // Always open the searchable picker (even if currently empty) so the user
+                      // sees the familiar search UI and can understand the state.
+                      showGenericModelSearchDialog<FileSystemEntity>(
+                        context,
+                        models,
+                        title: 'Select Local Model',
+                        getTitle: (f) => p.basename(f.path),
+                        getSubtitle: (f) => f.path,
+                        onSelected: (f) {
+                          state.selectedLocalModelPath = f.path;
+                          storage.setLastUsedModelPath(f.path);
+                          state.notify();
+                        },
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerOf(context),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.borderOf(context),
                       ),
-                      selected: isSel,
-                      onTap: () {
-                        state.selectedLocalModelPath = path;
-                        state.notify();
-                      },
-                    );
-                  })
-                else
-                  Text(
-                    'No local models found. Scan or place .gguf in models dir.',
-                    style: TextStyle(color: AppColors.textTertiary(context)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Model',
+                                style: TextStyle(
+                                  color: AppColors.textTertiary(context),
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                state.selectedLocalModelPath.isEmpty
+                                    ? 'Tap to select a model...'
+                                    : p.basename(state.selectedLocalModelPath),
+                                style: TextStyle(
+                                  color: state.selectedLocalModelPath.isEmpty
+                                      ? AppColors.textTertiary(context)
+                                      : AppColors.textPrimary(context),
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down,
+                          color: AppColors.iconSecondary(context),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
                 const SizedBox(height: 8),
                 ElevatedButton(
-                  onPressed: () {
-                    final llm = Provider.of<LLMProvider>(
-                      context,
-                      listen: false,
-                    );
-                    final storage = Provider.of<StorageService>(
-                      context,
-                      listen: false,
-                    );
-                    state.reloadKoboldWithModel(
-                      state.selectedLocalModelPath,
-                      llm,
-                      storage,
-                    );
-                  },
+                  onPressed: state.selectedLocalModelPath.isEmpty
+                      ? null
+                      : () {
+                          final llm = Provider.of<LLMProvider>(
+                            context,
+                            listen: false,
+                          );
+                          final storage = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
+                          state.reloadKoboldWithModel(
+                            state.selectedLocalModelPath,
+                            llm,
+                            storage,
+                          );
+                        },
                   child: const Text('Reload Kobold with selected model'),
                 ),
+                if (state.koboldStatus.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    state.koboldStatus,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: state.koboldStatus.toLowerCase().contains('error')
+                          ? Colors.redAccent
+                          : AppColors.textSecondary(context),
+                    ),
+                  ),
+                ],
               ] else ...[
-                _inputLabel(context, 'Remote Model', required: false),
+                // Restored the original nice searchable model picker for API (remote) and oMLX.
+                _inputLabel(
+                  context,
+                  activeBackend == BackendType.omlx ? 'oMLX Model' : 'Remote Model',
+                  required: false,
+                ),
                 const SizedBox(height: 8),
-                // Tappable chip that opens the model picker (same as backend settings)
+                // Tappable chip/field that opens the searchable model picker dialog (same as before)
                 InkWell(
                   onTap: () async {
                     final llm = Provider.of<LLMProvider>(context, listen: false);
@@ -195,13 +283,26 @@ class SetupStep extends StatelessWidget {
                       await state.loadAvailableModels(llm);
                     }
 
-                    // Show the model picker dialog
+                    // Show the (searchable) model picker dialog
                     if (context.mounted && state.availableModels.isNotEmpty) {
                       showModelSearchDialog(
                         context,
                         storage,
                         state.availableModels.cast<RemoteModelInfo>(),
                       );
+                      // Sync creator display state after user picks (dialog writes storage directly).
+                      Future.delayed(const Duration(milliseconds: 350), () {
+                        if (context.mounted) {
+                          final s = Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          );
+                          if (s.remoteModelName.isNotEmpty) {
+                            state.selectedModelId = s.remoteModelName;
+                            state.notify();
+                          }
+                        }
+                      });
                     }
                   },
                   borderRadius: BorderRadius.circular(8),

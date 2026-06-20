@@ -19,6 +19,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
@@ -129,6 +130,7 @@ class SummaryService {
   final bool Function() isMemoryOperational;
   final Future<List<String>> Function() getMemorySourceIds;
   final Future<List<String>> Function(List<String>) getAllContentForCharacters;
+  final MacroResolver Function() getMacroResolver;
 
   SummaryService({
     required this.getLlmService,
@@ -150,6 +152,7 @@ class SummaryService {
     required this.isMemoryOperational,
     required this.getMemorySourceIds,
     required this.getAllContentForCharacters,
+    required this.getMacroResolver,
   });
 
   /// Generate a summary of the chat history using the active LLM (full impl
@@ -167,10 +170,15 @@ class SummaryService {
           getActiveCharacter()?.name ?? getActiveGroup()?.name ?? 'Character';
 
       // Build the summary prompt with macro replacement
-      final summaryPromptTemplate = getSummaryPrompt()
-          .replaceAll('{{words}}', getSummaryMaxWords().toString())
-          .replaceAll('{{user}}', userName)
-          .replaceAll('{{char}}', charName);
+      final macroResolver = getMacroResolver();
+      final summaryPromptTemplate = macroResolver.resolve(
+        getSummaryPrompt(),
+        MacroContext(
+          userName: userName,
+          characterName: charName,
+          summaryMaxWords: getSummaryMaxWords(),
+        ),
+      );
 
       // Build a condensed chat history for the summary request
       final historyLines = <String>[];

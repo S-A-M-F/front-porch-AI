@@ -23,7 +23,6 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/dialogs/tts_settings_dialog.dart';
-import 'package:front_porch_ai/ui/dialogs/image_gen_settings_dialog.dart';
 import 'package:front_porch_ai/ui/settings/widgets/section_header.dart';
 
 /// Voice & Media tab extracted from settings_page god file (Stage 5).
@@ -907,92 +906,6 @@ class VoiceMediaTab extends StatelessWidget {
                 ],
               ],
             ),
-          ),
-
-          const SizedBox(height: 24),
-          const SectionHeader('Image Generation'),
-          const SizedBox(height: 8),
-          Consumer<StorageService>(
-            builder: (context, storage, _) {
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.cardOf(context),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          storage.imageGenEnabled
-                              ? Icons.auto_awesome
-                              : Icons.auto_awesome_outlined,
-                          color: storage.imageGenEnabled
-                              ? AppColors
-                                    .presetColors[6] // teal-ish from preset (no new literal)
-                              : AppColors.textTertiary(context),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'AI Image Generation',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                storage.imageGenEnabled
-                                    ? 'Enabled — Model: ${storage.imageGenModel.isEmpty ? "Not set" : storage.imageGenModel}'
-                                    : 'Disabled',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary(context),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: storage.imageGenEnabled,
-                          onChanged: (val) => storage.setImageGenEnabled(val),
-                          activeTrackColor: AppColors.presetColors[6],
-                        ),
-                      ],
-                    ),
-                    if (storage.imageGenEnabled) ...[
-                      Divider(
-                        color: AppColors.borderOf(
-                          context,
-                        ).withValues(alpha: 0.3),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: ElevatedButton.icon(
-                          onPressed: () => showDialog(
-                            context: context,
-                            builder: (_) => ImageGenSettingsDialog(),
-                          ),
-                          icon: const Icon(Icons.settings, size: 16),
-                          label: const Text('Configure Image Gen'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.presetColors[6],
-                            foregroundColor: AppColors.textPrimary(context),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
           ),
 
           const SizedBox(height: 24),

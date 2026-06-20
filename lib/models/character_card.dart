@@ -18,14 +18,21 @@
 
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 /// Front Porch AI V2.5 extensions — stored inside V2 `extensions.front_porch`.
 ///
 /// These values seed the Realism Engine's initial state when a new
 /// conversation is started with a character. Existing sessions use their
 /// own DB-persisted state and are not affected.
+///
+/// stableId (inside realism_engine) provides a persistent identity across
+/// PNG rewrites/reimports so that library dbId and chat history are never lost
+/// on realism/needs edits (import path now updates in place for stable matches).
+
 class FrontPorchExtensions {
   bool realismEnabled;
   int shortTermBond; // -300 to 300
@@ -97,6 +104,14 @@ class FrontPorchExtensions {
 
   String currentTask; // initial quest/task for the character
 
+  /// Stable identity UUID for this logical character.
+  /// Carried inside the PNG (under extensions.front_porch.realism_engine.stable_id).
+  /// Generated once per library entry (on create/import/touch); used to match on
+  /// re-import (e.g. after realism/needs edits) so that dbId + sessions are preserved.
+  /// Legacy cards without it get one injected on first save/import.
+  /// Duplicates get fresh stableId. Never changes for an existing library character.
+  String? stableId;
+
   FrontPorchExtensions({
     this.realismEnabled = false,
     this.shortTermBond = 0,
@@ -158,12 +173,14 @@ class FrontPorchExtensions {
     this.chatFontFamily,
 
     this.currentTask = '',
+    this.stableId,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'version': '2.5',
       'realism_engine': {
+        'stable_id': stableId,
         'enabled': realismEnabled,
         'short_term_bond': shortTermBond,
         'long_term_bond': longTermBond,
@@ -221,6 +238,7 @@ class FrontPorchExtensions {
   factory FrontPorchExtensions.fromJson(Map<String, dynamic> json) {
     final realism = json['realism_engine'] as Map<String, dynamic>? ?? {};
     return FrontPorchExtensions(
+      stableId: realism['stable_id'] as String?,
       realismEnabled: realism['enabled'] as bool? ?? false,
       shortTermBond: realism['short_term_bond'] as int? ?? 0,
       longTermBond: realism['long_term_bond'] as int? ?? 0,
@@ -334,6 +352,7 @@ class FrontPorchExtensions {
     String? chatFontFamily,
 
     String? currentTask,
+    String? stableId,
   }) {
     return FrontPorchExtensions(
       realismEnabled: realismEnabled ?? this.realismEnabled,
@@ -387,7 +406,20 @@ class FrontPorchExtensions {
       chatFontFamily: chatFontFamily ?? this.chatFontFamily,
 
       currentTask: currentTask ?? this.currentTask,
+      stableId: stableId ?? this.stableId,
     );
+  }
+
+  static final Uuid _uuid = Uuid();
+
+  /// Ensures this extensions object has a non-empty stableId.
+  /// Generates a fresh v4 UUID only if missing or empty.
+  /// Call this on any FP object right before a saveCardAsPng / persist that will embed it
+  /// (creation, realism edits, import collision update-in-place, duplicate gets fresh instead).
+  void ensureStableId() {
+    if (stableId == null || stableId!.isEmpty) {
+      stableId = _uuid.v4();
+    }
   }
 }
 
@@ -482,11 +514,10 @@ class CharacterCard {
   }
 
   String replacePlaceholders(String text, {String userName = 'You'}) {
-    return text
-        .replaceAll(RegExp(r'\{\{char\}\}', caseSensitive: false), name)
-        .replaceAll(RegExp(r'<char>', caseSensitive: false), name)
-        .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
-        .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
+    return MacroResolver().resolve(
+      text,
+      MacroContext(userName: userName, characterName: name),
+    );
   }
 
   String get formattedDescription => replacePlaceholders(description);

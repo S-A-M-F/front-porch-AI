@@ -32,8 +32,8 @@ import 'package:front_porch_ai/services/llm_service.dart';
 /// docs/refactoring-guide.md table and CLAUDE.md Critical Services / Path Map).
 /// Fact extraction is user-global (learnedFacts live in _userPersonaService.persona),
 /// but rejection context (current + group char names) and trigger timing are
-/// chat-specific. Extraction trigger (cadence via _userMessagesSinceLastPeriodicEval
-/// + autoPersonaEnabled/Interval guard in _maybeRunPeriodicEvals) + call site in
+/// chat-specific. Extraction trigger (dedicated god-owned _userMessagesSinceLastPeriodicEval
+/// counter vs autoPersonaInterval + enabled guard in _maybeRunPeriodicEvals) + call site in
 /// _runPeriodicEvalsInSequence stay thin/coordinated in god ("thin delegation here;
 /// full fact extraction in step 13"). The _isExtractingFacts flag (transient guard)
 /// is god-owned (like _isSummaryGenerating); leaf clears it via cb in finally +

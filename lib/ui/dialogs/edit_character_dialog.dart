@@ -32,6 +32,7 @@ import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 
 // Specific dialogs not in barrels
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 class EditCharacterDialog extends StatefulWidget {
@@ -46,14 +47,14 @@ class EditCharacterDialog extends StatefulWidget {
 class _EditCharacterDialogState extends State<EditCharacterDialog>
     with SingleTickerProviderStateMixin {
   late TextEditingController _nameController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _personalityController;
-  late TextEditingController _scenarioController;
-  late TextEditingController _firstMessageController;
-  late TextEditingController _exampleDialoguesController;
-  late TextEditingController _systemPromptController;
-  late TextEditingController _postHistoryController;
-  List<TextEditingController> _altGreetingControllers = [];
+  late StyledTextController _descriptionController;
+  late StyledTextController _personalityController;
+  late StyledTextController _scenarioController;
+  late StyledTextController _firstMessageController;
+  late StyledTextController _exampleDialoguesController;
+  late StyledTextController _systemPromptController;
+  late StyledTextController _postHistoryController;
+  List<StyledTextController> _altGreetingControllers = [];
 
   late TabController _tabController;
   List<LorebookEntry> _loreEntries = [];
@@ -65,7 +66,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   int _realismVerificationMaxReprocesses = 1;
   int _realismVerificationStrictness = 3;
   bool _realismNeedsDirectorAuthority = false;
-  int _needsSimStrength = 1; // 1-5. Injected to first model call (+ Director when authority on) so they emit at the requested magnitude. Numbers returned by (Director-corrected) call are applied directly; no second multiply on top of already-scaled deltas.
+  int _needsSimStrength =
+      1; // 1-5. Injected to first model call (+ Director when authority on) so they emit at the requested magnitude. Numbers returned by (Director-corrected) call are applied directly; no second multiply on top of already-scaled deltas.
 
   // Needs Simulation state
   bool _needsSimEnabled = false;
@@ -93,30 +95,37 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.character.name);
-    _descriptionController = TextEditingController(
+    _descriptionController = StyledTextController(
       text: widget.character.description,
+      preset: StyledTextPreset.macros,
     );
-    _personalityController = TextEditingController(
+    _personalityController = StyledTextController(
       text: widget.character.personality,
+      preset: StyledTextPreset.macros,
     );
-    _scenarioController = TextEditingController(
+    _scenarioController = StyledTextController(
       text: widget.character.scenario,
+      preset: StyledTextPreset.macros,
     );
-    _firstMessageController = TextEditingController(
+    _firstMessageController = StyledTextController(
       text: widget.character.firstMessage,
+      preset: StyledTextPreset.prose,
     );
-    _exampleDialoguesController = TextEditingController(
+    _exampleDialoguesController = StyledTextController(
       text: widget.character.mesExample,
+      preset: StyledTextPreset.prose,
     );
-    _systemPromptController = TextEditingController(
+    _systemPromptController = StyledTextController(
       text: widget.character.systemPrompt,
+      preset: StyledTextPreset.macros,
     );
-    _postHistoryController = TextEditingController(
+    _postHistoryController = StyledTextController(
       text: widget.character.postHistoryInstructions,
+      preset: StyledTextPreset.macros,
     );
 
     _altGreetingControllers = widget.character.alternateGreetings
-        .map((g) => TextEditingController(text: g))
+        .map((g) => StyledTextController(text: g, preset: StyledTextPreset.prose))
         .toList();
 
     if (widget.character.lorebook != null) {
@@ -242,95 +251,6 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  void _openExpandedEditor(
-    String title,
-    TextEditingController controller, {
-    String? hintText,
-  }) {
-    final expandedController = TextEditingController(text: controller.text);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        backgroundColor: AppColors.surfaceOf(ctx),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SizedBox(
-          width: double.infinity,
-          height: double.infinity,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.edit_note,
-                      color: AppColors.iconSecondary(ctx),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: AppColors.textPrimary(ctx),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('Done'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.greenAccent,
-                      ),
-                      onPressed: () {
-                        controller.text = expandedController.text;
-                        Navigator.pop(ctx);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: AppColors.borderOf(ctx)),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: AppTextField(
-                    controller: expandedController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: TextStyle(
-                      color: AppColors.textPrimary(ctx),
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: hintText,
-                      hintStyle: TextStyle(color: AppColors.textSecondary(ctx)),
-                      filled: true,
-                      fillColor: AppColors.surfaceContainerOf(ctx),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.blueAccent),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _saveCharacter() async {
     // Update model
     widget.character.name = _nameController.text;
@@ -406,10 +326,11 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  void _addLoreEntry() {
-    setState(() {
-      _loreEntries.add(LorebookEntry(key: 'New Key', content: 'New Content'));
-    });
+  Future<void> _addLoreEntry() async {
+    final result = await showLorebookEntryDialog(context: context);
+    if (result != null) {
+      setState(() => _loreEntries.add(result));
+    }
   }
 
   void _removeLoreEntry(int index) {
@@ -482,204 +403,16 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
   }
 
-  void _editLoreEntry(int index) {
+  Future<void> _editLoreEntry(int index) async {
     final entry = _loreEntries[index];
-    final keyController = TextEditingController(text: entry.key);
-    final contentController = TextEditingController(text: entry.content);
-    final nameController = TextEditingController(text: entry.name);
-    bool isConstant = entry.constant;
-    int stickyDepth = entry.stickyDepth;
-
-    showDialog(
+    final result = await showLorebookEntryDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            backgroundColor: AppColors.cardOf(context),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Row(
-              children: [
-                const Icon(Icons.menu_book, color: Colors.blueAccent, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Edit Lorebook Entry',
-                  style: TextStyle(color: AppColors.textPrimary(context)),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isConstant
-                            ? Colors.amberAccent.withValues(alpha: 0.3)
-                            : Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.push_pin,
-                          size: 16,
-                          color: isConstant
-                              ? Colors.amberAccent
-                              : Colors.white38,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Always Active',
-                          style: TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
-                        const Spacer(),
-                        Switch(
-                          value: isConstant,
-                          onChanged: (val) =>
-                              setStateDialog(() => isConstant = val),
-                          activeTrackColor: Colors.amberAccent.withValues(
-                            alpha: 0.5,
-                          ),
-                          activeThumbColor: Colors.amberAccent,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isConstant) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.layers,
-                          size: 14,
-                          color: Colors.white38,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Trigger Depth: $stickyDepth ${stickyDepth == 1 ? "message" : "messages"}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SliderTheme(
-                      data: SliderThemeData(
-                        activeTrackColor: Colors.blueAccent,
-                        inactiveTrackColor: Colors.white12,
-                        thumbColor: Colors.blueAccent,
-                        trackHeight: 3,
-                      ),
-                      child: Slider(
-                        value: stickyDepth.toDouble(),
-                        min: 1,
-                        max: 100,
-                        divisions: 99,
-                        label: stickyDepth.toString(),
-                        onChanged: (val) =>
-                            setStateDialog(() => stickyDepth = val.toInt()),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: nameController,
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    decoration: InputDecoration(
-                      labelText: 'Name (optional)',
-                      filled: true,
-                      fillColor: AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: keyController,
-                    enabled: !isConstant,
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    decoration: InputDecoration(
-                      labelText: isConstant
-                          ? 'Keywords (Disabled — Always Active)'
-                          : 'Keywords (comma separated)',
-                      filled: true,
-                      fillColor: isConstant
-                          ? AppColors.surfaceContainerOf(
-                              context,
-                            ).withValues(alpha: 0.5)
-                          : AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: contentController,
-                    maxLines: 5,
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    decoration: InputDecoration(
-                      labelText: 'Content',
-                      filled: true,
-                      fillColor: AppColors.surfaceContainerOf(context),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  keyController.dispose();
-                  contentController.dispose();
-                  nameController.dispose();
-                  Navigator.pop(context);
-                },
-                style: TextButton.styleFrom(foregroundColor: Colors.white38),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    entry.name = nameController.text;
-                    entry.key = keyController.text;
-                    entry.content = contentController.text;
-                    entry.constant = isConstant;
-                    entry.stickyDepth = stickyDepth;
-                  });
-                  keyController.dispose();
-                  contentController.dispose();
-                  nameController.dispose();
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
+      existing: entry,
+      showEnabled: true,
     );
+    if (result != null) {
+      setState(() => _loreEntries[index] = result);
+    }
   }
 
   @override
@@ -897,7 +630,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                 ),
                 onPressed: () {
                   setState(() {
-                    _altGreetingControllers.add(TextEditingController());
+                    _altGreetingControllers.add(
+                      StyledTextController(preset: StyledTextPreset.prose),
+                    );
                   });
                 },
               ),
@@ -1255,7 +990,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     },
                   ),
                   const SizedBox(height: 16),
-                  Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
+                  Divider(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                  ),
                   const SizedBox(height: 12),
                   // Enjoys low hygiene
                   RealismFormSection.buildToggleRow(
@@ -1271,7 +1008,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                     context: context,
                   ),
                   const SizedBox(height: 16),
-                  Divider(color: AppColors.borderOf(context).withValues(alpha: 0.4)),
+                  Divider(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                  ),
                   const SizedBox(height: 12),
                   // Needs delta strength
                   Text(
@@ -1606,6 +1345,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
+          width: 1.5,
           color: entry.constant
               ? Colors.amberAccent.withValues(alpha: 0.3)
               : entry.enabled
@@ -1679,16 +1419,21 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   ),
                 ),
               const SizedBox(width: 4),
-              Switch(
-                value: entry.enabled,
-                onChanged: (val) {
-                  setState(() {
-                    entry.enabled = val;
-                  });
-                },
-                activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
-                activeThumbColor: Colors.blueAccent,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              Tooltip(
+                message: entry.enabled
+                    ? 'Disable — entry won\'t be matched'
+                    : 'Enable — entry will match on its keys',
+                child: Switch(
+                  value: entry.enabled,
+                  onChanged: (val) {
+                    setState(() {
+                      entry.enabled = val;
+                    });
+                  },
+                  activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
+                  activeThumbColor: Colors.blueAccent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
               IconButton(
                 onPressed: () => _editLoreEntry(index),
@@ -1831,8 +1576,12 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
             if (expandable) ...[
               const SizedBox(width: 6),
               InkWell(
-                onTap: () =>
-                    _openExpandedEditor(label, controller, hintText: hintText),
+                onTap: () => showExpandedEditorDialog(
+                  context: context,
+                  title: label,
+                  controller: controller,
+                  hintText: hintText ?? '',
+                ),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
                   padding: const EdgeInsets.all(2),
@@ -1898,7 +1647,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
         SliderTheme(
           data: SliderThemeData(
             activeTrackColor: AppColors.formMasterAccent,
-            inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.3),
+            inactiveTrackColor: AppColors.borderOf(
+              context,
+            ).withValues(alpha: 0.3),
             thumbColor: AppColors.formMasterAccent,
             trackHeight: 3,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
@@ -1949,7 +1700,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   Text(
                     'Decay Rate / Turn',
                     style: TextStyle(
-                      color: AppColors.textSecondary(context).withValues(alpha: 0.7),
+                      color: AppColors.textSecondary(
+                        context,
+                      ).withValues(alpha: 0.7),
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1958,7 +1711,9 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
                   Text(
                     decayDescription,
                     style: TextStyle(
-                      color: AppColors.textSecondary(context).withValues(alpha: 0.7),
+                      color: AppColors.textSecondary(
+                        context,
+                      ).withValues(alpha: 0.7),
                       fontSize: 10,
                     ),
                   ),
@@ -1966,12 +1721,20 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
               ),
               SliderTheme(
                 data: SliderThemeData(
-                  activeTrackColor: AppColors.formMasterAccent.withValues(alpha: 0.5),
-                  inactiveTrackColor: AppColors.borderOf(context).withValues(alpha: 0.15),
+                  activeTrackColor: AppColors.formMasterAccent.withValues(
+                    alpha: 0.5,
+                  ),
+                  inactiveTrackColor: AppColors.borderOf(
+                    context,
+                  ).withValues(alpha: 0.15),
                   thumbColor: AppColors.formMasterAccent.withValues(alpha: 0.7),
                   trackHeight: 2,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 5,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 10,
+                  ),
                 ),
                 child: Slider(
                   value: decayValue.toDouble(),
@@ -2018,6 +1781,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     }
 
     widget.character.frontPorchExtensions = extensions;
+    extensions.ensureStableId();
 
     // Save to PNG so changes persist
     try {
@@ -2058,6 +1822,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     extensions.needsSimStrength = _needsSimStrength;
 
     widget.character.frontPorchExtensions = extensions;
+    extensions.ensureStableId();
 
     // Save to PNG so changes persist (same as colors)
     try {
@@ -2109,6 +1874,7 @@ class _EditCharacterDialogState extends State<EditCharacterDialog>
     extensions.needsDecayComfort = _needsDecayComfort;
 
     widget.character.frontPorchExtensions = extensions;
+    extensions.ensureStableId();
 
     // Save to PNG so changes persist (same as colors)
     try {

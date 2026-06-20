@@ -695,6 +695,55 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getDouble('image_gen_lora_weight'), 1.0);
     });
+
+    test('setImageGenSteps persists', () async {
+      final svc = await createStorageService();
+      await svc.setImageGenSteps(30);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('image_gen_steps'), 30);
+    });
+
+    test('setImageGenCfgScale persists', () async {
+      final svc = await createStorageService();
+      await svc.setImageGenCfgScale(9.5);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getDouble('image_gen_cfg_scale'), 9.5);
+    });
+
+    test('setImageGenSampler persists', () async {
+      final svc = await createStorageService();
+      await svc.setImageGenSampler('DPM++ 2M');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('image_gen_sampler'), 'DPM++ 2M');
+    });
+
+    test('setImageGenSeed persists', () async {
+      final svc = await createStorageService();
+      await svc.setImageGenSeed(12345);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('image_gen_seed'), 12345);
+    });
+
+    test('drawThings gRPC settings persist', () async {
+      final svc = await createStorageService();
+      await svc.setDrawThingsGrpcHost('10.0.0.5');
+      await svc.setDrawThingsGrpcPort(7860);
+      await svc.setDrawThingsSampler(5);
+      await svc.setDrawThingsShift(2.5);
+      await svc.setDrawThingsStrength(0.8);
+      await svc.setDrawThingsSeedMode(1);
+      await svc.setDrawThingsTeaCache(true);
+      await svc.setDrawThingsCfgZeroStar(true);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('draw_things_grpc_host'), '10.0.0.5');
+      expect(prefs.getInt('draw_things_grpc_port'), 7860);
+      expect(prefs.getInt('draw_things_sampler'), 5);
+      expect(prefs.getDouble('draw_things_shift'), 2.5);
+      expect(prefs.getDouble('draw_things_strength'), 0.8);
+      expect(prefs.getInt('draw_things_seed_mode'), 1);
+      expect(prefs.getBool('draw_things_tea_cache'), true);
+      expect(prefs.getBool('draw_things_cfg_zero_star'), true);
+    });
   });
 
   // ─── Web Server Settings ──────────────────────────────────────────
