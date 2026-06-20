@@ -28,40 +28,51 @@ If you use it, a star would mean a lot to the developer.
 
 ---
 
-## 🆕 What's New in v0.9.9
+## 🆕 What's New in v0.9.9.1
 
-v0.9.9 is the largest update Front Porch AI has ever shipped. Virtually every system in the app has been improved, hardened, or expanded. Here are the highlights.
+v0.9.9.1 adds powerful new tools and makes the Realism Engine and group features far more reliable and usable.
 
-**👥 Group Chat — Fully Grown Up**
+**🎨 Image Studio – First-Class Experience**
 
-- **Fork-to-Group Wizard** — "Fork to Group Chat" is now a smooth step-by-step wizard instead of a cramped popup. Pick who joins, drag to set the order they enter, name the group, set the scene, then give each newcomer an optional entrance: **Opening line** (your text used verbatim, no AI) or **Direction** (the AI writes their entrance in-voice from your notes) — or leave it blank for a silent join.
-- **Group settings completely redesigned** — a dedicated **Needs** tab holds all per-character needs baselines and the Director/Verifier controls. The **Realism** tab now includes editable bond, trust, emotion, and time-of-day starting values for every member. Changes persist as group defaults for all future sessions.
-- **Group Realism Engine hardened** — per-speaker needs vectors, scene impact rewards, decay, sidebar cards, and bond/trust display all persist and sync correctly across turns. Zero-delta chips are suppressed so the UI stays clean.
+- Full integrated studio (no more popups or separate dialogs). Buttons for Visualize Scene, Character Portrait, Chat Background, Custom, etc.
+- Configure everything inside: models/LoRAs, style, negative, steps, CFG, advanced DT settings.
+- Visualize Scene now uses an N-slider to pull the most recent chat messages so images actually match what's happening right now.
+- Prompts start clean with proper visual descriptions (no boilerplate).
+- Fixed Draw Things model picker to a proper dropdown with refresh.
 
-**🧠 Needs Simulation — New & Improved**
+**🧠 Realism Engine & Needs – Dramatically More Reliable**
 
-- **Needs are now a full simulation** — Hunger, Bladder, Energy, Social, Fun, Hygiene, and Comfort tick down over time and are boosted by activities. Characters react appropriately (complain, struggle, seek relief) when levels hit noticeable or critical thresholds.
-- **Per-character custom decay rates** — adjust how quickly each need drops for each character right from the group settings Needs tab.
-- **Manual Needs Reprocessing** — a new "Manual Reprocess" button below the Needs chips lets you force the Director/Verifier to recalculate scene impacts with your own critique (e.g. "She ate a granola bar"). Look for the "✓ Director corrected (manual)" pill when it's done.
-- **Per-character baseline needs on new chats** — starting Needs values are now properly seeded from the character's saved defaults instead of always starting at 80.
+- Bond, Trust, and Lust deltas now consistently appear in chips and reflect actual changes.
+- Manual Needs Reprocess is safe and non-destructive (survives regens, handles empty model responses, works in groups).
+- Group chats now correctly track per-speaker needs, decay, scene rewards (fun, hygiene, etc.), and sidebar/cards.
+- Larger positive impacts from strong scenes (+100 possible). Characters give earlier natural hints about needs.
+- Dedicated Needs tab in group settings + editable per-character realism baselines (bond, trust, emotion, time).
+- Fixed missing needs reactions, double-firing post-gen checks, state bleed on new chats/forks/imports.
 
-**🎭 Realism Engine — Major Maturation**
+**🧬 Character Evolution**
 
-- **Character objectives reliably generate subtasks** — when the engine proposes a personal goal, it now consistently auto-generates 3 concrete tasks. Thinking/reasoning models get 2,000-token breathing room for objective and task checks.
-- **Character Evolution hardened** — the evolution pipeline now handles models that return raw prose instead of JSON, models that echo the personality text back, truncated JSON, and nested `{{char}}` macros — salvaging the result in all cases.
-- **Realism Engine prompt overhauls** — bond, trust, fixation, and emotion evaluations are more accurate, more personality-aware, and more stable across local and remote models.
-- **Needs now feed into roleplay** — restored full injection prompts so characters' internal state (hunger, exhaustion, etc.) colors their responses.
+- Now respects your exact "Evolve every N messages" setting with its own counter (works in groups too).
 
-**📤 Export User Personas (SillyTavern-compatible)**
+**👤 Character Creator & Home**
 
-You can now export your User Personas as fully SillyTavern-compliant JSON. Export all at once or pick specific personas — learned facts are included so nothing is lost when moving to another machine.
+- Local KoboldCpp model picker now fully works with the same clean searchable UI as remote backends.
+- Home folders show 2×2 character previews. Refresh button for external imports.
 
-**✨ UI & Quality of Life**
+**✨ Editor & Prompting Improvements**
 
-- **Home screen refresh button** — re-scan for new character files without leaving the page.
-- **Database Cleanup Tool** — detect and purge orphaned records left behind by deleted characters or stale group sessions.
-- **Sidebar Needs display** — Needs chips, zero-delta suppression, and the Director corrected pill all display in the sidebar during group chats.
-- **Fresh-start hygiene** — new chats, forks, and imported characters no longer bleed needs, fixation, relationship, or state from previous sessions.
+- Live syntax highlighting (amber dialogue, actions, teal {{macros}}) + spellcheck in all editors with no typing lag.
+- Fullscreen editor preserves colors, highlighting, and spellcheck.
+- SillyTavern-style macros now work inside cards, scenarios, and lorebooks: {{random}}, {{pick}}, {{roll}}, {{time}}/{{date}}/{{weekday}}, comments, {{newline}}, {{space}}, and escaping.
+- Unified lorebook editor across the whole app with quick enable/disable toggles (disabled entries don't inject).
+
+**📤 Other Polish & Fixes**
+
+- Export User Personas as full SillyTavern-compatible JSON (with learned facts).
+- Fixed Windows maximized window ghosting.
+- Database Cleanup Tool for orphaned records.
+- Many group, needs, and stability fixes for a much smoother experience.
+
+See `docs/Rawhide.md` for the detailed development notes that feed the update dialog.
 
 > **Note for contributors & AI agents**: User-facing notes for the update dialog live in `docs/Rawhide.md`. Update it for any user-visible work.
 
