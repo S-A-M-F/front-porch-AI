@@ -1460,6 +1460,24 @@ class CharacterCardGrid extends StatelessWidget {
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
+                      PopupMenuItem(
+                        value: 'export_json',
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.data_object,
+                            color: AppColors.iconSecondary(context),
+                            size: 20,
+                          ),
+                          title: Text(
+                            'Export JSON',
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
                       if (activeFolderId != null)
                         const PopupMenuItem(
                           value: 'remove_folder',
