@@ -21,8 +21,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/services/kobold_binary_version.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/update_service.dart';
 
 class BackendManager extends ChangeNotifier {
   final StorageService _storageService;
@@ -130,7 +132,13 @@ class BackendManager extends ChangeNotifier {
       _localVersion = v.version;
       _localSize = v.size;
     }
-    checkForUpdates();
+    if (UpdateService.isSupported) {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('update_auto_check') ?? true) {
+        checkForUpdates();
+      }
+    }
+    // Portable builds: auto-check skipped (manual button still works)
   }
 
   Future<void> checkBackendAvailability() async {
@@ -388,7 +396,13 @@ class BackendManager extends ChangeNotifier {
       print('AG_DEBUG: Checking backend availability...');
       await Future.delayed(const Duration(milliseconds: 500)); // Brief pause
       await checkBackendAvailability();
-      checkForUpdates();
+    if (UpdateService.isSupported) {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('update_auto_check') ?? true) {
+        checkForUpdates();
+      }
+    }
+    // Portable builds: auto-check skipped (manual button still works)
       print('AG_DEBUG: Backend check complete. Status: $_statusMessage');
     } catch (e, stack) {
       _isDownloading = false;

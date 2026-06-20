@@ -350,6 +350,12 @@ class AppTextField extends StatelessWidget {
     if (spellCheckConfiguration != null) return spellCheckConfiguration;
     // Never enable on obscured fields (passwords etc.)
     if (obscureText) return null;
+    // Controllers that implement SpellCheckResultsProvider handle their own
+    // custom spell check pipeline (e.g. StyledTextController), so disable
+    // the built-in one to avoid conflicts in buildTextSpan().
+    if (controller is SpellCheckResultsProvider) {
+      return SpellCheckConfiguration.disabled();
+    }
     return platformSpellCheck();
   }
 

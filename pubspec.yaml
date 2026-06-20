@@ -65,6 +65,7 @@ dependencies:
   html: ^0.15.6
   syncfusion_flutter_pdf: ^33.1.46
   flex_color_picker: ^3.8.0
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:

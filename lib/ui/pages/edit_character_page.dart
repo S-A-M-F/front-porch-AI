@@ -23,7 +23,8 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:front_porch_ai/ui/dialogs/character_avatars_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
-import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
@@ -32,6 +33,7 @@ import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/v2_card_service.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 
@@ -57,21 +59,21 @@ class EditCharacterPage extends StatefulWidget {
 class _EditCharacterPageState extends State<EditCharacterPage>
     with SingleTickerProviderStateMixin {
   late TextEditingController _nameController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _personalityController;
-  late TextEditingController _scenarioController;
-  late TextEditingController _firstMessageController;
-  late TextEditingController _mesExampleController;
-  late TextEditingController _systemPromptController;
-  late TextEditingController _postHistoryController;
+  late StyledTextController _descriptionController;
+  late StyledTextController _personalityController;
+  late StyledTextController _scenarioController;
+  late StyledTextController _firstMessageController;
+  late StyledTextController _mesExampleController;
+  late StyledTextController _systemPromptController;
+  late StyledTextController _postHistoryController;
 
   late TabController _tabController;
   List<LorebookEntry> _loreEntries = [];
   List<String> _selectedWorldNames = [];
-  List<TextEditingController> _altGreetingControllers = [];
+  List<StyledTextController> _altGreetingControllers = [];
   List<String> _tags = [];
   final _tagController = TextEditingController();
-  int _estimatedTokens = 0;
+  final ValueNotifier<int> _tokenNotifier = ValueNotifier<int>(0);
   String? _newAvatarPath;
 
   // ── Realism Engine state ──
@@ -118,26 +120,33 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.character.name);
-    _descriptionController = TextEditingController(
+    _descriptionController = StyledTextController(
       text: widget.character.description,
+      preset: StyledTextPreset.macros,
     );
-    _personalityController = TextEditingController(
+    _personalityController = StyledTextController(
       text: widget.character.personality,
+      preset: StyledTextPreset.macros,
     );
-    _scenarioController = TextEditingController(
+    _scenarioController = StyledTextController(
       text: widget.character.scenario,
+      preset: StyledTextPreset.macros,
     );
-    _firstMessageController = TextEditingController(
+    _firstMessageController = StyledTextController(
       text: widget.character.firstMessage,
+      preset: StyledTextPreset.prose,
     );
-    _mesExampleController = TextEditingController(
+    _mesExampleController = StyledTextController(
       text: widget.character.mesExample,
+      preset: StyledTextPreset.prose,
     );
-    _systemPromptController = TextEditingController(
+    _systemPromptController = StyledTextController(
       text: widget.character.systemPrompt,
+      preset: StyledTextPreset.macros,
     );
-    _postHistoryController = TextEditingController(
+    _postHistoryController = StyledTextController(
       text: widget.character.postHistoryInstructions,
+      preset: StyledTextPreset.macros,
     );
 
     if (widget.character.lorebook != null) {
@@ -150,7 +159,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     _selectedWorldNames = List.from(widget.character.worldNames);
 
     _altGreetingControllers = widget.character.alternateGreetings
-        .map((g) => TextEditingController(text: g))
+        .map((g) => StyledTextController(text: g, preset: StyledTextPreset.prose))
         .toList();
 
     _tags = List.from(widget.character.tags);
@@ -230,6 +239,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
       c.dispose();
     }
     _tagController.dispose();
+    _tokenNotifier.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -251,15 +261,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     for (final c in _altGreetingControllers) {
       totalChars += c.text.length;
     }
-    setState(() {
-      _estimatedTokens = (totalChars / 4).ceil();
-    });
-  }
-
-  Color _tokenColor() {
-    if (_estimatedTokens > 4000) return Colors.redAccent;
-    if (_estimatedTokens > 2000) return Colors.orangeAccent;
-    return Colors.blueAccent;
+    _tokenNotifier.value = (totalChars / 4).ceil();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -312,122 +314,6 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     setState(() {
       _newAvatarPath = destPath;
     });
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  //  EXPANDED EDITOR DIALOG
-  // ═══════════════════════════════════════════════════════════════
-
-  void _openExpandedEditor(String title, TextEditingController controller) {
-    final expandedController = TextEditingController(text: controller.text);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        backgroundColor: _bgDeep,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SizedBox(
-          width: double.infinity,
-          height: double.infinity,
-          child: Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: _bgSurface,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.edit_note,
-                      color: Colors.white70,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.close, size: 16),
-                      label: const Text('Cancel'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.white38,
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Apply'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                      ),
-                      onPressed: () {
-                        controller.text = expandedController.text;
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              // Editor body
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: AppTextField(
-                    controller: expandedController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.6,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Enter $title...',
-                      hintStyle: const TextStyle(color: Colors.white24),
-                      filled: true,
-                      fillColor: _bgSurface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: _borderSubtle),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: _borderSubtle),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: _borderFocus),
-                      ),
-                      contentPadding: const EdgeInsets.all(16),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -629,10 +515,11 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   //  LOREBOOK CRUD
   // ═══════════════════════════════════════════════════════════════
 
-  void _addLoreEntry() {
-    setState(() {
-      _loreEntries.add(LorebookEntry(key: 'New Key', content: 'New Content'));
-    });
+  Future<void> _addLoreEntry() async {
+    final result = await showLorebookEntryDialog(context: context);
+    if (result != null) {
+      setState(() => _loreEntries.add(result));
+    }
   }
 
   void _removeLoreEntry(int index) {
@@ -641,159 +528,16 @@ class _EditCharacterPageState extends State<EditCharacterPage>
     });
   }
 
-  void _editLoreEntry(int index) {
+  Future<void> _editLoreEntry(int index) async {
     final entry = _loreEntries[index];
-    final keyController = TextEditingController(text: entry.key);
-    final contentController = TextEditingController(text: entry.content);
-    bool isConstant = entry.constant;
-    int stickyDepth = entry.stickyDepth;
-
-    showDialog(
+    final result = await showLorebookEntryDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            backgroundColor: _bgDeep,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Row(
-              children: [
-                const Icon(Icons.menu_book, color: Colors.blueAccent, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  'Edit Lorebook Entry',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Always Active toggle
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _bgSurface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isConstant
-                            ? Colors.amberAccent.withValues(alpha: 0.3)
-                            : _borderSubtle,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.push_pin,
-                          size: 16,
-                          color: isConstant
-                              ? Colors.amberAccent
-                              : Colors.white38,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Always Active',
-                          style: TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
-                        const Spacer(),
-                        Switch(
-                          value: isConstant,
-                          onChanged: (val) =>
-                              setStateDialog(() => isConstant = val),
-                          activeTrackColor: Colors.amberAccent.withValues(
-                            alpha: 0.5,
-                          ),
-                          activeThumbColor: Colors.amberAccent,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isConstant) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.layers,
-                          size: 14,
-                          color: Colors.white38,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Trigger Depth: $stickyDepth ${stickyDepth == 1 ? "message" : "messages"}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SliderTheme(
-                      data: SliderThemeData(
-                        activeTrackColor: Colors.blueAccent,
-                        inactiveTrackColor: Colors.white12,
-                        thumbColor: Colors.blueAccent,
-                        trackHeight: 3,
-                      ),
-                      child: Slider(
-                        value: stickyDepth.toDouble(),
-                        min: 1,
-                        max: 100,
-                        divisions: 99,
-                        label: stickyDepth.toString(),
-                        onChanged: (val) =>
-                            setStateDialog(() => stickyDepth = val.toInt()),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  _styledField(
-                    controller: keyController,
-                    label: isConstant
-                        ? 'Keywords (Disabled — Always Active)'
-                        : 'Keywords (comma separated)',
-                    enabled: !isConstant,
-                  ),
-                  const SizedBox(height: 12),
-                  _styledField(
-                    controller: contentController,
-                    label: 'Content',
-                    maxLines: 5,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: TextButton.styleFrom(foregroundColor: Colors.white38),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    entry.key = keyController.text;
-                    entry.content = contentController.text;
-                    entry.constant = isConstant;
-                    entry.stickyDepth = stickyDepth;
-                  });
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
+      existing: entry,
+      showEnabled: true,
     );
+    if (result != null) {
+      setState(() => _loreEntries[index] = result);
+    }
   }
 
   Future<void> _importLorebookJson() async {
@@ -942,14 +686,26 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             ],
           ),
           // Floating token counter
-          Positioned(right: 24, bottom: 24, child: _buildTokenBadge()),
+          Positioned(
+            right: 24,
+            bottom: 24,
+            child: ValueListenableBuilder<int>(
+              valueListenable: _tokenNotifier,
+              builder: (context, tokens, child) =>
+                  _buildTokenBadge(tokens),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTokenBadge() {
-    final color = _tokenColor();
+  Widget _buildTokenBadge(int estimatedTokens) {
+    final color = estimatedTokens > 4000
+        ? Colors.redAccent
+        : estimatedTokens > 2000
+        ? Colors.orangeAccent
+        : Colors.blueAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -970,7 +726,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           Icon(Icons.token, size: 14, color: color),
           const SizedBox(width: 6),
           Text(
-            '~$_estimatedTokens tokens',
+            '~$estimatedTokens tokens',
             style: TextStyle(
               color: color,
               fontSize: 12,
@@ -1310,7 +1066,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                 trailing: TextButton.icon(
                   onPressed: () {
                     setState(() {
-                      final c = TextEditingController();
+                      final c = StyledTextController(preset: StyledTextPreset.prose);
                       c.addListener(_updateTokenCount);
                       _altGreetingControllers.add(c);
                     });
@@ -1521,14 +1277,17 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   Widget _buildLoreCard(int index, LorebookEntry entry) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _bgSurface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
+          width: 1.5,
           color: entry.constant
               ? Colors.amberAccent.withValues(alpha: 0.3)
-              : Colors.blueAccent.withValues(alpha: 0.15),
+              : entry.enabled
+              ? Colors.blueAccent.withValues(alpha: 0.15)
+              : AppColors.borderOf(context).withValues(alpha: 0.5),
         ),
       ),
       child: Column(
@@ -1538,35 +1297,41 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             children: [
               Icon(
                 Icons.menu_book,
-                size: 16,
-                color: entry.constant ? Colors.amberAccent : Colors.blueAccent,
+                size: 14,
+                color: entry.constant
+                    ? Colors.amberAccent
+                    : entry.enabled
+                    ? Colors.blueAccent
+                    : Colors.white38,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   entry.displayName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: entry.enabled
+                        ? Colors.white
+                        : Colors.white38,
                     fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
               ),
               if (entry.constant)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 6,
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.amberAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
                     'Always Active',
                     style: TextStyle(
                       color: Colors.amberAccent,
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1574,23 +1339,39 @@ class _EditCharacterPageState extends State<EditCharacterPage>
               if (!entry.constant)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 6,
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.blueAccent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     'Depth ${entry.stickyDepth}',
                     style: const TextStyle(
                       color: Colors.blueAccent,
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              Tooltip(
+                message: entry.enabled
+                    ? 'Disable — entry won\'t be matched'
+                    : 'Enable — entry will match on its keys',
+                child: Switch(
+                  value: entry.enabled,
+                  onChanged: (val) {
+                    setState(() {
+                      entry.enabled = val;
+                    });
+                  },
+                  activeTrackColor: Colors.blueAccent.withValues(alpha: 0.5),
+                  activeThumbColor: Colors.blueAccent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
               IconButton(
                 onPressed: () => _editLoreEntry(index),
                 icon: const Icon(
@@ -1600,6 +1381,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                 ),
                 tooltip: 'Edit entry',
                 visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
               ),
               IconButton(
                 onPressed: () => _removeLoreEntry(index),
@@ -1610,31 +1393,33 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                 ),
                 tooltip: 'Delete entry',
                 visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
               ),
             ],
           ),
           if (entry.key.isNotEmpty && !entry.constant) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Wrap(
-              spacing: 6,
-              runSpacing: 4,
+              spacing: 4,
+              runSpacing: 3,
               children: entry.key
                   .split(',')
                   .map(
                     (k) => Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
+                        horizontal: 6,
+                        vertical: 1,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         k.trim(),
                         style: const TextStyle(
                           color: Colors.white54,
-                          fontSize: 11,
+                          fontSize: 10,
                         ),
                       ),
                     ),
@@ -1642,17 +1427,6 @@ class _EditCharacterPageState extends State<EditCharacterPage>
                   .toList(),
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            entry.content,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white38,
-              fontSize: 12,
-              height: 1.4,
-            ),
-          ),
         ],
       ),
     );
@@ -2116,7 +1890,12 @@ class _EditCharacterPageState extends State<EditCharacterPage>
             if (expandable) ...[
               const SizedBox(width: 8),
               InkWell(
-                onTap: () => _openExpandedEditor(label, controller),
+                onTap: () => showExpandedEditorDialog(
+                  context: context,
+                  title: label,
+                  controller: controller,
+                  hintText: 'Enter $label...',
+                ),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
                   padding: const EdgeInsets.all(2),
@@ -2139,7 +1918,7 @@ class _EditCharacterPageState extends State<EditCharacterPage>
           maxLines: maxLines,
           enabled: enabled,
           style: TextStyle(
-            color: enabled ? Colors.white : Colors.white38,
+            color: enabled ? AppColors.textPrimary(context) : AppColors.textTertiary(context),
             fontSize: 14,
           ),
           decoration: _inputDecoration(hint ?? 'Enter $label...'),
@@ -2151,8 +1930,8 @@ class _EditCharacterPageState extends State<EditCharacterPage>
   Widget _fieldLabel(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Colors.white70,
+      style: TextStyle(
+        color: AppColors.textSecondary(context),
         fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.5,

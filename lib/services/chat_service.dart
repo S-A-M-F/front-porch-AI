@@ -73,6 +73,7 @@ import 'package:front_porch_ai/services/chat/objective_proposal.dart';
 import 'package:front_porch_ai/services/chat/summary_service.dart';
 import 'package:front_porch_ai/services/chat/fact_extraction.dart';
 import 'package:front_porch_ai/services/chat/evolution_service.dart';
+import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:drift/drift.dart' as drift;
 
 // Internal flag to signal a cancellation request for realism evaluation.
@@ -502,6 +503,14 @@ class ChatService extends ChangeNotifier {
     resolveWorld: (name) =>
         _worldRepository.worlds.where((w) => w.name == name).firstOrNull,
   );
+
+  /// Central macro resolver for prompt template expansion.
+  late final _macroResolver = MacroResolver();
+
+  /// Regex matching any `{{macro}}` or `{{macro::args}}` pattern.
+  /// Used to detect stray unresolved macros in chat history.
+  static final _macroPattern =
+      RegExp(r'\{\{(\w+)(?:::(.+?))?\}\}');
 
   late final _needsSimulation = NeedsSimulation(
     onNotify: notifyListeners,
@@ -1043,6 +1052,7 @@ class ChatService extends ChangeNotifier {
   // deletion of moved bodies as part of task.
   // Barrel not added (internal to ChatService; per "unless 3+ locations").
   late final _summaryService = SummaryService(
+    getMacroResolver: () => _macroResolver,
     getLlmService: () =>
         testLlmServiceOverride ?? _llmProvider?.activeService ?? _koboldService,
     getSummaryEnabled: () => _storageService.memorySettings.summaryEnabled,
@@ -2496,7 +2506,11 @@ class ChatService extends ChangeNotifier {
 
       if (group.firstMessage.isNotEmpty) {
         // Use custom group first message — attribute to "Narrator" or group name
-        greetingText = _applyUserReplacement(group.firstMessage);
+        greetingText = _macroResolver.resolve(
+          group.firstMessage,
+          MacroContext(userName: _userPersonaService.persona.name),
+          section: 'greeting',
+        );
         greetingSender = group.name;
         greetingCharId = null;
       } else {
@@ -4202,7 +4216,11 @@ class ChatService extends ChangeNotifier {
       String? greetingCharId;
 
       if (_activeGroup!.firstMessage.isNotEmpty) {
-        greetingText = _applyUserReplacement(_activeGroup!.firstMessage);
+        greetingText = _macroResolver.resolve(
+          _activeGroup!.firstMessage,
+          MacroContext(userName: _userPersonaService.persona.name),
+          section: 'greeting',
+        );
         greetingSender = _activeGroup!.name;
         greetingCharId = null;
       } else {
@@ -4276,9 +4294,11 @@ class ChatService extends ChangeNotifier {
     _isProcessingGreeting = true;
     notifyListeners();
     try {
-      // Sequential for reliability (post-greeting baseline).
-      await _evaluateEmotionalStateCall();
-      await _evaluateRelationshipCall();
+      await Future.wait([
+        // delegates to _llmEvalEngine (step 9 thins; full bodies excised)
+        _evaluateEmotionalStateCall(),
+        Future.delayed(_kEvalDispatchStagger, () => _evaluateRelationshipCall()),
+      ]);
 
       if (_realismEvalCancelled) {
         debugPrint('[Realism] Post-greeting eval cancelled');
@@ -4338,11 +4358,12 @@ class ChatService extends ChangeNotifier {
           return;
         }
       } else {
-        // Sequential for reliable structured outputs (deltas + emotion).
-        await _evaluateRelationshipCall();
-        await _evaluateEmotionalStateCall();
-        await _evaluatePhysicalStateCall();
-        await _evaluateNarrativeCall();
+        await Future.wait([
+          _evaluateRelationshipCall(),
+          Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall()),
+          Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall()),
+          Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall()),
+        ]);
 
         if (_realismEvalCancelled) {
           debugPrint('[Realism] Retroactive scan cancelled');
@@ -4400,22 +4421,14 @@ class ChatService extends ChangeNotifier {
 
   String _buildFirstMessage(CharacterCard character, {String? greetingText}) {
     String msg = greetingText ?? character.firstMessage;
-    // Use the robust replacement logic from the model
-    return character.replacePlaceholders(
+    return _macroResolver.resolve(
       msg,
-      userName: _userPersonaService.persona.name,
+      MacroContext(
+        userName: _userPersonaService.persona.name,
+        characterName: character.name,
+      ),
+      section: 'firstMessage',
     );
-  }
-
-  /// Applies {{user}} / `<user>` replacement using the current persona.
-  /// Used for group-level overrides (firstMessage, scenario, systemPrompt)
-  /// which are not tied to a specific CharacterCard.
-  String _applyUserReplacement(String text) {
-    if (text.isEmpty) return text;
-    final userName = _userPersonaService.persona.name;
-    return text
-        .replaceAll(RegExp(r'\{\{user\}\}', caseSensitive: false), userName)
-        .replaceAll(RegExp(r'<user>', caseSensitive: false), userName);
   }
 
   Future<void> sendMessage(String text) async {
@@ -4612,14 +4625,14 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           _realismEvals.beginCollectForBatchedVerification();
-          // Sequential (not concurrent) to ensure each structured eval gets a clean
-          // backend response without contention. Parallel fires were causing
-          // occasional empty responses (esp. on local backends), making relationship
-          // deltas (bond/trust) hit-or-miss while emotion label often still updated.
-          await _evaluateRelationshipCall(onChunk: handleChunk);
-          await _evaluateEmotionalStateCall(onChunk: handleChunk);
-          await _evaluatePhysicalStateCall(onChunk: handleChunk);
-          await _evaluateNarrativeCall(onChunk: handleChunk);
+          await Future.wait([
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 10 thins (full in realism_evals)
+            Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall(onChunk: handleChunk)),
+          ]);
           await _realismEvals.finalizeBatchedRealismVerifications();
 
           // One-shot director batch (user proposal): after the mains, use the collected from the leaf
@@ -5245,14 +5258,14 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           _realismEvals.beginCollectForBatchedVerification();
-          // Sequential (not concurrent) to ensure each structured eval gets a clean
-          // backend response without contention. Parallel fires were causing
-          // occasional empty responses (esp. on local backends), making relationship
-          // deltas (bond/trust) hit-or-miss while emotion label often still updated.
-          await _evaluateRelationshipCall(onChunk: handleChunk);
-          await _evaluateEmotionalStateCall(onChunk: handleChunk);
-          await _evaluatePhysicalStateCall(onChunk: handleChunk);
-          await _evaluateNarrativeCall(onChunk: handleChunk);
+          await Future.wait([
+            _evaluateRelationshipCall(
+              onChunk: handleChunk,
+            ), // step 10 thins (full in realism_evals)
+            Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall(onChunk: handleChunk)),
+            Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall(onChunk: handleChunk)),
+          ]);
           await _realismEvals.finalizeBatchedRealismVerifications();
 
           // Mirror of the primary send path: apply the one director batch (or the cheap
@@ -5469,7 +5482,7 @@ class ChatService extends ChangeNotifier {
       // Path B clean hierarchy (same as the main generation path)
       String systemPrompt;
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
+        systemPrompt = _activeGroup!.systemPrompt;
       } else if (_activeGroup != null) {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
@@ -5559,10 +5572,6 @@ class ChatService extends ChangeNotifier {
 
       if (activeLoreStrings.isNotEmpty) {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
-        loreContent = speakingCharacter.replacePlaceholders(
-          loreContent,
-          userName: userName,
-        );
       }
 
       // Persona & scenario
@@ -5572,13 +5581,13 @@ class ChatService extends ChangeNotifier {
         final personas = _groupCharacters
             .map(
               (ch) =>
-                  "${ch.name}'s Persona: ${ch.replacePlaceholders(_getEffectivePersonality(ch), userName: userName)}",
+                  "${ch.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(ch), MacroContext(userName: userName, characterName: ch.name), section: 'persona')}",
             )
             .toList();
         personaBlock = personas.join('\n');
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${speakingCharacter.replacePlaceholders(_getEffectivePersonality(speakingCharacter), userName: userName)}";
+            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name), section: 'persona')}";
       }
 
       // User persona — inject user's self-description + learned facts
@@ -5593,10 +5602,7 @@ class ChatService extends ChangeNotifier {
             : speakingCharacter;
         rawScenario = _getEffectiveScenario(scenarioChar);
       }
-      final scenario = speakingCharacter.replacePlaceholders(
-        rawScenario,
-        userName: userName,
-      );
+      String scenario = rawScenario;
 
       String history = _buildChatHistory();
 
@@ -5611,27 +5617,53 @@ class ChatService extends ChangeNotifier {
         final examples = _groupCharacters
             .where((ch) => ch.mesExample.isNotEmpty)
             .map(
-              (ch) => ch.replacePlaceholders(ch.mesExample, userName: userName),
+              (ch) => _macroResolver.resolve(
+                ch.mesExample,
+                MacroContext(userName: userName, characterName: ch.name),
+                section: 'mesExample',
+              ),
             )
             .toList();
         if (examples.isNotEmpty) {
           mesExampleBlock = '${examples.join('\n')}\n';
         }
       } else if (speakingCharacter.mesExample.isNotEmpty) {
-        mesExampleBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.mesExample, userName: userName)}\n';
+        mesExampleBlock = '${speakingCharacter.mesExample}\n';
       }
 
       String postHistoryBlock = '';
       if (_activeGroup == null &&
           speakingCharacter.postHistoryInstructions.isNotEmpty) {
-        postHistoryBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
+        postHistoryBlock = '${speakingCharacter.postHistoryInstructions}\n';
       }
 
       String authorNoteBlock = '';
       if (_authorNote.isNotEmpty) {
         authorNoteBlock = _buildAuthorNoteBlock();
+      }
+
+      // ── Macro resolution pass ──
+      final macroCtx = MacroContext(
+        userName: userName,
+        characterName: speakingCharacter.name,
+        summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
+        chatId: _currentSessionId,
+        characterId: speakingCharacter.dbId,
+      );
+      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx,
+          section: 'systemPrompt');
+      if (loreContent.isNotEmpty) {
+        loreContent = _macroResolver.resolve(loreContent, macroCtx,
+            section: 'lore');
+      }
+      scenario = _macroResolver.resolve(scenario, macroCtx, section: 'scenario');
+      if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
+        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx,
+            section: 'mesExample');
+      }
+      if (postHistoryBlock.isNotEmpty) {
+        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx,
+            section: 'postHistory');
       }
 
       // Impersonate instruction — comprehensive guidance for writing as the user
@@ -5921,7 +5953,7 @@ class ChatService extends ChangeNotifier {
       String systemPrompt;
 
       if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _applyUserReplacement(_activeGroup!.systemPrompt);
+        systemPrompt = _activeGroup!.systemPrompt;
       } else if (_activeGroup != null) {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
@@ -6021,29 +6053,25 @@ class ChatService extends ChangeNotifier {
         loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
       }
 
-      // Apply replacements to lore content
-      if (loreContent.isNotEmpty) {
-        loreContent = speakingCharacter.replacePlaceholders(
-          loreContent,
-          userName: userName,
-        );
-      }
-
       // Build persona block(s)
       String personaBlock;
       if (_activeGroup != null) {
         personaBlock = _groupCharacters
             .map((ch) {
-              final persona = ch.replacePlaceholders(
+              final persona = _macroResolver.resolve(
                 _getEffectivePersonality(ch),
-                userName: userName,
+                MacroContext(
+                  userName: userName,
+                  characterName: ch.name,
+                ),
+                section: 'persona',
               );
               return "${ch.name}'s Persona: $persona";
             })
             .join('\n');
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${speakingCharacter.replacePlaceholders(_getEffectivePersonality(speakingCharacter), userName: userName)}";
+            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(_getEffectivePersonality(speakingCharacter), MacroContext(userName: userName, characterName: speakingCharacter.name), section: 'persona')}";
       }
 
       // User persona — inject user's self-description + learned facts
@@ -6059,10 +6087,7 @@ class ChatService extends ChangeNotifier {
             : speakingCharacter;
         rawScenario = _getEffectiveScenario(scenarioChar);
       }
-      final scenario = speakingCharacter.replacePlaceholders(
-        rawScenario,
-        userName: userName,
-      );
+      String scenario = rawScenario;
 
       String suffix = "";
 
@@ -6081,23 +6106,25 @@ class ChatService extends ChangeNotifier {
         final examples = _groupCharacters
             .where((ch) => ch.mesExample.isNotEmpty)
             .map(
-              (ch) => ch.replacePlaceholders(ch.mesExample, userName: userName),
+              (ch) => _macroResolver.resolve(
+                ch.mesExample,
+                MacroContext(userName: userName, characterName: ch.name),
+                section: 'mesExample',
+              ),
             )
             .toList();
         if (examples.isNotEmpty) {
           mesExampleBlock = '${examples.join('\n')}\n';
         }
       } else if (speakingCharacter.mesExample.isNotEmpty) {
-        mesExampleBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.mesExample, userName: userName)}\n';
+        mesExampleBlock = '${speakingCharacter.mesExample}\n';
       }
 
       // Build post-history instructions block
       String postHistoryBlock = '';
       if (_activeGroup == null &&
           speakingCharacter.postHistoryInstructions.isNotEmpty) {
-        postHistoryBlock =
-            '${speakingCharacter.replacePlaceholders(speakingCharacter.postHistoryInstructions, userName: userName)}\n';
+        postHistoryBlock = '${speakingCharacter.postHistoryInstructions}\n';
       }
 
       // Author's note — placed right before the character speaks for maximum influence
@@ -6160,6 +6187,31 @@ class ChatService extends ChangeNotifier {
         suffix =
             "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for {{user}} or from {{user}}'s point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require {{user}} content.]\n" +
             partial;
+      }
+
+      // ── Macro resolution pass ──
+      final macroCtx = MacroContext(
+        userName: userName,
+        characterName: speakingCharacter.name,
+        summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
+        chatId: _currentSessionId,
+        characterId: speakingCharacter.dbId,
+      );
+      systemPrompt = _macroResolver.resolve(systemPrompt, macroCtx,
+          section: 'systemPrompt');
+      if (loreContent.isNotEmpty) {
+        loreContent = _macroResolver.resolve(loreContent, macroCtx,
+            section: 'lore');
+      }
+      // personaBlock and group-mode examples are resolved per-character above
+      scenario = _macroResolver.resolve(scenario, macroCtx, section: 'scenario');
+      if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
+        mesExampleBlock = _macroResolver.resolve(mesExampleBlock, macroCtx,
+            section: 'mesExample');
+      }
+      if (postHistoryBlock.isNotEmpty) {
+        postHistoryBlock = _macroResolver.resolve(postHistoryBlock, macroCtx,
+            section: 'postHistory');
       }
 
       // Declare variables before try block so they're accessible after finally
@@ -7173,6 +7225,9 @@ class ChatService extends ChangeNotifier {
       }
       return '${m.sender}: ${m.text}';
     }).toList();
+    if (lines.any((l) => _macroPattern.hasMatch(l))) {
+      debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
+    }
     return lines.join("\n");
   }
 
@@ -7190,6 +7245,9 @@ class ChatService extends ChangeNotifier {
       }
       return '${m.sender}: ${m.text}';
     }).toList();
+    if (formatted.any((l) => _macroPattern.hasMatch(l))) {
+      debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
+    }
 
     // If budget is very large or negative (unlimited), return everything
     if (tokenBudget <= 0) {
@@ -8331,6 +8389,14 @@ class ChatService extends ChangeNotifier {
   bool? _extractJsonBool(String text, String key) =>
       _llmEvalEngine.extractJsonBool(text, key);
 
+  // KoboldCpp receives HTTP requests in wire order via loopback.
+  // A small stagger prevents TCP timing from reordering concurrent
+  // eval dispatches, ensuring KoboldCpp's FIFO queue (which serializes
+  // internally) processes evals in our intended order rather than
+  // reverse or interleaved. Zero wall time added — KoboldCpp serializes
+  // anyway, so the stagger just ensures already-in-flight ordering.
+  static const _kEvalDispatchStagger = Duration(milliseconds: 50);
+
   Future<void> _evaluateRelationshipCall({void Function(String)? onChunk}) =>
       _realismEvals.evaluateRelationshipCall(onChunk: onChunk);
 
@@ -8594,11 +8660,12 @@ class ChatService extends ChangeNotifier {
       if (_storageService.realismSettings.realismOneShotEval) {
         await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
-        // Sequential to prevent backend contention dropping relationship deltas.
-        await _evaluateRelationshipCall(onChunk: handleChunk);
-        await _evaluateEmotionalStateCall(onChunk: handleChunk);
-        await _evaluatePhysicalStateCall(onChunk: handleChunk);
-        await _evaluateNarrativeCall(onChunk: handleChunk);
+        await Future.wait([
+          _evaluateRelationshipCall(onChunk: handleChunk),
+          Future.delayed(_kEvalDispatchStagger, () => _evaluateEmotionalStateCall(onChunk: handleChunk)),
+          Future.delayed(_kEvalDispatchStagger * 2, () => _evaluatePhysicalStateCall(onChunk: handleChunk)),
+          Future.delayed(_kEvalDispatchStagger * 3, () => _evaluateNarrativeCall(onChunk: handleChunk)),
+        ]);
       }
 
       // Handle cancellation after the eval calls

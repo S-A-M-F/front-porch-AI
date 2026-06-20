@@ -279,14 +279,19 @@ class RealismEvals {
   Future<void> _applyNarrativeResults(String text) async {
     // Robust extraction (survives Director reprocess/correction which may reformat/partial JSON).
     // Inline (no new named helper/method per rules for god; private here in leaf is fine).
+    // Parse JSON once (both keys live in the same payload) rather than twice.
     String fixationRaw = '';
+    String objectiveRaw = '';
     try {
       final noFence = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
       final si = noFence.indexOf('{');
       final ei = noFence.lastIndexOf('}');
       if (si >= 0 && ei > si) {
         final obj = jsonDecode(noFence.substring(si, ei + 1));
-        if (obj is Map && obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
+        if (obj is Map) {
+          if (obj['fixation_topic'] != null) fixationRaw = obj['fixation_topic'].toString().trim();
+          if (obj['proposed_objective'] != null) objectiveRaw = obj['proposed_objective'].toString().trim();
+        }
       }
     } catch (_) {}
     if (fixationRaw.isEmpty) {
@@ -295,16 +300,6 @@ class RealismEvals {
     }
     relationshipService.updateFixationFromEvalResult(fixationRaw.isNotEmpty ? fixationRaw : '');
 
-    String objectiveRaw = '';
-    try {
-      final noFence2 = text.replaceAll(RegExp(r'```(?:json)?\s*|\s*```', dotAll: true), ' ').trim();
-      final si2 = noFence2.indexOf('{');
-      final ei2 = noFence2.lastIndexOf('}');
-      if (si2 >= 0 && ei2 > si2) {
-        final obj2 = jsonDecode(noFence2.substring(si2, ei2 + 1));
-        if (obj2 is Map && obj2['proposed_objective'] != null) objectiveRaw = obj2['proposed_objective'].toString().trim();
-      }
-    } catch (_) {}
     if (objectiveRaw.isEmpty) {
       final m2 = RegExp('"proposed_objective"\\s*:\\s*"([^"]*)"', dotAll: true).firstMatch(text);
       objectiveRaw = m2?.group(1)?.trim() ?? '';
@@ -625,7 +620,8 @@ class RealismEvals {
         '   ⚠ If $charName is the one acting (e.g. $charName lied, felt guilty, made a mistake): always 0. Only $userName\'s behavior moves this.\n'
         '4. "trust_reason": One brief in-character thought from $charName explaining the trust shift, e.g. "He kept his promise." or "That felt like a lie." Use "none" if delta is 0.\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason".';
+        'Respond with ONLY a flat JSON object containing "relationship_delta", "bond_reason", "trust_delta", and "trust_reason". '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism] Evaluating relationship dynamic...');
@@ -737,7 +733,8 @@ class RealismEvals {
         '2. "emotion_intensity": mild, moderate, or strong\n'
         '$arousalInstr'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField.';
+        'Respond with ONLY a flat JSON object containing "emotion", "emotion_intensity"$arousalField. '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism] Evaluating emotional state...');
@@ -856,7 +853,8 @@ class RealismEvals {
         '$oPrompt'
         '2. "fixation_topic": A persistent thought or concern that colors $charName\'s perspective — could be a hope, worry, ambition, or memory. Not a temporary reaction, but something that lingers across scenes. Default: "none".\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic".';
+        'Respond with ONLY a flat JSON object containing "proposed_objective", and "fixation_topic". '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
@@ -1009,7 +1007,8 @@ class RealismEvals {
         '$fixNum. "fixation_topic": An *intrusive* thought $charName cannot stop returning to — haunts them across scenes, not a temporary reaction. Default: "none".\n'
         '$reasonNum. "reason": One brief sentence explaining the key relationship change, or "none"\n\n'
         'Recent conversation:\n$recent\n\n'
-        'Respond with ONLY a JSON object containing all fields above$arousalField.';
+        'Respond with ONLY a JSON object containing all fields above$arousalField. '
+        'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
       debugPrint('[Realism:OneShot] Evaluating (fused call)...');
