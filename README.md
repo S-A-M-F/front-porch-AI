@@ -67,14 +67,10 @@ v0.9.9.1 adds powerful new tools and makes the Realism Engine and group features
 
 **📤 Other Polish & Fixes**
 
-- Export User Personas as full SillyTavern-compatible JSON (with learned facts).
+- Export User Personas as full SillyTavern-compatible JSON (learned facts are a Front Porch-only feature and will be ignored by other apps).
 - Fixed Windows maximized window ghosting.
 - Database Cleanup Tool for orphaned records.
 - Many group, needs, and stability fixes for a much smoother experience.
-
-See `docs/Rawhide.md` for the detailed development notes that feed the update dialog.
-
-> **Note for contributors & AI agents**: User-facing notes for the update dialog live in `docs/Rawhide.md`. Update it for any user-visible work.
 
 ---
 

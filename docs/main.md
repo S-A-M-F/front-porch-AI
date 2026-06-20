@@ -16,7 +16,7 @@ These notes feed the in-app "Update Available" dialog for stable releases on `ma
 
 - ✨ **Better editing and SillyTavern-style macros** — Live syntax highlighting for dialogue, actions, and {{macros}} with no lag. Fullscreen editor keeps colors and spellcheck. Macros ({{random}}, {{roll}}, {{time}}, {{pick}}, comments, spacing) now work inside character cards, scenarios, and lorebooks. Unified lorebook editor with enable/disable toggles everywhere.
 
-- 📤 **Export User Personas** — Export as full SillyTavern-compatible JSON including learned facts.
+- 📤 **Export User Personas** — Export as full SillyTavern-compatible JSON (learned facts are a Front Porch-only feature and will be ignored by other apps).
 
 - 🪟 **Windows fixes** — No more ghosting when restoring maximized windows.
 
