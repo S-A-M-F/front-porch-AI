@@ -537,20 +537,14 @@ The in-app "Update Available" dialog now renders a non-technical "What's New" se
 
 **As the AI agent, you are responsible for keeping this text current** (exactly like appending to `.claude/changelog.md`):
 
-- When you complete user-visible work on the active branch (Rawhide, a beta branch, etc.), also update the friendly, non-technical summary.
+- User-facing "What's New" notes for the update dialog go in `docs/Rawhide.md`.
 - Target: short benefit-oriented bullets with emojis (e.g. "🎭 Character Expressions now support sidebar mode — try it in any 1:1 chat").
-- Preferred source (strict rule):
-  - One file per active branch, named **exactly** the same as the branch (case-sensitive): `docs/<BranchName>.md`
-    - On `Rawhide` → edit `docs/Rawhide.md`
-    - On the current beta branch (e.g. `0.9.8-Beta`) → edit `docs/0.9.8-Beta.md`
-    - On `main` → edit `docs/main.md`
-  - This exact naming is required because AI agents hallucinate filenames.
-  - Or (alternative): prepare the exact markdown block and post it directly to the GitHub release via tools, or hand the human the precise text to paste.
+- When preparing a release, use the relevant content from `docs/Rawhide.md` for the GitHub release body.
 - Never use raw commit messages, `.claude/changelog.md` contents, or technical PR lists — those are internal.
-- `docs/release-notes.md` remains the long-form historical document; the per-branch `docs/<Branch>.md` files are the narrow, dialog-optimized source.
-- When you cut or prepare a tagged release, ensure the friendly text for that version is present in the chosen source so it appears immediately in the dialog for users on older builds.
+- `docs/release-notes.md` remains the long-form historical document.
+- Update `docs/Rawhide.md` as part of any user-visible work.
 
-This responsibility is now part of the normal "task complete" checklist for any change that adds or improves end-user features.
+This keeps things simple.
 
 ## Community
 

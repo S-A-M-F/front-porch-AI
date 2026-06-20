@@ -1163,7 +1163,8 @@ class ChatService extends ChangeNotifier {
   // + "incomplete zeroing... now complete (see CLAUDE.md)"
   // + *both* startNewChat branches explicit + cross-refs e.g. setActiveCharacter:1572).
   // Explicit _isEvolvingCharacter=false + _evolutionStatus='' + _evolutionError='' (modeled on _isExtractingFacts) added at 10+ sites + decl + startNew both + common in fix round to make "now complete" hold in *code* (not just comments); maps/counts were already present.
-  // The dedicated _userMessagesSinceLastEvolution cadence counter (vs evolutionInterval) + the facts one are zeroed at the exact same sites (and both startNew) for cadence hygiene: "incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)" applies to the evolution schedule counter as well.
+  // Evolution cadence decision now uses live chat user-message count + persisted evolutionCount (robust).
+  // The mutable _userMessagesSinceLastEvolution (and facts one) are still zeroed on the hygiene sites for debug and any fallback paths.
   // 1:1 vs group parity for evolution (per-char counts, effective personality/scenario layering,
   // trigger behavior must be identical whether 1:1 or group per-speaker; dispatch preserved
   // via cbs + god's impersonation dance where needed for target).
@@ -8001,15 +8002,15 @@ class ChatService extends ChangeNotifier {
   // flags (see every "keep reset blocks in sync" + "incomplete zeroing... now complete"
   // + explicit sites below and in the evolution/fact wiring sections).
   int _userMessagesSinceLastPeriodicEval = 0; // facts / auto-persona cadence
-  int _userMessagesSinceLastEvolution = 0; // dedicated evolution cadence
+  int _userMessagesSinceLastEvolution = 0; // kept in sync for debug; primary cadence for evolution now uses actual userMsgCount vs evoCount
   bool _isExtractingFacts =
       false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see CLAUDE.md "keep reset blocks in sync" + "incomplete zeroing..." (leaves incl fact/evo/verif + needs_impact etc)). The facts counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch). The sibling _userMessagesSinceLastEvolution counter (for character evolution vs its own evolutionInterval) is zeroed at the identical sites + both startNew for the same reason ("incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)").
 
   /// Coordinator for the two independent periodic background evals (fact extraction + character evolution).
-  /// Each feature now fires on *its own* configured interval (autoPersonaInterval vs evolutionInterval)
-  /// using dedicated counters. When both happen to be due on the exact same exchange they are still
-  /// run sequentially (facts then evolution) via the run helper. This fixes the long-standing bug where
-  /// the evolution slider / evolutionInterval had no effect.
+  /// Facts uses its dedicated counter.
+  /// Evolution decides due using live user message count in the chat vs the persisted per-char evolution count.
+  /// This makes the "Evolve every X messages" setting (slider) reliably control the schedule, even after
+  /// loads, switches, or enabling mid-chat. (Replaces fragile side-counter for evolution cadence.)
   // Thin delegation / coord (per-feature cadence counts + per-feature guards + enabled/Interval checks
   // + call to sequence or direct thins here; full work in the step 13/14 leaves;
   // "thin delegation here; full fact extraction in step 13"; "thin delegation here; full character evolution in step 14").
@@ -8041,11 +8042,20 @@ class ChatService extends ChangeNotifier {
     }
 
     if (autoEvolution && !_isEvolvingCharacter) {
-      _userMessagesSinceLastEvolution++;
-      if (_userMessagesSinceLastEvolution >=
-          _storageService.memorySettings.evolutionInterval) {
+      // Use actual user message count + persisted evolution count for robust scheduling.
+      // This makes "Evolve every X messages" (per the slider) work reliably based on
+      // conversation progress, even after loads/reloads or mid-chat enable.
+      // Previously relied solely on mutable side-counter which could appear not to fire
+      // on the expected schedule after context changes.
+      final interval = _storageService.memorySettings.evolutionInterval;
+      final userMsgCount = _messages.where((m) => m.isUser).length;
+      final currentEvos = _characterEvolutionCount;
+      final expectedEvos = (interval > 0) ? (userMsgCount ~/ interval) : 0;
+      if (expectedEvos > currentEvos) {
         _userMessagesSinceLastEvolution = 0;
         evoDue = true;
+      } else {
+        _userMessagesSinceLastEvolution = (interval > 0) ? (userMsgCount % interval) : 0;
       }
     }
 
@@ -8099,10 +8109,9 @@ class ChatService extends ChangeNotifier {
   // full character evolution in step 14". State (flags/maps/counts/status/error)
   // + loadGroupEvolvedFields + session load/save + reset/update (user edit) + public
   // surface coordination stay in god.
-  // Cadence for evolution is now its own god-owned _userMessagesSinceLastEvolution counter
-  // compared against evolutionInterval inside the _maybeRunPeriodicEvals thin coordinator
-  // (independent of the facts counter vs autoPersonaInterval). Both counters zeroed at the
-  // identical hygiene sites as the flags. (Previously the evolution slider was dead.)
+  // Evolution cadence decision lives in _maybeRunPeriodicEvals and uses actual #user messages in _messages
+  // vs the persisted _characterEvolutionCount (or per-char in group). This ensures the UI slider
+  // reliably schedules evolution on the configured interval. Mutable counter kept for debug.
 
   bool _isEvolvingCharacter =
       false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing... now complete (see CLAUDE.md)" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch). Its sibling cadence counter _userMessagesSinceLastEvolution is zeroed at the same sites (see keep-sync lists + both startNew + "incomplete zeroing of secondary config... now complete").

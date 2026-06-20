@@ -63,7 +63,7 @@ You can now export your User Personas as fully SillyTavern-compliant JSON. Expor
 - **Sidebar Needs display** — Needs chips, zero-delta suppression, and the Director corrected pill all display in the sidebar during group chats.
 - **Fresh-start hygiene** — new chats, forks, and imported characters no longer bleed needs, fixation, relationship, or state from previous sessions.
 
-> **Note for contributors & AI agents**: Per-branch user-facing notes live in `docs/<BranchName>.md` (e.g. `docs/Rawhide.md`). Update it for any user-visible work, just like appending to internal changelogs. Never mix notes across branches.
+> **Note for contributors & AI agents**: User-facing notes for the update dialog live in `docs/Rawhide.md`. Update it for any user-visible work.
 
 ---
 
