@@ -68,19 +68,33 @@ jobs:
           echo "Setting version to: $FLUTTER_VERSION"
           # Use the full version (including 4th part if present) for the Dart display constant
           DISPLAY_VERSION="$VERSION"
+          export FLUTTER_VERSION
+          export DISPLAY_VERSION
+
           # Use Python for cross-platform reliability (sed can fail silently with Windows \r\n line endings)
-          python3 -c "
+          # Use heredoc + single quotes to prevent shell quote mangling
+          python3 - << 'PYEOF'
           import re
+          import os
+
+          fv = os.environ['FLUTTER_VERSION']
+          dv = os.environ['DISPLAY_VERSION']
+
           # Update pubspec.yaml
-          with open('pubspec.yaml', 'r') as f: content = f.read()
-          content = re.sub(r'^version: .*$', 'version: $FLUTTER_VERSION', content, flags=re.MULTILINE)
-          with open('pubspec.yaml', 'w') as f: f.write(content)
+          with open('pubspec.yaml', 'r') as f:
+              content = f.read()
+          content = re.sub(r'^version: .*$', f'version: {fv}', content, flags=re.MULTILINE)
+          with open('pubspec.yaml', 'w') as f:
+              f.write(content)
+
           # Patch only the appVersion constant (preserve all committed getters and comments).
           # This eliminates duplication and prevents compile breaks when app_version.dart evolves.
-          with open('lib/app_version.dart', 'r') as f: content = f.read()
-          content = re.sub(r\"^const String appVersion = '.*';\$\", "const String appVersion = '$DISPLAY_VERSION';", content, flags=re.MULTILINE)
-          with open('lib/app_version.dart', 'w') as f: f.write(content)
-          "
+          with open('lib/app_version.dart', 'r') as f:
+              content = f.read()
+          content = re.sub(r"^const String appVersion = '.*';$", f"const String appVersion = '{dv}';", content, flags=re.MULTILINE)
+          with open('lib/app_version.dart', 'w') as f:
+              f.write(content)
+          PYEOF
           # Verify both were updated (visible in CI logs)
           echo "Verifying pubspec version:"
           grep '^version:' pubspec.yaml
