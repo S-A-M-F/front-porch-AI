@@ -4,6 +4,10 @@ These notes feed the in-app "Update Available" dialog for stable releases on `ma
 
 ## Highlights
 
+- 🎭 **AI Character Creator fully restored** — The creator's setup screens had been stripped down to bare boxes, and underneath, generation and saving had stopped working entirely — it was quietly producing a placeholder instead of a real AI character, and the Save step never actually saved. It's all back: **Quick**, **Guided**, and **Automated** setup with every option (appearance builder, archetype presets, personality/backstory/NSFW trait chips, world-lore attachment, and the "magic wand" description writer), the **Realism** seeding screen, and the **Review** screen with avatar regenerate/crop and lorebook cherry-pick. It generates and saves real characters again, with the original look restored.
+
+- 📁 **Subfolder fix** — Dragging a character into a subfolder no longer creates a phantom duplicate on the parent screen (and deleting that "duplicate" no longer deletes your original character). Organizing large libraries is a touch faster too.
+
 - 🎨 **Image Studio is now a first-class integrated experience** — Open a dedicated studio with buttons for Visualize Scene, Character Portrait, Chat Background, and Custom. Full settings (models, LoRAs, style, negative, steps, CFG, etc.) live inside as tabs. Visualize Scene uses a slider for the most recent N messages so the generated image matches what's actually happening. Prompts start clean without boilerplate. Old separate illustration button and dialogs removed for a much smoother flow.
 
 - 🧠 **Realism Engine and character needs are dramatically more reliable** — Bond, Trust, and Lust deltas now consistently show in chips. Manual Needs Reprocess is safe, survives regens and empty responses, and works in groups with a "Director corrected" pill. Groups properly track per-speaker needs, decay, and scene rewards. Larger positive boosts from strong scenes, earlier natural hints from characters, dedicated Needs tab in group settings, and editable realism baselines.
