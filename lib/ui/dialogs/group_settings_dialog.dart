@@ -16,6 +16,7 @@ import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/world.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
+import 'package:front_porch_ai/ui/widgets/styled_text_controller.dart';
 
 /// Main settings dialog for a Group Chat.
 /// This is the central place for all per-group and per-character configuration.
@@ -214,16 +215,16 @@ class _PromptEngineeringTab extends StatefulWidget {
 
 class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
   // Group-level controllers / state (edited locally, applied on Save)
-  late final TextEditingController _groupSystemController;
-  late final TextEditingController _groupAuthorNoteController;
+  late final StyledTextController _groupSystemController;
+  late final StyledTextController _groupAuthorNoteController;
 
   // Per-character editing state. Keys are live CharacterCard instances
   // (stable references from chatService.groupCharacters).
-  final Map<CharacterCard, TextEditingController> _perCharNoteControllers = {};
+  final Map<CharacterCard, StyledTextController> _perCharNoteControllers = {};
   final Map<CharacterCard, int> _perCharStrengths = {};
 
   // Per-character group system prompt overrides (Path B feature).
-  final Map<CharacterCard, TextEditingController>
+  final Map<CharacterCard, StyledTextController>
   _perCharSystemPromptControllers = {};
 
   // Per-character accent colors (matches chat sidebar palette)
@@ -255,10 +256,14 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     final cs = widget.chatService;
     final group = cs.activeGroup;
 
-    _groupSystemController = TextEditingController(
+    _groupSystemController = StyledTextController(
+      preset: StyledTextPreset.prose,
       text: group?.systemPrompt ?? '',
     );
-    _groupAuthorNoteController = TextEditingController(text: cs.authorNote);
+    _groupAuthorNoteController = StyledTextController(
+      preset: StyledTextPreset.prose,
+      text: cs.authorNote,
+    );
 
     // Pre-create controllers for current characters using live getters
     // (so first render has correct starting values).
@@ -268,17 +273,23 @@ class _PromptEngineeringTabState extends State<_PromptEngineeringTab> {
     }
   }
 
-  TextEditingController _getOrCreateNoteController(CharacterCard c) {
+  StyledTextController _getOrCreateNoteController(CharacterCard c) {
     return _perCharNoteControllers.putIfAbsent(c, () {
       final initial = widget.chatService.getAuthorNoteForGroupCharacter(c);
-      return TextEditingController(text: initial);
+      return StyledTextController(
+        preset: StyledTextPreset.prose,
+        text: initial,
+      );
     });
   }
 
-  TextEditingController _getOrCreateSystemPromptController(CharacterCard c) {
+  StyledTextController _getOrCreateSystemPromptController(CharacterCard c) {
     return _perCharSystemPromptControllers.putIfAbsent(c, () {
       final initial = widget.chatService.getSystemPromptForGroupCharacter(c);
-      return TextEditingController(text: initial);
+      return StyledTextController(
+        preset: StyledTextPreset.prose,
+        text: initial,
+      );
     });
   }
 
@@ -3289,9 +3300,9 @@ class _GeneralTab extends StatefulWidget {
 
 class _GeneralTabState extends State<_GeneralTab> {
   // Local editing controllers and state (applied on Save)
-  late final TextEditingController _nameController;
-  late final TextEditingController _scenarioController;
-  late final TextEditingController _firstMessageController;
+  late final StyledTextController _nameController;
+  late final StyledTextController _scenarioController;
+  late final StyledTextController _firstMessageController;
 
   TurnOrder _turnOrder = TurnOrder.roundRobin;
   bool _autoAdvance = false;
@@ -3309,16 +3320,25 @@ class _GeneralTabState extends State<_GeneralTab> {
     final g = widget.chatService.activeGroup;
 
     if (g != null) {
-      _nameController = TextEditingController(text: g.name);
-      _scenarioController = TextEditingController(text: g.scenario);
-      _firstMessageController = TextEditingController(text: g.firstMessage);
+      _nameController = StyledTextController(
+        preset: StyledTextPreset.prose,
+        text: g.name,
+      );
+      _scenarioController = StyledTextController(
+        preset: StyledTextPreset.prose,
+        text: g.scenario,
+      );
+      _firstMessageController = StyledTextController(
+        preset: StyledTextPreset.prose,
+        text: g.firstMessage,
+      );
       _turnOrder = g.turnOrder;
       _autoAdvance = g.autoAdvance;
       _directorModeDefault = g.directorMode;
     } else {
-      _nameController = TextEditingController(text: '');
-      _scenarioController = TextEditingController(text: '');
-      _firstMessageController = TextEditingController(text: '');
+      _nameController = StyledTextController(preset: StyledTextPreset.prose, text: '');
+      _scenarioController = StyledTextController(preset: StyledTextPreset.prose, text: '');
+      _firstMessageController = StyledTextController(preset: StyledTextPreset.prose, text: '');
       _turnOrder = TurnOrder.roundRobin;
       _autoAdvance = false;
       _directorModeDefault = false;

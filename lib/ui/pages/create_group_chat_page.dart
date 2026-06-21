@@ -29,6 +29,7 @@ import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/styled_text_controller.dart';
 import 'package:front_porch_ai/utils/character_id.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.dart';
@@ -73,14 +74,14 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
   bool _directorMode = false;
 
   // Opening
-  final _scenarioController = TextEditingController();
-  final _firstMessageController = TextEditingController();
+  final _scenarioController = StyledTextController(preset: StyledTextPreset.prose);
+  final _firstMessageController = StyledTextController(preset: StyledTextPreset.prose);
   bool _isGeneratingScenario = false;
   bool _isGeneratingFirst = false;
 
   // Prompts
-  final _groupSystemController = TextEditingController();
-  final Map<String, String> _characterSystemPrompts = {}; // charId -> prompt
+  final _groupSystemController = StyledTextController(preset: StyledTextPreset.prose);
+  final Map<String, TextEditingController> _characterSystemPrompts = {}; // charId -> prompt
 
   // Voices (charId -> voiceId or '')
   final Map<String, String> _characterVoices = {};
@@ -137,6 +138,10 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     _scenarioController.dispose();
     _firstMessageController.dispose();
     _groupSystemController.dispose();
+    // Dispose per-character controllers
+    for (final ctrl in _characterSystemPrompts.values) {
+      ctrl.dispose();
+    }
     _memberSearchController.dispose();
     super.dispose();
   }
@@ -147,8 +152,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     total += (_scenarioController.text.length / 4).ceil();
     total += (_firstMessageController.text.length / 4).ceil();
     total += (_groupSystemController.text.length / 4).ceil();
-    for (final p in _characterSystemPrompts.values) {
-      total += (p.length / 4).ceil();
+    for (final ctrl in _characterSystemPrompts.values) {
+      total += (ctrl.text.length / 4).ceil();
     }
     for (final e in _groupLoreEntries) {
       total += ((e.name.length + e.key.length + e.content.length) / 4).ceil();
@@ -667,8 +672,8 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
     final charPrompts = <String, String>{};
     for (final c in _members) {
       final id = _stableId(c);
-      final p = _characterSystemPrompts[id];
-      if (p != null && p.trim().isNotEmpty) charPrompts[id] = p.trim();
+      final ctrl = _characterSystemPrompts[id];
+      if (ctrl != null && ctrl.text.trim().isNotEmpty) charPrompts[id] = ctrl.text.trim();
     }
 
     // Serialize group lorebook
@@ -1614,11 +1619,12 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
           const SizedBox(height: 8),
           ..._members.map((c) {
             final id = _stableId(c);
-            final ctrl = TextEditingController(
-              text: _characterSystemPrompts[id] ?? '',
+            final ctrl = StyledTextController(
+              preset: StyledTextPreset.prose,
+              text: _characterSystemPrompts[id]?.text ?? '',
             );
             ctrl.addListener(() {
-              _characterSystemPrompts[id] = ctrl.text;
+              _characterSystemPrompts[id] = ctrl;
             });
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
