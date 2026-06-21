@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-21 (feat: mass BYAF (Backyard AI) importer — bulk-import multiple .byaf files at once)
+- **Files changed**: lib/ui/pages/home_page.dart.
+- **Why**: BYAF import was single-file only, while V2 PNGs already had a bulk importer. Users with many Backyard AI characters had to import them one at a time.
+- **What**: `_importByaf` now opens a multi-select picker. A single file keeps the existing rich preview dialog; selecting multiple routes to a new bulk path. To avoid a parallel implementation, the existing bulk progress dialog was generalized into `_runBulkProgressImport(title, totalCount, runImport)` — the PNG path (`_runBulkImport`) is now a thin wrapper over it, and the new BYAF path reuses the exact same dialog. `_runBulkByafImport` shows one up-front confirm (with a batch-wide "also import chat history" checkbox, AppColors), then drives the dialog over `_importByafFiles`, which runs the same per-file pipeline as the single import (parse → toCharacterCard → saveCharacterPng → V2 embed → repo.importCharacter → optional chat history) and reports per-file progress + failures.
+- **Verification**: flutter analyze clean; flutter build macos --debug succeeds.
+- **Branch**: main (to be cherry-picked to Rawhide).
+
 ## 2026-06-21 (port: pulled PR #59 (creator backend/model setup overhaul) forward from Rawhide into main)
 - **Files changed**: cherry-picked bb30ebf (#59) onto main — setup_step.dart (dedicated KoboldCpp/Pseudo-Remote sections, status dot, Start/Stop, Extra Settings panel), creator_state.dart (backend_manager import + gpu/context controllers + initLocalSettingsControllers + BackendManager-based reloadKoboldWithModel + startPseudoRemote/stopPseudoRemote), character_creator_page.dart (init controllers), settings_page.dart, kcpps_selector.dart, kobold_service.dart. Plus docs/Rawhide.md + this changelog.
 - **Why**: All of #59's dependencies (PseudoRemoteService, BackendManager.backendPath, KcppsSelector, storage gpu/context) already exist on main, so #59 is a low-risk, high-value UX win — it surfaces backend services that already run on stable inside the creator's Setup screen, bringing main's creator to parity with Rawhide.
