@@ -18,7 +18,7 @@ These notes feed the in-app "Update Available" dialog for stable releases on `ma
 
 - 📤 **Export User Personas** — Export as full SillyTavern-compatible JSON (learned facts are a Front Porch-only feature and will be ignored by other apps).
 
-- 🪟 **Windows fixes** — No more ghosting when restoring maximized windows.
+- 🪟 **Windows install fixes** — Installs now land in the correct folder, and Stable, Beta, and Nightly install side-by-side without overwriting each other. If an earlier update placed your install in the wrong folder, it's repaired automatically on the next update — no reinstall needed. Plus: no more ghosting when restoring maximized windows.
 
 - Many additional group chat, needs, realism, and stability fixes that make the experience feel much more consistent and alive.
 
