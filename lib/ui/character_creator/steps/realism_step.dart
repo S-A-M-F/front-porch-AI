@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
-import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 
-/// Realism initial state step (lifted).
+/// Step 4: seed the Realism Engine's initial state for the generated character.
+/// Restored from the god file's `_buildRealismStep` — the full form is now wired
+/// to CreatorState instead of the dummy hardcoded values the refactor shipped.
 class RealismStep extends StatelessWidget {
   final CreatorState state;
 
@@ -15,6 +16,52 @@ class RealismStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Generation-error fallback: if the LLM produced nothing, offer a retry
+    // back to the config step (the wizard advanced here regardless).
+    if (state.generatedCard == null) {
+      return Center(
+        key: const ValueKey('realism-error'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: AppColors.resolve(
+                context,
+                Colors.redAccent,
+                Colors.red.shade700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Generation failed. The LLM did not produce valid output.',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                state.generationPreview = '';
+                state.currentStep = 2;
+              },
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.resolve(
+                  context,
+                  Colors.blueAccent,
+                  Colors.blue.shade700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Center(
       key: const ValueKey('realism'),
       child: SingleChildScrollView(
@@ -25,7 +72,7 @@ class RealismStep extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Initial Realism State (optional)',
+                'Realism Engine',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -34,96 +81,163 @@ class RealismStep extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Set starting bond, trust, emotion, needs sim etc for the character. Full form lifted from original _buildRealismStep using RealismFormSection + toggles bound to state.',
-                style: TextStyle(color: AppColors.textSecondary(context)),
+                'Set the initial state for the Realism Engine when a new conversation starts. '
+                'These values will seed the relationship, emotion, and time-of-day systems.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary(context),
+                  height: 1.5,
+                ),
               ),
-              const SizedBox(height: 16),
-              // Threaded verif controls (3: toggle + 2 sliders) per approved plan "wire in all current form users" + realism_step.
-              // Other realism seeds (bond etc) are stub in creator_state; dummies here for required form props.
+              const SizedBox(height: 32),
               RealismFormSection(
-                enabled: false,
-                onEnabledChanged: (_) {},
-                timeOfDay: 'morning',
-                onTimeOfDayChanged: (_) {},
-                dayCount: 1,
-                onDayCountChanged: (_) {},
-                shortTermBond: 0,
-                onShortTermBondChanged: (_) {},
-                longTermBond: 0,
-                onLongTermBondChanged: (_) {},
-                trustLevel: 0,
-                onTrustLevelChanged: (_) {},
-                emotion: 'neutral',
-                onEmotionChanged: (_) {},
-                emotionIntensity: 'mild',
-                onEmotionIntensityChanged: (_) {},
-                nsfwCooldownEnabled: false,
-                onNsfwCooldownChanged: (_) {},
-                chaosModeEnabled: false,
-                onChaosModeChanged: (_) {},
-                currentTask: '',
-                onCurrentTaskChanged: (_) {},
+                enabled: state.realismStepEnabled,
+                onEnabledChanged: (v) {
+                  state.realismStepEnabled = v;
+                  state.notify();
+                },
+                timeOfDay: state.realismTimeOfDay,
+                onTimeOfDayChanged: (v) {
+                  state.realismTimeOfDay = v;
+                  state.notify();
+                },
+                dayCount: state.realismDayCount,
+                onDayCountChanged: (v) {
+                  state.realismDayCount = v;
+                  state.notify();
+                },
+                shortTermBond: state.realismShortTermBond,
+                onShortTermBondChanged: (v) {
+                  state.realismShortTermBond = v;
+                  state.notify();
+                },
+                longTermBond: state.realismLongTermBond,
+                onLongTermBondChanged: (v) {
+                  state.realismLongTermBond = v;
+                  state.notify();
+                },
+                trustLevel: state.realismTrustLevel,
+                onTrustLevelChanged: (v) {
+                  state.realismTrustLevel = v;
+                  state.notify();
+                },
+                emotion: state.realismEmotion,
+                onEmotionChanged: (v) {
+                  state.realismEmotion = v;
+                  state.notify();
+                },
+                emotionIntensity: state.realismEmotionIntensity,
+                onEmotionIntensityChanged: (v) {
+                  state.realismEmotionIntensity = v;
+                  state.notify();
+                },
+                nsfwCooldownEnabled: state.realismNsfwCooldown,
+                onNsfwCooldownChanged: (v) {
+                  state.realismNsfwCooldown = v;
+                  state.notify();
+                },
+                chaosModeEnabled: state.realismChaosMode,
+                onChaosModeChanged: (v) {
+                  state.realismChaosMode = v;
+                  state.notify();
+                },
+                currentTask: state.realismCurrentTask,
+                onCurrentTaskChanged: (v) {
+                  state.realismCurrentTask = v;
+                  state.notify();
+                },
                 realismVerificationEnabled: state.realismVerificationEnabled,
                 onRealismVerificationChanged: (v) {
                   state.realismVerificationEnabled = v;
+                  state.saveState();
                   state.notify();
                 },
                 realismVerificationMaxReprocesses:
                     state.realismVerificationMaxReprocesses,
                 onRealismVerificationMaxReprocessesChanged: (v) {
                   state.realismVerificationMaxReprocesses = v;
+                  state.saveState();
                   state.notify();
                 },
                 realismVerificationStrictness:
                     state.realismVerificationStrictness,
                 onRealismVerificationStrictnessChanged: (v) {
                   state.realismVerificationStrictness = v;
+                  state.saveState();
                   state.notify();
                 },
-                needsFormSection: NeedsFormSection(
-                  enabled: false,
-                  onEnabledChanged: (_) {},
-                  enjoysLowHygiene: false,
-                  onEnjoysLowHygieneChanged: (_) {},
-                  needsSimStrength: 1,
-                  baselineHunger: 80,
-                  onBaselineHungerChanged: (_) {},
-                  baselineBladder: 80,
-                  onBaselineBladderChanged: (_) {},
-                  baselineEnergy: 80,
-                  onBaselineEnergyChanged: (_) {},
-                  baselineSocial: 80,
-                  onBaselineSocialChanged: (_) {},
-                  baselineFun: 80,
-                  onBaselineFunChanged: (_) {},
-                  baselineHygiene: 80,
-                  onBaselineHygieneChanged: (_) {},
-                  baselineComfort: 80,
-                  onBaselineComfortChanged: (_) {},
-                  decayHunger: 5,
-                  onDecayHungerChanged: (_) {},
-                  decayBladder: 5,
-                  onDecayBladderChanged: (_) {},
-                  decayEnergy: 5,
-                  onDecayEnergyChanged: (_) {},
-                  decaySocial: 5,
-                  onDecaySocialChanged: (_) {},
-                  decayFun: 5,
-                  onDecayFunChanged: (_) {},
-                  decayHygiene: 5,
-                  onDecayHygieneChanged: (_) {},
-                  decayComfort: 5,
-                  onDecayComfortChanged: (_) {},
-                ),
-                showVerificationToggle: true,
-                showNsfwCooldownToggle: false,
-                showChaosToggle: false,
-                showTimeAndDay: false,
-                showMasterEnabledToggle: false,
+                needsFormSection: _needsToggles(context),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Needs-simulation seed toggles. The refactored RealismFormSection exposes a
+  /// slot for these instead of the god file's inline booleans, so we provide a
+  /// compact pair wired to the same seed fields the save step consumes.
+  Widget _needsToggles(BuildContext context) {
+    final accent = AppColors.resolve(
+      context,
+      Colors.tealAccent,
+      const Color(0xFF0D7377),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: accent,
+            value: state.realismNeedsSim,
+            onChanged: (v) {
+              state.realismNeedsSim = v;
+              state.notify();
+            },
+            title: Text(
+              'Needs Simulation',
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              'Sims-style hunger, energy, social, hygiene and more.',
+              style: TextStyle(
+                color: AppColors.textTertiary(context),
+                fontSize: 11,
+              ),
+            ),
+          ),
+          if (state.realismNeedsSim)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: accent,
+              value: state.realismEnjoysLowHygiene,
+              onChanged: (v) {
+                state.realismEnjoysLowHygiene = v;
+                state.notify();
+              },
+              title: Text(
+                'Enjoys Low Hygiene',
+                style: TextStyle(
+                  color: AppColors.textPrimary(context),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                'Inverts the hygiene need — this character likes being filthy.',
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

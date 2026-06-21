@@ -2,18 +2,56 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
-import 'package:front_porch_ai/ui/character_creator/widgets/styled_text_field.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_options.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/appearance_builder_card.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/archetype_preset_card.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/backstory_card.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_hint_field.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_input_label.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/description_generator_section.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/lore_input_section.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/lorebook_generation_card.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/relationship_select_section.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/sexual_traits_card.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/alternate_greetings_slider.dart';
+import 'package:front_porch_ai/ui/widgets/avatar_art_style_selector.dart';
+import 'package:front_porch_ai/ui/widgets/age_gender_row.dart';
+import 'package:front_porch_ai/ui/widgets/character_name_input.dart';
+import 'package:front_porch_ai/ui/widgets/description_detail_chip_row.dart';
+import 'package:front_porch_ai/ui/widgets/first_message_length_dropdown.dart';
+import 'package:front_porch_ai/ui/widgets/greeting_tone_selector.dart';
+import 'package:front_porch_ai/ui/widgets/nsfw_toggle.dart';
+import 'package:front_porch_ai/ui/widgets/persona_selector_dropdown.dart';
 
-/// Automated (structured) config step.
+/// Automated (structured) config step. Faithful restoration of the pre-refactor
+/// `_buildConfigStep`: a guided set of cards and chip rows that feed the AI a
+/// rich character brief. Navigation + generation are owned by the wizard shell.
 class AutomatedConfigStep extends StatelessWidget {
   final CreatorState state;
 
   const AutomatedConfigStep({super.key, required this.state});
 
+  Color _blue(BuildContext context) =>
+      AppColors.resolve(context, Colors.blueAccent, const Color(0xFF1E40AF));
+
+  void _save() {
+    state.saveState();
+    state.notify();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final pink = AppColors.resolve(
+      context,
+      Colors.pinkAccent,
+      const Color(0xFF9D174D),
+    );
     return Center(
       key: const ValueKey('automated-config'),
       child: SingleChildScrollView(
@@ -24,7 +62,7 @@ class AutomatedConfigStep extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Character Configuration',
+                'Bring Your Character to Life',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -33,232 +71,203 @@ class AutomatedConfigStep extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Provide structured details. The AI will weave them into a rich card.',
+                'Give us a name and a concept — the AI will do the rest. '
+                'It will generate a complete character card with personality, '
+                'backstory, dialogue examples, and a custom avatar.',
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary(context),
+                  height: 1.5,
                 ),
               ),
               const SizedBox(height: 24),
 
-              StyledTextField(
+              NsfwToggle(
+                value: state.nsfwEnabled,
+                accentColor: pink,
+                subtitle: 'Unlock spicy appearance & relationship options',
+                onChanged: (val) {
+                  state.nsfwEnabled = val;
+                  _save();
+                },
+              ),
+              const SizedBox(height: 16),
+
+              ArchetypePresetCard(state: state),
+              const SizedBox(height: 24),
+
+              CharacterNameInput(
                 controller: state.nameController,
-                label: 'Name',
-                required: true,
-                onChanged: (_) => state.notify(),
-              ),
-              const SizedBox(height: 12),
-              StyledTextField(
-                controller: state.conceptController,
-                label: 'Concept / Short Description',
-                maxLines: 3,
-                onChanged: (_) => state.notify(),
-              ),
-              const SizedBox(height: 12),
-              // Art style dropdown (lifted)
-              Text(
-                'Art Style',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary(context),
-                ),
-              ),
-              DropdownButton<String>(
-                value: state.artStyle,
-                items: ['Anime', 'Realistic', 'Cartoon', 'Fantasy', 'SciFi']
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) {
-                    state.artStyle = v;
-                    state.notify();
-                  }
+                onRandomize: () {
+                  state.randomizeName(
+                    llmProvider: Provider.of<LLMProvider>(
+                      context,
+                      listen: false,
+                    ),
+                    storage: Provider.of<StorageService>(
+                      context,
+                      listen: false,
+                    ),
+                  );
                 },
+                tooltip: 'Generate a random character name',
+                onChanged: (_) => _save(),
               ),
-              const SizedBox(height: 8),
-              // Greeting length
-              Text(
-                'Greeting Length',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary(context),
-                ),
+              const SizedBox(height: 16),
+
+              AgeGenderRow(
+                ageController: state.ageController,
+                genderController: state.sexController,
+                onChanged: _save,
               ),
-              DropdownButton<String>(
-                value: state.greetingLength,
-                items:
-                    [
-                          'Short (1 para)',
-                          'Medium (2-4 paragraphs)',
-                          'Long (5+ paragraphs)',
-                        ]
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                onChanged: (v) {
-                  if (v != null) {
-                    state.greetingLength = v;
-                    state.notify();
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              // Alt count
-              Text(
-                'Alt Greetings: ${state.altGreetingCount}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary(context),
-                ),
-              ),
-              Slider(
-                value: state.altGreetingCount.toDouble(),
-                min: 0,
-                max: 5,
-                divisions: 5,
-                onChanged: (v) {
-                  state.altGreetingCount = v.toInt();
-                  state.notify();
-                },
-              ),
-              const SizedBox(height: 8),
-              // Tones chips (lifted)
-              Text(
-                'Tones',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary(context),
-                ),
-              ),
-              Wrap(
-                spacing: 8,
-                children:
-                    [
-                      'Neutral',
-                      'Friendly',
-                      'Mysterious',
-                      'Aggressive',
-                      'Playful',
-                      'Serious',
-                    ].map((t) {
-                      final sel = state.selectedTones.contains(t);
-                      return FilterChip(
-                        label: Text(t),
-                        selected: sel,
-                        onSelected: (v) {
-                          if (v) {
-                            state.selectedTones.add(t);
-                          } else {
-                            state.selectedTones.remove(t);
-                          }
-                          state.notify();
-                        },
-                      );
-                    }).toList(),
-              ),
-              const SizedBox(height: 8),
-              // Lorebook + categories + depth (lifted)
-              Row(
-                children: [
-                  Checkbox(
-                    value: state.generateLorebook,
-                    onChanged: (v) {
-                      state.generateLorebook = v ?? true;
-                      state.notify();
-                    },
-                  ),
-                  Text('Generate Lorebook'),
-                ],
-              ),
-              if (state.generateLorebook) ...[
-                Text(
-                  'Lore Categories',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary(context),
-                  ),
-                ),
-                Wrap(
-                  spacing: 4,
-                  children: CreatorState.loreCategoryOptions.map((c) {
-                    final sel = state.selectedLoreCategories.contains(c);
-                    return FilterChip(
-                      label: Text(c),
-                      selected: sel,
-                      onSelected: (v) {
-                        if (v) {
-                          state.selectedLoreCategories.add(c);
-                        } else {
-                          state.selectedLoreCategories.remove(c);
-                        }
-                        state.notify();
-                      },
-                    );
-                  }).toList(),
-                ),
-                Text(
-                  'Lore Depth',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary(context),
-                  ),
-                ),
-                DropdownButton<String>(
-                  value: state.loreDepth,
-                  items: CreatorState.loreDepths
-                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) {
-                      state.loreDepth = v;
-                      state.notify();
-                    }
-                  },
-                ),
+              const SizedBox(height: 24),
+
+              AppearanceBuilderCard(state: state),
+              const SizedBox(height: 24),
+
+              RelationshipSelectSection(state: state),
+              const SizedBox(height: 24),
+
+              if (state.nsfwEnabled) ...[
+                SexualTraitsCard(state: state),
+                const SizedBox(height: 24),
               ],
+
+              const CreatorInputLabel('Personality Keywords'),
               const SizedBox(height: 8),
-              // Age sex relationship (lifted)
-              StyledTextField(
-                controller: state.ageController,
-                label: 'Age',
-                onChanged: (_) => state.notify(),
+              CreatorHintField(
+                state: state,
+                controller: state.keywordsController,
+                hint: 'e.g. witty, secretive, bookish, brave, loyal...',
               ),
-              StyledTextField(
-                controller: state.sexController,
-                label: 'Sex',
-                onChanged: (_) => state.notify(),
+              const SizedBox(height: 24),
+
+              BackstoryCard(state: state),
+              const SizedBox(height: 24),
+
+              const CreatorInputLabel('Description Detail'),
+              const SizedBox(height: 4),
+              DescriptionDetailChipRow(
+                options: CreatorOptions.generationDetailOptions.keys.toList(),
+                selectedDetail: state.generationDetail,
+                accentColor: Colors.blueAccent,
+                subtitle:
+                    'Controls how detailed the character description will be',
+                onChanged: (label) {
+                  state.generationDetail = label;
+                  _save();
+                },
               ),
-              StyledTextField(
-                controller: state.relationshipController,
-                label: 'Relationship',
-                onChanged: (_) => state.notify(),
+              const SizedBox(height: 24),
+
+              DescriptionGeneratorSection(state: state),
+              const SizedBox(height: 24),
+
+              LorebookGenerationCard(state: state),
+              const SizedBox(height: 24),
+
+              const CreatorInputLabel('{{user}} Persona for Greetings'),
+              const SizedBox(height: 4),
+              Text(
+                'Select a persona to tailor greetings, or "None" for public cards.',
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 11,
+                ),
               ),
-              // Appearance (sfw+nsfw lifted via state fields)
-              StyledTextField(
-                controller: state.customRaceController,
-                label: 'Race',
-                onChanged: (_) => state.notify(),
+              const SizedBox(height: 8),
+              PersonaSelectorDropdown(
+                selectedPersonaId: state.selectedPersonaId,
+                onChanged: (value) {
+                  state.selectedPersonaId = value ?? '';
+                  _save();
+                },
               ),
-              // (bodyType, hairLength, hairStyle, skinTone, notableFeatures chips, absCore etc, chestSize, buttSize, experience, dominance, kinks chips, outfitVibe - all bound to state.* in full lift from pre _buildConfigStep)
-              StyledTextField(
-                controller: state.backstoryNotesController,
-                label: 'Backstory Notes',
-                maxLines: 2,
-                onChanged: (_) => state.notify(),
+              const SizedBox(height: 24),
+
+              const CreatorInputLabel('Greeting Tones'),
+              const SizedBox(height: 4),
+              GreetingToneSelector(
+                selectedTones: state.selectedTones.toList(),
+                greetingCount: state.altGreetingCount,
+                nsfwEnabled: state.nsfwEnabled,
+                accentColor: _blue(context),
+                subtitle: state.altGreetingCount == 0
+                    ? 'Tone for the first message.'
+                    : 'Select up to ${state.altGreetingCount + 1} — '
+                          'one per greeting (first message + '
+                          '${state.altGreetingCount} '
+                          'alternate${state.altGreetingCount == 1 ? '' : 's'}).',
+                onChanged: (tones) {
+                  state.selectedTones = tones.toSet();
+                  _save();
+                },
               ),
-              // nsfw, reasoning, detail, persona, archetype, relationships (lifted)
+              const SizedBox(height: 24),
+
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Checkbox(
-                    value: state.nsfwEnabled,
-                    onChanged: (v) {
-                      state.nsfwEnabled = v ?? false;
-                      state.notify();
-                    },
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const CreatorInputLabel('First Message Length'),
+                        const SizedBox(height: 8),
+                        FirstMessageLengthDropdown(
+                          value: state.greetingLength,
+                          onChanged: (value) {
+                            if (value != null) {
+                              state.greetingLength = value;
+                              _save();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                  Text('NSFW Enabled'),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const CreatorInputLabel('Alternate Greetings'),
+                        const SizedBox(height: 8),
+                        AlternateGreetingsSlider(
+                          value: state.altGreetingCount,
+                          accentColor: Colors.blueAccent,
+                          onChanged: (val) {
+                            state.altGreetingCount = val;
+                            final maxTones = state.altGreetingCount + 1;
+                            while (state.selectedTones.length > maxTones) {
+                              state.selectedTones.remove(
+                                state.selectedTones.last,
+                              );
+                            }
+                            _save();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              // (similar checkboxes/dropdowns/chips for reasoningEnabled, generationDetail, selectedPersonaId, selectedArchetype, selectedRelationships - full from pre)
+              const SizedBox(height: 24),
+
+              const CreatorInputLabel('Avatar Art Style'),
+              const SizedBox(height: 8),
+              AvatarArtStyleSelector(
+                selectedStyle: state.artStyle,
+                accentColor: Colors.blueAccent,
+                onChanged: (style) {
+                  state.artStyle = style;
+                  _save();
+                },
+              ),
+              const SizedBox(height: 32),
+
+              LoreInputSection(state: state, accentColor: _blue(context)),
+              const SizedBox(height: 32),
             ],
           ),
         ),
