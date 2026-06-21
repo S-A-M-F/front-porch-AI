@@ -4,26 +4,14 @@ These notes feed the in-app "Update Available" dialog for stable releases on `ma
 
 ## Highlights
 
-- 🎭 **AI Character Creator fully restored** — The creator's setup screens had been stripped down to bare boxes, and underneath, generation and saving had stopped working entirely — it was quietly producing a placeholder instead of a real AI character, and the Save step never actually saved. It's all back: **Quick**, **Guided**, and **Automated** setup with every option (appearance builder, archetype presets, personality/backstory/NSFW trait chips, world-lore attachment, and the "magic wand" description writer), the **Realism** seeding screen, and the **Review** screen with avatar regenerate/crop and lorebook cherry-pick. It generates and saves real characters again, with the original look restored.
+- 🎭 **AI Character Creator — fully restored and overhauled** — The creator had quietly broken: its setup screens were stripped down, and underneath, "generating" a character just produced a hardcoded placeholder (no AI was ever called) and the Save step never actually saved. It's all back, and better than before. **Quick**, **Guided**, and **Automated** setup return with every option — the appearance builder, archetype quick-start presets, personality/backstory/NSFW trait chips, world-lore URL + file attachment, and a "magic wand" that writes a description for you — now sharing one clean, unified look (matching cards and bubbles, each mode tinted its own accent). The **Realism** screen seeds a character's starting bond/trust/mood and full needs (custom baselines + decay rates), and the **Review** screen has avatar regenerate/crop, an editable card, and lorebook cherry-pick. Real AI generation and saving work end-to-end again.
 
-- 📁 **Subfolder fix** — Dragging a character into a subfolder no longer creates a phantom duplicate on the parent screen (and deleting that "duplicate" no longer deletes your original character). Organizing large libraries is a touch faster too.
+- 🛠️ **Configure & launch your backend right from the creator** — The Setup step now has dedicated KoboldCpp (local) and Pseudo-Remote sections with `.kcpps` preset + model selectors, a live status dot (Stopped → Starting… → Loading model… → Ready), a Start/Stop button, and a foldable "Extra Settings" panel (GPU layers, context size, KV quantization). Remote/oMLX share one searchable model picker — no more leaving the creator to start or tune your backend.
 
-- 🎨 **Image Studio is now a first-class integrated experience** — Open a dedicated studio with buttons for Visualize Scene, Character Portrait, Chat Background, and Custom. Full settings (models, LoRAs, style, negative, steps, CFG, etc.) live inside as tabs. Visualize Scene uses a slider for the most recent N messages so the generated image matches what's actually happening. Prompts start clean without boilerplate. Old separate illustration button and dialogs removed for a much smoother flow.
+- 🤖 **Smarter, more reliable character generation** — Generated characters now reliably include a first message (the thinking-model edge cases that used to drop it are handled), and their description and personality use the portable `{{char}}` macro instead of the literal name, so they behave better in chat.
 
-- 🧠 **Realism Engine and character needs are dramatically more reliable** — Bond, Trust, and Lust deltas now consistently show in chips. Manual Needs Reprocess is safe, survives regens and empty responses, and works in groups with a "Director corrected" pill. Groups properly track per-speaker needs, decay, and scene rewards. Larger positive boosts from strong scenes, earlier natural hints from characters, dedicated Needs tab in group settings, and editable realism baselines.
+- 📥 **Bulk-import Backyard AI characters** — Select multiple `.byaf` files at once, and **"Import Folder" now imports both V2 PNG cards and `.byaf` files together** — with a per-type breakdown (and a "also import chat history" option) so a mixed folder imports exactly what you choose, no surprises. Everything runs through one progress bar with success/fail counts.
 
-- 🧬 **Character evolution now follows the schedule you set** — The "Evolve every N messages" slider finally works with its own independent counter (including in groups).
-
-- 👤 **AI Character Creator local model picker finally works** — KoboldCpp (local) now scans and picks correctly using the exact same clean searchable interface as remote providers.
-
-- 📁 **Home screen improvements** — Folders show quick 2×2 previews of characters inside. Refresh button for scanning external imports.
-
-- ✨ **Better editing and SillyTavern-style macros** — Live syntax highlighting for dialogue, actions, and {{macros}} with no lag. Fullscreen editor keeps colors and spellcheck. Macros ({{random}}, {{roll}}, {{time}}, {{pick}}, comments, spacing) now work inside character cards, scenarios, and lorebooks. Unified lorebook editor with enable/disable toggles everywhere.
-
-- 📤 **Export User Personas** — Export as full SillyTavern-compatible JSON (learned facts are a Front Porch-only feature and will be ignored by other apps).
-
-- 🪟 **Windows install fixes** — Installs now land in the correct folder, and Stable, Beta, and Nightly install side-by-side without overwriting each other. If an earlier update placed your install in the wrong folder, it's repaired automatically on the next update — no reinstall needed. Plus: no more ghosting when restoring maximized windows.
-
-- Many additional group chat, needs, realism, and stability fixes that make the experience feel much more consistent and alive.
+- 📁 **Subfolder fix** — Dragging a character into a subfolder no longer creates a phantom duplicate on the parent screen (and deleting that "duplicate" no longer deletes your original character). Organizing large libraries is a little faster, too.
 
 For the complete list, see the GitHub release notes.
