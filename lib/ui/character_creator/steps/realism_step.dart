@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 
 /// Step 4: seed the Realism Engine's initial state for the generated character.
@@ -166,78 +167,97 @@ class RealismStep extends StatelessWidget {
                   state.saveState();
                   state.notify();
                 },
-                needsFormSection: _needsToggles(context),
+                // Full needs editor (enable, enjoys-low-hygiene, custom 0-100
+                // baselines + per-tick decay rates) — same widget the character
+                // editor uses, so AI-created characters can ship custom needs
+                // tuning. Strength stays at the default (not exposed here).
+                needsFormSection: NeedsFormSection(
+                  enabled: state.realismNeedsSim,
+                  onEnabledChanged: (v) {
+                    state.realismNeedsSim = v;
+                    state.notify();
+                  },
+                  enjoysLowHygiene: state.realismEnjoysLowHygiene,
+                  onEnjoysLowHygieneChanged: (v) {
+                    state.realismEnjoysLowHygiene = v;
+                    state.notify();
+                  },
+                  needsSimStrength: 1,
+                  baselineHunger: state.needsBaselineHunger,
+                  onBaselineHungerChanged: (v) {
+                    state.needsBaselineHunger = v;
+                    state.notify();
+                  },
+                  baselineBladder: state.needsBaselineBladder,
+                  onBaselineBladderChanged: (v) {
+                    state.needsBaselineBladder = v;
+                    state.notify();
+                  },
+                  baselineEnergy: state.needsBaselineEnergy,
+                  onBaselineEnergyChanged: (v) {
+                    state.needsBaselineEnergy = v;
+                    state.notify();
+                  },
+                  baselineSocial: state.needsBaselineSocial,
+                  onBaselineSocialChanged: (v) {
+                    state.needsBaselineSocial = v;
+                    state.notify();
+                  },
+                  baselineFun: state.needsBaselineFun,
+                  onBaselineFunChanged: (v) {
+                    state.needsBaselineFun = v;
+                    state.notify();
+                  },
+                  baselineHygiene: state.needsBaselineHygiene,
+                  onBaselineHygieneChanged: (v) {
+                    state.needsBaselineHygiene = v;
+                    state.notify();
+                  },
+                  baselineComfort: state.needsBaselineComfort,
+                  onBaselineComfortChanged: (v) {
+                    state.needsBaselineComfort = v;
+                    state.notify();
+                  },
+                  decayHunger: state.needsDecayHunger,
+                  onDecayHungerChanged: (v) {
+                    state.needsDecayHunger = v;
+                    state.notify();
+                  },
+                  decayBladder: state.needsDecayBladder,
+                  onDecayBladderChanged: (v) {
+                    state.needsDecayBladder = v;
+                    state.notify();
+                  },
+                  decayEnergy: state.needsDecayEnergy,
+                  onDecayEnergyChanged: (v) {
+                    state.needsDecayEnergy = v;
+                    state.notify();
+                  },
+                  decaySocial: state.needsDecaySocial,
+                  onDecaySocialChanged: (v) {
+                    state.needsDecaySocial = v;
+                    state.notify();
+                  },
+                  decayFun: state.needsDecayFun,
+                  onDecayFunChanged: (v) {
+                    state.needsDecayFun = v;
+                    state.notify();
+                  },
+                  decayHygiene: state.needsDecayHygiene,
+                  onDecayHygieneChanged: (v) {
+                    state.needsDecayHygiene = v;
+                    state.notify();
+                  },
+                  decayComfort: state.needsDecayComfort,
+                  onDecayComfortChanged: (v) {
+                    state.needsDecayComfort = v;
+                    state.notify();
+                  },
+                ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// Needs-simulation seed toggles. The refactored RealismFormSection exposes a
-  /// slot for these instead of the god file's inline booleans, so we provide a
-  /// compact pair wired to the same seed fields the save step consumes.
-  Widget _needsToggles(BuildContext context) {
-    final accent = AppColors.resolve(
-      context,
-      Colors.tealAccent,
-      const Color(0xFF0D7377),
-    );
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        children: [
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            activeThumbColor: accent,
-            value: state.realismNeedsSim,
-            onChanged: (v) {
-              state.realismNeedsSim = v;
-              state.notify();
-            },
-            title: Text(
-              'Needs Simulation',
-              style: TextStyle(
-                color: AppColors.textPrimary(context),
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              'Sims-style hunger, energy, social, hygiene and more.',
-              style: TextStyle(
-                color: AppColors.textTertiary(context),
-                fontSize: 11,
-              ),
-            ),
-          ),
-          if (state.realismNeedsSim)
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              activeThumbColor: accent,
-              value: state.realismEnjoysLowHygiene,
-              onChanged: (v) {
-                state.realismEnjoysLowHygiene = v;
-                state.notify();
-              },
-              title: Text(
-                'Enjoys Low Hygiene',
-                style: TextStyle(
-                  color: AppColors.textPrimary(context),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: Text(
-                'Inverts the hygiene need — this character likes being filthy.',
-                style: TextStyle(
-                  color: AppColors.textTertiary(context),
-                  fontSize: 11,
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

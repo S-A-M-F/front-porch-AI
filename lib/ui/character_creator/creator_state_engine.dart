@@ -100,24 +100,47 @@ extension CreatorEngine on CreatorState {
       card.mesExample = exampleDialogueController.text;
       card.systemPrompt = systemPromptController.text;
 
-      // Seed Realism Engine state (V2.5 extensions) when enabled.
-      if (realismStepEnabled) {
-        card.frontPorchExtensions = FrontPorchExtensions(
-          realismEnabled: realismStepEnabled,
-          shortTermBond: realismShortTermBond,
-          longTermBond: realismLongTermBond,
-          trustLevel: realismTrustLevel,
-          dayCount: realismDayCount,
-          timeOfDay: realismTimeOfDay,
-          characterEmotion: realismEmotion,
-          emotionIntensity: realismEmotionIntensity,
-          nsfwCooldownEnabled: realismNsfwCooldown,
-          chaosModeEnabled: realismChaosMode,
-          needsSimEnabled: realismNeedsSim,
-          enjoysLowHygiene: realismEnjoysLowHygiene,
-          currentTask: realismCurrentTask,
-        );
-      }
+      // Always build the V2.5 extensions — even when realism is disabled — so
+      // configured realism/needs values AND the stable tracking id survive the
+      // PNG round-trip. realismEnabled only controls whether the engine *uses*
+      // them at runtime, matching create_character_page's behaviour.
+      final fpExt = FrontPorchExtensions(
+        realismEnabled: realismStepEnabled,
+        shortTermBond: realismShortTermBond,
+        longTermBond: realismLongTermBond,
+        trustLevel: realismTrustLevel,
+        dayCount: realismDayCount,
+        timeOfDay: realismTimeOfDay,
+        characterEmotion: realismEmotion,
+        emotionIntensity: realismEmotionIntensity,
+        nsfwCooldownEnabled: realismNsfwCooldown,
+        chaosModeEnabled: realismChaosMode,
+        needsSimEnabled: realismNeedsSim,
+        enjoysLowHygiene: realismEnjoysLowHygiene,
+        currentTask: realismCurrentTask,
+        realismVerificationEnabled: realismVerificationEnabled,
+        realismVerificationMaxReprocesses: realismVerificationMaxReprocesses,
+        realismVerificationStrictness: realismVerificationStrictness,
+        realismNeedsDirectorAuthority: realismNeedsDirectorAuthority,
+        needsBaselineHunger: needsBaselineHunger,
+        needsBaselineBladder: needsBaselineBladder,
+        needsBaselineEnergy: needsBaselineEnergy,
+        needsBaselineSocial: needsBaselineSocial,
+        needsBaselineFun: needsBaselineFun,
+        needsBaselineHygiene: needsBaselineHygiene,
+        needsBaselineComfort: needsBaselineComfort,
+        needsDecayHunger: needsDecayHunger,
+        needsDecayBladder: needsDecayBladder,
+        needsDecayEnergy: needsDecayEnergy,
+        needsDecaySocial: needsDecaySocial,
+        needsDecayFun: needsDecayFun,
+        needsDecayHygiene: needsDecayHygiene,
+        needsDecayComfort: needsDecayComfort,
+      );
+      // Stable tracking UUID: ensures later realism/needs edits update this
+      // character in place instead of decoupling it from its DB row.
+      fpExt.ensureStableId();
+      card.frontPorchExtensions = fpExt;
 
       // Drop lorebook entries the user unchecked in the Review step.
       final lore = card.lorebook;
