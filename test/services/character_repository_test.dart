@@ -595,7 +595,9 @@ void main() {
         await v2.saveCardAsJson(card, jsonPath);
 
         final imported = await repo.importCharacter(File(jsonPath));
-        expect(imported, isNotNull);
+        // Note: this file imports drift, whose `isNotNull` collides with the
+        // matcher of the same name — use the `!= null` idiom like the rest.
+        expect(imported != null, true);
         expect(imported!.name, 'JsonImportChar');
         expect(imported.description, 'imported from json');
         expect(imported.personality, 'Curious');
@@ -606,7 +608,7 @@ void main() {
 
         // JSON has no avatar, so persist must synthesize a placeholder PNG
         // that actually exists on disk.
-        expect(imported.imagePath, isNotNull);
+        expect(imported.imagePath != null, true);
         expect(imported.imagePath, endsWith('.png'));
         expect(File(imported.imagePath!).existsSync(), isTrue);
 
