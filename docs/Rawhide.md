@@ -4,7 +4,7 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
-- 📥 **Bulk-import Backyard AI characters** — the "Import BYAF" picker now lets you select **multiple `.byaf` files at once** (just like bulk-importing V2 PNG cards). A single file still shows the full preview; picking several imports them all with a progress bar, a per-batch "also import chat history" option, and a count of how many succeeded/failed.
+- 📥 **Bulk-import Backyard AI characters (files *or* folders)** — the "Import BYAF" picker now lets you select **multiple `.byaf` files at once** (a single file still shows the full preview). And **"Import Folder" now imports both V2 PNG cards and `.byaf` files together**: it shows a breakdown of what's in the folder with independent checkboxes ("12 V2 PNG cards" / "5 Backyard AI files" + "also import chat history"), so a mixed folder imports exactly what you choose — no surprises. Everything runs through one progress bar with success/fail counts.
 
 - 🛠️ **Configure & launch your backend right from the Character Creator** — the Setup step now has dedicated KoboldCpp (local) and Pseudo-Remote sections with `.kcpps` preset + model selectors, a live status dot (Stopped → Starting… → Loading model… → Ready), a Start/Stop Backend button, and a foldable "Extra Settings" panel (GPU layers, context size, KV quantization, auto-configure). Remote (API) + oMLX share one searchable model picker. No more leaving the creator to start or tune your backend.
 

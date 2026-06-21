@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-21 (feat: folder import now handles V2 PNG + BYAF together, with a footgun-proof per-type confirm)
+- **Files changed**: lib/ui/pages/home_page.dart.
+- **Why**: Folder import was PNG-only; BYAF only had multi-file-select. A mixed folder (PNG + BYAF, or both forms of the same character) could otherwise import things silently/unexpectedly.
+- **What**: `_folderImportCharacters` now scans the chosen folder for BOTH `.png` and `.byaf`. Before importing it shows a breakdown/confirm dialog (`_confirmFolderImport`) with independent checkboxes — "N character cards (V2 PNG)" and "M Backyard AI files (.byaf)" + a "also import their chat history" sub-option (enabled only when BYAF is selected) — and a live "Import X" button (disabled when nothing is selected). So a mixed folder is a conscious choice, never a surprise; you can do PNG-only, BYAF-only, or both. The selected sets run through the SAME unified `_runBulkProgressImport` dialog (PNGs via repo.importCharacters, BYAFs via _importByafFiles), with progress remapped so the bar/counts span the whole batch. Deliberately does NOT auto-dedupe a .byaf against an exported .png of the same character — the per-type checkboxes are the explicit guard.
+- **Verification**: flutter analyze clean; flutter build macos --debug succeeds.
+- **Branch**: main (cherry-picked to Rawhide).
+
 ## 2026-06-21 (feat: mass BYAF (Backyard AI) importer — bulk-import multiple .byaf files at once)
 - **Files changed**: lib/ui/pages/home_page.dart.
 - **Why**: BYAF import was single-file only, while V2 PNGs already had a bulk importer. Users with many Backyard AI characters had to import them one at a time.
