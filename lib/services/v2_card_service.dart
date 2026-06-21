@@ -74,9 +74,8 @@ class V2CardService {
     final avatar = await _resolveOrCreateAvatar(card, sourceImagePath);
 
     // Encode character data to Base64
-    // V2 Spec: 'chara' chunk containing base64 encoded JSON
-    final jsonMap = card.toJson();
-    final jsonStr = jsonEncode(jsonMap);
+    // V2 Spec: 'chara' chunk containing base64 encoded JSON (V2 envelope)
+    final jsonStr = jsonEncode(_buildCardV2Envelope(card));
     final base64Str = base64Encode(utf8.encode(jsonStr));
 
     // Add tEXt chunk
@@ -101,8 +100,7 @@ class V2CardService {
   ) async {
     final avatar = await _resolveOrCreateAvatar(card, sourceImagePath);
 
-    final jsonMap = card.toJson();
-    final jsonStr = jsonEncode(jsonMap);
+    final jsonStr = jsonEncode(_buildCardV2Envelope(card));
     final base64Str = base64Encode(utf8.encode(jsonStr));
 
     avatar.textData ??= {};
@@ -146,17 +144,25 @@ class V2CardService {
     return parseCardJson(jsonStr, imagePath: null);
   }
 
-  /// Writes [card] as a standalone Character Card V2 JSON file. The structure is
-  /// identical to what is embedded in exported PNGs and what the importer accepts:
+  /// Canonical Character Card V2 envelope wrapping [card]'s flat data map:
   /// `{ "spec": "chara_card_v2", "spec_version": "2.0", "data": { ... } }`.
-  Future<void> saveCardAsJson(CharacterCard card, String outputPath) async {
-    final envelope = <String, dynamic>{
+  /// Every export path (PNG `chara` chunk + standalone `.json`) goes through
+  /// this so all exports carry the standard `spec` marker and decode identically.
+  /// `readCard`/`parseCardJson` accept both this envelope and legacy flat data.
+  Map<String, dynamic> _buildCardV2Envelope(CharacterCard card) {
+    return <String, dynamic>{
       'spec': 'chara_card_v2',
       'spec_version': '2.0',
       'data': card.toJson(),
     };
+  }
+
+  /// Writes [card] as a standalone Character Card V2 JSON file. The structure is
+  /// identical to what is embedded in exported PNGs and what the importer accepts.
+  Future<void> saveCardAsJson(CharacterCard card, String outputPath) async {
     const encoder = JsonEncoder.withIndent('  ');
-    await File(outputPath).writeAsString(encoder.convert(envelope));
+    final jsonStr = encoder.convert(_buildCardV2Envelope(card));
+    await File(outputPath).writeAsString(jsonStr);
   }
 
   /// Parses a Character Card V2 (or legacy flat V1) JSON string into a
