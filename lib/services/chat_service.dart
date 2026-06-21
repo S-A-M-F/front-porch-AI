@@ -1416,7 +1416,7 @@ class ChatService extends ChangeNotifier {
   // 0 @Deprecated shims. 0 new god private _ methods (thins as the public surface; live `grep -c '^\s*void _[a-zA-Z]' lib/services/chat_service.dart` *must stay exactly 15* after *every* edit + final; +1 late final + thins/calls + reset comment syncs only).
   // Stateless/prompt-only (no owned reset/seed/load state for processing — god owns the scalars/flags/cadence; no reset calls needed on leaf).
   // God reset "keep blocks in sync" comments expanded at *all* ~15+ documented sites (full prior+current list + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + realism_verification (stateless or prompt-only; no reset calls needed) + "incomplete zeroing... now complete (see CLAUDE.md)"; both startNew branches explicit; cross-refs e.g. setActiveCharacter:1572).
-  // The two periodic cadence counters (_userMessagesSinceLastPeriodicEval for facts, _userMessagesSinceLastEvolution for evolution) are zeroed at every one of these sites (in addition to the flags) to keep independent schedules in sync after chat switches / 0-session / group entry. "incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)" covers the evolution counter too.
+  // The facts cadence counter (_userMessagesSinceLastPeriodicEval) is zeroed at every one of these sites (in addition to the flags) to keep its schedule in sync after chat switches / 0-session / group entry ("incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)"). Character-evolution cadence is driven separately by _characterEvolutionCount vs evolutionInterval (no side-counter), so it needs no zeroing here.
   // 1:1 vs group parity for fact extraction (rejection of current+group char names must work identically; dispatch preserved via cbs; facts are user-global but context for extraction/rejection is chat-specific).
   // aug/integration tests receive *only* qualified passive notes in headers/comments (exact precedent phrasing from step 12: "aug exercising only passive/qualified (no fact-extraction-specific aug file edits; full in dedicated + manual; exercised via god thins _maybeRunPeriodicEvals/_runPeriodicEvalsInSequence/_extractFactsInBackground ; qualified notes only in dedicated header + god + MD per precedent)"); no leaf-specific logic edits.
   // Anti-accumulation/dead-code audit (explicit greps of affected methods in god; no new _Fact/*Fact/ExtractFact privates in god; deletion of moved + any dead/vestigial as part of task).
@@ -1462,7 +1462,7 @@ class ChatService extends ChangeNotifier {
   // + group per-char counts + LLM for traits + status/error.
   // Periodic coordination / enabled / trigger call sites / load/save of evolved scalars/maps
   // stay thin in god ("thin delegation here; full character evolution in step 14").
-  // Cadence decision (own _userMessagesSinceLastEvolution counter vs evolutionInterval) lives
+  // Cadence decision (live chat user-message count vs persisted _characterEvolutionCount + evolutionInterval) lives
   // in the god _maybeRunPeriodicEvals thin coordinator (plus the run sequence thin); evolution
   // leaf is purely trigger/extract/LLM/persist/layering. God late final (after _factExtraction) + thins/delegates at *every* prior call site for
   // trigger/manual/getEffective* (full excision of moved bodies), 0 @Deprecated shims,
@@ -1476,8 +1476,8 @@ class ChatService extends ChangeNotifier {
   // + "incomplete zeroing... now complete (see CLAUDE.md)"
   // + *both* startNewChat branches explicit + cross-refs e.g. setActiveCharacter:1572).
   // Explicit _isEvolvingCharacter=false + _evolutionStatus='' + _evolutionError='' (modeled on _isExtractingFacts) added at 10+ sites + decl + startNew both + common in fix round to make "now complete" hold in *code* (not just comments); maps/counts were already present.
-  // Evolution cadence decision now uses live chat user-message count + persisted evolutionCount (robust).
-  // The mutable _userMessagesSinceLastEvolution (and facts one) are still zeroed on the hygiene sites for debug and any fallback paths.
+  // Evolution cadence decision uses live chat user-message count + persisted _characterEvolutionCount vs evolutionInterval (robust; no side-counter).
+  // The facts cadence counter (_userMessagesSinceLastPeriodicEval) is still zeroed on the hygiene sites to keep its schedule in sync after context switches.
   // 1:1 vs group parity for evolution (per-char counts, effective personality/scenario layering,
   // trigger behavior must be identical whether 1:1 or group per-speaker; dispatch preserved
   // via cbs + god's impersonation dance where needed for target).
@@ -2512,13 +2512,12 @@ class ChatService extends ChangeNotifier {
       _isCheckingCompletion =
           false; // secondary objective flag zero on setActiveCharacter main path (incomplete zeroing hygiene; keep reset blocks)
       _userMessagesSinceLastPeriodicEval = 0;
-      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); fact_extraction)
       _isEvolvingCharacter = false;
       _evolutionStatus = '';
       _evolutionError =
-          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists + " ; no extra zero code, live read; now complete for this secondary config too)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete) + evolution cadence counter (_userMessagesSinceLastEvolution vs evolutionInterval) also zeroed here for independent schedule hygiene"
+          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists + " ; no extra zero code, live read; now complete for this secondary config too)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"; evolution cadence is driven by _characterEvolutionCount vs evolutionInterval (no side-counter to zero here)
       debugPrint(
         '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
       );
@@ -2623,7 +2622,6 @@ class ChatService extends ChangeNotifier {
         _isSummaryGenerating =
             false; // secondary zero in empty subpath of setActiveCharacter (incomplete zeroing... now complete (see CLAUDE.md))
         _userMessagesSinceLastPeriodicEval = 0;
-        _userMessagesSinceLastEvolution = 0;
         _isExtractingFacts =
             false; // secondary fact flag + counter zero in empty subpath of setActiveCharacter (incomplete zeroing ... now complete; fact_extraction)
         _isEvolvingCharacter = false;
@@ -2836,7 +2834,6 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // secondary flag zero for summary_service (stateless/prompt-only; see incomplete zeroing ... now complete + keep-sync lists)
     _userMessagesSinceLastPeriodicEval = 0;
-    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero on group fresh entry (incomplete zeroing ... now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -3700,7 +3697,6 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero in _loadLast empty (0-session for summary flag)
       _userMessagesSinceLastPeriodicEval = 0;
-      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadLast empty early return (0-session path hygiene; fact_extraction)
       _isEvolvingCharacter = false;
@@ -3833,7 +3829,6 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // secondary flag zero for summary_service (stateless/prompt-only; incomplete zeroing ... now complete)
     _userMessagesSinceLastPeriodicEval = 0;
-    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero in _loadLast loaded path (incomplete zeroing ... now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -4061,7 +4056,6 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero for flag on loadSession loaded (symmetric)
       _userMessagesSinceLastPeriodicEval = 0;
-      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; fact_extraction)
       _isEvolvingCharacter = false;
@@ -4256,7 +4250,6 @@ class ChatService extends ChangeNotifier {
     _isSummaryGenerating =
         false; // zero secondary flag on fork (new branch hygiene, matches summary scalar reset)
     _userMessagesSinceLastPeriodicEval = 0;
-    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // secondary fact flag + counter zero on fork (new branch hygiene + incomplete zeroing now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -4454,7 +4447,6 @@ class ChatService extends ChangeNotifier {
     _isCheckingCompletion =
         false; // see decl + keep reset blocks (incomplete zeroing... now complete (see CLAUDE.md); explicit in both startNew branches)
     _userMessagesSinceLastPeriodicEval = 0;
-    _userMessagesSinceLastEvolution = 0;
     _isExtractingFacts =
         false; // explicit secondary fact flag + counter zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; fact_extraction)
     _isEvolvingCharacter = false;
@@ -4615,7 +4607,6 @@ class ChatService extends ChangeNotifier {
         _isSummaryGenerating =
             false; // explicit secondary zero in startNew non-ext/group/0-session path (both branches + now complete for summary flag too)
         _userMessagesSinceLastPeriodicEval = 0;
-        _userMessagesSinceLastEvolution = 0;
         _isExtractingFacts =
             false; // explicit secondary fact flag + counter zero in startNew non-ext/group/0-session path (both branches + now complete for fact flag/counter; fact_extraction)
         _isEvolvingCharacter = false;
@@ -4628,7 +4619,6 @@ class ChatService extends ChangeNotifier {
     // Explicit flag + cadence counter zero for evolution (in addition to per-branch) to keep "incomplete zeroing... now complete (see CLAUDE.md)" + both startNew explicit; evolution_service (stateless or prompt-only; no reset calls needed) + " ; no god scalar zero needed -- live ext read; see also setActiveCharacter + group 0-session paths)" + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)".
     // Also zero the facts counter here for symmetric hygiene on the two periodic cadence counters.
     _userMessagesSinceLastPeriodicEval = 0;
-    _userMessagesSinceLastEvolution = 0;
     _isEvolvingCharacter = false;
     _evolutionStatus = '';
     _evolutionError = '';
@@ -8226,7 +8216,6 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero in _loadActiveObjectives empty (0-session hygiene for summary flag)
       _userMessagesSinceLastPeriodicEval = 0;
-      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadActiveObjectives empty (0-session hygiene; fact_extraction)
       _isEvolvingCharacter = false;
@@ -8552,10 +8541,8 @@ class ChatService extends ChangeNotifier {
   // flags (see every "keep reset blocks in sync" + "incomplete zeroing... now complete"
   // + explicit sites below and in the evolution/fact wiring sections).
   int _userMessagesSinceLastPeriodicEval = 0; // facts / auto-persona cadence
-  int _userMessagesSinceLastEvolution =
-      0; // kept in sync for debug; primary cadence for evolution now uses actual userMsgCount vs evoCount
   bool _isExtractingFacts =
-      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see CLAUDE.md "keep reset blocks in sync" + "incomplete zeroing..." (leaves incl fact/evo/verif + needs_impact etc)). The facts counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch). The sibling _userMessagesSinceLastEvolution counter (for character evolution vs its own evolutionInterval) is zeroed at the identical sites + both startNew for the same reason ("incomplete zeroing of secondary config on group/0-session/new-chat now complete (see CLAUDE.md)").
+      false; // secondary runtime flag (transient guard for fact extraction leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see CLAUDE.md "keep reset blocks in sync" + "incomplete zeroing..." (leaves incl fact/evo/verif + needs_impact etc)). The facts counter must likewise be zeroed on those paths (prevents stale/early trigger after context switch). Character-evolution cadence is driven separately by _characterEvolutionCount vs evolutionInterval (no side-counter), so only this facts counter needs zeroing on those paths.
 
   /// Coordinator for the two independent periodic background evals (fact extraction + character evolution).
   /// Facts uses its dedicated counter.
@@ -8608,12 +8595,7 @@ class ChatService extends ChangeNotifier {
       final currentEvos = _characterEvolutionCount;
       final expectedEvos = (interval > 0) ? (userMsgCount ~/ interval) : 0;
       if (expectedEvos > currentEvos) {
-        _userMessagesSinceLastEvolution = 0;
         evoDue = true;
-      } else {
-        _userMessagesSinceLastEvolution = (interval > 0)
-            ? (userMsgCount % interval)
-            : 0;
       }
     }
 
@@ -8698,10 +8680,10 @@ class ChatService extends ChangeNotifier {
   // surface coordination stay in god.
   // Evolution cadence decision lives in _maybeRunPeriodicEvals and uses actual #user messages in _messages
   // vs the persisted _characterEvolutionCount (or per-char in group). This ensures the UI slider
-  // reliably schedules evolution on the configured interval. Mutable counter kept for debug.
+  // reliably schedules evolution on the configured interval (no mutable side-counter).
 
   bool _isEvolvingCharacter =
-      false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing... now complete (see CLAUDE.md)" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch). Its sibling cadence counter _userMessagesSinceLastEvolution is zeroed at the same sites (see keep-sync lists + both startNew + "incomplete zeroing of secondary config... now complete").
+      false; // secondary runtime flag (transient guard for evolution_service leaf); must be defensively zeroed on *all* reset/new-chat/0-session/group/setActive/load/delete paths to prevent leak of in-flight state across contexts (see every "keep reset blocks in sync" + "incomplete zeroing... now complete (see CLAUDE.md)" + evolution_service (stateless or prompt-only; no reset calls needed) + fact_extraction (stateless or prompt-only; no reset calls needed)). The _evolutionStatus / _evolutionError must likewise be zeroed on those paths (prevents stale UI status/error bleed after context switch). Evolution cadence itself uses _characterEvolutionCount vs evolutionInterval (no side-counter to zero).
   // Explicit zero sites for evolution flag/status/error (12+ documented; part of "all ~15+" hygiene with briefing lists at 17+ / 31 phrase matches):
   // - startNewChat both branches (fresh + load path)
   // - setActiveCharacter main + empty session
@@ -8712,7 +8694,7 @@ class ChatService extends ChangeNotifier {
   // - deleteSession / fork paths
   // - decl init + common reset blocks
   // - _maybeRunPeriodicEvals early guard
-  // The dedicated _userMessagesSinceLastEvolution cadence counter (vs evolutionInterval) is zeroed at *exactly* the same sites (plus the facts counter) so independent schedules don't leak stale "due soon" state after context switch. Cross-refs e.g. setActiveCharacter ~1572 (precedent; lines may shift post edits -- verified live at doc time).
+  // The facts cadence counter (_userMessagesSinceLastPeriodicEval) is zeroed at *exactly* these same sites so its schedule doesn't leak stale "due soon" state after context switch. Evolution cadence uses _characterEvolutionCount vs evolutionInterval (no side-counter). Cross-refs e.g. setActiveCharacter ~1572 (precedent; lines may shift post edits -- verified live at doc time).
   String _evolutionStatus = '';
   String _evolutionError = '';
 
@@ -9557,7 +9539,6 @@ class ChatService extends ChangeNotifier {
       _isSummaryGenerating =
           false; // secondary zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene for summary flag)
       _userMessagesSinceLastPeriodicEval = 0;
-      _userMessagesSinceLastEvolution = 0;
       _isExtractingFacts =
           false; // secondary fact flag + counter zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; fact_extraction)
       _isEvolvingCharacter = false;
