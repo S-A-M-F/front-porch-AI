@@ -45,6 +45,7 @@ import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_objectives_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/scene_guest_detected_dialog.dart';
 // Old ImageGenDialog removed in Stage 3 (full from-scratch Image Studio).
 // Studio launched below; see lib/ui/image_studio/ and _showImageGenDialog.
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
@@ -70,6 +71,8 @@ class _ChatPageState extends State<ChatPage> {
   int _inputMinLines = 1;
   double _dragAccumulator = 0;
   bool _isCallActive = false;
+  // Guards the Scene Guest detection popup so it cannot stack while open.
+  bool _showingGuestDetection = false;
   bool? _externalImagesAllowed;
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
@@ -133,6 +136,13 @@ class _ChatPageState extends State<ChatPage> {
         (_) => _showChanceTimeOverlay(context),
       );
     }
+    // Scene Guest cast detection — same Chance-Time-style pending-flag pattern.
+    if (chat.pendingGuestDetection != null && !_showingGuestDetection) {
+      _showingGuestDetection = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showGuestDetectionDialog(chat),
+      );
+    }
   }
 
   void _showChanceTimeOverlay(BuildContext context) {
@@ -141,6 +151,28 @@ class _ChatPageState extends State<ChatPage> {
       barrierDismissible: false,
       builder: (_) => const ChanceTimeOverlay(),
     );
+  }
+
+  Future<void> _showGuestDetectionDialog(ChatService chat) async {
+    final detected = chat.pendingGuestDetection;
+    if (detected == null || !mounted) {
+      _showingGuestDetection = false;
+      return;
+    }
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => SceneGuestDetectedDialog(
+        detected: detected,
+        hostName: chat.activeCharacter?.name ?? 'your character',
+      ),
+    );
+    _showingGuestDetection = false;
+    if (accepted == true) {
+      await chat.acceptDetectedGuest();
+    } else {
+      chat.dismissDetectedGuest();
+    }
   }
 
   void _onTtsChanged() {

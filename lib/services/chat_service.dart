@@ -50,6 +50,7 @@ import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart'; // top-level for ExpressionClassifierService type in @Dep shim (pre-existing)
 import 'package:front_porch_ai/services/chat/chat_command_handler.dart';
+import 'package:front_porch_ai/services/chat/cast_detector.dart';
 import 'package:front_porch_ai/services/chat/scene_guest_director.dart';
 import 'package:front_porch_ai/services/chat/scene_guest_factory.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
@@ -234,6 +235,113 @@ class ChatService extends ChangeNotifier {
       getHostName: () => _activeCharacter?.name ?? 'the character',
       isEnabled: () => autoChimeEnabled,
     );
+  }
+
+  // ── Scene Guest cast detection (Phase 2) ────────────────────────────────
+  // Periodically (not every turn) scans the primary's recent narration in a
+  // 1:1 chat for a newly-introduced, recurring, named side character and offers
+  // to promote it to a Scene Guest. Detection only reads text + triggers the
+  // existing parity-safe mint/enter flow, so it adds ZERO Realism/Needs work.
+
+  /// Whether the periodic cast-detection scan runs. In-memory (default ON),
+  /// mirroring [autoChimeEnabled].
+  bool sceneDetectionEnabled = true;
+
+  /// Run a detection scan every this-many primary (user) turns. Small and
+  /// constant so the eval is infrequent and turns stay cheap.
+  static const int _castScanInterval = 4;
+
+  /// Primary turns since the last cast-detection scan (sibling to the facts
+  /// counter [_userMessagesSinceLastPeriodicEval]; zeroed at the same Scene
+  /// Guest reset sites alongside `_pendingGuestDeparture = null`).
+  int _userMessagesSinceLastCastScan = 0;
+
+  /// A detected candidate awaiting the user's accept/ignore choice. Surfaced to
+  /// the chat UI exactly like the Chance Time wheel's pending flag: set + clear
+  /// here with [notifyListeners]; the page observes it and shows the popup once.
+  DetectedCharacter? _pendingGuestDetection;
+
+  /// The candidate the popup should show (null = nothing pending).
+  DetectedCharacter? get pendingGuestDetection => _pendingGuestDetection;
+
+  /// Names already offered (whether accepted or ignored) this session,
+  /// lower-cased, so the same character is never re-offered. Cleared at the
+  /// Scene Guest reset sites.
+  final Set<String> _offeredOrIgnoredGuestNames = {};
+
+  CastDetector? _castDetector;
+
+  /// Cast detector (lazily built). Pure leaf — all cross-state routes back via
+  /// callbacks so it never imports this god file. Reuses the existing
+  /// `LlmEvalEngine` fire/strip surface (no new LLM-firing path).
+  CastDetector _ensureCastDetector() {
+    return _castDetector ??= CastDetector(
+      getRecentPrimaryTexts: () {
+        final out = <String>[];
+        for (final m in _messages.reversed) {
+          if (!m.isUser && m.sender != 'System') out.add(m.displayText);
+          if (out.length >= 6) break;
+        }
+        return out.reversed.toList();
+      },
+      fireLLMEval: (prompt) => _fireLLMEval(prompt),
+      stripThinkBlocks: _stripThinkBlocks,
+      getHostName: () => _activeCharacter?.name ?? '',
+      getUserName: () => _userPersonaService.persona.name,
+      getSceneGuestNames: () => _sceneGuestCards.map((g) => g.name).toList(),
+      getOfferedOrIgnoredNames: () => _offeredOrIgnoredGuestNames,
+    );
+  }
+
+  /// Promote the pending detected character to a real Scene Guest via the
+  /// EXISTING mint+add+enter path (same as `/create`). Seeds the guest from the
+  /// detected name + descriptor (as concept). Surfaces errors like `/create`.
+  Future<void> acceptDetectedGuest() async {
+    final detected = _pendingGuestDetection;
+    if (detected == null) return;
+    _pendingGuestDetection = null;
+    _offeredOrIgnoredGuestNames.add(detected.name.trim().toLowerCase());
+    notifyListeners();
+
+    _messages.add(
+      ChatMessage(
+        text: '⏳ Adding "${detected.name}" as a scene guest…',
+        sender: 'System',
+        isUser: false,
+      ),
+    );
+    notifyListeners();
+
+    final result = await _mintSceneGuest(detected.name, detected.descriptor);
+    if (!result.ok) {
+      _messages.add(
+        ChatMessage(
+          text: '⚠ Failed to add "${detected.name}": ${result.error}',
+          sender: 'System',
+          isUser: false,
+        ),
+      );
+      await _saveChat();
+      notifyListeners();
+      return;
+    }
+
+    final guest = result.card!;
+    if (guest.dbId != null) _sceneGuestIds.add(guest.dbId!);
+    await _resolveSceneGuestCards();
+    await _saveChat();
+    await generateGuestTurn(guest);
+  }
+
+  /// Decline the pending detection; the name is remembered so it is never
+  /// re-offered this session.
+  void dismissDetectedGuest() {
+    final detected = _pendingGuestDetection;
+    if (detected != null) {
+      _offeredOrIgnoredGuestNames.add(detected.name.trim().toLowerCase());
+    }
+    _pendingGuestDetection = null;
+    notifyListeners();
   }
 
   /// Mint a Scene Guest (Lite NPC) via the extracted factory (gen + persist),
@@ -2215,6 +2323,11 @@ class ChatService extends ChangeNotifier {
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     _pendingGuestDeparture = null;
+    // Phase 2 cast detection: reset the scan cadence + pending/debounce state
+    // for the new 1:1 context (kept in sync with the Scene Guest clears).
+    _userMessagesSinceLastCastScan = 0;
+    _pendingGuestDetection = null;
+    _offeredOrIgnoredGuestNames.clear();
 
     _activeCharacter = character;
 
@@ -2467,6 +2580,11 @@ class ChatService extends ChangeNotifier {
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     _pendingGuestDeparture = null;
+    // Phase 2 cast detection: reset the scan cadence + pending/debounce state
+    // for the new 1:1 context (kept in sync with the Scene Guest clears).
+    _userMessagesSinceLastCastScan = 0;
+    _pendingGuestDetection = null;
+    _offeredOrIgnoredGuestNames.clear();
 
     // Path B: Load per-character group system prompts from the clean model field
     _groupCharacterSystemPrompts = Map<String, String>.from(
@@ -4173,6 +4291,11 @@ class ChatService extends ChangeNotifier {
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     _pendingGuestDeparture = null;
+    // Phase 2 cast detection: reset the scan cadence + pending/debounce state
+    // for the new 1:1 context (kept in sync with the Scene Guest clears).
+    _userMessagesSinceLastCastScan = 0;
+    _pendingGuestDetection = null;
+    _offeredOrIgnoredGuestNames.clear();
     _summary = '';
     _summaryLastIndex = 0;
     _summaryPaused =
@@ -8308,6 +8431,11 @@ class ChatService extends ChangeNotifier {
   // "thin delegation here; full fact extraction in step 13"; "thin delegation here; full character evolution in step 14").
   // 0 new god private _ methods (only edits to these two existing coordinators + thins).
   void _maybeRunPeriodicEvals() {
+    // Scene Guest cast detection (1:1 only; independent of the facts/evolution
+    // settings below). Runs on its own cadence and fires-and-forget so it never
+    // blocks the turn. See _maybeRunCastDetection.
+    _maybeRunCastDetection();
+
     final autoPersona = _storageService.memorySettings.autoPersonaEnabled;
     final autoEvolution =
         _storageService.memorySettings.characterEvolutionEnabled;
@@ -8370,6 +8498,35 @@ class ChatService extends ChangeNotifier {
     }
 
     _runPeriodicEvalsInSequence(runFacts: factsDue, runEvolution: evoDue);
+  }
+
+  /// Cadence + trigger for Scene Guest cast detection (1:1 only). Advances the
+  /// dedicated counter on each primary turn and, on the interval, runs the
+  /// detector fire-and-forget. A non-null result is surfaced as a pending popup
+  /// (Chance-Time-style flag + notifyListeners). Never offers while one is
+  /// already pending. The detector itself filters out the host/user/existing
+  /// guests/already-offered names. Does ZERO Realism/Needs work.
+  void _maybeRunCastDetection() {
+    if (!sceneDetectionEnabled) return;
+    if (_activeGroup != null) return; // 1:1 only by design
+    if (_activeCharacter == null) return;
+    if (_pendingGuestDetection != null) return; // one offer at a time
+
+    _userMessagesSinceLastCastScan++;
+    if (_userMessagesSinceLastCastScan < _castScanInterval) return;
+    _userMessagesSinceLastCastScan = 0;
+
+    // Fire-and-forget: never block the turn on the eval.
+    _ensureCastDetector().detect().then((detected) {
+      if (detected == null) return;
+      if (_activeGroup != null) return; // context may have switched mid-eval
+      if (_pendingGuestDetection != null) return;
+      // Mark as offered immediately so the next scan won't re-propose it even if
+      // the user leaves the popup open.
+      _offeredOrIgnoredGuestNames.add(detected.name.trim().toLowerCase());
+      _pendingGuestDetection = detected;
+      notifyListeners();
+    });
   }
 
   /// Run the due steps (facts then evolution when both due) to preserve sequencing
