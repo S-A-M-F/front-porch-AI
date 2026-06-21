@@ -6,6 +6,12 @@
 - **Verification**: flutter analyze clean (0 issues) on character_card_grid.dart + folder_service.dart; confirmed searchScope field still used elsewhere.
 - **Branch**: main.
 
+## 2026-06-21 (perf: FolderService._load no longer re-fetches all characters per folder)
+- **Files changed**: lib/services/folder_service.dart (`_load`: fetch getAllCharacters() once and bucket normalized filenames by folderId instead of querying inside the per-folder loop), .claude/changelog.md.
+- **Why**: `_load()` ran `getAllCharacters()` once for every folder, so a library with N characters and M folders did N*M work on each reload (every drag-to-folder, add/remove, rename). Now characters are fetched once and grouped into a folderId->paths map. Behavior is identical (a folder's `characterPaths` still holds only its direct members, in DB order); preview thumbnail grids and counts are unaffected.
+- **Verification**: flutter analyze clean (0 issues) on folder_service.dart; verified folder preview portraits (`_folderPreviewImages`) and counts read `folder.characterPaths`, unchanged by this work.
+- **Branch**: main.
+
 ## 2026-06-20 (fix: KoboldCpp local model picker completely broken in AI Character Creator; remote/oMLX now unified)
 - **Files changed**:
   - lib/ui/pages/character_creator_page.dart (post-frame now scans local models via CreatorState + ModelManager, preselects lastUsed, and eagerly loadAvailableModels for remote backends)
