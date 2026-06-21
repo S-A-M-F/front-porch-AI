@@ -398,22 +398,26 @@ class CharacterRepository extends ChangeNotifier {
     try {
       final v2Service = V2CardService();
 
-      // Parse the V2 card data from the PNG tEXt chunk
-      CharacterCard? card = await v2Service.readCard(file.path);
+      // A standalone Character Card V2 `.json` file carries no avatar, so we
+      // parse it as text and let the placeholder image be generated on persist.
+      // PNG cards embed the same JSON in their `chara` chunk.
+      final isJson = file.path.toLowerCase().endsWith('.json');
 
-      // Fallback if no V2 data found in the PNG
-      if (card == null) {
-        final fileName = file.path.split('/').last.split('.').first;
-        card = CharacterCard(
-          name: fileName,
-          description: '',
-          imagePath: file.path,
-        );
-      }
+      CharacterCard? card = isJson
+          ? await v2Service.readCardFromJsonFile(file.path)
+          : await v2Service.readCard(file.path);
+
+      // Fallback if no card data could be parsed
+      card ??= CharacterCard(
+        name: p.basenameWithoutExtension(file.path),
+        description: '',
+        imagePath: isJson ? null : file.path,
+      );
 
       return await _persistImportedCharacterCard(
         card,
-        sourceFileForCopy: file,
+        // JSON has no image to copy; persist synthesizes a placeholder instead.
+        sourceFileForCopy: isJson ? null : file,
         worldRepo: worldRepo,
       );
     } catch (e) {
