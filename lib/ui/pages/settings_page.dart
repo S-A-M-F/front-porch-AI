@@ -35,6 +35,7 @@ import 'package:front_porch_ai/services/optimization_service.dart';
 import 'package:front_porch_ai/services/web_server_service.dart';
 import 'package:front_porch_ai/ui/dialogs/rocm_guidance_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/database_cleanup_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/generate_kcpps_dialog.dart';
 
 import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
 import 'package:front_porch_ai/ui/settings/tabs/general_tab.dart';
@@ -1829,6 +1830,31 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
 
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => const GenerateKcppsDialog(),
+                  );
+                  if (result == true) {
+                    _scanLocalPresets();
+                    setState(() {});
+                  }
+                },
+                icon: const Icon(Icons.auto_fix_high, size: 18),
+                label: const Text('Generate KCPPS Config...'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
             // Button enabled when: backend path exists AND
             // (kcpps has valid model OR model selected manually)
