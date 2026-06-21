@@ -83,18 +83,6 @@ extension CreatorEngine on CreatorState {
     }
   }
 
-  /// Abort an in-flight generation and return to the config step.
-  void abortGeneration() {
-    activeGenService?.abort();
-    isGenerating = false;
-    generationStatus = 'Generation aborted.';
-    generationPreview = '';
-    progress = 0.0;
-    setStep(2);
-    activeGenService = null;
-    notify();
-  }
-
   /// Persist the generated (and possibly edited) card. Returns true on success;
   /// the caller shows the SnackBar and pops on true, or surfaces [engineError]
   /// on false.

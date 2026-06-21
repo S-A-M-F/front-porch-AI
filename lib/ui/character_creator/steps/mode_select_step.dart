@@ -12,8 +12,30 @@ class ModeSelectStep extends StatelessWidget {
 
   const ModeSelectStep({super.key, required this.state});
 
+  void _select(CreatorMode mode) {
+    state.creatorMode = mode;
+    state.saveState();
+    state.notify();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final amber = AppColors.resolve(
+      context,
+      Colors.amberAccent,
+      const Color(0xFFB45309),
+    );
+    final teal = AppColors.resolve(
+      context,
+      Colors.tealAccent,
+      const Color(0xFF0D7377),
+    );
+    final green = AppColors.resolve(
+      context,
+      Colors.greenAccent,
+      const Color(0xFF15803D),
+    );
+
     return Center(
       key: const ValueKey('mode-select'),
       child: SingleChildScrollView(
@@ -37,46 +59,65 @@ class ModeSelectStep extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary(context),
+                  height: 1.5,
                 ),
               ),
-              const SizedBox(height: 24),
-
-              ModeCard(
-                title: 'Automated',
-                subtitle:
-                    'Describe your character in a few sentences. The AI does the rest.',
-                icon: Icons.auto_awesome,
-                isSelected: state.creatorMode == CreatorMode.automated,
-                onTap: () {
-                  state.creatorMode = CreatorMode.automated;
-                  // In thin shell, next would advance step; here for direct
-                },
-              ),
-              const SizedBox(height: 12),
-              ModeCard(
-                title: 'Guided',
-                subtitle:
-                    'Answer a series of questions for more control over the result.',
-                icon: Icons.list_alt,
-                isSelected: state.creatorMode == CreatorMode.guided,
-                onTap: () => state.creatorMode = CreatorMode.guided,
-              ),
-              const SizedBox(height: 12),
-              ModeCard(
-                title: 'Quick',
-                subtitle: 'Minimal inputs. Fastest path to a usable character.',
-                icon: Icons.bolt,
-                isSelected: state.creatorMode == CreatorMode.quick,
-                onTap: () => state.creatorMode = CreatorMode.quick,
-              ),
-
               const SizedBox(height: 32),
-              Text(
-                'You can always edit the generated card in the Review step.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textTertiary(context),
-                ),
+
+              ModeCard(
+                title: 'Automated Creator',
+                subtitle: 'Pick traits from bubbles, let AI fill the gaps',
+                description:
+                    'Best when you want to explore and discover. '
+                    'Select from archetypes, appearance options, backstory presets, '
+                    'and personality keywords. The AI handles the rest.',
+                features: const [
+                  'Archetype presets',
+                  'Bubble selectors for every trait',
+                  'AI generates description from selections',
+                ],
+                icon: Icons.auto_awesome,
+                accentColor: amber,
+                isSelected: state.creatorMode == CreatorMode.automated,
+                onTap: () => _select(CreatorMode.automated),
+              ),
+              const SizedBox(height: 16),
+
+              ModeCard(
+                title: 'Guided Creator',
+                subtitle: 'Write your vision, AI helps you flesh it out',
+                description:
+                    'Best when you already have a character in mind but need help '
+                    'getting it on paper. Describe your idea in your own words — '
+                    'guided prompts and suggestions help you express your vision.',
+                features: const [
+                  'Free-form text with guided prompts',
+                  'Suggestion chips for inspiration',
+                  '"Help me expand this" AI assist',
+                ],
+                icon: Icons.edit_note,
+                accentColor: teal,
+                isSelected: state.creatorMode == CreatorMode.guided,
+                onTap: () => _select(CreatorMode.guided),
+              ),
+              const SizedBox(height: 16),
+
+              ModeCard(
+                title: 'Quick Create',
+                subtitle: 'Name it, describe it, done — AI does the rest',
+                description:
+                    'Fastest path to a finished character. '
+                    'Just give a name and a one-liner. The full AI pipeline '
+                    '(interview, lorebook, greetings) runs automatically.',
+                features: const [
+                  'Name + concept only',
+                  'NSFW toggle',
+                  'Full pipeline in ~2 min',
+                ],
+                icon: Icons.bolt,
+                accentColor: green,
+                isSelected: state.creatorMode == CreatorMode.quick,
+                onTap: () => _select(CreatorMode.quick),
               ),
             ],
           ),
