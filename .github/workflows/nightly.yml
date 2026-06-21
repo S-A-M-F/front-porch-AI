@@ -531,48 +531,69 @@ jobs:
           # Without these, macOS kills the sidecar immediately when the app runs.
           SIDECAR_ENT="${{ github.workspace }}/macos/Runner/Sidecar.entitlements"
 
-          echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate..."
+          # Parallelize signing. The bundled ML sidecars (PyInstaller) contain
+          # thousands of Mach-O files, and each codesign --timestamp call is a
+          # network round-trip to Apple's timestamp server, so signing them one at
+          # a time took ~18 min. Signing each pass concurrently collapses that to a
+          # few minutes. Behavior is otherwise unchanged: passes still run
+          # inside-out (one after another; the main .app is signed LAST), and only
+          # distinct files WITHIN a pass run in parallel (no file is signed twice
+          # at once). Exact codesign flags/entitlements/coverage are identical to
+          # the previous sequential version. JOBS is network-bound, not CPU-bound;
+          # lower it if Apple's timestamp server throttles. macOS ships BSD xargs,
+          # so we avoid GNU-only flags (no -r) and guard against empty input.
+          export MACOS_CERTIFICATE_NAME SIDECAR_ENT ENTITLEMENTS
+          JOBS=8
 
-          # Sign frameworks and dylibs first (inside-out signing).
-          while IFS= read -r -d '' f; do
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" \
-              2>&1 | grep -v -E '(replacing existing signature|already signed)' || true
-          done < <(find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0 2>/dev/null || true)
+          echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate (parallel x$JOBS)..."
+
+          # Pass 1 — frameworks and dylibs first (inside-out).
+          find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0 2>/dev/null \
+            | xargs -0 -P "$JOBS" -I {} bash -c '
+                f="$1"; [ -n "$f" ] || exit 0
+                codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" \
+                  2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
+              ' _ {} || true
 
           echo "    Signing loose Mach-O files under Resources..."
-          while IFS= read -r -d '' f; do
-            if file "$f" | grep -q "Mach-O"; then
-              codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                --entitlements "$SIDECAR_ENT" "$f" \
-                2>&1 | grep -v -E '(replacing existing signature|already signed)' || true
-            fi
-          done < <(find "$APP_NAME/Contents/Resources" -type f ! -path '*/.framework/*' ! -path '*/Python.framework/*' -print0 2>/dev/null || true)
+          find "$APP_NAME/Contents/Resources" -type f ! -path '*/.framework/*' ! -path '*/Python.framework/*' -print0 2>/dev/null \
+            | xargs -0 -P "$JOBS" -I {} bash -c '
+                f="$1"; [ -n "$f" ] || exit 0
+                if file "$f" | grep -q "Mach-O"; then
+                  codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+                    --entitlements "$SIDECAR_ENT" "$f" \
+                    2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
+                fi
+              ' _ {} || true
 
           echo "    Handling nested *.framework (Python.framework from PyInstaller etc.)..."
           while IFS= read -r -d '' fw; do
-            while IFS= read -r -d '' bin; do
-              if file "$bin" | grep -q "Mach-O"; then
-                codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                  --entitlements "$SIDECAR_ENT" "$bin" \
-                  2>&1 | grep -v -E '(replacing existing signature|already signed)' || true
-              fi
-            done < <(find "$fw" -type f -print0 2>/dev/null || true)
-
+            find "$fw" -type f -print0 2>/dev/null \
+              | xargs -0 -P "$JOBS" -I {} bash -c '
+                  b="$1"; [ -n "$b" ] || exit 0
+                  if file "$b" | grep -q "Mach-O"; then
+                    codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+                      --entitlements "$SIDECAR_ENT" "$b" \
+                      2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
+                  fi
+                ' _ {} || true
             codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
               "$fw" 2>&1 | grep -v -E '(replacing existing signature|already signed)' || true
           done < <(find "$APP_NAME/Contents/Resources" -type d -name "*.framework" -print0 2>/dev/null || true)
 
           echo "    Broad catch-all pass: force-signing EVERY Mach-O under Resources..."
-          while IFS= read -r -d '' f; do
-            if file "$f" | grep -qiE 'mach-o|executable|shared library|dynamically linked'; then
-              if [[ "$f" == *"/Contents/MacOS/FrontPorchAI"* ]] || [[ "$f" == *"/Contents/Frameworks/"* ]]; then
-                continue
-              fi
-              codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                --entitlements "$SIDECAR_ENT" "$f" \
-                2>&1 | grep -v -E '(replacing existing signature|already signed|is not signed)' || true
-            fi
-          done < <(find "$APP_NAME/Contents/Resources" -type f -print0 2>/dev/null || true)
+          find "$APP_NAME/Contents/Resources" -type f -print0 2>/dev/null \
+            | xargs -0 -P "$JOBS" -I {} bash -c '
+                f="$1"; [ -n "$f" ] || exit 0
+                case "$f" in
+                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*) exit 0 ;;
+                esac
+                if file "$f" | grep -qiE "mach-o|executable|shared library|dynamically linked"; then
+                  codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
+                    --entitlements "$SIDECAR_ENT" "$f" \
+                    2>&1 | grep -v -E "(replacing existing signature|already signed|is not signed)" || true
+                fi
+              ' _ {} || true
 
           # Sign the main app bundle last (outermost)
           codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
