@@ -188,6 +188,16 @@ begin
             DirExists(ExpandConstant('{commonprograms}\Front Porch AI Beta'));
 end;
 
+// True if a Rawhide Nightly build is installed (detected via its dedicated
+// Start Menu group, which hasn't changed across the AppId split). Prevents
+// cleanup from deleting the Beta folder when a pre-split Nightly still lives
+// there.
+function IsRawhideNightlyInstalled(): Boolean;
+begin
+  Result := DirExists(ExpandConstant('{userprograms}\Front Porch AI Nightly')) or
+            DirExists(ExpandConstant('{commonprograms}\Front Porch AI Nightly'));
+end;
+
 // Safe to remove the "...\Front Porch AI Beta" folder ONLY when nothing
 // currently claims it:
 //   * this install is not the Beta folder itself (so a Beta build never deletes
@@ -195,8 +205,11 @@ end;
 //   * the stable/legacy shared AppId no longer records the Beta folder as its
 //     home (a stable that has NOT yet relocated, or a legacy pre-release still
 //     tracked there, keeps us from deleting too early — that install repairs
-//     itself on its own next update), and
-//   * no Beta-channel install owns it.
+//     itself on its own next update),
+//   * no Beta-channel install owns it (post-split Beta detected via its
+//     distinct AppId), and
+//   * no Rawhide Nightly install owns it (pre-split Nightly detected via its
+//     dedicated Start Menu group).
 // This cleans up the common stable-only case (after stable relocates out) while
 // never harming a real Beta or Nightly install.
 function SafeToRemoveBetaFolder(): Boolean;
@@ -205,7 +218,8 @@ begin
     DirExists(BetaDir()) and
     (CompareText(ExpandConstant('{app}'), BetaDir()) <> 0) and
     (CompareText(RecordedInstallDirFor(APP_ID_STABLE), BetaDir()) <> 0) and
-    (not BetaAppInstalled());
+    (not BetaAppInstalled()) and
+    (not IsRawhideNightlyInstalled());
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
