@@ -50,6 +50,7 @@ import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/utils/emotion_labels.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart'; // top-level for ExpressionClassifierService type in @Dep shim (pre-existing)
 import 'package:front_porch_ai/services/chat/chat_command_handler.dart';
+import 'package:front_porch_ai/services/chat/scene_guest_director.dart';
 import 'package:front_porch_ai/services/chat/scene_guest_factory.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/needs_impact_evaluator.dart';
@@ -203,6 +204,35 @@ class ChatService extends ChangeNotifier {
         await _resolveSceneGuestCards();
         await _saveChat();
       },
+    );
+  }
+
+  /// Whether Scene Guests automatically chime in after the primary's turn.
+  /// Phase 1 keeps this in-memory (default ON) rather than persisted — there is
+  /// no settings UI yet; a public setter lets callers toggle it.
+  bool autoChimeEnabled = true;
+
+  SceneGuestDirector? _sceneGuestDirector;
+
+  /// Auto chime-in director (lazily built). Pure leaf — all cross-state routes
+  /// back via callbacks so it never imports this god file. Reuses the existing
+  /// `LlmEvalEngine` fire/strip/extract surface for its relevance gate (no new
+  /// LLM-firing path) and only triggers parity-safe guest turns.
+  SceneGuestDirector _ensureSceneGuestDirector() {
+    return _sceneGuestDirector ??= SceneGuestDirector(
+      getSceneGuestCards: () => _sceneGuestCards,
+      generateGuestTurn: generateGuestTurn,
+      getLatestAssistantText: () {
+        for (final m in _messages.reversed) {
+          if (!m.isUser && m.sender != 'System') return m.displayText;
+        }
+        return '';
+      },
+      fireGateEval: (prompt) => _fireLLMEval(prompt),
+      stripThinkBlocks: _stripThinkBlocks,
+      extractJsonBool: _extractJsonBool,
+      getHostName: () => _activeCharacter?.name ?? 'the character',
+      isEnabled: () => autoChimeEnabled,
     );
   }
 
@@ -4910,6 +4940,25 @@ class ChatService extends ChangeNotifier {
           }
         }
       }
+    }
+
+    // ── Scene Guests: auto chime-in ─────────────────────────────────────────
+    // The primary 1:1 turn is now 100% finalized (response + chip/realism block
+    // above). In a 1:1 scene with guests present, let the director decide which
+    // guest(s) speak next (each via the parity-safe generateGuestTurn). Group
+    // chats never use scene guests. Guarded so it only runs for a normal,
+    // fully-finished primary user turn (not group, not mid-generation).
+    if (_activeGroup == null &&
+        _sceneGuestCards.isNotEmpty &&
+        !_isGenerating &&
+        !_entrancesInFlight) {
+      final primaryResponse = _messages.isNotEmpty && !_messages.last.isUser
+          ? _messages.last.displayText
+          : '';
+      await _ensureSceneGuestDirector().runChimeIns(
+        userText: text,
+        primaryResponse: primaryResponse,
+      );
     }
   }
 
