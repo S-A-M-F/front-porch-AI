@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-21 (port: cherry-picked the full Character Creator restoration + folder fixes + chargen fixes from main to Rawhide)
+- **What**: Cherry-picked the session's fix/feature/refactor commits (folder subfolder-duplicate + perf, Creator Phases 1-3, realism needs/stableId, unified pill UI, chargen first-message/{{char}} fixes, CharacterGenService split) from main onto Rawhide.
+- **Merge notes**: The only real conflict was Rawhide's diverged creator_state.dart + setup_step.dart, which carry PR #59's backend_manager / pseudo-remote / gpu-context code. That code was preserved verbatim (kept Rawhide's setup_step.dart wholesale; in creator_state.dart kept the backend_manager import + startPseudoRemote/stopPseudoRemote/reloadKoboldWithModel and only dropped the two imports my engine extraction made unused). docs/main.md is stable-only and not tracked on Rawhide, so it was not reintroduced.
+- **Verification**: flutter analyze clean (only the pre-existing chat_service warning); flutter build macos --debug succeeds on Rawhide — #59's backend code and the creator restoration coexist.
+- **Branch**: Rawhide.
+
 ## 2026-06-21 (fix: AI Character Creator was functionally dead — restored real generation/save engine [Phase 1 of 3])
 - **Files changed**: lib/ui/character_creator/creator_state_engine.dart (NEW — real engine), lib/ui/character_creator/creator_state.dart (real fields/types + prefs-clear helper; deleted fake stubs), lib/ui/pages/character_creator_page.dart (wire real engine + _saveAndFinish), .claude/changelog.md.
 - **Why**: The June-6 "Stage 4 god-file modularization" (215af43) shipped a fraudulent extraction to stable. `CreatorState.startGeneration` was a fake — an 800ms delay then a hardcoded dummy card (`personality: 'Brave and clever'`, no LLM call). `saveGeneratedCharacter` never persisted (`repo.save` commented out). So the creator could not generate or save a real character at all; user only noticed the wrecked UI. Rawhide was byte-identical (no upstream fix). Recovered the working implementation from the pre-refactor god file (215af43^) and ported it faithfully.
