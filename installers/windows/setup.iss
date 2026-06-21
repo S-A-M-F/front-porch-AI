@@ -13,11 +13,32 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
-; Use user-local install directory so no elevation is needed
-DefaultDirName={#ifdef PRE_RELEASE}{localappdata}\{#MyAppName} Beta{#else}{localappdata}\{#MyAppName}{#endif}
-DefaultGroupName={#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}
+; Use user-local install directory so no elevation is needed.
+;
+; NOTE: These conditionals MUST be line-based (#ifdef ... #else ... #endif),
+; NOT the inline form ({#ifdef ...}...{#else}...{#endif}). The inline form
+; breaks when a branch contains nested braces such as {localappdata} or the
+; inline emit {#MyAppName}: ISPP's inline brace-matcher mis-parses where the
+; branches end, and the Beta branch leaks through even on a stable build
+; (PRE_RELEASE undefined). That caused stable releases to install into
+; "{localappdata}\Front Porch AI Beta". OutputBaseFilename happened to work
+; only because its branches were plain text with no nested braces.
+#ifdef PRE_RELEASE
+DefaultDirName={localappdata}\{#MyAppName} Beta
+#else
+DefaultDirName={localappdata}\{#MyAppName}
+#endif
+#ifdef NIGHTLY
+DefaultGroupName=Front Porch AI Nightly
+#else
+DefaultGroupName={#MyAppName}
+#endif
 LicenseFile={#MyAppLicenseFile}
-OutputBaseFilename={#ifdef PRE_RELEASE}Front_Porch_AI_Beta_Setup{#else}Front_Porch_AI_Setup{#endif}
+#ifdef PRE_RELEASE
+OutputBaseFilename=Front_Porch_AI_Beta_Setup
+#else
+OutputBaseFilename=Front_Porch_AI_Setup
+#endif
 OutputDir=.
 Compression=lzma2
 SolidCompression=yes
@@ -55,9 +76,18 @@ Source: "{#MyAppBuildDir}\..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: delete
 Filename: "{app}\.installed"; Section: "install"; Key: "method"; String: "innosetup"
 
 [Icons]
-Name: "{group}\{#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Uninstall {#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#ifdef NIGHTLY}Front Porch AI Nightly{#else}{#MyAppName}{#endif}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; Line-based conditionals (see DefaultDirName note above) — the inline form
+; mis-parses because each branch contains nested braces ({group}, {app},
+; {#MyAppName}, {#MyAppExeName}).
+#ifdef NIGHTLY
+Name: "{group}\Front Porch AI Nightly"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Uninstall Front Porch AI Nightly"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Front Porch AI Nightly"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+#else
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+#endif
 
 [Run]
 ; Install Visual C++ 2015-2022 Redistributable silently first.
