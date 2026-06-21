@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-21 (fix: dragging a character into a subfolder created a phantom "duplicate" card that deleted the original when removed)
+- **Files changed**: lib/ui/widgets/character_card_grid.dart (`_getFilteredCharacters`: normal browsing now lists DIRECT folder characters via `getCharactersInFolder`; recursive `getCharactersInFolderRecursive` is reserved for the search path where subfolder cards are hidden), .claude/changelog.md.
+- **Why**: In a folder view, the grid renders subfolder cards for navigation AND, during normal browsing, was listing characters via the recursive helper — which flattened every subfolder's characters back into the parent view. Moving a character into a subfolder therefore left a phantom loose card at the parent level. That phantom and the real card share a single CharacterCard/DB row, so deleting the phantom soft-deleted the original. The browse/search branches were effectively inverted; swapping them shows only direct children while browsing (subfolders are clickable cards) and keeps recursive search working when folder cards are hidden.
+- **Verification**: flutter analyze clean (0 issues) on character_card_grid.dart + folder_service.dart; confirmed searchScope field still used elsewhere.
+- **Branch**: main.
+
 ## 2026-06-20 (fix: KoboldCpp local model picker completely broken in AI Character Creator; remote/oMLX now unified)
 - **Files changed**:
   - lib/ui/pages/character_creator_page.dart (post-frame now scans local models via CreatorState + ModelManager, preselects lastUsed, and eagerly loadAvailableModels for remote backends)

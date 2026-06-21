@@ -139,9 +139,20 @@ class CharacterCardGrid extends StatelessWidget {
         searchScope == SearchScope.allCharacters && searchQuery.isNotEmpty;
     if (activeFolderId != null && !skipFolderFilter) {
       List<String> folderFilenames;
-      if (searchQuery.isNotEmpty && searchScope == SearchScope.currentFolder) {
+      if (searchQuery.isEmpty) {
+        // Normal browsing: subfolder cards are rendered for navigation
+        // (see _buildGrid -> getSubfolders), so only list characters that
+        // live DIRECTLY in this folder. Using the recursive list here
+        // flattened every subfolder's characters back into the parent view,
+        // producing a phantom "duplicate" card for any character that had
+        // been moved into a subfolder. Because that phantom card and the
+        // real one share a single CharacterCard/DB row, deleting the
+        // phantom also deleted the original.
         folderFilenames = folderService.getCharactersInFolder(activeFolderId!);
       } else {
+        // Searching: subfolder cards are hidden (_buildGrid only shows
+        // folders when the query is empty), so search recursively so
+        // characters nested in subfolders remain findable.
         folderFilenames = folderService.getCharactersInFolderRecursive(
           activeFolderId!,
         );
