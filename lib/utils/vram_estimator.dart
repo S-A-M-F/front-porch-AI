@@ -291,11 +291,12 @@ class VramEstimator {
 
     if (hasMixedHeads || hasInterval) {
       final swWindow = modelInfo.slidingWindow ?? 4096;
-      // ISWA compressed cell counts (observed from llama.cpp for Gemma 4):
-      //   non-SWA cells = contextSize + slidingWindow / 4
-      //   SWA cells     = min(contextSize, 8×slidingWindow)/4 + slidingWindow/8
+      // ISWA compression: only applies when SWA mode is active.
+      // In FastForwarding mode (isSwa=false), all layers use full context.
       final nonSwaCells = contextSize + swWindow ~/ 4;
-      final swaCells = (contextSize < 8 * swWindow ? contextSize : 8 * swWindow) ~/ 4 + swWindow ~/ 8;
+      final swaCells = isSwa
+          ? (contextSize < 8 * swWindow ? contextSize : 8 * swWindow) ~/ 4 + swWindow ~/ 8
+          : nonSwaCells;
       final swaHeadDim = modelInfo.swaHeadDim ?? keyLen; // null → same as full
 
       int totalBytes = 0;

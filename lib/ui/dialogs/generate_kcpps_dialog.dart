@@ -119,7 +119,9 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
   void _debouncedEstimate() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
       _computeVramEstimate();
+      setState(() {});
     });
   }
 
@@ -442,7 +444,9 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                       onChanged: (val) {
                         final parsed = int.tryParse(val);
                         if (parsed != null && parsed > 0) {
-                          _batchSize = parsed.clamp(64, 8192);
+                          setState(() {
+                            _batchSize = parsed.clamp(64, 8192);
+                          });
                         }
                         _debouncedEstimate();
                       },
