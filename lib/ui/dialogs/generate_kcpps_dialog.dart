@@ -25,6 +25,8 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
   int _contextSize = 8192;
   String _kvQuant = 'f16';
   int _threads = 4;
+  final _batchSizeController = TextEditingController(text: '512');
+  final _batchSizeFocusNode = FocusNode();
   int _batchSize = 512;
   bool _greedyAllocation = false;
   ContextManagementMode _contextMode = ContextManagementMode.fastForwardSmartCache;
@@ -52,12 +54,26 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
   void initState() {
     super.initState();
     Provider.of<HardwareService>(context, listen: false).addListener(_onHardwareChanged);
+    _batchSizeFocusNode.addListener(() {
+      if (!_batchSizeFocusNode.hasFocus) {
+        final clamped = _batchSize.clamp(64, 8192);
+        if (clamped != _batchSize) {
+          setState(() {
+            _batchSize = clamped;
+            _batchSizeController.text = '$clamped';
+          });
+          _computeVramEstimate();
+        }
+      }
+    });
     _initDetection();
   }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _batchSizeFocusNode.dispose();
+    _batchSizeController.dispose();
     Provider.of<HardwareService>(context, listen: false).removeListener(_onHardwareChanged);
     _contextSizeController.dispose();
     _smartCacheSlotsController.dispose();
@@ -74,7 +90,10 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
     _gpuConfig = KcppsGeneratorService.detectGpuBackend(_hardwareInfo);
     _computeVramEstimate();
     final newBatchSize = _suggestBatchSize();
-    setState(() => _batchSize = newBatchSize);
+    setState(() {
+      _batchSize = newBatchSize;
+      _batchSizeController.text = '$newBatchSize';
+    });
   }
 
   Future<void> _initDetection() async {
@@ -105,6 +124,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
     setState(() {
       _modelInfo = info;
       _batchSize = _suggestBatchSize();
+      _batchSizeController.text = '$_batchSize';
     });
     _computeVramEstimate();
   }
@@ -112,6 +132,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
   Future<void> _refreshDefaults() async {
     setState(() {
       _batchSize = _suggestBatchSize();
+      _batchSizeController.text = '$_batchSize';
     });
     _computeVramEstimate();
   }
@@ -354,6 +375,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                           setState(() {
                             _contextSize = parsed;
                             _batchSize = _suggestBatchSize();
+                            _batchSizeController.text = '$_batchSize';
                           });
                           _debouncedEstimate();
                         }
@@ -425,7 +447,8 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                     ),
                     const SizedBox(height: 6),
                     TextField(
-                      controller: TextEditingController(text: '$_batchSize'),
+                      controller: _batchSizeController,
+                      focusNode: _batchSizeFocusNode,
                       keyboardType: TextInputType.number,
                       style: theme.textTheme.bodyMedium,
                       decoration: InputDecoration(
@@ -444,9 +467,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                       onChanged: (val) {
                         final parsed = int.tryParse(val);
                         if (parsed != null && parsed > 0) {
-                          setState(() {
-                            _batchSize = parsed.clamp(64, 8192);
-                          });
+                          _batchSize = parsed;
                         }
                         _debouncedEstimate();
                       },
