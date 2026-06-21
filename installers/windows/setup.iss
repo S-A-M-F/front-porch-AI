@@ -6,45 +6,68 @@
 #define MyAppURL "https://github.com/linux4life1/front-porch-AI"
 #define MyAppExeName "front_porch_ai.exe"
 
+; ── Channel identity: stable / Beta / Nightly ────────────────────────────────
+;
+; Each channel gets its OWN AppId AND its own install folder so Windows/Inno
+; tracks them as three independent applications that can coexist cleanly.
+;
+; History: all three channels used to share ONE AppId. Windows tracks installs
+; by AppId and remembers a single previous install directory per AppId, so the
+; channels fought over one location — each channel's update would follow the
+; single recorded path and clobber whichever channel installed there last. True
+; side-by-side stable + Nightly was therefore never really possible.
+;
+; Stable KEEPS its original AppId (so existing stable installs upgrade in place);
+; Beta and Nightly get fresh AppIds and Nightly moves to its own folder so it no
+; longer collides with Beta in "...\Front Porch AI Beta".
+;
+; The build channel is selected by the defines the CI passes to ISCC:
+;   release.yml      -> (nothing)                -> stable
+;   beta-release.yml -> /DPRE_RELEASE=1          -> Beta
+;   nightly.yml      -> /DPRE_RELEASE=1 /DNIGHTLY=1 -> Nightly
+;
+; IMPORTANT: directives are line-based (#ifdef ... #else ... #endif). The inline
+; form ({#ifdef ...}...{#else}...{#endif}) mis-parses when a branch contains
+; nested braces ({localappdata}, {#MyAppName}); that exact bug shipped in
+; v0.9.9.0.1 and put stable installs in the Beta folder. Never use it here.
+#ifdef NIGHTLY
+  #define ChannelAppId "{{2BBF113C-2BC7-42C3-A654-2BC8478FCDE1}"
+  #define ChannelSuffix " Nightly"
+#else
+  #ifdef PRE_RELEASE
+    #define ChannelAppId "{{FAAC0B26-5672-4005-A81F-DE7CBA31D327}"
+    #define ChannelSuffix " Beta"
+  #else
+    #define ChannelAppId "{{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}"
+    #define ChannelSuffix ""
+  #endif
+#endif
+
 [Setup]
-AppId={{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}
-AppName={#MyAppName}
+AppId={#ChannelAppId}
+AppName={#MyAppName}{#ChannelSuffix}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
-; Use user-local install directory so no elevation is needed.
-;
-; NOTE: These conditionals MUST be line-based (#ifdef ... #else ... #endif),
-; NOT the inline form ({#ifdef ...}...{#else}...{#endif}). The inline form
-; breaks when a branch contains nested braces such as {localappdata} or the
-; inline emit {#MyAppName}: ISPP's inline brace-matcher mis-parses where the
-; branches end, and the Beta branch leaks through even on a stable build
-; (PRE_RELEASE undefined). That caused stable releases to install into
-; "{localappdata}\Front Porch AI Beta". OutputBaseFilename happened to work
-; only because its branches were plain text with no nested braces.
+; User-local install directory so no elevation is needed.
 #ifdef PRE_RELEASE
-; Beta AND Rawhide Nightly builds both live here (both are built with PRE_RELEASE).
-DefaultDirName={localappdata}\{#MyAppName} Beta
+; Beta -> "...\Front Porch AI Beta", Nightly -> "...\Front Porch AI Nightly".
+DefaultDirName={localappdata}\{#MyAppName}{#ChannelSuffix}
 #else
-; Stable channel. v0.9.9.0.1 shipped with the inline-conditional brace bug above,
-; which recorded the WRONG "...\Front Porch AI Beta" directory for stable installs.
-; Because Inno remembers the previous install location by AppId, a normal /VERYSILENT
-; auto-update would silently reinstall right back into that wrong folder forever.
-; So for stable we take charge of the directory ourselves:
+; Stable channel. v0.9.9.0.1 shipped with the inline-conditional brace bug noted
+; above, which recorded the WRONG "...\Front Porch AI Beta" directory for stable
+; installs. Because Inno remembers the previous install location by AppId, a
+; normal /VERYSILENT auto-update would silently reinstall right back into that
+; wrong folder forever. So for stable we take charge of the directory ourselves:
 ;   * UsePreviousAppDir=no    -> don't blindly reuse the recorded (bugged) path
 ;   * DefaultDirName via code  -> force the correct stable folder, while still
 ;                                honoring a genuine user-chosen custom location.
-; The stray Beta folder is cleaned up in [Code] (CurStepChanged) ONLY when no
-; Rawhide Nightly is present, because Nightly/Beta legitimately share that folder.
+; The stray Beta folder is cleaned up safely in [Code] (CurStepChanged).
 UsePreviousAppDir=no
 DefaultDirName={code:GetStableInstallDir}
 #endif
-#ifdef NIGHTLY
-DefaultGroupName=Front Porch AI Nightly
-#else
-DefaultGroupName={#MyAppName}
-#endif
+DefaultGroupName={#MyAppName}{#ChannelSuffix}
 LicenseFile={#MyAppLicenseFile}
 #ifdef PRE_RELEASE
 OutputBaseFilename=Front_Porch_AI_Beta_Setup
@@ -65,7 +88,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 CloseApplications=yes
 RestartApplications=yes
-AppMutex=FrontPorchAI_{{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}
+AppMutex=FrontPorchAI_{#ChannelAppId}
 ; Require Windows 10 or later (Flutter + ANGLE requires it)
 MinVersion=10.0
 
@@ -88,18 +111,11 @@ Source: "{#MyAppBuildDir}\..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: delete
 Filename: "{app}\.installed"; Section: "install"; Key: "method"; String: "innosetup"
 
 [Icons]
-; Line-based conditionals (see DefaultDirName note above) — the inline form
-; mis-parses because each branch contains nested braces ({group}, {app},
-; {#MyAppName}, {#MyAppExeName}).
-#ifdef NIGHTLY
-Name: "{group}\Front Porch AI Nightly"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Uninstall Front Porch AI Nightly"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Front Porch AI Nightly"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-#else
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-#endif
+; Names are channel-aware via {#ChannelSuffix} ("", " Beta", " Nightly"), so each
+; channel gets distinct Start Menu / desktop entries that never collide.
+Name: "{group}\{#MyAppName}{#ChannelSuffix}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Uninstall {#MyAppName}{#ChannelSuffix}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppName}{#ChannelSuffix}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; Install Visual C++ 2015-2022 Redistributable silently first.
@@ -113,91 +129,93 @@ Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// ── Stable install-directory self-heal (v0.9.9.0.1 Beta-folder bug) ──────────
+// ── Channel separation + stable Beta-folder self-heal ────────────────────────
 //
-// Hardcoded AppId (must match [Setup] AppId) used to read Inno's recorded
-// previous install directory from the uninstall registry key.
+// AppIds (must match the channel AppIds in the [Setup] section above). Used to
+// read Inno's recorded install directories from the uninstall registry.
 const
-  APP_ID = '{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}';
-
-// The directory recorded by Inno BEFORE this run overwrites it. Captured in
-// InitializeSetup so it is still the OLD value when CurStepChanged runs.
-var
-  PrevInstallDirAtStart: String;
+  APP_ID_STABLE = '{B7E2F8A1-4D3C-4E5B-9F1A-2C8D6E0F3B9A}';
+  APP_ID_BETA   = '{FAAC0B26-5672-4005-A81F-DE7CBA31D327}';
 
 function CorrectStableDir(): String;
 begin
   Result := ExpandConstant('{localappdata}\Front Porch AI');
 end;
 
-function BuggedBetaDir(): String;
+function BetaDir(): String;
 begin
   Result := ExpandConstant('{localappdata}\Front Porch AI Beta');
 end;
 
-// Inno records the last install directory under this AppId. Per-user installs
+// Inno records the last install directory under each AppId. Per-user installs
 // (PrivilegesRequired=lowest) land in HKCU; check it first, then machine-wide.
-function RecordedInstallDir(): String;
+function RecordedInstallDirFor(AppId: String): String;
 var
   Key, V: String;
 begin
   Result := '';
-  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + APP_ID + '_is1';
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + AppId + '_is1';
   if RegQueryStringValue(HKCU, Key, 'Inno Setup: App Path', V) then
     Result := V
   else if RegQueryStringValue(HKLM, Key, 'Inno Setup: App Path', V) then
     Result := V;
 end;
 
-// DefaultDirName for STABLE builds. Forces the correct folder (repairing
-// v0.9.9.0.1 installs that the bug placed in the Beta directory) while
-// preserving any genuine custom location the user previously chose.
+// DefaultDirName for STABLE builds. Forces the correct folder (repairing the
+// v0.9.9.0.1 installs the bug placed in the Beta directory) while preserving any
+// genuine custom location the user previously chose. Reads the STABLE AppId,
+// which is the same one the bugged stable build used.
 function GetStableInstallDir(Param: String): String;
 var
   Prev: String;
 begin
-  Prev := RecordedInstallDir();
+  Prev := RecordedInstallDirFor(APP_ID_STABLE);
   if (Prev <> '') and
      (CompareText(Prev, CorrectStableDir()) <> 0) and
-     (CompareText(Prev, BuggedBetaDir()) <> 0) then
+     (CompareText(Prev, BetaDir()) <> 0) then
     Result := Prev                 // genuine custom path -> honor it
   else
     Result := CorrectStableDir();  // fresh / already-correct / bugged-Beta -> correct dir
 end;
 
-// True if a Rawhide Nightly build is installed. Nightly and Beta share the
-// "...\Front Porch AI Beta" folder, so we use Nightly's DEDICATED Start Menu
-// group to detect it and NEVER delete a folder a Nightly user relies on.
-function IsRawhideNightlyInstalled(): Boolean;
+// True if a Beta-channel build currently owns the "...\Front Porch AI Beta"
+// folder (so we must never delete it). Post-separation, Beta is the only channel
+// that legitimately lives there.
+function BetaAppInstalled(): Boolean;
 begin
-  Result := DirExists(ExpandConstant('{userprograms}\Front Porch AI Nightly')) or
-            DirExists(ExpandConstant('{commonprograms}\Front Porch AI Nightly'));
+  Result := (RecordedInstallDirFor(APP_ID_BETA) <> '') or
+            DirExists(ExpandConstant('{userprograms}\Front Porch AI Beta')) or
+            DirExists(ExpandConstant('{commonprograms}\Front Porch AI Beta'));
 end;
 
-function InitializeSetup(): Boolean;
+// Safe to remove the "...\Front Porch AI Beta" folder ONLY when nothing
+// currently claims it:
+//   * this install is not the Beta folder itself (so a Beta build never deletes
+//     its own target, and any install that landed elsewhere is eligible),
+//   * the stable/legacy shared AppId no longer records the Beta folder as its
+//     home (a stable that has NOT yet relocated, or a legacy pre-release still
+//     tracked there, keeps us from deleting too early — that install repairs
+//     itself on its own next update), and
+//   * no Beta-channel install owns it.
+// This cleans up the common stable-only case (after stable relocates out) while
+// never harming a real Beta or Nightly install.
+function SafeToRemoveBetaFolder(): Boolean;
 begin
-  PrevInstallDirAtStart := RecordedInstallDir();
-  Result := True;
+  Result :=
+    DirExists(BetaDir()) and
+    (CompareText(ExpandConstant('{app}'), BetaDir()) <> 0) and
+    (CompareText(RecordedInstallDirFor(APP_ID_STABLE), BetaDir()) <> 0) and
+    (not BetaAppInstalled());
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  // Runs after files are installed and the uninstall registry is written, so the
+  // stable AppId's recorded path already reflects THIS install's location.
   if CurStep = ssPostInstall then
   begin
-    // Clean up the stray Beta folder left by the v0.9.9.0.1 bug, but ONLY when:
-    //   1. the previously-tracked install was literally the Beta folder (the bug
-    //      signature) — captured before the registry was overwritten this run,
-    //   2. this install now lives somewhere else (we relocated stable out), and
-    //   3. NO Rawhide Nightly is present (Nightly/Beta share that folder).
-    // Beta/Nightly installs of THIS app have {app} == the Beta folder, so the
-    // {app} <> Beta check makes them skip this entirely.
-    if (CompareText(PrevInstallDirAtStart, BuggedBetaDir()) = 0) and
-       (CompareText(ExpandConstant('{app}'), BuggedBetaDir()) <> 0) and
-       (not IsRawhideNightlyInstalled()) and
-       DirExists(BuggedBetaDir()) then
-    begin
-      DelTree(BuggedBetaDir(), True, True, True);
-    end;
+    if SafeToRemoveBetaFolder() then
+      DelTree(BetaDir(), True, True, True);
   end;
 end;
 
