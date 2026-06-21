@@ -20,12 +20,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
-import 'package:front_porch_ai/services/character_gen_service.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/setup_step.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/mode_select_step.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/quick_config_step.dart';
@@ -134,6 +135,48 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     );
     if (confirmed == true) {
       creatorState.resetAllFields();
+    }
+  }
+
+  /// Persist the finished character, then show a result SnackBar and close the
+  /// wizard on success. The engine returns the outcome (it has no context); the
+  /// page owns the messaging and navigation.
+  Future<void> _saveAndFinish() async {
+    final repo = Provider.of<CharacterRepository>(context, listen: false);
+    final storage = Provider.of<StorageService>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final name = creatorState.generatedCard?.name ?? 'Character';
+
+    final ok = await creatorState.saveCharacter(repo: repo, storage: storage);
+    if (!mounted) return;
+    if (ok) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '$name created successfully!',
+            style: TextStyle(color: AppColors.textPrimary(context)),
+          ),
+          backgroundColor: AppColors.surfaceContainerOf(context),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      navigator.pop();
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            creatorState.engineError ?? 'Failed to save character.',
+            style: TextStyle(color: AppColors.textPrimary(context)),
+          ),
+          backgroundColor: AppColors.resolve(
+            context,
+            Colors.red.shade800,
+            Colors.red.shade700,
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -257,12 +300,16 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                     onNext ??
                     () {
                       if (currentStep == 2) {
-                        creatorState.startGeneration(
+                        creatorState.generateFromMode(
                           llmProvider: Provider.of<LLMProvider>(
                             context,
                             listen: false,
                           ),
-                          genService: Provider.of<CharacterGenService>(
+                          storage: Provider.of<StorageService>(
+                            context,
+                            listen: false,
+                          ),
+                          personaService: Provider.of<UserPersonaService>(
                             context,
                             listen: false,
                           ),
@@ -274,12 +321,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
                         return;
                       }
                       if (currentStep == 5) {
-                        final repo = Provider.of<CharacterRepository>(
-                          context,
-                          listen: false,
-                        );
-                        creatorState.saveGeneratedCharacter(repo);
-                        Navigator.of(context).pop();
+                        _saveAndFinish();
                         return;
                       }
                       creatorState.currentStep = currentStep + 1;
