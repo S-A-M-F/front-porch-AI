@@ -139,9 +139,15 @@ class MemoryService extends ChangeNotifier {
     try {
       final windowSize = _storageService.ragWindowSize;
 
-      // Get existing embeddings to avoid re-embedding
+      // Get existing embeddings to avoid re-embedding. Dedup is scoped to THIS
+      // character: a single session can hold windows for more than one speaker
+      // (e.g. a 1:1 host plus a Scene Guest), and each must store its own copy
+      // under its own id so memory round-trips per character. Without the
+      // characterId filter, the second speaker's identical position range would
+      // be wrongly skipped as "already embedded".
       final existing = await _db.getEmbeddingsForSession(sessionId);
       final existingRanges = existing
+          .where((e) => e.characterId == characterId)
           .map((e) => (e.positionStart, e.positionEnd))
           .toSet();
 

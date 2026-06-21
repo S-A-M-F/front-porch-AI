@@ -427,6 +427,13 @@ class ChatService extends ChangeNotifier {
   Future<void> generateGuestTurn(CharacterCard guest) async {
     await _generateResponse(GenerationMode.normal, guestSpeaker: guest);
     _maybeEvolveGuest(guest);
+    // Phase 4: give the guest EPISODIC MEMORY. The host's embed stays gated
+    // behind `guestSpeaker == null` in `_generateResponse`; here we embed the
+    // just-finished exchange under the GUEST's own id (the same id the guest
+    // retrieves under in `_getMemorySourceIds`) by REUSING the host embed path.
+    // Fire-and-forget; ZERO Realism/Needs. So a later guest turn — even in a
+    // different chat — recalls what happened.
+    _maybeEmbedMessages(characterIdOverride: _getCharacterIdFromCard(guest));
   }
 
   /// Per-guest evolution cadence + trigger (Phase 3). Mirrors the active-char
@@ -6944,7 +6951,10 @@ class ChatService extends ChangeNotifier {
               .map((m) => '${m.sender}: ${m.displayText}')
               .join('\n');
 
-          final sourceIds = await _getMemorySourceIds();
+          // Scene Guests Phase 4: a guest turn retrieves the GUEST's own
+          // episodic memories (keyed on the guest id), not the host's. The
+          // injection format/budget below is shared — only the source id swaps.
+          final sourceIds = await _getMemorySourceIds(guest: guestSpeaker);
           debugPrint('[RAG:Chat] Memory source IDs: $sourceIds');
 
           final memories = await _memoryService!.retrieve(
@@ -8045,14 +8055,21 @@ class ChatService extends ChangeNotifier {
   /// Embed message windows for RAG memory retrieval (fire-and-forget).
   /// Called after each generation completes. Only embeds new windows that
   /// haven't been embedded yet.
-  void _maybeEmbedMessages() {
+  /// Embed the recent message window for RAG memory (fire-and-forget).
+  ///
+  /// Normally keyed on the active character (or group bucket). Scene Guests
+  /// Phase 4 passes [characterIdOverride] = the guest's id so the just-finished
+  /// guest exchange is stored under the GUEST's own id — the same id the guest
+  /// retrieves under in [_getMemorySourceIds] — giving guests episodic memory
+  /// without touching the host's embeddings.
+  void _maybeEmbedMessages({String? characterIdOverride}) {
     if (_memoryService == null || !_storageService.memorySettings.ragEnabled) {
       return;
     }
     if (_currentSessionId == null) return;
     if (_messages.length < _storageService.memorySettings.ragWindowSize) return;
 
-    final characterId = _getCharacterId();
+    final characterId = characterIdOverride ?? _getCharacterId();
 
     // Format messages for embedding (skip hidden group state checkpoints)
     final formatted = _messages.map((m) {
@@ -8914,14 +8931,25 @@ class ChatService extends ChangeNotifier {
   /// Get the list of character IDs to search for RAG memory retrieval.
   /// Reads the current character's `memorySources` from the DB and includes
   /// those characters' embedding IDs alongside the current character.
-  Future<List<String>> _getMemorySourceIds() async {
-    final currentId = _getCharacterId();
+  /// Resolve the RAG source character ids for retrieval.
+  ///
+  /// Normally keyed on the active character (or the group bucket). When a
+  /// [guest] is supplied (Scene Guests Phase 4), retrieval is keyed on the
+  /// guest's OWN id instead — the same id the guest embeds under via
+  /// [_maybeEmbedMessages] — plus that guest's cross-character memory sources.
+  /// This keeps the guest's episodic memory isolated from the host's: the
+  /// host's memories are never injected on a guest turn, and vice versa.
+  Future<List<String>> _getMemorySourceIds({CharacterCard? guest}) async {
+    final currentId = guest != null
+        ? _getCharacterIdFromCard(guest)
+        : _getCharacterId();
     final sourceIds = <String>[currentId]; // always include self
 
-    // Look up cross-character sources from DB
-    if (_activeCharacter != null && _activeCharacter!.dbId != null) {
+    // Look up cross-character sources from DB (for the guest, or the active char)
+    final sourceCard = guest ?? _activeCharacter;
+    if (sourceCard != null && sourceCard.dbId != null) {
       try {
-        final dbChar = await _db.getCharacterById(_activeCharacter!.dbId!);
+        final dbChar = await _db.getCharacterById(sourceCard.dbId!);
         final ms = dbChar.memorySources;
         if (ms.isNotEmpty && ms != '[]') {
           final decoded = List<String>.from(
