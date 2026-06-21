@@ -162,6 +162,17 @@ class ChatService extends ChangeNotifier {
   final List<String> _sceneGuestIds = [];
   final List<CharacterCard> _sceneGuestCards = [];
 
+  // Phase 3 — per-guest Character Evolution (trait development). Keyed by the
+  // guest's stable charId (same key the EvolutionService uses). The evolved
+  // *text* lives in the shared `_evolvedPersonalities` / `_evolvedScenarios`
+  // maps (so the existing effective-personality layering applies on guest turns
+  // for free); only the per-guest evolution *count* is tracked separately so a
+  // guest evolves on its own participation cadence and we never perturb the
+  // active character's evolution count/state. Persisted alongside the guest ids
+  // in the 1:1 `groupRealismState` blob (no schema change). Carries ZERO
+  // Realism/Needs work — it is a sibling of the existing evolution trigger.
+  final Map<String, int> _guestEvolutionCounts = {};
+
   /// A one-shot departure instruction consumed by the NEXT primary 1:1
   /// generation so the active character narrates the guest leaving. Set by
   /// `/exit`, cleared after a single injection.
@@ -381,13 +392,67 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True when [charId] (a stable charId from `_getCharacterIdFromCard`)
+  /// belongs to a current Scene Guest. Used to route per-guest evolution
+  /// persistence into the 1:1 guest blob instead of the active character's
+  /// session columns, and to clear only guest entries from the shared evolved
+  /// maps on reset.
+  bool _isSceneGuestCharId(String charId) =>
+      _sceneGuestCards.any((g) => _getCharacterIdFromCard(g) == charId);
+
+  /// Drop all per-guest Character Evolution state for the current 1:1 context so
+  /// it never leaks across chats/characters. Removes the guests' entries from
+  /// the SHARED evolved maps (keyed by the tracked participation-count keys) and
+  /// clears the participation counts. Mirrored at every `_sceneGuestIds.clear()`
+  /// reset site (keep reset blocks in sync).
+  void _clearSceneGuestEvolution() {
+    for (final charId in _guestEvolutionCounts.keys) {
+      _evolvedPersonalities.remove(charId);
+      _evolvedScenarios.remove(charId);
+    }
+    _guestEvolutionCounts.clear();
+  }
+
   /// Generate a turn spoken by a Scene Guest (Lite NPC) inside a 1:1 chat.
   ///
   /// Reuses the normal generation engine with the guest as the speaker. Carries
   /// NO Realism Engine / Needs work (the guest turn is parity-safe — see the
   /// `guestSpeaker == null` guards in `_generateResponse`).
+  ///
+  /// After the turn finalizes, runs the per-guest Character Evolution check
+  /// (Phase 3): the guest's participation count advances and, on the same
+  /// `evolutionInterval` cadence a normal character uses, the existing
+  /// EvolutionService evolves THIS guest (no Realism/Needs, no effect on the
+  /// active character's evolution state).
   Future<void> generateGuestTurn(CharacterCard guest) async {
     await _generateResponse(GenerationMode.normal, guestSpeaker: guest);
+    _maybeEvolveGuest(guest);
+  }
+
+  /// Per-guest evolution cadence + trigger (Phase 3). Mirrors the active-char
+  /// scheme in `_maybeRunPeriodicEvals` (count vs `evolutionInterval`) but keyed
+  /// on the guest's own participation count, and routes through the SAME
+  /// EvolutionService via `triggerCharacterEvolution(targetCharacter:)`. The
+  /// evolved text is written into the shared evolved maps (so it applies on the
+  /// guest's next turn through `_getEffectivePersonality`) and persisted into
+  /// the guest blob by the evolution persist callback. Fire-and-forget so it
+  /// never blocks the turn; does ZERO Realism/Needs work.
+  void _maybeEvolveGuest(CharacterCard guest) {
+    if (!_storageService.memorySettings.characterEvolutionEnabled) return;
+    // Shared busy guard — one evolution (host or guest) at a time.
+    if (_isEvolvingCharacter) return;
+    final charId = _getCharacterIdFromCard(guest);
+    final interval = _storageService.memorySettings.evolutionInterval;
+    if (interval <= 0) return;
+    final count = (_guestEvolutionCounts[charId] ?? 0) + 1;
+    _guestEvolutionCounts[charId] = count;
+    if (count % interval != 0) return; // not due yet on this cadence
+    debugPrint(
+      '[SceneGuest] ▶ Evolving guest ${guest.name} '
+      '(charId=$charId, participation=$count, every $interval)',
+    );
+    // Reuse the existing evolution service + persist/layering. No parallel path.
+    _evolutionService.triggerCharacterEvolution(targetCharacter: guest);
   }
 
   final List<ChatMessage> _messages = [];
@@ -1469,6 +1534,24 @@ class ChatService extends ChangeNotifier {
       notifyListeners();
     },
     persistEvolvedForCharacter: (charId, pers, scen, count) async {
+      // Phase 3 — Scene Guest evolution. The target is a 1:1 guest, not the
+      // active character: store the evolved text in the shared maps (so the
+      // existing layering applies on the guest's next turn) + the per-guest
+      // count, then persist into the guest blob via _saveChat. We deliberately
+      // do NOT touch the active character's session columns or
+      // _characterEvolutionCount here (no perturbation of the host's state).
+      if (_isSceneGuestCharId(charId)) {
+        // `count` here is the EvolutionService's generation count (evolved N
+        // times). For guests we drive cadence off the participation counter in
+        // `_guestEvolutionCounts` (set in `_maybeEvolveGuest`), so we leave it
+        // untouched and only persist the evolved text + that participation
+        // count via the guest blob.
+        _evolvedPersonalities[charId] = pers;
+        _evolvedScenarios[charId] = scen;
+        notifyListeners();
+        await _saveChat();
+        return;
+      }
       if (_currentSessionId != null) {
         if (_activeGroup != null) {
           final session = await _db.getSessionById(_currentSessionId!);
@@ -2320,6 +2403,7 @@ class ChatService extends ChangeNotifier {
 
     // Reset Scene Guests for the new 1:1 context (repopulated by _loadLastSession
     // if the loaded session persisted any). _pendingGuestDeparture is one-shot.
+    _clearSceneGuestEvolution(); // Phase 3: keep guest-evolution reset in sync.
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     _pendingGuestDeparture = null;
@@ -2577,6 +2661,7 @@ class ChatService extends ChangeNotifier {
     _groupCharacterRAGPriorities = {};
 
     // Scene Guests are 1:1-only — clear them when entering a group.
+    _clearSceneGuestEvolution(); // Phase 3: keep guest-evolution reset in sync.
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     _pendingGuestDeparture = null;
@@ -3218,6 +3303,7 @@ class ChatService extends ChangeNotifier {
   /// group realism column, then resolve their cards. Tolerant of missing,
   /// empty, '{}', legacy group state, or malformed JSON (clears guests).
   void _loadSceneGuestsFromSession(Session? session) {
+    _clearSceneGuestEvolution();
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     final stateJson = session?.groupRealismState;
@@ -3229,6 +3315,20 @@ class ChatService extends ChangeNotifier {
           final s = id?.toString();
           if (s != null && s.isNotEmpty) _sceneGuestIds.add(s);
         }
+      }
+      // Phase 3: restore per-guest evolution (participation count + evolved
+      // text) into the shared evolved maps so it applies on the guest's turns.
+      if (decoded is Map && decoded['guestEvolution'] is Map) {
+        final ge = Map<String, dynamic>.from(decoded['guestEvolution'] as Map);
+        ge.forEach((charId, v) {
+          if (v is! Map) return;
+          final m = Map<String, dynamic>.from(v);
+          _guestEvolutionCounts[charId] = (m['count'] as num?)?.toInt() ?? 0;
+          final pers = (m['personality'] as String?) ?? '';
+          final scen = (m['scenario'] as String?) ?? '';
+          if (pers.isNotEmpty) _evolvedPersonalities[charId] = pers;
+          if (scen.isNotEmpty) _evolvedScenarios[charId] = scen;
+        });
       }
     } catch (e) {
       debugPrint('[SceneGuest] Failed to parse sceneGuests from session: $e');
@@ -3413,7 +3513,25 @@ class ChatService extends ChangeNotifier {
     } else if (_activeGroup == null && _sceneGuestIds.isNotEmpty) {
       // 1:1 with Scene Guests (Lite NPCs): reuse the (otherwise '{}') group
       // realism column to persist the guest dbIds. No schema change needed.
-      groupRealismJson = jsonEncode({'sceneGuests': _sceneGuestIds});
+      // Phase 3: co-locate per-guest Character Evolution (participation count +
+      // evolved personality/scenario), keyed by the guest's stable charId.
+      final guestEvolution = <String, Map<String, dynamic>>{};
+      for (final guest in _sceneGuestCards) {
+        final charId = _getCharacterIdFromCard(guest);
+        final count = _guestEvolutionCounts[charId] ?? 0;
+        final pers = _evolvedPersonalities[charId] ?? '';
+        final scen = _evolvedScenarios[charId] ?? '';
+        if (count == 0 && pers.isEmpty && scen.isEmpty) continue;
+        guestEvolution[charId] = {
+          'count': count,
+          'personality': pers,
+          'scenario': scen,
+        };
+      }
+      groupRealismJson = jsonEncode({
+        'sceneGuests': _sceneGuestIds,
+        if (guestEvolution.isNotEmpty) 'guestEvolution': guestEvolution,
+      });
     }
 
     // Snapshot messages at the start so async gaps can't see a mutated list.
@@ -4288,6 +4406,7 @@ class ChatService extends ChangeNotifier {
     _messages.clear();
     _greetingIndex = 0;
     // A fresh chat starts with no Scene Guests (they don't carry across sessions).
+    _clearSceneGuestEvolution(); // Phase 3: keep guest-evolution reset in sync.
     _sceneGuestIds.clear();
     _sceneGuestCards.clear();
     _pendingGuestDeparture = null;
