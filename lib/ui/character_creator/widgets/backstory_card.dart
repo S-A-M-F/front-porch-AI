@@ -13,8 +13,9 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// automated config step.
 class BackstoryCard extends StatelessWidget {
   final CreatorState state;
+  final Color accent;
 
-  const BackstoryCard({super.key, required this.state});
+  const BackstoryCard({super.key, required this.state, required this.accent});
 
   void _set(VoidCallback apply) {
     apply();
@@ -27,20 +28,16 @@ class BackstoryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerOf(context),
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.auto_stories,
-                color: Colors.blueAccent,
-                size: 18,
-              ),
+              Icon(Icons.auto_stories, color: accent, size: 18),
               const SizedBox(width: 8),
               Text(
                 'Backstory',
@@ -65,18 +62,21 @@ class BackstoryCard extends StatelessWidget {
             label: 'Origin',
             value: state.backstoryOrigin,
             options: CreatorOptions.backstoryOrigins,
+            accent: accent,
             onChanged: (v) => _set(() => state.backstoryOrigin = v),
           ),
           SingleSelectChipRow(
             label: 'Tone',
             value: state.backstoryTone,
             options: CreatorOptions.backstoryTones,
+            accent: accent,
             onChanged: (v) => _set(() => state.backstoryTone = v),
           ),
           SingleSelectChipRow(
             label: 'Era',
             value: state.backstoryEra,
             options: CreatorOptions.backstoryEras,
+            accent: accent,
             onChanged: (v) => _set(() => state.backstoryEra = v),
           ),
           Padding(

@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_section_card.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/lore_input_section.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/reasoning_toggle.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
@@ -11,9 +12,9 @@ import 'package:front_porch_ai/ui/widgets/avatar_art_style_selector.dart';
 import 'package:front_porch_ai/ui/widgets/greeting_tone_selector.dart';
 import 'package:front_porch_ai/ui/widgets/nsfw_toggle.dart';
 
-/// Quick Create config step — faithful restoration of the pre-refactor UI.
-/// Name it, describe it, generate. Navigation/generation is owned by the
-/// wizard shell (`character_creator_page.dart`); this step is pure form.
+/// Quick Create config step. Same card-based structure as the Guided and
+/// Automated modes, themed green to tell it apart. Navigation/generation is
+/// owned by the wizard shell; this step is pure form.
 class QuickConfigStep extends StatelessWidget {
   final CreatorState state;
 
@@ -36,10 +37,7 @@ class QuickConfigStep extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             helper,
-            style: TextStyle(
-              color: AppColors.textTertiary(context),
-              fontSize: 11,
-            ),
+            style: TextStyle(color: AppColors.textTertiary(context), fontSize: 11),
           ),
         ],
         const SizedBox(height: 8),
@@ -47,7 +45,7 @@ class QuickConfigStep extends StatelessWidget {
     );
   }
 
-  /// A decorated multi-line text field matching the original quick-form styling.
+  /// A decorated multi-line text field matching the shared creator styling.
   Widget _textField(
     BuildContext context, {
     required TextEditingController controller,
@@ -64,10 +62,7 @@ class QuickConfigStep extends StatelessWidget {
       onChanged: (_) => state.saveState(),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(
-          color: AppColors.textTertiary(context),
-          fontSize: 12,
-        ),
+        hintStyle: TextStyle(color: AppColors.textTertiary(context), fontSize: 12),
         filled: true,
         fillColor: AppColors.surfaceContainerOf(context),
         border: OutlineInputBorder(
@@ -82,10 +77,7 @@ class QuickConfigStep extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: accent, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }
@@ -108,7 +100,7 @@ class QuickConfigStep extends StatelessWidget {
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
+          constraints: const BoxConstraints(maxWidth: 700),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -149,109 +141,122 @@ class QuickConfigStep extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
-
-              // Name field
-              _inputLabel(context, 'Character Name'),
-              _textField(
-                context,
-                controller: state.nameController,
-                hint: 'Morgana, Kaito, Vex...',
-                accent: quickAccent,
-              ),
               const SizedBox(height: 24),
 
-              // Concept field
-              _inputLabel(
-                context,
-                'Describe them (optional)',
-                helper:
-                    'A sentence or two is plenty. Leave it blank and the AI will invent someone.',
-              ),
-              _textField(
-                context,
-                controller: state.conceptController,
-                hint:
-                    'A gruff dwarven blacksmith who secretly writes poetry...',
-                accent: quickAccent,
-                maxLines: 4,
-                minLines: 3,
-              ),
-              const SizedBox(height: 24),
-
-              // Scenario field
-              _inputLabel(
-                context,
-                'Scenario / Setting (optional)',
-                helper:
-                    'Where does the story take place? What\'s the situation? The AI will build on this.',
-              ),
-              _textField(
-                context,
-                controller: state.quickScenarioController,
-                hint:
-                    'A modern coffee shop where they work as a barista, a fantasy guild hall, a space station...',
-                accent: quickAccent,
-                maxLines: 3,
-                minLines: 2,
-              ),
-              const SizedBox(height: 24),
-
-              // Art style
-              _inputLabel(context, 'Avatar Art Style'),
-              AvatarArtStyleSelector(
-                selectedStyle: state.artStyle,
+              // The Basics
+              CreatorSectionCard(
+                title: 'The Basics',
+                subtitle: 'Who are they? A name and a sentence is plenty.',
+                icon: Icons.badge_outlined,
                 accentColor: quickAccent,
-                onChanged: (style) {
-                  state.artStyle = style;
-                  state.saveState();
-                  state.notify();
-                },
+                initiallyExpanded: true,
+                children: [
+                  _inputLabel(context, 'Character Name'),
+                  _textField(
+                    context,
+                    controller: state.nameController,
+                    hint: 'Morgana, Kaito, Vex...',
+                    accent: quickAccent,
+                  ),
+                  const SizedBox(height: 16),
+                  _inputLabel(
+                    context,
+                    'Describe them (optional)',
+                    helper:
+                        'A sentence or two is plenty. Leave it blank and the AI will invent someone.',
+                  ),
+                  _textField(
+                    context,
+                    controller: state.conceptController,
+                    hint:
+                        'A gruff dwarven blacksmith who secretly writes poetry...',
+                    accent: quickAccent,
+                    maxLines: 4,
+                    minLines: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  _inputLabel(
+                    context,
+                    'Scenario / Setting (optional)',
+                    helper:
+                        'Where does the story take place? What\'s the situation? The AI will build on this.',
+                  ),
+                  _textField(
+                    context,
+                    controller: state.quickScenarioController,
+                    hint:
+                        'A modern coffee shop where they work as a barista, a fantasy guild hall, a space station...',
+                    accent: quickAccent,
+                    maxLines: 3,
+                    minLines: 2,
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
 
-              // Greeting tones
-              _inputLabel(context, 'Greeting Tone'),
-              GreetingToneSelector(
-                selectedTones: state.quickSelectedTones,
-                greetingCount: state.quickGreetingCount,
-                nsfwEnabled: state.quickNsfwEnabled,
+              // Style & Greetings
+              CreatorSectionCard(
+                title: 'Style & Greetings',
+                subtitle: 'How they look and how they say hello.',
+                icon: Icons.tune,
                 accentColor: quickAccent,
-                onChanged: (tones) {
-                  state.quickSelectedTones = tones;
-                  state.saveState();
-                  state.notify();
-                },
+                initiallyExpanded: true,
+                children: [
+                  _inputLabel(context, 'Avatar Art Style'),
+                  AvatarArtStyleSelector(
+                    selectedStyle: state.artStyle,
+                    accentColor: quickAccent,
+                    onChanged: (style) {
+                      state.artStyle = style;
+                      state.saveState();
+                      state.notify();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _inputLabel(context, 'Greeting Tone'),
+                  GreetingToneSelector(
+                    selectedTones: state.quickSelectedTones,
+                    greetingCount: state.quickGreetingCount,
+                    nsfwEnabled: state.quickNsfwEnabled,
+                    accentColor: quickAccent,
+                    onChanged: (tones) {
+                      state.quickSelectedTones = tones;
+                      state.saveState();
+                      state.notify();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _inputLabel(
+                    context,
+                    'Number of Greetings',
+                    helper:
+                        'How many first messages to generate (1 main + alternates).',
+                  ),
+                  AlternateGreetingsSlider(
+                    value: state.quickGreetingCount,
+                    accentColor: quickAccent,
+                    formatLabel: (v) =>
+                        v == 0 ? '1 greeting' : '1 + $v alt${v == 1 ? '' : 's'}',
+                    onChanged: (val) {
+                      state.quickGreetingCount = val;
+                      final maxTones = state.quickGreetingCount + 1;
+                      while (state.quickSelectedTones.length > maxTones) {
+                        state.quickSelectedTones.removeLast();
+                      }
+                      state.saveState();
+                      state.notify();
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
 
-              // Number of greetings
-              _inputLabel(
-                context,
-                'Number of Greetings',
-                helper:
-                    'How many first messages to generate (1 main + alternates).',
-              ),
-              AlternateGreetingsSlider(
-                value: state.quickGreetingCount,
+              // World Lore
+              CreatorSectionCard(
+                title: 'World Lore',
+                subtitle: 'Optional — paste wiki/lore URLs or attach files.',
+                icon: Icons.menu_book,
                 accentColor: quickAccent,
-                formatLabel: (v) =>
-                    v == 0 ? '1 greeting' : '1 + $v alt${v == 1 ? '' : 's'}',
-                onChanged: (val) {
-                  state.quickGreetingCount = val;
-                  final maxTones = state.quickGreetingCount + 1;
-                  while (state.quickSelectedTones.length > maxTones) {
-                    state.quickSelectedTones.removeLast();
-                  }
-                  state.saveState();
-                  state.notify();
-                },
+                children: [LoreInputSection(state: state, accentColor: quickAccent)],
               ),
-              const SizedBox(height: 24),
-
-              // Lore input
-              LoreInputSection(state: state, accentColor: quickAccent),
-              const SizedBox(height: 28),
 
               // NSFW toggle
               NsfwToggle(
@@ -267,7 +272,7 @@ class QuickConfigStep extends StatelessWidget {
                   state.notify();
                 },
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 16),
 
               // Reasoning toggle
               ReasoningToggle(

@@ -17,8 +17,13 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// pre-refactor automated config step.
 class DescriptionGeneratorSection extends StatelessWidget {
   final CreatorState state;
+  final Color accent;
 
-  const DescriptionGeneratorSection({super.key, required this.state});
+  const DescriptionGeneratorSection({
+    super.key,
+    required this.state,
+    required this.accent,
+  });
 
   void _generate(BuildContext context) {
     final llmProvider = Provider.of<LLMProvider>(context, listen: false);
@@ -49,17 +54,14 @@ class DescriptionGeneratorSection extends StatelessWidget {
                             ? state.conceptGenProgress
                             : null,
                         strokeWidth: 2,
-                        color: Colors.amberAccent,
+                        color: accent,
                       ),
                     ),
                     if (state.conceptGenProgress > 0) ...[
                       const SizedBox(width: 6),
                       Text(
                         '${(state.conceptGenProgress * 100).toInt()}%',
-                        style: const TextStyle(
-                          color: Colors.amberAccent,
-                          fontSize: 11,
-                        ),
+                        style: TextStyle(color: accent, fontSize: 11),
                       ),
                     ],
                   ],
@@ -69,11 +71,7 @@ class DescriptionGeneratorSection extends StatelessWidget {
               Tooltip(
                 message: 'Generate a description using all your selections',
                 child: IconButton(
-                  icon: const Icon(
-                    Icons.auto_fix_high,
-                    color: Colors.amberAccent,
-                    size: 20,
-                  ),
+                  icon: Icon(Icons.auto_fix_high, color: accent, size: 20),
                   onPressed: () => _generate(context),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -107,25 +105,18 @@ class DescriptionGeneratorSection extends StatelessWidget {
                       ),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: Colors.amberAccent.withValues(alpha: 0.2),
+                        color: accent.withValues(alpha: 0.2),
                       ),
                     ),
-                    child: const Center(
+                    child: Center(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.auto_fix_high,
-                            color: Colors.amberAccent,
-                            size: 18,
-                          ),
-                          SizedBox(width: 8),
+                          Icon(Icons.auto_fix_high, color: accent, size: 18),
+                          const SizedBox(width: 8),
                           Text(
                             'Tap to generate description',
-                            style: TextStyle(
-                              color: Colors.amberAccent,
-                              fontSize: 13,
-                            ),
+                            style: TextStyle(color: accent, fontSize: 13),
                           ),
                         ],
                       ),

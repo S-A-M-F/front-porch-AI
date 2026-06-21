@@ -25,6 +25,7 @@ import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state_engine.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/image_gen_settings_dialog.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Left rail of the review step: avatar preview/generation, crop/regenerate,
@@ -78,6 +79,20 @@ class ReviewAvatarPanel extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (hasAvatar) _avatarActions(context),
+          // Image-generation settings (backend / model / LoRAs) live in Image
+          // Studio now; surface them here so avatar generation can be
+          // configured without leaving the creator.
+          TextButton.icon(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => const ImageGenSettingsDialog(),
+            ),
+            icon: const Icon(Icons.tune, size: 15),
+            label: const Text('Image gen settings'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary(context),
+            ),
+          ),
           const SizedBox(height: 12),
           _imagePromptEditor(context),
           const SizedBox(height: 16),

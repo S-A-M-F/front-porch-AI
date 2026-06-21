@@ -29,7 +29,10 @@ class CreatorSectionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerOf(context),
+        // Darker than the surfaceContainer chips/fields inside so they read as
+        // crisp pills/boxes (surfaceContainer-on-surfaceContainer is invisible
+        // in dark mode — borderOf ≈ surfaceContainer).
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: accentColor.withValues(alpha: 0.15)),
       ),

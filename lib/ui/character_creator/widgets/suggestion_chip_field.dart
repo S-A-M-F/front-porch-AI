@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_pill.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
-/// A labelled multiline text field with tap-to-append suggestion chips, used by
-/// the Guided creator. Restored from the god file's `_guidedField`. Pure
-/// presentation: [onChanged] fires on edits and chip taps so the caller can
-/// rebuild + persist.
+/// A labelled multiline text field with tap-to-toggle suggestion pills, used by
+/// the Guided creator. Shares the [CreatorPill] look with every other mode;
+/// themed by [accent] (NSFW fields override to pink). [onChanged] fires on edits
+/// and pill taps so the caller can rebuild + persist.
 class SuggestionChipField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -17,6 +18,7 @@ class SuggestionChipField extends StatelessWidget {
   final int minLines;
   final bool isNsfw;
   final Widget? trailing;
+  final Color accent;
   final VoidCallback onChanged;
 
   const SuggestionChipField({
@@ -24,6 +26,7 @@ class SuggestionChipField extends StatelessWidget {
     required this.label,
     required this.controller,
     required this.hint,
+    required this.accent,
     required this.onChanged,
     this.suggestions = const [],
     this.maxLines = 2,
@@ -34,7 +37,9 @@ class SuggestionChipField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = isNsfw ? Colors.pinkAccent : Colors.tealAccent;
+    final pillAccent = isNsfw
+        ? AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D))
+        : accent;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -43,10 +48,10 @@ class SuggestionChipField extends StatelessWidget {
           Row(
             children: [
               if (isNsfw) ...[
-                const Icon(
+                Icon(
                   Icons.local_fire_department,
                   size: 12,
-                  color: Colors.pinkAccent,
+                  color: pillAccent,
                 ),
                 const SizedBox(width: 4),
               ],
@@ -54,9 +59,7 @@ class SuggestionChipField extends StatelessWidget {
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isNsfw
-                        ? Colors.pinkAccent
-                        : AppColors.textSecondary(context),
+                    color: isNsfw ? pillAccent : AppColors.textSecondary(context),
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -93,7 +96,7 @@ class SuggestionChipField extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: accent),
+                borderSide: BorderSide(color: pillAccent, width: 1.5),
               ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
@@ -102,54 +105,40 @@ class SuggestionChipField extends StatelessWidget {
             ),
           ),
           if (suggestions.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: 8,
+              runSpacing: 8,
               children: suggestions.map((sug) {
-                final isInField = controller.text.toLowerCase().contains(
-                  sug.toLowerCase(),
+                // Field is treated as comma-separated tokens so a pill toggles
+                // both on AND off; free text the user typed is preserved.
+                List<String> tokens() => controller.text
+                    .split(',')
+                    .map((e) => e.trim())
+                    .where((e) => e.isNotEmpty)
+                    .toList();
+                final isInField = tokens().any(
+                  (t) => t.toLowerCase() == sug.toLowerCase(),
                 );
-                return InkWell(
+                return CreatorPill(
+                  label: sug,
+                  selected: isInField,
+                  accent: pillAccent,
                   onTap: () {
-                    if (!isInField) {
-                      final current = controller.text.trim();
-                      controller.text = current.isEmpty
-                          ? sug
-                          : '$current, $sug';
-                      controller.selection = TextSelection.fromPosition(
-                        TextPosition(offset: controller.text.length),
+                    final parts = tokens();
+                    if (isInField) {
+                      parts.removeWhere(
+                        (t) => t.toLowerCase() == sug.toLowerCase(),
                       );
-                      onChanged();
+                    } else {
+                      parts.add(sug);
                     }
+                    controller.text = parts.join(', ');
+                    controller.selection = TextSelection.fromPosition(
+                      TextPosition(offset: controller.text.length),
+                    );
+                    onChanged();
                   },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isInField
-                          ? accent.withValues(alpha: 0.2)
-                          : AppColors.surfaceContainerOf(context),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isInField
-                            ? accent.withValues(alpha: 0.5)
-                            : AppColors.borderOf(context),
-                      ),
-                    ),
-                    child: Text(
-                      sug,
-                      style: TextStyle(
-                        color: isInField
-                            ? accent
-                            : AppColors.textTertiary(context),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
                 );
               }).toList(),
             ),

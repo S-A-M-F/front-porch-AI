@@ -154,6 +154,7 @@ class GuidedConfigStep extends StatelessWidget {
                 accentColor: guidedAccent,
                 children: [
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Build / Body Type',
                     controller: state.guidedAppearanceController,
                     hint: "Or describe: 'tall and lanky with long legs'",
@@ -162,6 +163,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Hair',
                     controller: state.guidedHairController,
                     hint: "e.g. 'waist-length silver hair, usually messy'",
@@ -169,6 +171,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Distinguishing Features',
                     controller: state.guidedFeaturesController,
                     hint:
@@ -177,6 +180,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Race / Species',
                     controller: state.guidedRaceController,
                     hint: "e.g. 'half-dragon shapeshifter'",
@@ -194,6 +198,7 @@ class GuidedConfigStep extends StatelessWidget {
                 accentColor: guidedAccent,
                 children: [
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Personality',
                     controller: state.guidedPersonalityController,
                     hint:
@@ -203,6 +208,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'How They Talk',
                     controller: state.guidedSpeechController,
                     hint:
@@ -211,6 +217,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Secret / Hidden Depth',
                     controller: state.guidedSecretController,
                     hint:
@@ -229,6 +236,7 @@ class GuidedConfigStep extends StatelessWidget {
                 accentColor: guidedAccent,
                 children: [
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Origin / Background',
                     controller: state.guidedOriginController,
                     hint:
@@ -238,6 +246,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Setting / Era',
                     controller: state.guidedSettingController,
                     hint:
@@ -246,6 +255,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Tone',
                     controller: state.guidedToneController,
                     hint:
@@ -264,6 +274,7 @@ class GuidedConfigStep extends StatelessWidget {
                 accentColor: guidedAccent,
                 children: [
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Dynamic',
                     controller: state.guidedRelDynamicController,
                     hint:
@@ -273,6 +284,7 @@ class GuidedConfigStep extends StatelessWidget {
                     onChanged: _save,
                   ),
                   SuggestionChipField(
+                    accent: guidedAccent,
                     label: 'Opening Scenario',
                     controller: state.guidedRelScenarioController,
                     hint:
@@ -304,6 +316,7 @@ class GuidedConfigStep extends StatelessWidget {
                   accentColor: nsfwAccent,
                   children: [
                     SuggestionChipField(
+                      accent: guidedAccent,
                       label: 'Body (intimate details)',
                       controller: state.guidedNsfwBodyController,
                       hint:
@@ -313,6 +326,7 @@ class GuidedConfigStep extends StatelessWidget {
                       onChanged: _save,
                     ),
                     SuggestionChipField(
+                      accent: guidedAccent,
                       label: 'Experience Level',
                       controller: state.guidedNsfwExpController,
                       hint:
@@ -322,6 +336,7 @@ class GuidedConfigStep extends StatelessWidget {
                       onChanged: _save,
                     ),
                     SuggestionChipField(
+                      accent: guidedAccent,
                       label: 'Dominance',
                       controller: state.guidedNsfwDomController,
                       hint:
@@ -331,6 +346,7 @@ class GuidedConfigStep extends StatelessWidget {
                       onChanged: _save,
                     ),
                     SuggestionChipField(
+                      accent: guidedAccent,
                       label: 'Turn-ons & Kinks',
                       controller: state.guidedNsfwKinksController,
                       hint:
@@ -341,6 +357,7 @@ class GuidedConfigStep extends StatelessWidget {
                       onChanged: _save,
                     ),
                     SuggestionChipField(
+                      accent: guidedAccent,
                       label: 'Clothing / Aesthetic',
                       controller: state.guidedNsfwClothingController,
                       hint:
@@ -350,6 +367,7 @@ class GuidedConfigStep extends StatelessWidget {
                       onChanged: _save,
                     ),
                     SuggestionChipField(
+                      accent: guidedAccent,
                       label: 'Sexual Personality',
                       controller: state.guidedNsfwPersonalityController,
                       hint:

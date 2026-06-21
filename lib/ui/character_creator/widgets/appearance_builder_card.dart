@@ -12,8 +12,13 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// proportion chips, and NSFW-gated chest/butt rows.
 class AppearanceBuilderCard extends StatelessWidget {
   final CreatorState state;
+  final Color accent;
 
-  const AppearanceBuilderCard({super.key, required this.state});
+  const AppearanceBuilderCard({
+    super.key,
+    required this.state,
+    required this.accent,
+  });
 
   void _set(VoidCallback apply) {
     apply();
@@ -31,26 +36,16 @@ class AppearanceBuilderCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerOf(context),
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.resolve(
-            context,
-            Colors.blueAccent.withValues(alpha: 0.3),
-            Colors.blueAccent.withValues(alpha: 0.2),
-          ),
-        ),
+        border: Border.all(color: accent.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.person_outline,
-                color: Colors.blueAccent,
-                size: 18,
-              ),
+              Icon(Icons.person_outline, color: accent, size: 18),
               const SizedBox(width: 8),
               Text(
                 'Character Appearance',
@@ -75,6 +70,7 @@ class AppearanceBuilderCard extends StatelessWidget {
             label: 'Race / Species',
             value: state.race,
             options: CreatorOptions.raceOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.race = v),
           ),
           _customRaceField(context),
@@ -82,30 +78,35 @@ class AppearanceBuilderCard extends StatelessWidget {
             label: 'Body Type',
             value: state.bodyType,
             options: CreatorOptions.bodyTypes,
+            accent: accent,
             onChanged: (v) => _set(() => state.bodyType = v),
           ),
           SingleSelectChipRow(
             label: 'Hair Length',
             value: state.hairLength,
             options: CreatorOptions.hairLengths,
+            accent: accent,
             onChanged: (v) => _set(() => state.hairLength = v),
           ),
           SingleSelectChipRow(
             label: 'Hair Style',
             value: state.hairStyle,
             options: CreatorOptions.hairStyles,
+            accent: accent,
             onChanged: (v) => _set(() => state.hairStyle = v),
           ),
           SingleSelectChipRow(
             label: 'Skin Tone',
             value: state.skinTone,
             options: CreatorOptions.skinTones,
+            accent: accent,
             onChanged: (v) => _set(() => state.skinTone = v),
           ),
           MultiSelectChipRow(
             label: 'Notable Features',
             selected: state.notableFeatures,
             options: CreatorOptions.notableFeatureOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.notableFeatures = v),
           ),
           Divider(color: AppColors.borderOf(context), height: 16),
@@ -113,30 +114,35 @@ class AppearanceBuilderCard extends StatelessWidget {
             label: 'Abs / Core',
             value: state.absCore,
             options: CreatorOptions.absCoreOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.absCore = v),
           ),
           SingleSelectChipRow(
             label: 'Thighs',
             value: state.thighs,
             options: CreatorOptions.thighOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.thighs = v),
           ),
           SingleSelectChipRow(
             label: 'Hips',
             value: state.hips,
             options: CreatorOptions.hipOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.hips = v),
           ),
           SingleSelectChipRow(
             label: 'Shoulders',
             value: state.shoulders,
             options: CreatorOptions.shoulderOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.shoulders = v),
           ),
           SingleSelectChipRow(
             label: 'Waist',
             value: state.waist,
             options: CreatorOptions.waistOptions,
+            accent: accent,
             onChanged: (v) => _set(() => state.waist = v),
           ),
           if (state.nsfwEnabled) ...[
@@ -145,6 +151,7 @@ class AppearanceBuilderCard extends StatelessWidget {
               label: 'Chest Size',
               value: state.chestSize,
               options: CreatorOptions.chestSizes,
+              accent: pink,
               onChanged: (v) => _set(() => state.chestSize = v),
               isNsfw: true,
             ),
@@ -152,6 +159,7 @@ class AppearanceBuilderCard extends StatelessWidget {
               label: 'Butt Size',
               value: state.buttSize,
               options: CreatorOptions.buttSizes,
+              accent: pink,
               onChanged: (v) => _set(() => state.buttSize = v),
               isNsfw: true,
             ),
@@ -204,7 +212,7 @@ class AppearanceBuilderCard extends StatelessWidget {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.blueAccent),
+                  borderSide: BorderSide(color: accent),
                 ),
               ),
               onChanged: (_) {
