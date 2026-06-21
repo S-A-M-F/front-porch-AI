@@ -112,6 +112,13 @@ class FrontPorchExtensions {
   /// Duplicates get fresh stableId. Never changes for an existing library character.
   String? stableId;
 
+  /// App-internal character tier. `'lite'` marks a Scene Guest (Lite NPC):
+  /// a real library character that can join a 1:1 scene as its own bubble but
+  /// carries NO Realism Engine / Needs state (parity-safe). `null` = a normal
+  /// full character. Stored inside the PNG extensions only; never affects
+  /// external direct-writer schema.
+  String? tier;
+
   FrontPorchExtensions({
     this.realismEnabled = false,
     this.shortTermBond = 0,
@@ -174,6 +181,7 @@ class FrontPorchExtensions {
 
     this.currentTask = '',
     this.stableId,
+    this.tier,
   });
 
   Map<String, dynamic> toJson() {
@@ -231,6 +239,7 @@ class FrontPorchExtensions {
         'chat_font_family': chatFontFamily,
 
         'current_task': currentTask,
+        'tier': ?tier,
       },
     };
   }
@@ -301,6 +310,7 @@ class FrontPorchExtensions {
       chatFontFamily: realism['chat_font_family'] as String?,
 
       currentTask: realism['current_task'] as String? ?? '',
+      tier: realism['tier'] as String?,
     );
   }
 
@@ -353,6 +363,7 @@ class FrontPorchExtensions {
 
     String? currentTask,
     String? stableId,
+    String? tier,
   }) {
     return FrontPorchExtensions(
       realismEnabled: realismEnabled ?? this.realismEnabled,
@@ -407,6 +418,7 @@ class FrontPorchExtensions {
 
       currentTask: currentTask ?? this.currentTask,
       stableId: stableId ?? this.stableId,
+      tier: tier ?? this.tier,
     );
   }
 
@@ -524,4 +536,9 @@ class CharacterCard {
 
   /// Whether this card has any Front Porch extensions configured.
   bool get hasFrontPorchExtensions => frontPorchExtensions != null;
+
+  /// Whether this card is a Scene Guest (Lite NPC): a real library character
+  /// that can join a 1:1 scene as its own bubble but carries no Realism/Needs
+  /// state. Determined by `frontPorchExtensions.tier == 'lite'`.
+  bool get isLite => frontPorchExtensions?.tier == 'lite';
 }

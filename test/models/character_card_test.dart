@@ -305,6 +305,25 @@ void main() {
       expect(copy.realismEnabled, false);
       expect(copy.shortTermBond, 0);
     });
+
+    test('tier defaults to null and is omitted from toJson', () {
+      final ext = FrontPorchExtensions();
+      expect(ext.tier, isNull);
+      final realism = ext.toJson()['realism_engine'] as Map<String, dynamic>;
+      expect(realism.containsKey('tier'), false);
+    });
+
+    test('tier (lite) round-trips through toJson/fromJson and copyWith', () {
+      final ext = FrontPorchExtensions(tier: 'lite');
+      final realism = ext.toJson()['realism_engine'] as Map<String, dynamic>;
+      expect(realism['tier'], 'lite');
+
+      final restored = FrontPorchExtensions.fromJson(ext.toJson());
+      expect(restored.tier, 'lite');
+
+      final cleared = restored.copyWith(realismEnabled: null);
+      expect(cleared.tier, 'lite'); // copyWith preserves tier when not passed
+    });
   });
 
   group('CharacterCard', () {
@@ -423,6 +442,25 @@ void main() {
         frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
       );
       expect(card.hasFrontPorchExtensions, true);
+    });
+
+    test('isLite false for normal / no-extension cards', () {
+      expect(CharacterCard(name: 'Test').isLite, false);
+      expect(
+        CharacterCard(
+          name: 'Test',
+          frontPorchExtensions: FrontPorchExtensions(),
+        ).isLite,
+        false,
+      );
+    });
+
+    test('isLite true only when tier == lite (Scene Guest)', () {
+      final guest = CharacterCard(
+        name: 'Guest',
+        frontPorchExtensions: FrontPorchExtensions(tier: 'lite'),
+      );
+      expect(guest.isLite, true);
     });
 
     test('toJson includes all fields', () {

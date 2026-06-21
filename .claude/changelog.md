@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-20 (feat: Scene Guests / Lite NPCs — Phase 0 MVP)
+- **Files changed**:
+  - lib/models/character_card.dart — Added `String? tier` to `FrontPorchExtensions` (toJson null-aware via `'tier': ?tier`, fromJson, copyWith) + `CharacterCard.isLite` getter (`tier == 'lite'`). App-internal, stored in PNG only, never touches external-writer DB schema.
+  - lib/services/chat/chat_command_handler.dart (NEW, ~210 lines) — Pure slash-command dispatcher leaf. Parses `/expression`/`/expression-set`/`/expression-clear` (moved out of the god switch), `/create <name>: <concept>` (also `|` separator / empty concept), and `/exit [name]`. Holds zero heavy imports; all actions are injected closures. Defines `GuestMintResult`.
+  - lib/services/chat/scene_guest_factory.dart (NEW, ~110 lines) — Mints a lite NPC: `CharacterGenService.generateCharacter` (scenario/worldLore seeded from host, nsfw from host's cooldown intent) → tag `tier='lite'` → canonical persist (`saveCardAsPng` with embedded extensions, then `repo.addCharacter`).
+  - lib/services/chat_service.dart — Scene-guest state (`_sceneGuestIds`, `_sceneGuestCards`, `_pendingGuestDeparture`) + `sceneGuestCards` getter; `_ensureCommandHandler` wiring; `_mintSceneGuest` (delegates to factory); `_resolveSceneGuestCards`; `generateGuestTurn` (public); `_loadSceneGuestsFromSession`. `_generateResponse` gained `{CharacterCard? guestSpeaker}` — guest takes speaker precedence (stays 1:1) and the **entire post-gen realism/needs/periodic-eval section is wrapped in `if (guestSpeaker == null)` (PARITY GUARD)**. Prompt injection (in the authorNote block, 1:1 only): host-turn line naming present guests + "don't fully voice them"; guest-turn line grounding them as a visitor; one-shot `/exit` departure line. Persistence: `_doSaveChat` adds `else if (_activeGroup == null && _sceneGuestIds.isNotEmpty)` → `{'sceneGuests': [...]}` in the reused (else '{}') groupRealismState column; `_loadLastSession` parses it for 1:1. Guests cleared on `setActiveCharacter`/`setActiveGroup`/`startNewChat`. Slash branch in `sendMessage` now delegates to the handler (net-removed the expression switch).
+  - lib/ui/pages/chat_page.dart — 1:1 bubble path now resolves a Scene Guest's own avatar/name/color (matching `stableGroupId == msg.characterId` or `name == msg.sender`), reusing `_resolveCharImage`/`_groupCharacterColor` (no bubble duplication).
+  - test/models/character_card_test.dart — tier round-trip + isLite tests.
+  - test/services/chat/chat_command_handler_test.dart (NEW) — full handler dispatch/parse/exit/create-wiring coverage (16 tests).
+  - docs/Rawhide.md — user-facing "Scene Guests" bullet.
+- **Reason**: Phase 0 of Scene Guests (Lite NPCs): manually add a persistent, real library character to a 1:1 chat that speaks in its own bubble via the existing engine but carries no Realism/Needs state (parity-safe), addable via `/create` and removable via `/exit`. No schema change (reuses the 1:1 '{}' groupRealismState column). No auto-chime/detection/evolution/RAG yet (later phases).
+- **Verification**: `flutter analyze` clean (only the pre-existing `_userMessagesSinceLastEvolution` warning remains; zero new issues). New + existing chat_service realism/session/group test suites pass. No commit (parent handles build/commit).
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-20 (fix: KoboldCpp local model picker completely broken in AI Character Creator; remote/oMLX now unified)
 - **Files changed**:
   - lib/ui/pages/character_creator_page.dart (post-frame now scans local models via CreatorState + ModelManager, preselects lastUsed, and eagerly loadAvailableModels for remote backends)

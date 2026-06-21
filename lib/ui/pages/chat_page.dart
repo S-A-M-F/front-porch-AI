@@ -60,7 +60,9 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final StyledTextController _controller = StyledTextController(preset: StyledTextPreset.chat);
+  final StyledTextController _controller = StyledTextController(
+    preset: StyledTextPreset.chat,
+  );
   final ScrollController _scrollController = ScrollController();
   late final FocusNode _chatFocusNode;
   bool _autoScroll = true;
@@ -458,12 +460,56 @@ class _ChatPageState extends State<ChatPage> {
                                           senderIdx >= 0 ? senderIdx : 0,
                                         );
                                       } else {
-                                        senderImage =
-                                            character?.imagePath != null
-                                            ? _resolveCharImage(
-                                                character!.imagePath!,
+                                        // 1:1: a message may belong to a Scene
+                                        // Guest (Lite NPC) rather than the active
+                                        // character. Resolve the guest's own
+                                        // name/avatar/color the same way groups do.
+                                        CharacterCard? guestChar;
+                                        if (!msg.isUser) {
+                                          // characterId on a message is the
+                                          // card's stableGroupId (PNG basename),
+                                          // so match that or fall back to sender.
+                                          guestChar = chatService
+                                              .sceneGuestCards
+                                              .where(
+                                                (g) =>
+                                                    g.stableGroupId ==
+                                                        msg.characterId ||
+                                                    g.name == msg.sender,
                                               )
-                                            : null;
+                                              .firstOrNull;
+                                          if (guestChar != null &&
+                                              guestChar.name ==
+                                                  character?.name &&
+                                              guestChar.dbId ==
+                                                  character?.dbId) {
+                                            guestChar = null; // it's the host
+                                          }
+                                        }
+                                        if (guestChar != null) {
+                                          senderImage =
+                                              guestChar.imagePath != null
+                                              ? _resolveCharImage(
+                                                  guestChar.imagePath!,
+                                                )
+                                              : null;
+                                          final gIdx = chatService
+                                              .sceneGuestCards
+                                              .indexWhere(
+                                                (g) =>
+                                                    g.dbId == guestChar!.dbId,
+                                              );
+                                          senderColor = _groupCharacterColor(
+                                            gIdx >= 0 ? gIdx : 0,
+                                          );
+                                        } else {
+                                          senderImage =
+                                              character?.imagePath != null
+                                              ? _resolveCharImage(
+                                                  character!.imagePath!,
+                                                )
+                                              : null;
+                                        }
                                       }
                                       return MessageBubble(
                                         key: ObjectKey(msg),
