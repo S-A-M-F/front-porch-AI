@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-21 (port: pulled PR #59 (creator backend/model setup overhaul) forward from Rawhide into main)
+- **Files changed**: cherry-picked bb30ebf (#59) onto main — setup_step.dart (dedicated KoboldCpp/Pseudo-Remote sections, status dot, Start/Stop, Extra Settings panel), creator_state.dart (backend_manager import + gpu/context controllers + initLocalSettingsControllers + BackendManager-based reloadKoboldWithModel + startPseudoRemote/stopPseudoRemote), character_creator_page.dart (init controllers), settings_page.dart, kcpps_selector.dart, kobold_service.dart. Plus docs/Rawhide.md + this changelog.
+- **Why**: All of #59's dependencies (PseudoRemoteService, BackendManager.backendPath, KcppsSelector, storage gpu/context) already exist on main, so #59 is a low-risk, high-value UX win — it surfaces backend services that already run on stable inside the creator's Setup screen, bringing main's creator to parity with Rawhide.
+- **Merge notes**: Mirror of the earlier main→Rawhide port. Kept my creator restoration; layered #59's backend code on top. Only the creator_state.dart import block needed hand-resolution (kept backend_manager, left character_repository/image_gen_service removed since the engine extraction deleted their only users); setup_step.dart taken from #59 wholesale.
+- **Verification**: flutter analyze clean; flutter build macos --debug succeeds. Page wiring verified.
+- **Branch**: main.
+
 ## 2026-06-21 (refactor: split the 2089-line CharacterGenService god file into focused part files)
 - **Files changed**: lib/services/character_gen_service.dart (now a 495-line library), NEW lib/services/chargen/{character_gen_llm,character_gen_prompts,character_gen_steps,character_gen_steps2,character_gen_parsing,character_gen_editors}.dart (part-of extensions on CharacterGenService).
 - **Why**: CharacterGenService had grown to a 2089-line god file (well over the 500-line cap), mixing the LLM runner, prompt builders, multi-step generation, JSON parsing/cleaning, and editor passes. Split into same-library part/extension files so each concern is isolated and under 500 lines. The 3 former static const members were lifted to top-level library-private consts so the extensions reference them by bare name.
