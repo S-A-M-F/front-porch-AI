@@ -418,8 +418,57 @@ class CharacterGenService {
       onProgress: onProgress,
     );
 
+    // Models don't reliably emit {{char}} for description/personality even when
+    // instructed to, and a literal name baked into the card can confuse models
+    // mid-chat. Normalize every generated text field to the portable macro.
+    _applyCharMacro(card, name);
+
     onStatus?.call('Character generated!');
     return card;
+  }
+
+  /// Strip `<think>`…`</think>` reasoning blocks (fuzzy — models misspell the
+  /// tag at high temperature) so we can tell whether a stream actually produced
+  /// content or only "thought".
+  String _stripThinkBlocks(String raw) {
+    const open = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+    const close = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
+    return raw
+        .replaceAll(RegExp('$open[\\s\\S]*?$close', caseSensitive: false), '')
+        .replaceAll(RegExp('$open[\\s\\S]*\$', caseSensitive: false), '')
+        .trim();
+  }
+
+  /// Replace literal occurrences of the character's [name] (whole name and each
+  /// significant name part) with the portable `{{char}}` macro across every
+  /// generated text field, so the saved card travels well and reads
+  /// consistently to the chat model.
+  void _applyCharMacro(CharacterCard card, String name) {
+    final full = name.trim();
+    if (full.isEmpty) return;
+    // Whole name first (so multi-word names are caught intact), then each part
+    // of 3+ chars. Whole-word + case-insensitive.
+    final targets = <String>[full];
+    for (final part in full.split(RegExp(r'\s+'))) {
+      if (part.length >= 3 && !targets.contains(part)) targets.add(part);
+    }
+    String apply(String s) {
+      var out = s;
+      for (final t in targets) {
+        out = out.replaceAll(
+          RegExp('\\b${RegExp.escape(t)}\\b', caseSensitive: false),
+          '{{char}}',
+        );
+      }
+      return out;
+    }
+
+    card.description = apply(card.description);
+    card.personality = apply(card.personality);
+    card.scenario = apply(card.scenario);
+    card.firstMessage = apply(card.firstMessage);
+    card.mesExample = apply(card.mesExample);
+    card.alternateGreetings = card.alternateGreetings.map(apply).toList();
   }
 
   // ═════════════════════════════════════════════════════════════
@@ -821,6 +870,12 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
             minP: 0.05,
             topP: isJsonMode ? 0.90 : 0.95,
             reasoningEnabled: _reasoningEnabled,
+            // Thinking models can hit a premature EOS during the <think>
+            // prefill and return an empty (or think-only) stream. Banning the
+            // EOS token while reasoning is on forces them past the think block
+            // to actually produce content (same safeguard as the eval/fact
+            // paths). Bounded by stopSequences + maxLength.
+            banEosToken: _reasoningEnabled,
             stopSequences: stops,
           ),
         )) {
@@ -934,11 +989,15 @@ Output ONLY the example dialogue. No commentary, no JSON, no explanation. Start 
           'Raw: ${accumulated.length} chars${repetitionDetected ? ' (truncated due to repetition)' : ''}',
         );
 
-        if (accumulated.isNotEmpty) return accumulated;
+        // Treat think-only output (nothing left after stripping <think>
+        // blocks) as a failure so the retry loop can recover — otherwise the
+        // caller cleans it to empty and the field (e.g. the first message) is
+        // silently dropped.
+        if (_stripThinkBlocks(accumulated).isNotEmpty) return accumulated;
 
-        // Empty response — retry with diagnostics
+        // Empty / think-only response — retry with diagnostics
         debugPrint(
-          'CharacterGen: Empty response on attempt $attempt/$maxRetries. '
+          'CharacterGen: Empty/think-only response on attempt $attempt/$maxRetries. '
           'Prompt ~$promptEstTokens tokens. If this exceeds your model\'s context window, '
           'try a shorter concept or reduce lore depth.',
         );
