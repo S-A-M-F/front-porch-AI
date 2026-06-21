@@ -291,7 +291,15 @@ class GuidedVisionPanel extends StatelessWidget {
                     style: TextStyle(fontSize: 13),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: teal,
+                    // Filled buttons need the DARK accent as the background (so
+                    // white text reads) — the opposite of borders/icons, which
+                    // use the bright accent. A bright-mint fill + white text is
+                    // unreadable in dark mode.
+                    backgroundColor: AppColors.resolve(
+                      context,
+                      const Color(0xFF0D7377),
+                      Colors.tealAccent,
+                    ),
                     foregroundColor: AppColors.resolve(
                       context,
                       Colors.white,

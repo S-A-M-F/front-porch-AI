@@ -2,48 +2,42 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_pill.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
-/// Shared accent resolver for creator chip rows: blue for SFW, pink for NSFW.
-Color _chipAccent(BuildContext context, bool isNsfw) => isNsfw
-    ? AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D))
-    : AppColors.resolve(context, Colors.blueAccent, const Color(0xFF1E40AF));
+/// NSFW sections are always pink, regardless of the mode accent.
+Color _nsfwPink(BuildContext context) =>
+    AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D));
 
-Color _chipLabelAccent(BuildContext context, bool isNsfw) => isNsfw
-    ? AppColors.resolve(context, Colors.pinkAccent, const Color(0xFF9D174D))
-    : AppColors.resolve(context, Colors.blueAccent, const Color(0xFF1E40AF));
-
-Widget _chipRowLabel(BuildContext context, String label, bool isNsfw) => Row(
-  children: [
-    if (isNsfw) ...[
-      Icon(
-        Icons.local_fire_department,
-        size: 12,
-        color: _chipAccent(context, isNsfw),
+Widget _chipRowLabel(BuildContext context, String label, Color accent, bool isNsfw) =>
+    Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          if (isNsfw) ...[
+            Icon(Icons.local_fire_department, size: 12, color: accent),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: isNsfw ? accent : AppColors.textSecondary(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
-      const SizedBox(width: 4),
-    ],
-    Text(
-      label,
-      style: TextStyle(
-        color: isNsfw
-            ? _chipLabelAccent(context, isNsfw)
-            : AppColors.textSecondary(context),
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
-    ),
-  ],
-);
+    );
 
-/// A labelled row of single-select choice chips. Tapping the selected chip
-/// clears it (passes '' to [onChanged]). Restored from the god file's
-/// `_singleSelectChipRow`.
+/// A labelled row of single-select pills. Tapping the selected pill clears it
+/// (passes '' to [onChanged]). Themed by [accent] (mode colour); NSFW → pink.
 class SingleSelectChipRow extends StatelessWidget {
   final String label;
   final String value;
   final List<String> options;
   final ValueChanged<String> onChanged;
+  final Color accent;
   final bool isNsfw;
 
   const SingleSelectChipRow({
@@ -52,45 +46,33 @@ class SingleSelectChipRow extends StatelessWidget {
     required this.value,
     required this.options,
     required this.onChanged,
+    required this.accent,
     this.isNsfw = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent = _chipAccent(context, isNsfw);
+    final pillAccent = isNsfw ? _nsfwPink(context) : accent;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _chipRowLabel(context, label, isNsfw),
-          const SizedBox(height: 6),
+          _chipRowLabel(context, label, pillAccent, isNsfw),
           Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: options.map((opt) {
-              final isSelected = value == opt;
-              return ChoiceChip(
-                label: Text(opt, style: const TextStyle(fontSize: 11)),
-                selected: isSelected,
-                onSelected: (_) => onChanged(isSelected ? '' : opt),
-                selectedColor: AppColors.resolve(
-                  context,
-                  accent.withValues(alpha: 0.25),
-                  accent.withValues(alpha: 0.12),
-                ),
-                backgroundColor: AppColors.surfaceContainerOf(context),
-                labelStyle: TextStyle(
-                  color: isSelected
-                      ? AppColors.resolve(context, Colors.white, Colors.black87)
-                      : AppColors.textSecondary(context),
-                ),
-                side: BorderSide(
-                  color: isSelected ? accent : AppColors.borderOf(context),
-                ),
-                visualDensity: VisualDensity.compact,
-              );
-            }).toList(),
+            spacing: 8,
+            runSpacing: 8,
+            children: options
+                .map(
+                  (opt) => CreatorPill(
+                    label: opt,
+                    selected: value == opt,
+                    accent: pillAccent,
+                    icon: isNsfw ? Icons.local_fire_department : null,
+                    onTap: () => onChanged(value == opt ? '' : opt),
+                  ),
+                )
+                .toList(),
           ),
         ],
       ),
@@ -98,13 +80,13 @@ class SingleSelectChipRow extends StatelessWidget {
   }
 }
 
-/// A labelled row of multi-select filter chips. Restored from the god file's
-/// `_multiSelectChipRow`.
+/// A labelled row of multi-select pills. Themed by [accent]; NSFW → pink.
 class MultiSelectChipRow extends StatelessWidget {
   final String label;
   final Set<String> selected;
   final List<String> options;
   final ValueChanged<Set<String>> onChanged;
+  final Color accent;
   final bool isNsfw;
 
   const MultiSelectChipRow({
@@ -113,52 +95,38 @@ class MultiSelectChipRow extends StatelessWidget {
     required this.selected,
     required this.options,
     required this.onChanged,
+    required this.accent,
     this.isNsfw = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent = _chipAccent(context, isNsfw);
+    final pillAccent = isNsfw ? _nsfwPink(context) : accent;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _chipRowLabel(context, label, isNsfw),
-          const SizedBox(height: 6),
+          _chipRowLabel(context, label, pillAccent, isNsfw),
           Wrap(
-            spacing: 6,
-            runSpacing: 6,
+            spacing: 8,
+            runSpacing: 8,
             children: options.map((opt) {
               final isSelected = selected.contains(opt);
-              return FilterChip(
-                label: Text(opt, style: const TextStyle(fontSize: 11)),
+              return CreatorPill(
+                label: opt,
                 selected: isSelected,
-                onSelected: (val) {
+                accent: pillAccent,
+                icon: isNsfw ? Icons.local_fire_department : null,
+                onTap: () {
                   final next = Set<String>.from(selected);
-                  if (val) {
-                    next.add(opt);
-                  } else {
+                  if (isSelected) {
                     next.remove(opt);
+                  } else {
+                    next.add(opt);
                   }
                   onChanged(next);
                 },
-                selectedColor: AppColors.resolve(
-                  context,
-                  accent.withValues(alpha: 0.25),
-                  accent.withValues(alpha: 0.12),
-                ),
-                backgroundColor: AppColors.surfaceContainerOf(context),
-                checkmarkColor: accent,
-                labelStyle: TextStyle(
-                  color: isSelected
-                      ? AppColors.resolve(context, Colors.white, Colors.black87)
-                      : AppColors.textTertiary(context),
-                ),
-                side: BorderSide(
-                  color: isSelected ? accent : AppColors.borderOf(context),
-                ),
-                visualDensity: VisualDensity.compact,
               );
             }).toList(),
           ),

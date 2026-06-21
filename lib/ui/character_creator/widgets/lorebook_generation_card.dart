@@ -10,8 +10,13 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// Restored from the pre-refactor automated config step.
 class LorebookGenerationCard extends StatelessWidget {
   final CreatorState state;
+  final Color accent;
 
-  const LorebookGenerationCard({super.key, required this.state});
+  const LorebookGenerationCard({
+    super.key,
+    required this.state,
+    required this.accent,
+  });
 
   void _save() {
     state.saveState();
@@ -29,16 +34,16 @@ class LorebookGenerationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerOf(context),
+        color: AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.menu_book, color: Colors.blueAccent, size: 18),
+              Icon(Icons.menu_book, color: accent, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -52,7 +57,7 @@ class LorebookGenerationCard extends StatelessWidget {
               ),
               Switch(
                 value: state.generateLorebook,
-                activeTrackColor: Colors.blueAccent,
+                activeTrackColor: accent,
                 onChanged: (val) {
                   state.generateLorebook = val;
                   _save();
@@ -98,7 +103,7 @@ class LorebookGenerationCard extends StatelessWidget {
                         state.loreDepth = depth;
                         _save();
                       },
-                      selectedColor: Colors.blueAccent,
+                      selectedColor: accent,
                       backgroundColor: AppColors.surfaceContainerOf(context),
                       labelStyle: TextStyle(
                         color: isSelected
@@ -111,7 +116,7 @@ class LorebookGenerationCard extends StatelessWidget {
                       ),
                       side: BorderSide(
                         color: isSelected
-                            ? Colors.blueAccent
+                            ? accent
                             : AppColors.borderOf(context),
                       ),
                       visualDensity: VisualDensity.compact,
@@ -145,18 +150,16 @@ class LorebookGenerationCard extends StatelessWidget {
                     }
                     _save();
                   },
-                  selectedColor: Colors.blueAccent.withValues(alpha: 0.3),
+                  selectedColor: accent.withValues(alpha: 0.3),
                   backgroundColor: AppColors.surfaceContainerOf(context),
-                  checkmarkColor: Colors.blueAccent,
+                  checkmarkColor: accent,
                   labelStyle: TextStyle(
                     color: isSelected
-                        ? Colors.blueAccent
+                        ? accent
                         : AppColors.textTertiary(context),
                   ),
                   side: BorderSide(
-                    color: isSelected
-                        ? Colors.blueAccent
-                        : AppColors.borderOf(context),
+                    color: isSelected ? accent : AppColors.borderOf(context),
                   ),
                   visualDensity: VisualDensity.compact,
                 );

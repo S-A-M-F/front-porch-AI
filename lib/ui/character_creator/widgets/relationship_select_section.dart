@@ -4,7 +4,6 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/creator_hint_field.dart';
-import 'package:front_porch_ai/ui/character_creator/widgets/creator_input_label.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// "{{user}} Relationship" multi-select chips (NSFW dynamics hidden until the
@@ -12,8 +11,13 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// pre-refactor automated config step.
 class RelationshipSelectSection extends StatelessWidget {
   final CreatorState state;
+  final Color accent;
 
-  const RelationshipSelectSection({super.key, required this.state});
+  const RelationshipSelectSection({
+    super.key,
+    required this.state,
+    required this.accent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -21,8 +25,6 @@ class RelationshipSelectSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const CreatorInputLabel('Relationship to {{user}}'),
-        const SizedBox(height: 4),
         Text(
           'Select one or more dynamics',
           style: TextStyle(
@@ -49,11 +51,7 @@ class RelationshipSelectSection extends StatelessWidget {
                         Colors.pinkAccent,
                         const Color(0xFF9D174D),
                       )
-                    : AppColors.resolve(
-                        context,
-                        Colors.blueAccent,
-                        const Color(0xFF1E40AF),
-                      );
+                    : accent;
                 return FilterChip(
                   label: Row(
                     mainAxisSize: MainAxisSize.min,
