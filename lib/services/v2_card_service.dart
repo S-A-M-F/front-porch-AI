@@ -134,8 +134,36 @@ class V2CardService {
 
     if (charaData == null) return null;
 
+    final jsonStr = utf8.decode(base64Decode(charaData));
+    return parseCardJson(jsonStr, imagePath: path);
+  }
+
+  /// Reads a Character Card V2 from a plain `.json` file (the same JSON that is
+  /// otherwise base64-embedded in a PNG `chara` chunk). No avatar is associated;
+  /// callers persist with a generated placeholder image.
+  Future<CharacterCard?> readCardFromJsonFile(String path) async {
+    final jsonStr = await File(path).readAsString();
+    return parseCardJson(jsonStr, imagePath: null);
+  }
+
+  /// Writes [card] as a standalone Character Card V2 JSON file. The structure is
+  /// identical to what is embedded in exported PNGs and what the importer accepts:
+  /// `{ "spec": "chara_card_v2", "spec_version": "2.0", "data": { ... } }`.
+  Future<void> saveCardAsJson(CharacterCard card, String outputPath) async {
+    final envelope = <String, dynamic>{
+      'spec': 'chara_card_v2',
+      'spec_version': '2.0',
+      'data': card.toJson(),
+    };
+    const encoder = JsonEncoder.withIndent('  ');
+    await File(outputPath).writeAsString(encoder.convert(envelope));
+  }
+
+  /// Parses a Character Card V2 (or legacy flat V1) JSON string into a
+  /// [CharacterCard]. Shared by both the PNG (`chara` chunk) and standalone
+  /// `.json` import paths so the two stay byte-for-byte equivalent.
+  CharacterCard? parseCardJson(String jsonStr, {String? imagePath}) {
     try {
-      final jsonStr = utf8.decode(base64Decode(charaData));
       final jsonMap = jsonDecode(jsonStr);
 
       // Support both V1 and V2 card formats
@@ -190,7 +218,7 @@ class V2CardService {
             ? List<String>.from(data['world_names'] ?? jsonMap['world_names'])
             : const [],
         ttsVoice: data['tts_voice'] ?? jsonMap['tts_voice'],
-        imagePath: path,
+        imagePath: imagePath,
         frontPorchExtensions: fpExtensions,
         rawExtensions: rawExtensions,
       );

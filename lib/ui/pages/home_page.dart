@@ -926,6 +926,9 @@ class _HomePageState extends State<HomePage> {
       case 'export':
         _exportCharacter(context, character);
         break;
+      case 'export_json':
+        _exportCharacterJson(context, character);
+        break;
       case 'remove_folder':
         final folderService = Provider.of<FolderService>(
           context,
@@ -2361,6 +2364,39 @@ class _HomePageState extends State<HomePage> {
             context,
           ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
         }
+      }
+    }
+  }
+
+  /// Export a character as a standalone Character Card V2 `.json` file.
+  /// This is the same JSON embedded in exported PNGs and what the importer
+  /// accepts, just without the avatar image.
+  Future<void> _exportCharacterJson(BuildContext context, character) async {
+    final safeName = character.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Character Card (JSON)',
+      fileName: '$safeName.json',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+
+    if (outputFile == null) return;
+    if (!outputFile.toLowerCase().endsWith('.json')) {
+      outputFile += '.json';
+    }
+
+    try {
+      await V2CardService().saveCardAsJson(character, outputFile);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Exported to $outputFile')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
       }
     }
   }
