@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-21 (refactor: split the 2089-line CharacterGenService god file into focused part files)
+- **Files changed**: lib/services/character_gen_service.dart (now a 495-line library), NEW lib/services/chargen/{character_gen_llm,character_gen_prompts,character_gen_steps,character_gen_steps2,character_gen_parsing,character_gen_editors}.dart (part-of extensions on CharacterGenService).
+- **Why**: CharacterGenService had grown to a 2089-line god file (well over the 500-line cap), mixing the LLM runner, prompt builders, multi-step generation, JSON parsing/cleaning, and editor passes. Split into same-library part/extension files so each concern is isolated and under 500 lines. The 3 former static const members were lifted to top-level library-private consts so the extensions reference them by bare name.
+- **What**: Pure mechanical move — no method body/signature/logic changed. Verified by a sorted content diff vs the pre-refactor commit (only the expected static→top-level const lift differs, plus one ” escape rendered as its literal glyph — same value) and a 1:1 method-name set. The prior first-message + {{char}} fixes are preserved (banEosToken + think-only retry now live in character_gen_llm.dart).
+- **Verification**: flutter analyze lib/services/ clean; flutter build macos --debug succeeds (✓ Built); every file < 500 lines.
+- **Branch**: main.
+
 ## 2026-06-21 (fix: AI-generated characters dropped the first message + used literal names — CharacterGenService robustness)
 - **Files changed**: lib/services/character_gen_service.dart.
 - **Why**: (1) Generated characters sometimes had NO first message. Root cause: thinking models can return a stream containing only a `<think>` block (or hit premature EOS during the think prefill); `_callLLM` treated that non-empty raw as success, then `_cleanGreeting` stripped it to empty with no retry. (2) Description/personality embedded the literal character name instead of {{char}}, which can confuse the chat model mid-conversation.
@@ -1755,4 +1762,9 @@ Brief reason: macOS signing dominated build time (~18 min of a ~35 min macOS job
 ## 2026-06-21 — Thread required `accent` into guided creator SuggestionChipFields
 - Files: lib/ui/character_creator/steps/guided_config_step.dart
 - Reason: The unified `SuggestionChipField` widget gained a REQUIRED `accent: Color` parameter. Threaded `accent: guidedAccent` (the existing teal value already computed in build via `AppColors.resolve(context, Colors.tealAccent, const Color(0xFF0D7377))`) into all 18 call sites — including the 6 NSFW (`isNsfw: true`) fields, which still pass accent (the widget handles its own pink override). guided_vision_panel.dart and guided_output_settings.dart contain no SuggestionChipField calls, so no changes there. Mechanical compile-fix only; no layout/text/color/behavior changes. `flutter analyze` on all three files: No issues found.
+- Commit: (uncommitted)
+
+## 2026-06-21 — Split character_gen_service.dart into part files (< 500 lines each)
+- Files: lib/services/character_gen_service.dart (2089 → 495 lines), NEW lib/services/chargen/character_gen_llm.dart, character_gen_prompts.dart, character_gen_steps.dart, character_gen_steps2.dart, character_gen_parsing.dart, character_gen_editors.dart
+- Reason: Enforce the 500-line file cap on a critical service. Pure mechanical MOVE — zero behavior change. The library file keeps imports, `part` declarations, the `CharacterGenService` class (fields, ctor, abort, generateCharacter orchestrator, _stripThinkBlocks, _applyCharMacro). The 3 former `static const` members (_loreCategoryDescriptions, _interviewQuestions, _nsfwInterviewQuestion) were lifted to TOP-LEVEL library-private consts (dropped `static`) so extension methods in the part files can reference them by bare name. All other methods moved verbatim into `extension ... on CharacterGenService` blocks in the part files (steps split across two files to stay under 500). Method-name set verified identical to original (diff exit 0); each method defined exactly once. flutter analyze lib/services/ clean (only pre-existing unrelated chat_service unused-field warning). flutter build macos --debug succeeded.
 - Commit: (uncommitted)
