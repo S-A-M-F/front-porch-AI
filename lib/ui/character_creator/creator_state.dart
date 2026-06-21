@@ -265,6 +265,25 @@ class CreatorState extends ChangeNotifier {
   bool realismEnjoysLowHygiene = false;
   String realismCurrentTask = '';
 
+  // Needs simulation tuning — custom per-character baselines (0-100 starting
+  // levels) and decay rates (drop per tick). Mirrors the character editor so
+  // AI-created characters can ship the same custom needs setup; written into
+  // FrontPorchExtensions on save. Defaults match create_character_page.
+  int needsBaselineHunger = 80;
+  int needsBaselineBladder = 80;
+  int needsBaselineEnergy = 80;
+  int needsBaselineSocial = 80;
+  int needsBaselineFun = 80;
+  int needsBaselineHygiene = 80;
+  int needsBaselineComfort = 80;
+  int needsDecayHunger = 5;
+  int needsDecayBladder = 5;
+  int needsDecayEnergy = 5;
+  int needsDecaySocial = 5;
+  int needsDecayFun = 5;
+  int needsDecayHygiene = 5;
+  int needsDecayComfort = 5;
+
   // Model / backend state (lifted)
   String selectedModelId = '';
   List availableModels = [];
