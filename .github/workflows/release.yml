@@ -110,19 +110,33 @@ jobs:
           # DISPLAY_VERSION keeps the original tag (e.g. "0.9.8.0.1") so it shows
           # correctly in the app's About/Settings screen and update dialogs.
           DISPLAY_VERSION="$VERSION"
+          export FLUTTER_VERSION
+          export DISPLAY_VERSION
+
           # Use Python for cross-platform reliability (sed can fail silently with Windows \r\n line endings)
-          python3 -c "
+          # Use heredoc with single quotes to avoid shell quote/expansion hell inside -c
+          python3 - << 'PYEOF'
           import re
+          import os
+
+          fv = os.environ['FLUTTER_VERSION']
+          dv = os.environ['DISPLAY_VERSION']
+
           # Update pubspec.yaml
-          with open('pubspec.yaml', 'r') as f: content = f.read()
-          content = re.sub(r'^version: .*$', 'version: $FLUTTER_VERSION', content, flags=re.MULTILINE)
-          with open('pubspec.yaml', 'w') as f: f.write(content)
+          with open('pubspec.yaml', 'r') as f:
+              content = f.read()
+          content = re.sub(r'^version: .*$', f'version: {fv}', content, flags=re.MULTILINE)
+          with open('pubspec.yaml', 'w') as f:
+              f.write(content)
+
           # Patch only the appVersion constant (preserve all committed getters and comments).
           # This eliminates duplication and prevents compile breaks when app_version.dart evolves.
-          with open('lib/app_version.dart', 'r') as f: content = f.read()
-          content = re.sub(r\"^const String appVersion = '.*';\$\", "const String appVersion = '$DISPLAY_VERSION';", content, flags=re.MULTILINE)
-          with open('lib/app_version.dart', 'w') as f: f.write(content)
-          "
+          with open('lib/app_version.dart', 'r') as f:
+              content = f.read()
+          content = re.sub(r"^const String appVersion = '.*';$", f"const String appVersion = '{dv}';", content, flags=re.MULTILINE)
+          with open('lib/app_version.dart', 'w') as f:
+              f.write(content)
+          PYEOF
           # Verify both were updated (visible in CI logs)
           echo "Verifying pubspec version:"
           grep '^version:' pubspec.yaml
@@ -384,40 +398,6 @@ jobs:
           fi
 
           echo "ML engine bundling step complete"
-
-          # For macOS, copy into the app bundle Resources
-          if [ "${{ matrix.platform }}" = "macos" ]; then
-            APP_NAME=$(ls -d ${{ matrix.build_path }}/*.app 2>/dev/null | head -1)
-            if [ -n "$APP_NAME" ]; then
-              RESOURCES="$APP_NAME/Contents/Resources/piper"
-              mkdir -p "$RESOURCES"
-              cp -R "$DEST/kokoro_tts" "$RESOURCES/kokoro_tts"
-              cp -R "$DEST/piper" "$RESOURCES/piper"
-              chmod +x "$RESOURCES/kokoro_tts/kokoro_tts"
-              chmod +x "$RESOURCES/piper/piper"
-
-              STT_RESOURCES="$APP_NAME/Contents/Resources/whisper_stt"
-              mkdir -p "$STT_RESOURCES"
-              cp -R "$STT_DEST/whisper_stt/"* "$STT_RESOURCES/"
-              chmod +x "$STT_RESOURCES/whisper_stt"
-
-              EMBED_RESOURCES="$APP_NAME/Contents/Resources/embed_server"
-              mkdir -p "$EMBED_RESOURCES"
-              cp -R "$STT_DEST/embed_server/"* "$EMBED_RESOURCES/"
-              chmod +x "$EMBED_RESOURCES/embed_server"
-
-              SENTIMENT_RESOURCES="$APP_NAME/Contents/Resources/sentiment_classifier"
-              mkdir -p "$SENTIMENT_RESOURCES"
-              cp -R "$STT_DEST/sentiment_classifier/"* "$SENTIMENT_RESOURCES/"
-              chmod +x "$SENTIMENT_RESOURCES/sentiment_classifier"
-
-              # Draw Things gRPC client (separate folder so it doesn't conflict with other engines)
-              DT_RESOURCES="$APP_NAME/Contents/Resources/dt_grpc"
-              mkdir -p "$DT_RESOURCES"
-              cp -R "$STT_DEST/dt_grpc_client" "$DT_RESOURCES/"
-              chmod +x "$DT_RESOURCES/dt_grpc_client/dt_grpc_client" 2>/dev/null || true
-            fi
-          fi
 
           echo "TTS engines bundled at: $DEST"
           ls -la "$DEST"
