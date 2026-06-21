@@ -503,7 +503,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                                 style: TextStyle(fontSize: 13),
                               ),
                               subtitle: const Text(
-                                'Slightly lower VRAM, incompatible with '
+                                'Compact KV cache, incompatible with '
                                 'FastForwarding/ContextShift',
                                 style: TextStyle(fontSize: 11),
                               ),
@@ -590,7 +590,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                                 ),
                                 Text(
                                   'Lower padding = more VRAM for model, '
-                                  'brief startup freeze',
+                                  'brief system-wide freeze',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: AppColors.textSecondary(context),
                                     fontSize: 11,
