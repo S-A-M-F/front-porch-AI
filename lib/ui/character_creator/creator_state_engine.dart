@@ -60,7 +60,12 @@ extension CreatorEngine on CreatorState {
   }) {
     switch (creatorMode) {
       case CreatorMode.quick:
-        return _generateQuick(llmProvider, storage, personaService, imageService);
+        return _generateQuick(
+          llmProvider,
+          storage,
+          personaService,
+          imageService,
+        );
       case CreatorMode.guided:
         return _generateGuided(
           llmProvider,
@@ -184,7 +189,10 @@ extension CreatorEngine on CreatorState {
             if (part.length > 2) {
               clean = clean
                   .replaceAll(
-                    RegExp('\\b${RegExp.escape(part)}\\b', caseSensitive: false),
+                    RegExp(
+                      '\\b${RegExp.escape(part)}\\b',
+                      caseSensitive: false,
+                    ),
                     '',
                   )
                   .trim();
@@ -388,7 +396,9 @@ extension CreatorEngine on CreatorState {
       }
 
       final ctx = <String>[];
-      if (selectedArchetype.isNotEmpty) ctx.add('Archetype: $selectedArchetype');
+      if (selectedArchetype.isNotEmpty) {
+        ctx.add('Archetype: $selectedArchetype');
+      }
       if (nameController.text.trim().isNotEmpty) {
         ctx.add('Name: ${nameController.text.trim()}');
       }
@@ -418,7 +428,9 @@ extension CreatorEngine on CreatorState {
       if (selectedRelationships.isNotEmpty) {
         ctx.add('Relationship to user: ${selectedRelationships.join(", ")}');
       }
-      if (backstoryOrigin.isNotEmpty) ctx.add('Backstory origin: $backstoryOrigin');
+      if (backstoryOrigin.isNotEmpty) {
+        ctx.add('Backstory origin: $backstoryOrigin');
+      }
       if (backstoryTone.isNotEmpty) ctx.add('Backstory tone: $backstoryTone');
       if (backstoryEra.isNotEmpty) ctx.add('Era/setting: $backstoryEra');
       if (backstoryNotesController.text.trim().isNotEmpty) {
@@ -571,7 +583,9 @@ extension CreatorEngine on CreatorState {
 
     final contextParts = <String>[];
     void addCtx(String label, TextEditingController c) {
-      if (c.text.trim().isNotEmpty) contextParts.add('$label: ${c.text.trim()}');
+      if (c.text.trim().isNotEmpty) {
+        contextParts.add('$label: ${c.text.trim()}');
+      }
     }
 
     addCtx('Age', ageController);
@@ -673,7 +687,9 @@ extension CreatorEngine on CreatorState {
 
     final nsfwParts = <String>[];
     if (nsfwEnabled) {
-      if (experience.isNotEmpty) nsfwParts.add('Sexual experience: $experience');
+      if (experience.isNotEmpty) {
+        nsfwParts.add('Sexual experience: $experience');
+      }
       if (dominance.isNotEmpty) nsfwParts.add('Dominance: $dominance');
       if (selectedKinks.isNotEmpty) {
         nsfwParts.add('Kinks: ${selectedKinks.join(", ")}');
@@ -681,7 +697,9 @@ extension CreatorEngine on CreatorState {
       if (customKinksController.text.trim().isNotEmpty) {
         nsfwParts.add('Also into: ${customKinksController.text.trim()}');
       }
-      if (outfitVibe.isNotEmpty) nsfwParts.add('Typical outfit vibe: $outfitVibe');
+      if (outfitVibe.isNotEmpty) {
+        nsfwParts.add('Typical outfit vibe: $outfitVibe');
+      }
     }
 
     String enriched = concept;
@@ -734,8 +752,10 @@ extension CreatorEngine on CreatorState {
             if (sexController.text.trim().isNotEmpty)
               'Sex: ${sexController.text.trim()}',
             if (appearance.isNotEmpty) 'Appearance: ${appearance.join(", ")}',
-            if (relationship.isNotEmpty) 'Relationship to {{user}}: $relationship',
-            if (backstoryOrigin.isNotEmpty) 'Backstory origin: $backstoryOrigin',
+            if (relationship.isNotEmpty)
+              'Relationship to {{user}}: $relationship',
+            if (backstoryOrigin.isNotEmpty)
+              'Backstory origin: $backstoryOrigin',
             if (backstoryTone.isNotEmpty) 'Story tone: $backstoryTone',
             if (backstoryEra.isNotEmpty) 'Era/setting: $backstoryEra',
             if (backstoryNotesController.text.trim().isNotEmpty)
@@ -935,7 +955,10 @@ extension CreatorEngine on CreatorState {
   /// fences, literal newlines, unescaped quotes, and falls back to regex.
   String? _extractChargenValue(String raw, String key) {
     String cleaned = raw
-        .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+          '',
+        )
         .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
         .trim();
     cleaned = cleaned

@@ -94,7 +94,8 @@ class SetupStep extends StatelessWidget {
                           await llmProvider.setActiveBackend(
                             BackendType.pseudoRemote,
                           );
-                          state.notify(); // ensure section switches in wizard UI
+                          state
+                              .notify(); // ensure section switches in wizard UI
                         }
                       },
                     ),
@@ -131,10 +132,13 @@ class SetupStep extends StatelessWidget {
                             llmProvider.openRouterService.configure(
                               apiUrl: 'http://localhost:8000/v1',
                               apiKey: llmProvider.openRouterService.apiKey,
-                              modelName: llmProvider.openRouterService.modelName,
+                              modelName:
+                                  llmProvider.openRouterService.modelName,
                             );
                             // Small delay to ensure configuration is applied
-                            await Future.delayed(const Duration(milliseconds: 100));
+                            await Future.delayed(
+                              const Duration(milliseconds: 100),
+                            );
                             state.loadAvailableModels(llmProvider);
                           }
                         },
@@ -154,9 +158,15 @@ class SetupStep extends StatelessWidget {
                 // Identical styled picker field as remote/oMLX
                 InkWell(
                   onTap: () async {
-                    final storage = Provider.of<StorageService>(context, listen: false);
+                    final storage = Provider.of<StorageService>(
+                      context,
+                      listen: false,
+                    );
                     state.scanLocalModels(storage);
-                    final modelManager = Provider.of<ModelManager>(context, listen: false);
+                    final modelManager = Provider.of<ModelManager>(
+                      context,
+                      listen: false,
+                    );
                     await modelManager.refreshModels();
 
                     final models = modelManager.models.isNotEmpty
@@ -190,9 +200,7 @@ class SetupStep extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.surfaceContainerOf(context),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: AppColors.borderOf(context),
-                      ),
+                      border: Border.all(color: AppColors.borderOf(context)),
                     ),
                     child: Row(
                       children: [
@@ -268,15 +276,23 @@ class SetupStep extends StatelessWidget {
                 // Restored the original nice searchable model picker for API (remote) and oMLX.
                 _inputLabel(
                   context,
-                  activeBackend == BackendType.omlx ? 'oMLX Model' : 'Remote Model',
+                  activeBackend == BackendType.omlx
+                      ? 'oMLX Model'
+                      : 'Remote Model',
                   required: false,
                 ),
                 const SizedBox(height: 8),
                 // Tappable chip/field that opens the searchable model picker dialog (same as before)
                 InkWell(
                   onTap: () async {
-                    final llm = Provider.of<LLMProvider>(context, listen: false);
-                    final storage = Provider.of<StorageService>(context, listen: false);
+                    final llm = Provider.of<LLMProvider>(
+                      context,
+                      listen: false,
+                    );
+                    final storage = Provider.of<StorageService>(
+                      context,
+                      listen: false,
+                    );
 
                     // Fetch models first if none loaded
                     if (state.availableModels.isEmpty) {
@@ -315,9 +331,7 @@ class SetupStep extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AppColors.surfaceContainerOf(context),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: AppColors.borderOf(context),
-                      ),
+                      border: Border.all(color: AppColors.borderOf(context)),
                     ),
                     child: Row(
                       children: [
@@ -416,5 +430,4 @@ class SetupStep extends StatelessWidget {
     // Fallback: if uname fails, assume it's not Apple Silicon
     return false;
   }
-
 }

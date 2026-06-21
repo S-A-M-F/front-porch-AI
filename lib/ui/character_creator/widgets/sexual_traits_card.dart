@@ -1,0 +1,139 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_options.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/chip_select_row.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_hint_field.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+
+/// Pink-tinted "Sexual Traits" card shown only when NSFW is enabled. Restored
+/// from the pre-refactor automated config step: experience, dominance, kinks
+/// (+ custom), and outfit vibe.
+class SexualTraitsCard extends StatelessWidget {
+  final CreatorState state;
+
+  const SexualTraitsCard({super.key, required this.state});
+
+  void _set(VoidCallback apply) {
+    apply();
+    state.saveState();
+    state.notify();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pink = AppColors.resolve(
+      context,
+      Colors.pinkAccent,
+      const Color(0xFF9D174D),
+    );
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.resolve(
+          context,
+          Colors.pinkAccent.withValues(alpha: 0.12),
+          Colors.pinkAccent.withValues(alpha: 0.05),
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.resolve(
+            context,
+            Colors.pinkAccent.withValues(alpha: 0.35),
+            Colors.pinkAccent.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.local_fire_department, color: pink, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Sexual Traits',
+                style: TextStyle(
+                  color: pink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'All optional',
+                style: TextStyle(
+                  color: AppColors.textTertiary(context),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SingleSelectChipRow(
+            label: 'Experience',
+            value: state.experience,
+            options: CreatorOptions.experienceOptions,
+            onChanged: (v) => _set(() => state.experience = v),
+            isNsfw: true,
+          ),
+          SingleSelectChipRow(
+            label: 'Dominance',
+            value: state.dominance,
+            options: CreatorOptions.dominanceOptions,
+            onChanged: (v) => _set(() => state.dominance = v),
+            isNsfw: true,
+          ),
+          MultiSelectChipRow(
+            label: 'Kinks',
+            selected: state.selectedKinks,
+            options: CreatorOptions.kinkOptions,
+            onChanged: (v) => _set(() => state.selectedKinks = v),
+            isNsfw: true,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.local_fire_department,
+                      size: 12,
+                      color: Colors.pinkAccent,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Custom Kinks',
+                      style: TextStyle(
+                        color: Colors.pinkAccent.shade100,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                CreatorHintField(
+                  state: state,
+                  controller: state.customKinksController,
+                  hint: 'e.g. foot worship, roleplay, praise kink...',
+                ),
+              ],
+            ),
+          ),
+          SingleSelectChipRow(
+            label: 'Outfit Vibe',
+            value: state.outfitVibe,
+            options: CreatorOptions.outfitVibes,
+            onChanged: (v) => _set(() => state.outfitVibe = v),
+            isNsfw: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
