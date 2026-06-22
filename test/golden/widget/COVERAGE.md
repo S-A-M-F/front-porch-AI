@@ -17,8 +17,29 @@ and flip the row to ✅.
 - ✅ `support/golden_app.dart` — `pumpGolden` / `expectThemedGoldens` (light+dark, fixed surface)
 - ✅ `flutter_test_config.dart` — google_fonts fetch disabled + bundled Roboto
 - ✅ `dart_test.yaml` + `@TestOn('linux')` gating + CI `--tags golden` step
+- ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
 - ⬜ `support/fakes.dart` — shared `FakeChatService`/`FakeStorageService`/… (promote the ad-hoc `_Fake*` from `test/ui/`); needed before provider-backed surfaces
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
+
+## Character Creator — `lib/ui/character_creator/`
+The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
+(stubbed engine + step screens gutted to placeholders — see `.claude/changelog.md`
+2026-06-21). This area is covered on two axes so neither failure can recur silently:
+- ✅ **Engine behavior** — `creator/creator_engine_golden_test.dart` (behavioral,
+  not pixel): `saveCharacter` persists a real card to the repo with realism seeding
+  + lorebook filtering (freezes the saved JSON shape); `generateFromMode` actually
+  drives the LLM and yields a model-derived card (kills the hardcoded-dummy stub).
+  A pixel golden cannot catch a stubbed engine — these assert the behavior directly.
+- ✅ **Wizard screens** — `widget/creator_steps_golden_test.dart`: `ModeSelectStep`
+  (3 mode cards), `QuickConfigStep` (concept + options), `RealismStep` (full
+  realism/needs form). Light + dark.
+- ⬜ `ReviewStep` — deferred: its avatar panel reads a live `LLMProvider`, whose
+  backend readiness probe schedules a recurring timer that never lets a static
+  golden settle. Needs a timer-free `LLMProvider` double (part of the pending
+  `support/fakes.dart`).
+- ⬜ `SetupStep` (backend config) — Provider-heavy (LLMProvider/ModelManager/
+  Kobold/PseudoRemote/BackendManager); same `support/fakes.dart` prerequisite.
+- ⬜ `GuidedConfigStep`, `AutomatedConfigStep`, `GeneratingStep`.
 
 ## Leaf widgets — `lib/ui/widgets/` (prop-only, no provider tree)
 - ✅ `needs_bar.dart` — `NeedsBar` (healthy/critical/mini) + `NeedsGrid` (full set)
@@ -46,7 +67,8 @@ and flip the row to ✅.
 - ⬜ all — pumped in a compact surface at a representative populated state
 
 ## Pages — `lib/ui/pages/` (21; heaviest, need shared MultiProvider of fakes)
-- ⬜ home, chat, settings, character create/edit, creator wizard (per step),
+- 🔶 creator wizard — see "Character Creator" above (3 of 6 steps + engine done)
+- ⬜ home, chat, settings, character create/edit,
   group create/edit, story (dashboard/setup/writer/reader/structure),
   model manager, cloud sync, world management, user persona, fork-to-group
 
