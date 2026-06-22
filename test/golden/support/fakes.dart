@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/database/database.dart' show Objective;
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
@@ -40,10 +41,13 @@ import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
+import 'package:front_porch_ai/models/world.dart' as world_model;
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/services/tts_voice_info.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
 
 /// A timer-free, IO-free [LLMProvider] double. Exposes the backend-type surface
 /// screens read (e.g. ReviewAvatarPanel checks `activeBackend`) without
@@ -291,6 +295,25 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   @override
   bool get isCheckingCompletion => false;
 
+  // Context viewer surface.
+  @override
+  Map<String, int> get lastPromptBudget => const {};
+  @override
+  int get contextSize => 8192;
+
+  @override
+  Future<List<Objective>> getActiveObjectivesFor(CharacterCard _) async =>
+      const [];
+
+  // ChatSettingsDialog reads sessionGenSettings in didChangeDependencies then
+  // calls resolveBannedPhrases(storage). Pre-populate bannedPhrases so the
+  // resolve short-circuits before touching StorageService.realismSettings.
+  @override
+  ChatGenerationSettings get sessionGenSettings =>
+      ChatGenerationSettings(bannedPhrases: const <String>[]);
+  @override
+  set sessionGenSettings(ChatGenerationSettings _) {}
+
   // Message bubble surface.
   @override
   List<ChatMessage> get messages => List.unmodifiable(_messages);
@@ -310,8 +333,8 @@ class FakeChatService extends ChangeNotifier implements ChatService {
       super.noSuchMethod(invocation);
 }
 
-/// Timer-free [TtsService] double. Exposes only the four getters that
-/// [MessageBubble]'s `Consumer2<TtsService, StorageService>` reads at build.
+/// Timer-free [TtsService] double. Exposes the getters that widget build trees
+/// read at build time (MessageBubble, TTS settings dialogs, voice browsing).
 class FakeTtsService extends ChangeNotifier implements TtsService {
   @override
   bool get isSpeaking => false;
@@ -321,6 +344,14 @@ class FakeTtsService extends ChangeNotifier implements TtsService {
   String? get currentMessageId => null;
   @override
   double get generationProgress => 0.0;
+  @override
+  List<TtsVoiceInfo> get activeVoices => const [];
+  @override
+  double get modelDownloadProgress => 0.0;
+  @override
+  bool get isDownloadingModel => false;
+  @override
+  String? get lastError => null;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -328,11 +359,14 @@ class FakeTtsService extends ChangeNotifier implements TtsService {
 
 /// Empty [UserPersonaService] double. [MessageBubble] uses a
 /// `Consumer<UserPersonaService>` to filter personas by sender name; an empty
-/// list renders the section as a no-op.
+/// list renders the section as a no-op. [UserPersonaPage] reads [persona] when
+/// `personas` is non-empty — returning a default here so seeded variants work.
 class FakeUserPersonaService extends ChangeNotifier
     implements UserPersonaService {
   @override
   List<UserPersona> get personas => const [];
+  @override
+  UserPersona get persona => UserPersona(id: 'default');
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -400,6 +434,23 @@ class FakeAppState extends ChangeNotifier implements AppState {
 
   @override
   void setIndex(int index) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Empty [WorldRepository] double. Returns no worlds; [WorldManagementPage]
+/// renders the empty-state message ("No worlds yet").
+class FakeWorldRepository extends ChangeNotifier implements WorldRepository {
+  FakeWorldRepository([List<world_model.World> worlds = const []])
+    : _worlds = worlds;
+
+  final List<world_model.World> _worlds;
+
+  @override
+  List<world_model.World> get worlds => List.unmodifiable(_worlds);
+  @override
+  bool get isLoading => false;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
