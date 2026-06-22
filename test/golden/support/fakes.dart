@@ -407,9 +407,18 @@ class FakeAppState extends ChangeNotifier implements AppState {
 
 /// Minimal [UpdateService] double. [Sidebar]'s `Consumer<UpdateService>`
 /// reads [currentVersion], [displayCurrentVersion], and [updateAvailable]
-/// at build time; no HTTP, timers, or file-system access.
+/// at build time. [UpdateDialog]'s Consumer additionally reads
+/// [downloadComplete], [downloading], [displayLatestVersion],
+/// [releaseNotes], and [downloadProgress]. No HTTP, timers, or file-system.
 class FakeUpdateService extends ChangeNotifier implements UpdateService {
-  FakeUpdateService({this.updateAvailable = false});
+  FakeUpdateService({
+    this.updateAvailable = false,
+    this.downloadComplete = false,
+    this.downloading = false,
+    this.latestVersion = '0.9.1',
+    this.releaseNotes = '',
+    this.downloadProgress = 0.0,
+  });
 
   @override
   String get currentVersion => '0.9.0';
@@ -417,6 +426,18 @@ class FakeUpdateService extends ChangeNotifier implements UpdateService {
   String get displayCurrentVersion => 'v0.9.0';
   @override
   final bool updateAvailable;
+  @override
+  final bool downloadComplete;
+  @override
+  final bool downloading;
+  @override
+  final String latestVersion;
+  @override
+  String get displayLatestVersion => 'v$latestVersion';
+  @override
+  final String releaseNotes;
+  @override
+  final double downloadProgress;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
