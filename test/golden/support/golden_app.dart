@@ -1,0 +1,82 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
+
+// Shared widget-golden harness. Every widget golden renders through
+// [expectThemedGoldens] so the suite scales: one deterministic surface, the
+// bundled Roboto font (see flutter_test_config.dart), and both light + dark
+// themes captured so the mandated AppColors system is locked in both modes.
+//
+// PNGs are written relative to the calling test file under
+// `_goldens/<group>/<name>.<light|dark>.png` (i.e. test/golden/widget/_goldens/).
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+const Key _rootKey = Key('golden-root');
+
+/// Pump [child] in a deterministic MaterialApp for the given [brightness] and
+/// [surface] size, then settle.
+Future<void> pumpGolden(
+  WidgetTester tester,
+  Widget child, {
+  required Brightness brightness,
+  required Size surface,
+}) async {
+  tester.view.physicalSize = surface;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: brightness,
+        fontFamily: 'Roboto',
+        useMaterial3: true,
+      ),
+      home: RepaintBoundary(
+        key: _rootKey,
+        child: Scaffold(
+          body: Center(child: Padding(padding: const EdgeInsets.all(12), child: child)),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Render [child] in both light and dark themes and assert each against its
+/// committed PNG golden. Refresh intentional UI changes with
+/// `flutter test --tags golden --update-goldens` on the Linux/CI image.
+Future<void> expectThemedGoldens(
+  WidgetTester tester, {
+  required Widget child,
+  required String group,
+  required String name,
+  Size surface = const Size(420, 220),
+}) async {
+  for (final brightness in Brightness.values) {
+    final mode = brightness == Brightness.light ? 'light' : 'dark';
+    await pumpGolden(tester, child, brightness: brightness, surface: surface);
+    await expectLater(
+      find.byKey(_rootKey),
+      matchesGoldenFile('_goldens/$group/$name.$mode.png'),
+    );
+  }
+}
