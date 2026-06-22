@@ -26,6 +26,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 
 /// A timer-free, IO-free [LLMProvider] double. Exposes the backend-type surface
@@ -47,6 +49,47 @@ class FakeLLMProvider extends ChangeNotifier implements LLMProvider {
 
   @override
   bool get hasAnyManagedProcessRunning => false;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
+/// A `ChatService` double for sidebar/chat/overlay goldens. `ChatService` is a
+/// large god class, so this implements only the surface a rendered widget reads
+/// and grows as new surfaces are covered; everything else throws via
+/// noSuchMethod. Sub-services (e.g. [timeService]) are seeded deterministically.
+class FakeChatService extends ChangeNotifier implements ChatService {
+  FakeChatService({
+    this.realismEnabled = true,
+    this.isGenerating = false,
+    String timeOfDay = 'evening',
+    int dayCount = 3,
+    int startDayOfWeek = 1,
+  }) {
+    _time = TimeService(
+      onNotify: () {},
+      onSaveChat: () async {},
+      onSetPendingRealismMetadata: (_, _) {},
+      onNudgePatchLastMessageRealismState: (_, _) {},
+    )..loadTimeScalars(
+        timeOfDay: timeOfDay,
+        dayCount: dayCount,
+        startDayOfWeek: startDayOfWeek,
+        passageOfTimeEnabled: true,
+      );
+  }
+
+  late final TimeService _time;
+
+  @override
+  final bool realismEnabled;
+
+  @override
+  final bool isGenerating;
+
+  @override
+  TimeService get timeService => _time;
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
