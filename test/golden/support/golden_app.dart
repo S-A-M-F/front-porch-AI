@@ -81,11 +81,17 @@ Future<void> expectThemedGoldens(
   required String name,
   Size surface = const Size(420, 220),
   bool settle = true,
+  Future<void> Function(WidgetTester tester)? afterPump,
 }) async {
   for (final brightness in Brightness.values) {
     final mode = brightness == Brightness.light ? 'light' : 'dark';
     await pumpGolden(tester, child,
         brightness: brightness, surface: surface, settle: settle);
+    // Optional interaction (e.g. expand a collapsible section) before capture.
+    if (afterPump != null) {
+      await afterPump(tester);
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     await expectLater(
       find.byKey(_rootKey),
       matchesGoldenFile('_goldens/$group/$name.$mode.png'),
