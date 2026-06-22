@@ -30,6 +30,7 @@ import 'package:front_porch_ai/database/database.dart' show Objective;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
+import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
@@ -41,6 +42,7 @@ import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
 
 /// A timer-free, IO-free [LLMProvider] double. Exposes the backend-type surface
@@ -88,6 +90,21 @@ class FakeChatService extends ChangeNotifier implements ChatService {
     this.characterEvolutionCount = 0,
     this.activeCharacter,
     List<ChatMessage> messages = const [],
+    // Generation status bar surface.
+    this.generationPhase = GenerationPhase.idle,
+    this.generationProgress = 0.0,
+    this.tokensGenerated = 0,
+    this.maxTokens = 0,
+    this.tokensPerSecond = 0.0,
+    this.prefillElapsedSeconds = 0.0,
+    this.prefillPromptTokens = 0,
+    this.lastPerfData,
+    // Realism-processing overlay surface.
+    this.isVerifyingRealism = false,
+    this.verificationPass = 0,
+    this.verificationMaxPasses = 1,
+    this.isEvaluatingRealism = false,
+    this.isProcessingGreeting = false,
     String timeOfDay = 'evening',
     int dayCount = 3,
     int startDayOfWeek = 1,
@@ -215,6 +232,40 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   @override
   final CharacterCard? activeCharacter;
 
+  // Generation status bar surface.
+  @override
+  final GenerationPhase generationPhase;
+  @override
+  final double generationProgress;
+  @override
+  final int tokensGenerated;
+  @override
+  final int maxTokens;
+  @override
+  final double tokensPerSecond;
+  @override
+  final double prefillElapsedSeconds;
+  @override
+  final int prefillPromptTokens;
+  @override
+  final Map<String, dynamic>? lastPerfData;
+
+  // Realism-processing overlay surface.
+  @override
+  final bool isVerifyingRealism;
+  @override
+  final int verificationPass;
+  @override
+  final int verificationMaxPasses;
+  @override
+  final bool isEvaluatingRealism;
+  @override
+  final bool isProcessingGreeting;
+
+  // RealismProcessingOverlay reads this at build time; empty = "initializing" branch.
+  @override
+  String get realismEvalStreamTextClean => '';
+
   @override
   TimeService get timeService => _time;
   @override
@@ -333,6 +384,39 @@ class FakeGroupChatRepository extends ChangeNotifier
     implements GroupChatRepository {
   @override
   List<GroupChat> get groups => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Minimal [AppState] double. [Sidebar] reads only [selectedIndex] at build
+/// time; [setIndex] is a no-op (navigation callbacks are never invoked in a
+/// static golden).
+class FakeAppState extends ChangeNotifier implements AppState {
+  FakeAppState({this.selectedIndex = 0});
+
+  @override
+  final int selectedIndex;
+
+  @override
+  void setIndex(int index) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Minimal [UpdateService] double. [Sidebar]'s `Consumer<UpdateService>`
+/// reads [currentVersion], [displayCurrentVersion], and [updateAvailable]
+/// at build time; no HTTP, timers, or file-system access.
+class FakeUpdateService extends ChangeNotifier implements UpdateService {
+  FakeUpdateService({this.updateAvailable = false});
+
+  @override
+  String get currentVersion => '0.9.0';
+  @override
+  String get displayCurrentVersion => 'v0.9.0';
+  @override
+  final bool updateAvailable;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
