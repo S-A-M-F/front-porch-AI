@@ -1,0 +1,56 @@
+{
+  "turn0": {
+    "bladder": 80,
+    "comfort": 70,
+    "energy": 80,
+    "fun": 65,
+    "hunger": 75,
+    "hygiene": 75,
+    "social": 65
+  },
+  "turn1": {
+    "bladder": 74,
+    "comfort": 68,
+    "energy": 77,
+    "fun": 63,
+    "hunger": 71,
+    "hygiene": 74,
+    "social": 63
+  },
+  "turn2": {
+    "bladder": 68,
+    "comfort": 66,
+    "energy": 74,
+    "fun": 61,
+    "hunger": 67,
+    "hygiene": 73,
+    "social": 61
+  },
+  "turn3": {
+    "bladder": 62,
+    "comfort": 64,
+    "energy": 71,
+    "fun": 59,
+    "hunger": 63,
+    "hygiene": 72,
+    "social": 59
+  },
+  "turn4": {
+    "bladder": 56,
+    "comfort": 62,
+    "energy": 68,
+    "fun": 57,
+    "hunger": 59,
+    "hygiene": 71,
+    "social": 57
+  },
+  "turn5": {
+    "bladder": 50,
+    "comfort": 60,
+    "energy": 65,
+    "fun": 55,
+    "hunger": 55,
+    "hygiene": 70,
+    "social": 55
+  }
+}

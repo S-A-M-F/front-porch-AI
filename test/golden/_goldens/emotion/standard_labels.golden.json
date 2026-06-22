@@ -1,0 +1,157 @@
+{
+  "detail": {
+    "admiration": {
+      "emoji": "🤩",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "affection": {
+      "emoji": "💕",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.2510, blue: 0.5059, colorSpace: ColorSpace.sRGB))"
+    },
+    "amusement": {
+      "emoji": "😄",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.7569, blue: 0.0275, colorSpace: ColorSpace.sRGB))"
+    },
+    "anger": {
+      "emoji": "😠",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.3216, blue: 0.3216, colorSpace: ColorSpace.sRGB))"
+    },
+    "annoyance": {
+      "emoji": "😤",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.3216, blue: 0.3216, colorSpace: ColorSpace.sRGB))"
+    },
+    "anticipation": {
+      "emoji": "👀",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.6706, blue: 0.2510, colorSpace: ColorSpace.sRGB))"
+    },
+    "approval": {
+      "emoji": "👍",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "caring": {
+      "emoji": "🤗",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "confusion": {
+      "emoji": "😕",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "curiosity": {
+      "emoji": "🧐",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "desire": {
+      "emoji": "🥵",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.6706, blue: 0.2510, colorSpace: ColorSpace.sRGB))"
+    },
+    "disappointment": {
+      "emoji": "😞",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.3765, green: 0.4902, blue: 0.5451, colorSpace: ColorSpace.sRGB))"
+    },
+    "disapproval": {
+      "emoji": "👎",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "disgust": {
+      "emoji": "🤢",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "embarrassment": {
+      "emoji": "😳",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "excitement": {
+      "emoji": "🤩",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.7569, blue: 0.0275, colorSpace: ColorSpace.sRGB))"
+    },
+    "fear": {
+      "emoji": "😨",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 0.4863, green: 0.3020, blue: 1.0000, colorSpace: ColorSpace.sRGB))"
+    },
+    "gratitude": {
+      "emoji": "🙏",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "grief": {
+      "emoji": "😭",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.3765, green: 0.4902, blue: 0.5451, colorSpace: ColorSpace.sRGB))"
+    },
+    "joy": {
+      "emoji": "😁",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.7569, blue: 0.0275, colorSpace: ColorSpace.sRGB))"
+    },
+    "love": {
+      "emoji": "😍",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 1.0000, green: 0.2510, blue: 0.5059, colorSpace: ColorSpace.sRGB))"
+    },
+    "nervousness": {
+      "emoji": "😰",
+      "ringColor": "MaterialAccentColor(primary value: Color(alpha: 1.0000, red: 0.4863, green: 0.3020, blue: 1.0000, colorSpace: ColorSpace.sRGB))"
+    },
+    "neutral": {
+      "emoji": "😐",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "optimism": {
+      "emoji": "😊",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "pride": {
+      "emoji": "😎",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "realization": {
+      "emoji": "💡",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "relief": {
+      "emoji": "😌",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "remorse": {
+      "emoji": "😔",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    },
+    "sadness": {
+      "emoji": "😢",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.3765, green: 0.4902, blue: 0.5451, colorSpace: ColorSpace.sRGB))"
+    },
+    "surprise": {
+      "emoji": "😲",
+      "ringColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+    }
+  },
+  "labels": [
+    "admiration",
+    "affection",
+    "amusement",
+    "anger",
+    "annoyance",
+    "anticipation",
+    "approval",
+    "caring",
+    "confusion",
+    "curiosity",
+    "desire",
+    "disappointment",
+    "disapproval",
+    "disgust",
+    "embarrassment",
+    "excitement",
+    "fear",
+    "gratitude",
+    "grief",
+    "joy",
+    "love",
+    "nervousness",
+    "optimism",
+    "pride",
+    "realization",
+    "relief",
+    "remorse",
+    "sadness",
+    "surprise",
+    "neutral"
+  ],
+  "nullRingColor": "MaterialColor(primary value: Color(alpha: 1.0000, red: 0.6196, green: 0.6196, blue: 0.6196, colorSpace: ColorSpace.sRGB))"
+}
