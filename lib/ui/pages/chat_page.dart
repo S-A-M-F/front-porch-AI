@@ -383,9 +383,7 @@ class _ChatPageState extends State<ChatPage> {
           children: [
             Scaffold(
               backgroundColor: AppColors.backgroundOf(context),
-              appBar: isGroup
-                  ? _buildGroupAppBar(context, chatService)
-                  : _buildAppBar(context, character!),
+              appBar: _buildAppBar(context, chatService),
               body: Row(
                 children: [
                   Expanded(
@@ -831,122 +829,62 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  /// Single AppBar for every chat. Driven by the unified [ChatService.cast]:
+  /// a cast of one renders the classic single-character header (avatar + name +
+  /// description); a cast of two or more renders stacked avatars (with emotion
+  /// rings when group realism is active) + a "N characters" subtitle. This is
+  /// the same header whether the extra speakers are full group members or Scene
+  /// Guests, so a 1:1 that gains a guest visually becomes a multi-speaker chat.
   PreferredSizeWidget _buildAppBar(
-    BuildContext context,
-    CharacterCard character,
-  ) {
-    return AppBar(
-      backgroundColor: AppColors.surfaceOf(context),
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Row(
-        children: [
-          CircleAvatar(
-            backgroundImage: character.imagePath != null
-                ? FileImage(_resolveCharImage(character.imagePath!))
-                : null,
-            onBackgroundImageError: character.imagePath != null
-                ? (_, _) {}
-                : null,
-            child: character.imagePath == null
-                ? const Icon(Icons.person)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                character.name,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary(context),
-                ),
-              ),
-              if (character.description.isNotEmpty)
-                Text(
-                  character.description.length > 30
-                      ? '${character.description.substring(0, 30)}...'
-                      : character.description,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textTertiary(context),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-      actions: [
-        IconButton(
-          icon: Icon(
-            _sidebarWidth > 0 ? Icons.last_page : Icons.first_page,
-            color: AppColors.iconSecondary(context),
-          ),
-          tooltip: 'Toggle Sidebar',
-          onPressed: () =>
-              setState(() => _sidebarWidth = _sidebarWidth > 0 ? 0 : 300),
-        ),
-        const SizedBox(width: 8),
-      ],
-    );
-  }
-
-  PreferredSizeWidget _buildGroupAppBar(
     BuildContext context,
     ChatService chatService,
   ) {
-    final group = chatService.activeGroup!;
-    final chars = chatService.groupCharacters;
-    return AppBar(
-      backgroundColor: AppColors.surfaceOf(context),
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Row(
-        children: [
-          // Stacked avatars (with emotion rings when group realism is active)
-          SizedBox(
-            width: 24.0 + (chars.length.clamp(0, 4) - 1) * 16,
-            height: 32,
-            child: Stack(
-              children: [
-                for (int i = 0; i < chars.length.clamp(0, 4); i++)
-                  Positioned(
-                    left: i * 16.0,
-                    child: Tooltip(
-                      message: () {
-                        if (!chatService.isGroupRealismActive) {
-                          return chars[i].name;
-                        }
-                        final emo = chatService.getEmotionForGroupCharacter(
-                          chars[i],
-                        );
-                        final fix = chatService.getFixationForGroupCharacter(
-                          chars[i],
-                        );
-                        final base =
-                            '${chars[i].name}${emo != null ? ' • $emo' : ''}';
-                        return fix != null && fix.isNotEmpty
-                            ? '$base\nFixated: $fix'
-                            : base;
-                      }(),
+    final cast = chatService.cast;
+    final group = chatService.activeGroup;
+    final isMulti = cast.length > 1;
+
+    final Widget avatars;
+    if (!isMulti) {
+      final card = cast.isNotEmpty ? cast.first.card : null;
+      avatars = CircleAvatar(
+        backgroundImage: card?.imagePath != null
+            ? FileImage(_resolveCharImage(card!.imagePath!))
+            : null,
+        onBackgroundImageError: card?.imagePath != null ? (_, _) {} : null,
+        child: card?.imagePath == null ? const Icon(Icons.person) : null,
+      );
+    } else {
+      final shown = cast.length.clamp(0, 4);
+      avatars = SizedBox(
+        width: 24.0 + (shown - 1) * 16,
+        height: 32,
+        child: Stack(
+          children: [
+            for (int i = 0; i < shown; i++)
+              Positioned(
+                left: i * 16.0,
+                child: Builder(
+                  builder: (_) {
+                    final card = cast[i].card;
+                    final emo = chatService.isGroupRealismActive
+                        ? chatService.getEmotionForGroupCharacter(card)
+                        : null;
+                    final fix = chatService.isGroupRealismActive
+                        ? chatService.getFixationForGroupCharacter(card)
+                        : null;
+                    final tooltip = emo == null
+                        ? card.name
+                        : (fix != null && fix.isNotEmpty
+                              ? '${card.name} • $emo\nFixated: $fix'
+                              : '${card.name} • $emo');
+                    return Tooltip(
+                      message: tooltip,
                       child: Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: chatService.isGroupRealismActive
                               ? Border.all(
-                                  color: EmotionLabels.ringColor(
-                                    chatService.getEmotionForGroupCharacter(
-                                      chars[i],
-                                    ),
-                                  ),
+                                  color: EmotionLabels.ringColor(emo),
                                   width: 2.0,
                                 )
                               : null,
@@ -954,14 +892,12 @@ class _ChatPageState extends State<ChatPage> {
                         child: CircleAvatar(
                           radius: 16,
                           backgroundColor: _groupCharacterColor(i),
-                          backgroundImage: chars[i].imagePath != null
-                              ? FileImage(
-                                  _resolveCharImage(chars[i].imagePath!),
-                                )
+                          backgroundImage: card.imagePath != null
+                              ? FileImage(_resolveCharImage(card.imagePath!))
                               : null,
-                          child: chars[i].imagePath == null
+                          child: card.imagePath == null
                               ? Text(
-                                  chars[i].name[0],
+                                  card.name.isNotEmpty ? card.name[0] : '?',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -970,30 +906,58 @@ class _ChatPageState extends State<ChatPage> {
                               : null,
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    final title = group?.name ?? (cast.isNotEmpty ? cast.first.name : '');
+    final String? subtitle;
+    if (isMulti) {
+      subtitle = group != null
+          ? '${cast.length} characters • ${group.turnOrder.name}'
+          : '${cast.length} characters';
+    } else {
+      final desc = cast.isNotEmpty ? cast.first.card.description : '';
+      subtitle = desc.isEmpty
+          ? null
+          : (desc.length > 30 ? '${desc.substring(0, 30)}...' : desc);
+    }
+
+    return AppBar(
+      backgroundColor: AppColors.surfaceOf(context),
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      title: Row(
+        children: [
+          avatars,
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                group.name,
+                title,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary(context),
                 ),
               ),
-              Text(
-                '${chars.length} characters • ${group.turnOrder.name}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textTertiary(context),
+              if (subtitle != null)
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textTertiary(context),
+                  ),
                 ),
-              ),
             ],
           ),
         ],
