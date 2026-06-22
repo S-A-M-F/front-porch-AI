@@ -1,0 +1,16 @@
+# Test tags for Front Porch AI.
+#
+# The `golden` tag marks Flutter widget pixel goldens (matchesGoldenFile). These
+# are render-sensitive and are authored against the Linux CI image. The widget
+# golden files also carry `@TestOn('linux')`, so they auto-skip on macOS/Windows
+# (where anti-aliasing differs) and run on Linux / CI. Text and JSON snapshot
+# goldens are untagged and always run on every platform.
+#
+#   Run everything except pixel goldens (e.g. main CI step):
+#     flutter test --exclude-tags golden
+#   Run only the pixel goldens (Linux / CI):
+#     flutter test --tags golden
+#   Refresh pixel goldens after an intentional UI change (Linux / CI):
+#     flutter test --tags golden --update-goldens
+tags:
+  golden:

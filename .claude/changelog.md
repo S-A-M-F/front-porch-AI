@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-22 (test: introduce a golden/snapshot test suite — character pipeline + full-app UI regression net)
+- **Files changed**: NEW `lib/services/chargen/char_macro.dart`; `lib/services/character_gen_service.dart` (deleted `_applyCharMacro`/`_stripThinkBlocks`, now delegates), `lib/services/chargen/character_gen_llm.dart` (uses `stripThinkBlocks`); NEW `test/golden/` (harness `golden_harness.dart`, widget harness `support/golden_app.dart`, `chargen|needs|emotion|card|realism` logic goldens, `widget/needs_bar_golden_test.dart`, committed `_goldens/` text-JSON snapshots + widget PNGs, `fonts/Roboto-*.ttf`, `README.md`, `widget/COVERAGE.md`); NEW `test/flutter_test_config.dart`, `dart_test.yaml`; `.github/workflows/ci.yml` (split golden tag step).
+- **Why**: The repo had zero golden tests. The user-reported "AI character" bug (commit 8a0844f — literal name baked into card fields instead of `{{char}}`, plus think-only greetings dropped to blank) lived in two private, untested methods inside a god file already at its 500-line cap, so it was unreachable from a test. Broader goal: lock the deterministic logic and UI that drive character behavior so regressions fail in review.
+- **What**: Extracted the macro/strip logic to a pure, testable helper (net line reduction in the god file). Added a text/JSON snapshot harness (`UPDATE_GOLDENS=1` refresh flow, normalized + canonicalized output) covering the chargen regression, needs curves/steps/decay/clamp, emotion label tables, V2.5 card serialization, and realism JSON parse. Added a widget-golden harness (bundled Roboto + google_fonts fetch disabled for determinism; light+dark; `@TestOn('linux')` + `golden` tag gating) with the first leaf-widget coverage (NeedsBar/NeedsGrid). Full-app UI coverage is tracked in `test/golden/widget/COVERAGE.md` and lands incrementally.
+- **Verification**: `flutter analyze` clean on all changed/new files; both CI steps green (18 text/JSON + 4 widget tests ×2 themes); existing `test/ui` + reused factory suites pass; deliberately breaking the `\b` word-boundary makes the boundary golden fail as intended.
+- **Branch**: claude/golden-tests-plan-9jqd93.
+
+
 ## 2026-06-21 (feat: folder import now handles V2 PNG + BYAF together, with a footgun-proof per-type confirm)
 - **Files changed**: lib/ui/pages/home_page.dart.
 - **Why**: Folder import was PNG-only; BYAF only had multi-file-select. A mixed folder (PNG + BYAF, or both forms of the same character) could otherwise import things silently/unexpectedly.

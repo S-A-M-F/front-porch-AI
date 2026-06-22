@@ -116,5 +116,17 @@ jobs:
         # forTesting DBs) even with the internal while-loop settles.
         # See test file comments on "robust settle", "under load/CI", and the
         # card-seed / inter-char key handling.
-        run: flutter test --concurrency=1 --reporter expanded
+        # Exclude the `golden` tag here so render-sensitive widget pixel goldens
+        # don't interleave with the timing-sensitive integration tests; they run
+        # in the dedicated step below. Text/JSON snapshot goldens are untagged
+        # and run as part of this step on every platform.
+        run: flutter test --concurrency=1 --reporter expanded --exclude-tags golden
         timeout-minutes: 20
+
+      - name: Run Widget Golden Tests (Linux-authored pixel goldens)
+        # Pixel goldens are authored against this ubuntu image; running them in an
+        # isolated step keeps a render diff from masking a logic failure above and
+        # vice-versa. To refresh after an intentional UI change, run locally on
+        # Linux: `flutter test --tags golden --update-goldens`.
+        run: flutter test --concurrency=1 --reporter expanded --tags golden
+        timeout-minutes: 10
