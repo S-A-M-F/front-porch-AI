@@ -82,11 +82,16 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 - ✅ `hf_model_card.dart` — collapsed state, seeded 8B model with two quant files
 - ✅ `chat_components/widgets/eval_pill.dart` — `AnimatedEvalPill` frozen at pulse 0.5
 - ✅ `chat_components/widgets/settings_menu_item.dart` — icon + label
-- ⬜ `app_text_field.dart`, `character_name_input.dart`, `age_gender_row.dart`,
-  `persona_selector_dropdown.dart`, `model_selector.dart`, `kcpps_selector.dart`,
+- ✅ `app_text_field.dart`, `character_name_input.dart`, `age_gender_row.dart`,
+  `persona_selector_dropdown.dart` (FakeUserPersonaService), `model_selector.dart`,
   `greeting_tone_selector.dart`, `avatar_art_style_selector.dart`,
   `first_message_length_dropdown.dart`, `alternate_greetings_slider.dart`,
-  `description_detail_chip_row.dart`, `_hoverable_card.dart`
+  `description_detail_chip_row.dart` — `leaf_widgets_remaining_golden_test.dart`
+  (20 PNGs). settle:false for TextField-bearing widgets.
+- 🚫 `_hoverable_card.dart` — `_HoverableCard` is a private class (leading-underscore
+  class name); cannot be instantiated from outside its library file.
+- 🚫 `kcpps_selector.dart` — StatefulWidget calls FilePicker platform channel in
+  initState/_parseKcppsFile; not safely pumpable without a real platform channel stub.
 
 ## Chat bubbles — `lib/ui/chat_components/bubbles/`
 - ✅ `message_bubble.dart` — `widget/chat_golden_test.dart`: user message, AI plain,
