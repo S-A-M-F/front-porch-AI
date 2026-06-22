@@ -19,8 +19,8 @@ and flip the row to ✅.
 - ✅ `dart_test.yaml` + `@TestOn('linux')` gating + CI `--tags golden` step
 - ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
 - 🔶 `support/fakes.dart` — timer-free service doubles for provider-backed goldens.
-  `FakeLLMProvider` ✅ (done — unblocked ReviewStep). `FakeChatService` ⬜ (needed
-  for sidebar/chat/overlays/home).
+  `FakeLLMProvider` ✅ (unblocked ReviewStep). `FakeChatService` 🔶 (started —
+  drives the sidebar; grows its `ChatService` read-surface per section covered).
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -57,8 +57,10 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 - ⬜ `message_bubble.dart` (user / char / with realism chips / with image — image stubbed)
 - ⬜ `styled_chat_message.dart`
 
-## Sidebar sections — `lib/ui/chat_components/sidebar/` (need FakeChatService)
-- ⬜ realism, needs, chaos, nsfw, memory, lorebook, objective, author-note, summary, scene-time
+## Sidebar sections — `lib/ui/chat_components/sidebar/` (`widget/sidebar_golden_test.dart`, FakeChatService)
+- ✅ scene-time (evening/day-3 + dawn/day-1)
+- ⬜ realism, needs, chaos, nsfw, memory, lorebook, objective, author-note, summary
+  — each adds its `ChatService` read-surface to `FakeChatService` then a golden here
 
 ## Chat overlays — `lib/ui/chat_components/overlays/`
 - ⬜ generation status bar, objective check, RAG setup, realism processing
