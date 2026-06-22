@@ -30,12 +30,15 @@ import 'package:front_porch_ai/database/database.dart' show Objective;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
+import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
+import 'package:front_porch_ai/services/folder_service.dart';
+import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/user_persona_service.dart';
@@ -279,6 +282,57 @@ class FakeUserPersonaService extends ChangeNotifier
     implements UserPersonaService {
   @override
   List<UserPersona> get personas => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Seeded [CharacterRepository] double. Holds a fixed in-memory character
+/// list; `loadCharacters` is a no-op. Used by home-page component goldens.
+class FakeCharacterRepository extends ChangeNotifier
+    implements CharacterRepository {
+  FakeCharacterRepository([List<CharacterCard> characters = const []])
+    : _characters = List.unmodifiable(characters);
+
+  final List<CharacterCard> _characters;
+
+  @override
+  List<CharacterCard> get characters => _characters;
+  @override
+  bool get isLoading => false;
+  @override
+  List<String> get allTags => const [];
+  @override
+  Future<void> loadCharacters() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Empty [FolderService] double. All folder-related lookups return empty
+/// collections so [CharacterCardGrid] renders the unfolderd character list.
+class FakeFolderService extends ChangeNotifier implements FolderService {
+  @override
+  List<CharacterFolder> get folders => const [];
+  @override
+  List<String> getCharactersInFolder(String folderId) => const [];
+  @override
+  List<String> getCharactersInFolderRecursive(String folderId) => const [];
+  @override
+  List<CharacterFolder> getSubfolders(String? parentId) => const [];
+  @override
+  Set<String> getUnfolderedCharacterPaths() => const {};
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Empty [GroupChatRepository] double. Returns no groups so the grid renders
+/// only character cards (no group tiles).
+class FakeGroupChatRepository extends ChangeNotifier
+    implements GroupChatRepository {
+  @override
+  List<GroupChat> get groups => const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
