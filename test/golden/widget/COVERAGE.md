@@ -19,8 +19,9 @@ and flip the row to ✅.
 - ✅ `dart_test.yaml` + `@TestOn('linux')` gating + CI `--tags golden` step
 - ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
 - 🔶 `support/fakes.dart` — timer-free service doubles for provider-backed goldens.
-  `FakeLLMProvider` ✅ (unblocked ReviewStep). `FakeChatService` 🔶 (started —
-  drives the sidebar; grows its `ChatService` read-surface per section covered).
+  `FakeLLMProvider` ✅ (unblocked ReviewStep). `FakeChatService` 🔶 (grows per
+  section; now covers sidebar + MessageBubble surface). `FakeTtsService` ✅ (unblocked
+  MessageBubble). `FakeUserPersonaService` ✅.
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -54,11 +55,14 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 - ⬜ `chat_components/widgets/` — `eval_pill.dart`, `settings_menu_item.dart`
 
 ## Chat bubbles — `lib/ui/chat_components/bubbles/`
-- ⬜ `message_bubble.dart` — attempted; it nests `Consumer2<TtsService, StorageService>`
-  and other heavy consumers. TtsService is subprocess/timer-backed and hangs a static
-  golden. BLOCKED on a timer-free `FakeTtsService` (+ ExpressionClassifierService) —
-  the next `support/fakes.dart` additions.
-- ⬜ `styled_chat_message.dart`
+- ✅ `message_bubble.dart` — `widget/chat_golden_test.dart`: user message, AI plain,
+  AI with realism chips (bond/mood/trust row). `FakeTtsService` + `FakeUserPersonaService`
+  unblocked the `Consumer2<TtsService, StorageService>` and persona consumer. Chat text
+  renders as Ahem boxes (storage font family not bundled) — deterministic; layout
+  regressions and chip-row regressions are caught. Light + dark.
+- ✅ `styled_chat_message.dart` — rendered inside every MessageBubble golden above;
+  its `Provider<StorageService>` reads (textScale, colors, font family) are covered
+  by those captures.
 
 ## Sidebar sections — `lib/ui/chat_components/sidebar/` (`widget/sidebar_golden_test.dart`, FakeChatService)
 - ✅ scene-time (evening/day-3 + dawn/day-1), author-note, summary, nsfw,
@@ -89,11 +93,12 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   writer/reader/structure), model manager, cloud sync, world management,
   user persona, fork-to-group
 
-### Next infrastructure step (unblocks chat page, home, and the heavy pages)
-Build the rest of `support/fakes.dart`: timer-free `FakeTtsService`,
-`FakeExpressionClassifierService`, and a `FakeCharacterRepository` (seeded, no DB
-load), then a `pumpPage` helper that wires the full MultiProvider tree. With those,
-the pages become component-by-component goldens like the sidebar.
+### Next infrastructure step (unblocks home page and remaining heavy pages)
+Build `FakeCharacterRepository` (seeded `List<CharacterCard>`, no DB load) in
+`support/fakes.dart`, then a `pumpPage` helper that wires the full MultiProvider
+tree (StorageService, TtsService, ChatService, UserPersonaService, CharacterRepository,
+AppState, …). The chat page's MessageBubble surface is now covered; the home page's
+character-grid components are the next target once FakeCharacterRepository exists.
 
 ## Image studio — `lib/ui/image_studio/`
 - ⬜ main surfaces + generation options tab (extend existing `test/ui/image_studio/`)

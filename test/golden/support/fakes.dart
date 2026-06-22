@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/database/database.dart' show Objective;
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
@@ -36,6 +37,8 @@ import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/tts_service.dart';
+import 'package:front_porch_ai/services/user_persona_service.dart';
 
 /// A timer-free, IO-free [LLMProvider] double. Exposes the backend-type surface
 /// screens read (e.g. ReviewAvatarPanel checks `activeBackend`) without
@@ -81,6 +84,7 @@ class FakeChatService extends ChangeNotifier implements ChatService {
     this.emotionIntensity = 'moderate',
     this.characterEvolutionCount = 0,
     this.activeCharacter,
+    List<ChatMessage> messages = const [],
     String timeOfDay = 'evening',
     int dayCount = 3,
     int startDayOfWeek = 1,
@@ -96,7 +100,7 @@ class FakeChatService extends ChangeNotifier implements ChatService {
       'hygiene': 75,
       'comfort': 60,
     },
-  }) {
+  }) : _messages = messages {
     _time = TimeService(
       onNotify: () {},
       onSaveChat: () async {},
@@ -174,6 +178,7 @@ class FakeChatService extends ChangeNotifier implements ChatService {
       );
   }
 
+  final List<ChatMessage> _messages;
   late final TimeService _time;
   late final NsfwService _nsfw;
   late final ChaosModeService _chaos;
@@ -232,7 +237,49 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   @override
   bool get isCheckingCompletion => false;
 
+  // Message bubble surface.
+  @override
+  List<ChatMessage> get messages => List.unmodifiable(_messages);
+  @override
+  bool get isGroupMode => false;
+  @override
+  List<CharacterCard> get groupCharacters => const [];
+  @override
+  int get greetingIndex => 0;
+  @override
+  bool get isGeneratingActions => false;
+  @override
+  List<String> get suggestedActions => const [];
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       super.noSuchMethod(invocation);
+}
+
+/// Timer-free [TtsService] double. Exposes only the four getters that
+/// [MessageBubble]'s `Consumer2<TtsService, StorageService>` reads at build.
+class FakeTtsService extends ChangeNotifier implements TtsService {
+  @override
+  bool get isSpeaking => false;
+  @override
+  bool get isGenerating => false;
+  @override
+  String? get currentMessageId => null;
+  @override
+  double get generationProgress => 0.0;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Empty [UserPersonaService] double. [MessageBubble] uses a
+/// `Consumer<UserPersonaService>` to filter personas by sender name; an empty
+/// list renders the section as a no-op.
+class FakeUserPersonaService extends ChangeNotifier
+    implements UserPersonaService {
+  @override
+  List<UserPersona> get personas => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
