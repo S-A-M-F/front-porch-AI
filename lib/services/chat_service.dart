@@ -7669,9 +7669,14 @@ class ChatService extends ChangeNotifier {
             ? speakingCharacter.name
             : _userPersonaService.persona.name;
         isUserTarget = mode == GenerationMode.impersonate;
-        final initialMetadata = _pendingRealismMetadata != null
-            ? Map<String, dynamic>.from(_pendingRealismMetadata!)
-            : null;
+        // A Scene Guest turn carries NO Realism/Needs, so its message must never
+        // inherit _pendingRealismMetadata — which still holds the HOST turn's
+        // verification result (the leftover "✓ Director accepted" chip), bond
+        // deltas, etc. Guests get clean (null) metadata.
+        final initialMetadata =
+            (guestSpeaker != null || _pendingRealismMetadata == null)
+            ? null
+            : Map<String, dynamic>.from(_pendingRealismMetadata!);
         debugPrint(
           '[Realism:Metadata] Attaching to new message: bond_delta=${initialMetadata?['bond_delta']}, keys=${initialMetadata?.keys.toList()}',
         );
