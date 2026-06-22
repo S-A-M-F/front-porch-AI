@@ -291,6 +291,7 @@ class ChatService extends ChangeNotifier {
         notifyListeners();
       },
       runCastScan: runCastDetectionNow,
+      speakGuest: speakGuestNow,
     );
   }
 
@@ -750,6 +751,30 @@ class ChatService extends ChangeNotifier {
         }
       }
     }());
+  }
+
+  /// Force a present Scene Guest to take a turn NOW (the `/speak` macro),
+  /// bypassing the auto chime-in heuristic + LLM gate. Parity-safe — it runs the
+  /// same `generateGuestTurn` (zero Realism/Needs). Busy-guarded like the create
+  /// flow so it can't race a user turn / another guest creation, and
+  /// context-guarded so a chat switch mid-turn can't leave `_guestBusy` stuck.
+  Future<void> speakGuestNow(CharacterCard guest) async {
+    if (_activeGroup != null) return;
+    if (_isGenerating || _guestBusy) {
+      _setGuestStatus('Busy — try again in a moment.', isError: true);
+      return;
+    }
+    final token = _currentSessionId;
+    _guestBusy = true;
+    notifyListeners();
+    try {
+      await generateGuestTurn(guest);
+    } finally {
+      if (!_sceneChanged(token)) {
+        _guestBusy = false;
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> generateGuestTurn(CharacterCard guest) async {

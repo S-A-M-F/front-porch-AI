@@ -27,6 +27,7 @@ void main() {
     late List<CharacterCard> exited;
     late List<CharacterCard> joinable;
     late List<CharacterCard> joined;
+    late List<CharacterCard> spoke;
     late List<String> pickerRequests;
     late String? pendingDeparture;
     late int primaryTurns;
@@ -50,6 +51,7 @@ void main() {
           castScans++;
           return castScanFound;
         },
+        speakGuest: (g) async => spoke.add(g),
       );
     }
 
@@ -61,6 +63,7 @@ void main() {
       exited = [];
       joinable = [];
       joined = [];
+      spoke = [];
       pickerRequests = [];
       pendingDeparture = null;
       primaryTurns = 0;
@@ -249,6 +252,60 @@ void main() {
       final h = build();
       expect(await h.handle('/detect'), true);
       expect(castScans, 1);
+    });
+
+    test('/speak with no guests surfaces a message, speaks nobody', () async {
+      final h = build();
+      expect(await h.handle('/speak Aria'), true);
+      expect(systemMessages.single, contains('No scene guests'));
+      expect(spoke, isEmpty);
+    });
+
+    test('/speak <exact name> forces that guest (case-insensitive)', () async {
+      guests = [_guest('Aria'), _guest('Bram')];
+      final h = build();
+      expect(await h.handle('/speak bram'), true);
+      expect(spoke.single.name, 'Bram');
+    });
+
+    test('/speak (no name) targets the most-recent guest', () async {
+      guests = [_guest('Aria'), _guest('Bram')];
+      final h = build();
+      await h.handle('/speak');
+      expect(spoke.single.name, 'Bram');
+    });
+
+    test('/speak <unique substring> forces the single match', () async {
+      guests = [_guest('Aria the Brave'), _guest('Bram')];
+      final h = build();
+      await h.handle('/speak brave');
+      expect(spoke.single.name, 'Aria the Brave');
+    });
+
+    test('/speak <wrong name> lists the valid guests and speaks nobody',
+        () async {
+      guests = [_guest('Aria'), _guest('Bram')];
+      final h = build();
+      expect(await h.handle('/speak Zelda'), true);
+      expect(spoke, isEmpty);
+      expect(systemMessages.single, contains('Zelda'));
+      expect(systemMessages.single, contains('Aria'));
+      expect(systemMessages.single, contains('Bram'));
+    });
+
+    test('/speak <ambiguous substring> lists guests, speaks nobody', () async {
+      guests = [_guest('Mara'), _guest('Marcus')];
+      final h = build();
+      await h.handle('/speak mar');
+      expect(spoke, isEmpty);
+      expect(systemMessages.single, contains('more than one'));
+    });
+
+    test('/turn is an alias for /speak', () async {
+      guests = [_guest('Aria')];
+      final h = build();
+      await h.handle('/turn Aria');
+      expect(spoke.single.name, 'Aria');
     });
   });
 }

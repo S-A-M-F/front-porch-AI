@@ -53,6 +53,7 @@ class ChatCommandHandler {
     required Future<void> Function(CharacterCard guest) joinGuest,
     required void Function(String initialFilter) requestGuestPicker,
     required Future<bool> Function() runCastScan,
+    required Future<void> Function(CharacterCard guest) speakGuest,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -64,7 +65,8 @@ class ChatCommandHandler {
        _getJoinableCharacters = getJoinableCharacters,
        _joinGuest = joinGuest,
        _requestGuestPicker = requestGuestPicker,
-       _runCastScan = runCastScan;
+       _runCastScan = runCastScan,
+       _speakGuest = speakGuest;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -78,6 +80,7 @@ class ChatCommandHandler {
   final Future<void> Function(CharacterCard guest) _joinGuest;
   final void Function(String initialFilter) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
+  final Future<void> Function(CharacterCard guest) _speakGuest;
 
   /// Attempt to handle [rawInput] as a slash command.
   ///
@@ -110,6 +113,11 @@ class ChatCommandHandler {
 
       case 'join':
         await _handleJoin(args);
+        return true;
+
+      case 'speak':
+      case 'turn':
+        await _handleSpeak(args);
         return true;
 
       case 'scan':
@@ -222,6 +230,64 @@ class ChatCommandHandler {
       return;
     }
     _requestGuestPicker(wanted);
+  }
+
+  // ── Scene Guest: /speak [name] (alias /turn) ────────────────────────────
+  // Force a PRESENT guest to take a turn right now, bypassing the auto chime-in
+  // heuristic + LLM gate. Bare `/speak` targets the only/most-recent guest. An
+  // unrecognized name surfaces the list of valid guests instead of doing
+  // nothing.
+  Future<void> _handleSpeak(String args) async {
+    if (!_activeCharacterIsSet()) {
+      _onSystemMessage('⚠ Scene Guests only exist inside a 1:1 chat.');
+      return;
+    }
+    final guests = _getSceneGuestCards();
+    if (guests.isEmpty) {
+      _onSystemMessage(
+        '⚠ No scene guests are present. Add one with /create or /join first.',
+      );
+      return;
+    }
+
+    final names = guests.map((g) => g.name).join(', ');
+    final wanted = args.trim();
+    CharacterCard? target;
+    if (wanted.isEmpty) {
+      target = guests.last; // the only / most-recent guest
+    } else {
+      final lower = wanted.toLowerCase();
+      for (final g in guests) {
+        if (g.name.toLowerCase() == lower) {
+          target = g;
+          break;
+        }
+      }
+      if (target == null) {
+        final partial = guests
+            .where((g) => g.name.toLowerCase().contains(lower))
+            .toList();
+        if (partial.length == 1) {
+          target = partial.first;
+        } else if (partial.length > 1) {
+          _onSystemMessage(
+            '⚠ "$args" matches more than one guest. Use the full name. '
+            'Present guests: $names.',
+          );
+          return;
+        }
+      }
+    }
+
+    if (target == null) {
+      _onSystemMessage(
+        '⚠ "$args" is not a current scene guest. '
+        'Valid guests right now: $names.',
+      );
+      return;
+    }
+
+    await _speakGuest(target);
   }
 
   // ── Scene Guest: /exit [name] ───────────────────────────────────────────
