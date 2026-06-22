@@ -122,12 +122,16 @@ class CastDetector {
       ).firstMatch(jsonStr);
       if (fence != null) jsonStr = fence.group(1)!.trim();
     }
-    final objMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(jsonStr);
-    if (objMatch == null) return null;
+    // Extract the FIRST balanced {...} object. A greedy `\{.*\}` would span from
+    // the first '{' to the LAST '}', so any trailing prose containing a brace
+    // (common — models append explanation despite "ONLY this JSON") yields
+    // invalid JSON and silently kills detection.
+    final objStr = _firstJsonObject(jsonStr);
+    if (objStr == null) return null;
 
     Map<String, dynamic> obj;
     try {
-      obj = jsonDecode(objMatch.group(0)!) as Map<String, dynamic>;
+      obj = jsonDecode(objStr) as Map<String, dynamic>;
     } catch (_) {
       return null;
     }
@@ -139,6 +143,40 @@ class CastDetector {
         ? (obj['descriptor'] as String).trim()
         : '';
     return DetectedCharacter(name: name, descriptor: descriptor);
+  }
+
+  /// Return the first balanced `{...}` object in [s] (brace-counting, string &
+  /// escape aware), or null if there is none. Used instead of a greedy regex so
+  /// trailing prose after the object can't break JSON decoding.
+  String? _firstJsonObject(String s) {
+    final start = s.indexOf('{');
+    if (start < 0) return null;
+    var depth = 0;
+    var inString = false;
+    var escape = false;
+    for (var i = start; i < s.length; i++) {
+      final c = s[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c == '\\') {
+        escape = true;
+        continue;
+      }
+      if (c == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (c == '{') {
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0) return s.substring(start, i + 1);
+      }
+    }
+    return null;
   }
 
   /// Final filter: require a plausible proper name and reject the host, the
@@ -174,12 +212,36 @@ class CastDetector {
     return true;
   }
 
-  /// Case-insensitive collision: true when either name contains the other
-  /// (guards against "Mara" vs "Mara Vance" and the host's first name).
+  /// Name collision, token-aware. True when the two names are equal OR share a
+  /// significant (≥3-char, non-title) whole-word token — so "Mara" collides with
+  /// "Mara Vance" / "Dr. Mara Vance", but a raw-substring overlap does NOT
+  /// (the old `contains` logic wrongly suppressed "Fred"/"Ned" when the host was
+  /// "Ed", or "Samuel" when the host was "Sam").
   bool _collides(String a, String b) {
-    if (b.isEmpty) return false;
-    return a == b || a.contains(b) || b.contains(a);
+    final na = a.trim().toLowerCase();
+    final nb = b.trim().toLowerCase();
+    if (na.isEmpty || nb.isEmpty) return false;
+    if (na == nb) return true;
+    final ta = _significantTokens(na);
+    final tb = _significantTokens(nb);
+    if (ta.isEmpty || tb.isEmpty) return false; // short names: exact-only
+    return ta.any(tb.contains);
   }
+
+  /// Lower-cased name tokens worth matching on: ≥3 chars and not a title/article.
+  Set<String> _significantTokens(String lowerName) => lowerName
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((t) => t.length >= 3 && !_nameStopwords.contains(t))
+      .toSet();
+
+  static const Set<String> _nameStopwords = {
+    'the', 'and', 'her', 'his', 'old', 'young', 'big', 'mrs', 'miss', 'dr',
+    'doctor', 'professor', 'prof', 'sir', 'lady', 'lord', 'madam', 'madame',
+    'master', 'mistress', 'captain', 'major', 'colonel', 'general', 'sergeant',
+    'officer', 'detective', 'king', 'queen', 'prince', 'princess', 'duke',
+    'duchess', 'count', 'countess', 'baron', 'father', 'mother', 'brother',
+    'sister', 'uncle', 'aunt', 'saint',
+  };
 
   String _oneLine(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
 }

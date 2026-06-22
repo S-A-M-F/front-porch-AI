@@ -91,12 +91,15 @@ class SceneGuestDirector {
   Future<void> runChimeIns({
     required String userText,
     required String primaryResponse,
+    bool Function()? isContextValid,
   }) async {
     if (!_isEnabled()) return;
     if (_running) return; // never re-enter (defensive; see _running docs)
 
     final guests = _getSceneGuestCards();
     if (guests.isEmpty) return;
+
+    bool stillValid() => isContextValid == null || isContextValid();
 
     _running = true;
     try {
@@ -107,6 +110,10 @@ class SceneGuestDirector {
       var tail = primaryResponse;
 
       for (final guest in guests) {
+        // The gate eval + each guest turn are slow LLM calls; bail if the chat
+        // was switched / the service torn down between guests so we never append
+        // a guest bubble to the wrong scene.
+        if (!stillValid()) break;
         if (spoken >= maxChimeInsPerTurn) {
           final remaining = guests.length - guests.indexOf(guest);
           log(
@@ -122,6 +129,7 @@ class SceneGuestDirector {
           userText: userText,
           tail: tail,
         )) {
+          if (!stillValid()) break; // re-check after the (slow) gate eval
           await _generateGuestTurn(guest);
           spoken++;
           // Refresh the tail with whatever the guest just said so the next
@@ -172,9 +180,26 @@ class SceneGuestDirector {
     }
 
     if (hits(trimmed)) return true;
+    // First-token nickname (e.g. "Mara Vance" → "Mara"), but NOT when the first
+    // token is a title/common word ("Major Tom" → "Major", "Old Greaves" → "Old")
+    // — those would force a chime-in on any line containing that everyday word.
     final first = trimmed.split(RegExp(r'\s+')).first;
-    return first != trimmed && hits(first);
+    if (first == trimmed || _titleOrStopword.contains(first.toLowerCase())) {
+      return false;
+    }
+    return hits(first);
   }
+
+  /// First-name tokens that are really titles/common words, so they must not be
+  /// used as a chime-in nickname.
+  static const Set<String> _titleOrStopword = {
+    'mr', 'mrs', 'ms', 'miss', 'dr', 'doctor', 'professor', 'prof', 'sir',
+    'lady', 'lord', 'madam', 'madame', 'master', 'mistress', 'captain', 'capt',
+    'major', 'colonel', 'general', 'sergeant', 'sgt', 'officer', 'detective',
+    'king', 'queen', 'prince', 'princess', 'duke', 'duchess', 'count',
+    'countess', 'baron', 'father', 'mother', 'brother', 'sister', 'uncle',
+    'aunt', 'old', 'young', 'the', 'big', 'little', 'saint', 'st',
+  };
 
   /// Tiny relevance prompt — one identity line + the last exchange, strict
   /// boolean JSON only. Kept deliberately small to minimize tokens.

@@ -46,6 +46,7 @@ import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_objectives_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/scene_guest_detected_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/scene_guest_picker_dialog.dart';
 // Old ImageGenDialog removed in Stage 3 (full from-scratch Image Studio).
 // Studio launched below; see lib/ui/image_studio/ and _showImageGenDialog.
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
@@ -73,6 +74,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _isCallActive = false;
   // Guards the Scene Guest detection popup so it cannot stack while open.
   bool _showingGuestDetection = false;
+  bool _showingGuestPicker = false;
   bool? _externalImagesAllowed;
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
@@ -143,6 +145,22 @@ class _ChatPageState extends State<ChatPage> {
         (_) => _showGuestDetectionDialog(chat),
       );
     }
+    // Scene Guest `/join` picker — same pending-flag pattern.
+    if (chat.pendingGuestPickerFilter != null && !_showingGuestPicker) {
+      _showingGuestPicker = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showGuestPickerDialog(chat),
+      );
+    }
+    // A guest's background portrait finished — evict its stale cached image so
+    // the new art replaces the initials avatar.
+    final evictPath = chat.guestAvatarEvictPath;
+    if (evictPath != null) {
+      chat.consumeGuestAvatarEvict();
+      FileImage(_resolveCharImage(evictPath)).evict().then((_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   void _showChanceTimeOverlay(BuildContext context) {
@@ -172,6 +190,31 @@ class _ChatPageState extends State<ChatPage> {
       await chat.acceptDetectedGuest();
     } else {
       chat.dismissDetectedGuest();
+    }
+  }
+
+  /// Show the `/join` character picker, then bring the chosen library character
+  /// into the scene as a Scene Guest. The pending flag is always cleared so the
+  /// picker never re-opens for the same request.
+  Future<void> _showGuestPickerDialog(ChatService chat) async {
+    final initial = chat.pendingGuestPickerFilter;
+    if (initial == null || !mounted) {
+      _showingGuestPicker = false;
+      chat.dismissGuestPicker();
+      return;
+    }
+    final selected = await showDialog<CharacterCard>(
+      context: context,
+      builder: (_) => SceneGuestPickerDialog(
+        characters: chat.joinableGuestCharacters,
+        initialFilter: initial,
+        resolveImage: _resolveCharImage,
+      ),
+    );
+    _showingGuestPicker = false;
+    chat.dismissGuestPicker();
+    if (selected != null) {
+      await chat.joinSceneGuest(selected);
     }
   }
 
@@ -535,8 +578,21 @@ class _ChatPageState extends State<ChatPage> {
                                             gIdx >= 0 ? gIdx : 0,
                                           );
                                         } else {
+                                          // Not a resolved guest. Use the host's
+                                          // avatar ONLY for an actual host
+                                          // message — a non-host sender that no
+                                          // longer resolves (a deleted/departed
+                                          // guest) gets the placeholder, not the
+                                          // host's face under the guest's name.
+                                          final isHostMsg =
+                                              msg.isUser ||
+                                              msg.sender == character?.name ||
+                                              (msg.characterId != null &&
+                                                  msg.characterId ==
+                                                      character?.stableGroupId);
                                           senderImage =
-                                              character?.imagePath != null
+                                              (isHostMsg &&
+                                                  character?.imagePath != null)
                                               ? _resolveCharImage(
                                                   character!.imagePath!,
                                                 )
@@ -2145,6 +2201,59 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
 
+        // ── Scene Guest activity banner ──────────────────────────────────
+        // One inline status line for the /create · /join · detection flow that
+        // updates in place (Creating → Entering → ✓ joined) and auto-clears.
+        // Replaces the old per-step 'System' chat messages so the scene stays
+        // clean and nothing is persisted into history.
+        if (chatService.guestActivityStatus != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: chatService.guestActivityIsError
+                ? AppColors.resolve(
+                    context,
+                    const Color(0xFF7C2D12),
+                    const Color(0xFFFEF3C7),
+                  )
+                : AppColors.surfaceContainerOf(context),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: chatService.isGuestBusy
+                      ? CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.relationshipAccent,
+                        )
+                      : Icon(
+                          chatService.guestActivityIsError
+                              ? Icons.warning_amber_rounded
+                              : Icons.info_outline,
+                          size: 14,
+                          color: chatService.guestActivityIsError
+                              ? Colors.orangeAccent
+                              : AppColors.relationshipAccent,
+                        ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    chatService.guestActivityStatus!,
+                    style: TextStyle(
+                      color: chatService.guestActivityIsError
+                          ? Colors.orangeAccent
+                          : AppColors.textSecondary(context),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // ── Input bar ────────────────────────────────────────────────────
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -2628,13 +2737,16 @@ class _ChatPageState extends State<ChatPage> {
                               chatService.observerMode
                                   ? Icons.movie_creation
                                   : Icons.send,
-                              color: chatService.observerMode
-                                  ? Colors.amberAccent
-                                  : Colors.blueAccent,
+                              color: chatService.isGuestBusy
+                                  ? AppColors.iconSecondary(context)
+                                  : (chatService.observerMode
+                                        ? Colors.amberAccent
+                                        : Colors.blueAccent),
                             ),
                             onPressed: () {
                               if (_controller.text.isNotEmpty &&
-                                  !chatService.isGenerating) {
+                                  !chatService.isGenerating &&
+                                  !chatService.isGuestBusy) {
                                 chatService.sendMessage(_controller.text);
                                 _controller.clear();
                                 WidgetsBinding.instance.addPostFrameCallback(

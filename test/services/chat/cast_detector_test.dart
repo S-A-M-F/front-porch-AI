@@ -130,5 +130,41 @@ void main() {
       expect(r?.name, 'Greaves');
       expect(r?.descriptor, '');
     });
+
+    // ── Balanced-JSON extraction (was a greedy \{.*\} that died on prose) ──────
+    test('parses despite trailing prose containing braces', () async {
+      eval =
+          '{"name": "Mara", "descriptor": "the sister"} '
+          'Note: I picked her because {context} mentioned her twice.';
+      final r = await build().detect();
+      expect(r?.name, 'Mara');
+      expect(r?.descriptor, 'the sister');
+    });
+
+    test('takes the FIRST object when two are emitted', () async {
+      eval = '{"name": "Mara", "descriptor": "a"}\n{"name": "Bram"}';
+      expect((await build().detect())?.name, 'Mara');
+    });
+
+    // ── Token-aware name collision (was raw substring, suppressing guests) ─────
+    test('does NOT suppress a guest sharing a substring with host/user',
+        () async {
+      // host "Ed" — "Fred"/"Ned" contain "ed" but are distinct people.
+      eval = '{"name": "Fred", "descriptor": "the barkeep"}';
+      expect((await build(host: 'Ed').detect())?.name, 'Fred');
+      // host "Sam" vs "Samuel"; host "Ann" vs "Joanne".
+      eval = '{"name": "Samuel", "descriptor": "x"}';
+      expect((await build(host: 'Sam').detect())?.name, 'Samuel');
+      eval = '{"name": "Joanne", "descriptor": "x"}';
+      expect((await build(host: 'Ann').detect())?.name, 'Joanne');
+    });
+
+    test('still rejects a shared whole-name token (Mara vs Mara Vance)',
+        () async {
+      eval = '{"name": "Mara Vance", "descriptor": "x"}';
+      expect(await build(host: 'Mara').detect(), isNull);
+      eval = '{"name": "Dr. Mara Vance", "descriptor": "x"}';
+      expect(await build(host: 'Mara Vance').detect(), isNull);
+    });
   });
 }

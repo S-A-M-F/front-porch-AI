@@ -1067,9 +1067,36 @@ class CharacterCardGrid extends StatelessWidget {
         opacity: 0.3,
         child: _buildCharacterCardInner(context, character),
       ),
-      child: _buildCharacterCardInner(context, character),
+      // Scene Guests (Lite NPCs) are real library cards (so they persist and can
+      // be deleted here), but badge them so they're distinguishable from regular
+      // characters in the grid.
+      child: character.isLite
+          ? Stack(
+              children: [
+                _buildCharacterCardInner(context, character),
+                Positioned(top: 6, left: 6, child: _guestBadge(context)),
+              ],
+            )
+          : _buildCharacterCardInner(context, character),
     );
   }
+
+  /// Small "Guest" chip overlaid on Scene Guest (Lite NPC) cards in the grid.
+  Widget _guestBadge(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: AppColors.relationshipAccent.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: const Text(
+      'Guest',
+      style: TextStyle(
+        fontSize: 9,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+    ),
+  );
 
   Widget _buildCharacterCardInner(
     BuildContext context,

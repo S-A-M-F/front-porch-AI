@@ -200,5 +200,46 @@ void main() {
         expect(bobPrompt, isNot(contains('PRIMARY_LINE')));
       },
     );
+
+    test('a title first-name ("Major Tom") is NOT used as a nickname', () async {
+      guests = [_guest('Major Tom')];
+      gateReplies = {'Major Tom': '{"speak": false}'}; // gate decides, says no
+      await build().runChimeIns(
+        // "major" appears but is a title, not the guest — must not force a turn.
+        userText: 'the major inspected the troops',
+        primaryResponse: 'all quiet',
+      );
+      expect(spoke, isEmpty);
+      expect(gatePrompts, hasLength(1),
+          reason: 'should fall through to the LLM gate, not the nickname');
+    });
+
+    test('a normal first-name nickname still fires (Mara ← "Mara Vance")',
+        () async {
+      guests = [_guest('Mara Vance')];
+      await build().runChimeIns(
+        userText: 'have you seen Mara today?',
+        primaryResponse: 'not yet',
+      );
+      expect(spoke, ['Mara Vance']);
+      expect(gatePrompts, isEmpty, reason: 'nickname heuristic short-circuits');
+    });
+
+    test('bails between guests when context becomes invalid', () async {
+      guests = [_guest('Ann'), _guest('Bob')];
+      gateReplies = {'Ann': '{"speak": true}', 'Bob': '{"speak": true}'};
+      var valid = true;
+      final dir = build();
+      // Invalidate after the first guest speaks (simulate a chat switch).
+      await dir.runChimeIns(
+        userText: 'go',
+        primaryResponse: 'p',
+        isContextValid: () {
+          if (spoke.isNotEmpty) valid = false;
+          return valid;
+        },
+      );
+      expect(spoke, ['Ann'], reason: 'Bob must not speak after context invalid');
+    });
   });
 }

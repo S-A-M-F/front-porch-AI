@@ -23,13 +23,15 @@ void main() {
     late List<CharacterCard> guests;
     late List<String> systemMessages;
     late List<String?> expressionCalls;
-    late List<(String, String)> mintCalls;
-    late List<CharacterCard> entered;
+    late List<(String, String)> createCalls;
     late List<CharacterCard> exited;
+    late List<CharacterCard> joinable;
+    late List<CharacterCard> joined;
+    late List<String> pickerRequests;
     late String? pendingDeparture;
     late int primaryTurns;
-    GuestMintResult Function(String, String) mintBehavior = (n, c) =>
-        GuestMintResult.success(_guest(n));
+    late int castScans;
+    bool castScanFound = false;
 
     ChatCommandHandler build({bool activeSet = true}) {
       return ChatCommandHandler(
@@ -39,12 +41,15 @@ void main() {
         setPendingGuestDeparture: (n) => pendingDeparture = n,
         onSystemMessage: systemMessages.add,
         generatePrimaryTurn: () async => primaryTurns++,
-        mintGuest: (name, concept) async {
-          mintCalls.add((name, concept));
-          return mintBehavior(name, concept);
-        },
-        enterGuest: (g) async => entered.add(g),
+        createGuest: (name, concept) async => createCalls.add((name, concept)),
         exitGuest: (g) async => exited.add(g),
+        getJoinableCharacters: () => joinable,
+        joinGuest: (g) async => joined.add(g),
+        requestGuestPicker: pickerRequests.add,
+        runCastScan: () async {
+          castScans++;
+          return castScanFound;
+        },
       );
     }
 
@@ -52,12 +57,15 @@ void main() {
       guests = [];
       systemMessages = [];
       expressionCalls = [];
-      mintCalls = [];
-      entered = [];
+      createCalls = [];
       exited = [];
+      joinable = [];
+      joined = [];
+      pickerRequests = [];
       pendingDeparture = null;
       primaryTurns = 0;
-      mintBehavior = (n, c) => GuestMintResult.success(_guest(n));
+      castScans = 0;
+      castScanFound = false;
     });
 
     test('non-command input is not handled', () async {
@@ -79,45 +87,36 @@ void main() {
       },
     );
 
-    test('/create outside a 1:1 chat is rejected before minting', () async {
+    test('/create outside a 1:1 chat is rejected before creating', () async {
       final h = build(activeSet: false);
       expect(await h.handle('/create Bob: a baker'), true);
       expect(systemMessages.single, contains('1:1'));
-      expect(mintCalls, isEmpty);
+      expect(createCalls, isEmpty);
     });
 
     test('/create with empty args shows usage', () async {
       final h = build();
       expect(await h.handle('/create'), true);
       expect(systemMessages.last, contains('Usage'));
-      expect(mintCalls, isEmpty);
+      expect(createCalls, isEmpty);
     });
 
-    test('/create splits name/concept on ":" and enters on success', () async {
+    test('/create splits name/concept on ":" and delegates', () async {
       final h = build();
       expect(await h.handle('/create Bob: a cheerful baker'), true);
-      expect(mintCalls.single, ('Bob', 'a cheerful baker'));
-      expect(entered.single.name, 'Bob');
+      expect(createCalls.single, ('Bob', 'a cheerful baker'));
     });
 
     test('/create splits name/concept on "|"', () async {
       final h = build();
       await h.handle('/create Mara | a stoic guard');
-      expect(mintCalls.single, ('Mara', 'a stoic guard'));
+      expect(createCalls.single, ('Mara', 'a stoic guard'));
     });
 
     test('/create with name only yields empty concept', () async {
       final h = build();
       await h.handle('/create Solo');
-      expect(mintCalls.single, ('Solo', ''));
-    });
-
-    test('/create surfaces mint failure and does not enter', () async {
-      mintBehavior = (n, c) => const GuestMintResult.failure('backend down');
-      final h = build();
-      await h.handle('/create Bob: baker');
-      expect(systemMessages.last, contains('backend down'));
-      expect(entered, isEmpty);
+      expect(createCalls.single, ('Solo', ''));
     });
 
     test('/exit with no guests surfaces a message and is handled', () async {
@@ -164,5 +163,92 @@ void main() {
         expect(primaryTurns, 0);
       },
     );
+
+    test('/join outside a 1:1 chat is rejected', () async {
+      joinable = [_guest('Nora')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/join Nora'), true);
+      expect(systemMessages.single, contains('1:1'));
+      expect(joined, isEmpty);
+      expect(pickerRequests, isEmpty);
+    });
+
+    test('/join with no joinable characters surfaces a message', () async {
+      final h = build();
+      expect(await h.handle('/join'), true);
+      expect(systemMessages.single, contains('No other characters'));
+      expect(pickerRequests, isEmpty);
+    });
+
+    test('/join (no name) opens the picker with an empty filter', () async {
+      joinable = [_guest('Nora'), _guest('Pax')];
+      final h = build();
+      expect(await h.handle('/join'), true);
+      expect(pickerRequests.single, '');
+      expect(joined, isEmpty);
+    });
+
+    test('/join <exact name> joins outright (case-insensitive)', () async {
+      joinable = [_guest('Nora'), _guest('Pax')];
+      final h = build();
+      expect(await h.handle('/join nora'), true);
+      expect(joined.single.name, 'Nora');
+      expect(pickerRequests, isEmpty);
+    });
+
+    test('/join <unique substring> joins the single match', () async {
+      joinable = [_guest('Nora Vance'), _guest('Pax')];
+      final h = build();
+      await h.handle('/join vance');
+      expect(joined.single.name, 'Nora Vance');
+      expect(pickerRequests, isEmpty);
+    });
+
+    test('/join <ambiguous substring> opens the picker pre-filtered', () async {
+      joinable = [_guest('Nora'), _guest('Norbert')];
+      final h = build();
+      await h.handle('/join nor');
+      expect(joined, isEmpty);
+      expect(pickerRequests.single, 'nor');
+    });
+
+    test('/join <no match> opens the picker pre-filtered', () async {
+      joinable = [_guest('Nora')];
+      final h = build();
+      await h.handle('/join zzz');
+      expect(joined, isEmpty);
+      expect(pickerRequests.single, 'zzz');
+    });
+
+    test('/scan outside a 1:1 chat is rejected before scanning', () async {
+      final h = build(activeSet: false);
+      expect(await h.handle('/scan'), true);
+      expect(systemMessages.single, contains('1:1'));
+      expect(castScans, 0);
+    });
+
+    test('/scan with no hit reports nothing found', () async {
+      castScanFound = false;
+      final h = build();
+      expect(await h.handle('/scan'), true);
+      expect(castScans, 1);
+      expect(systemMessages.last, contains('No new recurring character'));
+    });
+
+    test('/scan with a hit stays silent (popup handles it)', () async {
+      castScanFound = true;
+      final h = build();
+      expect(await h.handle('/scan'), true);
+      expect(castScans, 1);
+      // Only the "scanning…" status line; no "nothing found" follow-up.
+      expect(systemMessages.length, 1);
+      expect(systemMessages.single, contains('Scanning'));
+    });
+
+    test('/detect is an alias for /scan', () async {
+      final h = build();
+      expect(await h.handle('/detect'), true);
+      expect(castScans, 1);
+    });
   });
 }

@@ -47,19 +47,24 @@ class ChatCommandHandler {
     required void Function(String? guestName) setPendingGuestDeparture,
     required void Function(String message) onSystemMessage,
     required Future<void> Function() generatePrimaryTurn,
-    required Future<GuestMintResult> Function(String name, String concept)
-    mintGuest,
-    required Future<void> Function(CharacterCard guest) enterGuest,
+    required Future<void> Function(String name, String concept) createGuest,
     required Future<void> Function(CharacterCard guest) exitGuest,
+    required List<CharacterCard> Function() getJoinableCharacters,
+    required Future<void> Function(CharacterCard guest) joinGuest,
+    required void Function(String initialFilter) requestGuestPicker,
+    required Future<bool> Function() runCastScan,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
        _setPendingGuestDeparture = setPendingGuestDeparture,
        _onSystemMessage = onSystemMessage,
        _generatePrimaryTurn = generatePrimaryTurn,
-       _mintGuest = mintGuest,
-       _enterGuest = enterGuest,
-       _exitGuest = exitGuest;
+       _createGuest = createGuest,
+       _exitGuest = exitGuest,
+       _getJoinableCharacters = getJoinableCharacters,
+       _joinGuest = joinGuest,
+       _requestGuestPicker = requestGuestPicker,
+       _runCastScan = runCastScan;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -67,10 +72,12 @@ class ChatCommandHandler {
   final void Function(String? guestName) _setPendingGuestDeparture;
   final void Function(String message) _onSystemMessage;
   final Future<void> Function() _generatePrimaryTurn;
-  final Future<GuestMintResult> Function(String name, String concept)
-  _mintGuest;
-  final Future<void> Function(CharacterCard guest) _enterGuest;
+  final Future<void> Function(String name, String concept) _createGuest;
   final Future<void> Function(CharacterCard guest) _exitGuest;
+  final List<CharacterCard> Function() _getJoinableCharacters;
+  final Future<void> Function(CharacterCard guest) _joinGuest;
+  final void Function(String initialFilter) _requestGuestPicker;
+  final Future<bool> Function() _runCastScan;
 
   /// Attempt to handle [rawInput] as a slash command.
   ///
@@ -101,6 +108,25 @@ class ChatCommandHandler {
         await _handleCreate(args);
         return true;
 
+      case 'join':
+        await _handleJoin(args);
+        return true;
+
+      case 'scan':
+      case 'detect':
+        // Manual cast-detection trigger: force an immediate scan of the host's
+        // recent narration for a recurring side character, bypassing the
+        // automatic per-turn cadence (works on an already-loaded chat too).
+        if (!_activeCharacterIsSet()) {
+          _onSystemMessage('⚠ NPC detection only runs inside a 1:1 chat.');
+          return true;
+        }
+        _onSystemMessage('🔍 Scanning the scene for a recurring character…');
+        if (!await _runCastScan()) {
+          _onSystemMessage('No new recurring character was found to add.');
+        }
+        return true;
+
       case 'exit':
         await _handleExit(args);
         return true;
@@ -112,9 +138,10 @@ class ChatCommandHandler {
 
   // ── Scene Guest: /create ────────────────────────────────────────────────
   // Syntax: `/create <name>: <concept>`, `/create <name> | <concept>`,
-  // or `/create <name>` (empty concept). Mints a lite NPC (via the injected
-  // [mintGuest], which gens + persists it), adds it to the scene, and has it
-  // speak its entrance via the existing engine ([enterGuest]).
+  // or `/create <name>` (empty concept). Parses the name/concept and delegates
+  // to the injected [createGuest], which generates + persists the lite NPC,
+  // adds it to the scene, drives the live status line, and has it enter — all
+  // busy-guarded, with no saved 'System' chat litter.
   Future<void> _handleCreate(String args) async {
     if (!_activeCharacterIsSet()) {
       _onSystemMessage('⚠ Scene Guests can only be added inside a 1:1 chat.');
@@ -141,16 +168,60 @@ class ChatCommandHandler {
       return;
     }
 
-    _onSystemMessage('⏳ Creating scene guest "$name"…');
+    // Generation, the live status line, and the entrance are all handled by the
+    // injected orchestrator (busy-guarded, no saved 'System' litter).
+    await _createGuest(name, concept);
+  }
 
-    final result = await _mintGuest(name, concept);
-    if (!result.ok) {
-      _onSystemMessage('⚠ Failed to create "$name": ${result.error}');
+  // ── Scene Guest: /join [name] ───────────────────────────────────────────
+  // Brings an EXISTING library character into the 1:1 scene as a Scene Guest —
+  // no new card is minted; it reuses the SAME parity-safe enter path as
+  // `/create` (the joined character generates a contextual entrance from the
+  // chat history + its own card, and carries no Realism/Needs while a guest).
+  //   • `/join`            → open the character picker (browse the full list).
+  //   • `/join <name>`     → join an unambiguous match outright; otherwise open
+  //                          the picker pre-filtered to the typed text.
+  // The candidate list (injected) already excludes the host and anyone already
+  // present, so this leaf only resolves the user's intent against it.
+  Future<void> _handleJoin(String args) async {
+    if (!_activeCharacterIsSet()) {
+      _onSystemMessage('⚠ Scene Guests can only be added inside a 1:1 chat.');
       return;
     }
 
-    // Have the new guest enter the scene via the existing generation engine.
-    await _enterGuest(result.card!);
+    final candidates = _getJoinableCharacters();
+    if (candidates.isEmpty) {
+      _onSystemMessage(
+        '⚠ No other characters are available to join this chat.',
+      );
+      return;
+    }
+
+    final wanted = args.trim();
+    if (wanted.isEmpty) {
+      _requestGuestPicker(''); // browse the full list
+      return;
+    }
+
+    // Exact (case-insensitive) name match wins outright.
+    final lower = wanted.toLowerCase();
+    for (final c in candidates) {
+      if (c.name.toLowerCase() == lower) {
+        await _joinGuest(c);
+        return;
+      }
+    }
+
+    // Otherwise a single substring match joins directly; 0 or 2+ matches fall
+    // back to the picker pre-filtered to what was typed.
+    final partial = candidates
+        .where((c) => c.name.toLowerCase().contains(lower))
+        .toList();
+    if (partial.length == 1) {
+      await _joinGuest(partial.first);
+      return;
+    }
+    _requestGuestPicker(wanted);
   }
 
   // ── Scene Guest: /exit [name] ───────────────────────────────────────────
@@ -177,12 +248,19 @@ class ChatCommandHandler {
         }
       }
       if (target == null) {
-        for (final g in guests) {
-          if (g.name.toLowerCase().contains(wanted)) {
-            target = g;
-            break;
-          }
+        // Substring fallback — but if more than one guest matches, removing
+        // the first silently could exit the wrong one. Ask the user to be
+        // specific instead.
+        final partial = guests
+            .where((g) => g.name.toLowerCase().contains(wanted))
+            .toList();
+        if (partial.length > 1) {
+          final names = partial.map((g) => g.name).join(', ');
+          _onSystemMessage('⚠ "$args" matches multiple guests ($names). '
+              'Use the full name.');
+          return;
         }
+        if (partial.length == 1) target = partial.first;
       }
     }
 
