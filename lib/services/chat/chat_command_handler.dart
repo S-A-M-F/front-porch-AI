@@ -31,6 +31,21 @@ class GuestMintResult {
   bool get ok => card != null;
 }
 
+/// One entry in the slash-command reference, used by the input "type /" helper
+/// panel (and any cheat-sheet). [example] is what tapping the row inserts.
+class SlashCommandInfo {
+  const SlashCommandInfo(this.command, this.example, this.description);
+
+  /// The bare command token (no slash), e.g. `create`.
+  final String command;
+
+  /// A usage example shown to the user, e.g. `/create <name>: <concept>`.
+  final String example;
+
+  /// One-line description of what it does.
+  final String description;
+}
+
 /// Parses and dispatches in-chat slash commands.
 ///
 /// This leaf keeps the slash-command surface out of the `ChatService` god file.
@@ -81,6 +96,42 @@ class ChatCommandHandler {
   final void Function(String initialFilter) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
+
+  /// The user-facing slash-command reference (single source of truth for the
+  /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
+  /// /expression-clear) are intentionally omitted to keep the list scannable.
+  static const List<SlashCommandInfo> commands = [
+    SlashCommandInfo(
+      'create',
+      '/create <name>: <concept>',
+      'Create a new guest NPC and bring them into the scene',
+    ),
+    SlashCommandInfo(
+      'join',
+      '/join [name]',
+      'Bring one of your existing characters in as a guest',
+    ),
+    SlashCommandInfo(
+      'speak',
+      '/speak [name]',
+      'Make a guest who is present take a turn right now',
+    ),
+    SlashCommandInfo(
+      'exit',
+      '/exit [name]',
+      'Have a guest leave the scene (narrated by your character)',
+    ),
+    SlashCommandInfo(
+      'scan',
+      '/scan',
+      'Scan the scene for a new recurring character to add',
+    ),
+    SlashCommandInfo(
+      'expression',
+      '/expression [emotion]',
+      "Set the character's expression (omit to clear it)",
+    ),
+  ];
 
   /// Attempt to handle [rawInput] as a slash command.
   ///

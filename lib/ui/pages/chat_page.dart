@@ -46,6 +46,7 @@ import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_objectives_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/scene_guest_detected_dialog.dart';
+import 'package:front_porch_ai/services/chat/chat_command_handler.dart';
 import 'package:front_porch_ai/ui/dialogs/scene_guest_picker_dialog.dart';
 // Old ImageGenDialog removed in Stage 3 (full from-scratch Image Studio).
 // Studio launched below; see lib/ui/image_studio/ and _showImageGenDialog.
@@ -2163,6 +2164,84 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  /// The "type /" command list shown above the input. Tapping a row fills the
+  /// input with that command (trailing space) and keeps focus so the user can
+  /// continue typing arguments.
+  Widget _buildCommandHelper(
+    BuildContext context,
+    List<SlashCommandInfo> matches,
+  ) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 6),
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerOf(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.borderOf(context)),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: matches.length,
+        separatorBuilder: (_, _) => Divider(
+          height: 1,
+          thickness: 1,
+          color: AppColors.borderOf(context).withValues(alpha: 0.4),
+        ),
+        itemBuilder: (context, i) {
+          final c = matches[i];
+          return InkWell(
+            onTap: () {
+              final text = '/${c.command} ';
+              _controller.value = TextEditingValue(
+                text: text,
+                selection: TextSelection.collapsed(offset: text.length),
+              );
+              _chatFocusNode.requestFocus();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 200,
+                    child: Text(
+                      c.example,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        color: AppColors.relationshipAccent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      c.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildInputArea(BuildContext context, ChatService chatService) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2253,6 +2332,25 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ),
           ),
+
+        // ── Slash-command helper ─────────────────────────────────────────
+        // When the input is a command-in-progress ("/", "/cr", …) show the
+        // matching commands above the bar; tap one to fill it in. Rendered in
+        // the input column (no overlay), and scoped to the controller via a
+        // ValueListenableBuilder so only this panel rebuilds per keystroke.
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _controller,
+          builder: (context, value, _) {
+            final m = RegExp(r'^/(\w*)$').firstMatch(value.text);
+            if (m == null) return const SizedBox.shrink();
+            final prefix = m.group(1)!.toLowerCase();
+            final matches = ChatCommandHandler.commands
+                .where((c) => c.command.startsWith(prefix))
+                .toList();
+            if (matches.isEmpty) return const SizedBox.shrink();
+            return _buildCommandHelper(context, matches);
+          },
+        ),
 
         // ── Input bar ────────────────────────────────────────────────────
         Column(

@@ -307,5 +307,15 @@ void main() {
       await h.handle('/turn Aria');
       expect(spoke.single.name, 'Aria');
     });
+
+    // Drift guard: the "type /" helper panel advertises ChatCommandHandler
+    // .commands — every one must actually be a recognized command.
+    test('every advertised command in the registry is recognized', () async {
+      guests = [_guest('Aria')];
+      for (final c in ChatCommandHandler.commands) {
+        expect(await build().handle('/${c.command}'), true,
+            reason: '/${c.command} is advertised but not handled');
+      }
+    });
   });
 }
