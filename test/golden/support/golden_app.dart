@@ -74,19 +74,35 @@ Future<void> pumpGolden(
 /// Render [child] in both light and dark themes and assert each against its
 /// committed PNG golden. Refresh intentional UI changes with
 /// `flutter test --tags golden --update-goldens` on the Linux/CI image.
+///
+/// For tests that navigate a [StatefulWidget] via [afterPump], pass
+/// [childBuilder] instead of [child]: it is called once per brightness so each
+/// pass gets a fresh widget instance (and therefore a fresh [State]).  Using a
+/// plain [child] would reuse the same [State] across both passes, leaving
+/// `_currentStep` or similar fields set to the value from the previous pass.
 Future<void> expectThemedGoldens(
   WidgetTester tester, {
-  required Widget child,
+  Widget? child,
+  Widget Function()? childBuilder,
   required String group,
   required String name,
   Size surface = const Size(420, 220),
   bool settle = true,
   Future<void> Function(WidgetTester tester)? afterPump,
 }) async {
+  assert(
+    child != null || childBuilder != null,
+    'Provide either child or childBuilder.',
+  );
   for (final brightness in Brightness.values) {
     final mode = brightness == Brightness.light ? 'light' : 'dark';
-    await pumpGolden(tester, child,
-        brightness: brightness, surface: surface, settle: settle);
+    await pumpGolden(
+      tester,
+      childBuilder != null ? childBuilder() : child!,
+      brightness: brightness,
+      surface: surface,
+      settle: settle,
+    );
     // Optional interaction (e.g. expand a collapsible section) before capture.
     if (afterPump != null) {
       await afterPump(tester);

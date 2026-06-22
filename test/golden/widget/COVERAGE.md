@@ -14,7 +14,8 @@ Phase 4) rather than one giant PR. Pick up the next ⬜ area, add a focused
 and flip the row to ✅.
 
 ## Infrastructure
-- ✅ `support/golden_app.dart` — `pumpGolden` / `expectThemedGoldens` (light+dark, fixed surface)
+- ✅ `support/golden_app.dart` — `pumpGolden` / `expectThemedGoldens` (light+dark, fixed surface;
+  `childBuilder` parameter for navigation tests that need a fresh StatefulWidget state per pass)
 - ✅ `flutter_test_config.dart` — google_fonts fetch disabled + bundled Roboto
 - ✅ `dart_test.yaml` + `@TestOn('linux')` gating + CI `--tags golden` step
 - ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
@@ -58,10 +59,13 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   (3 mode cards), `QuickConfigStep` (concept + options), `RealismStep` (full
   realism/needs form), `ReviewStep` (avatar panel + editable card fields, via
   `FakeLLMProvider` + bounded-frame pump for the cursor ticker). Light + dark.
-- ⬜ `SetupStep` (backend config) — Provider-heavy (ModelManager/Kobold/
-  PseudoRemote/BackendManager state drives live model lists + status dots);
-  needs those service doubles too.
-- ⬜ `GuidedConfigStep`, `AutomatedConfigStep`, `GeneratingStep`.
+- ✅ **Remaining wizard screens** — `widget/creator_steps_remaining_golden_test.dart`
+  (10 PNGs). `SetupStep` — openRouter backend skips kobold/pseudoRemote branches;
+  only `FakeLLMProvider(activeBackend: BackendType.openRouter)` needed.
+  `GuidedConfigStep` — `FakeUserPersonaService` (via embedded GuidedOutputSettings →
+  PersonaSelectorDropdown). `GuidedOutputSettings` — `FakeUserPersonaService`.
+  `AutomatedConfigStep` — `FakeUserPersonaService`. `GeneratingStep` — no providers;
+  `settle: false` (AnimationController.repeat). Light + dark.
 
 ## Leaf widgets — `lib/ui/widgets/` and `lib/ui/chat_components/widgets/`
 - ✅ `needs_bar.dart` — `NeedsBar` (healthy/critical/mini) + `NeedsGrid` (full set)
@@ -179,10 +183,14 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   `FakeFolderService` + `FakeGroupChatRepository` supply the three repo
   dependencies; `CharacterCardGrid` is fully param-driven so no heavy provider
   tree is needed. Light + dark.
-- ✅ `create_character_page.dart` — step 0 Identity at rest. No providers needed
-  (all `Provider.of` calls are inside `onPressed` lambdas). `settle: false`
+- ✅ `create_character_page.dart` — **all 7 steps** covered. Step 0 Identity at rest
+  (`pages_golden_test.dart`); steps 1–6 (`widget/manual_creator_steps_golden_test.dart`,
+  12 PNGs). Steps 1–6 navigate via `afterPump` + `childBuilder` (forces fresh State
+  per brightness pass so `_currentStep` resets). Step 0→1 transition requires entering
+  'Aria Vale' in the name `TextFormField` (the only TextFormField on step 0); subsequent
+  steps tap "Next: {label}" buttons and pump 350ms to clear the 300ms AnimatedSwitcher.
+  No providers needed (all `Provider.of` calls are inside callbacks). `settle: false`
   (TextEditingController + StyledTextController tickers). Surface 1280×900.
-  (`pages_golden_test.dart`)
 - ✅ `user_persona_page.dart` — empty persona list (empty-state "Add your first
   persona" UI). `FakeUserPersonaService` in `ChangeNotifierProvider`. `settle: false`
   (`AnimationController.repeat()` header glow). Surface 1280×900.
