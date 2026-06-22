@@ -162,6 +162,27 @@ class _ChatPageState extends State<ChatPage> {
         if (mounted) setState(() {});
       });
     }
+    // A guest just /exit-ed — offer a brief UNDO (delete the departure message
+    // + restore the guest with full context). Consume the offer so it shows once.
+    final exitUndoName = chat.exitUndoOfferName;
+    if (exitUndoName != null) {
+      chat.consumeExitUndoOffer();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('$exitUndoName left the scene'),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'UNDO',
+              onPressed: () => _chatService?.undoLastExit(),
+            ),
+          ),
+        );
+      });
+    }
   }
 
   void _showChanceTimeOverlay(BuildContext context) {

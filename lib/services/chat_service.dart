@@ -227,6 +227,67 @@ class ChatService extends ChangeNotifier {
   /// Clear the pending avatar-evict signal after the UI has evicted the path.
   void consumeGuestAvatarEvict() => _guestAvatarEvictPath = null;
 
+  // ── /exit undo ──────────────────────────────────────────────────────────
+  // After `/exit`, a brief UNDO is offered: delete the generated departure
+  // message (reverting its host realism via deleteMessage's time-travel
+  // rollback) and re-add the guest. Their evolution counts + RAG memory are NOT
+  // cleared by exit, so re-adding the id restores full context. The offer is
+  // consumed by the UI (one SnackBar) but the undo data stays valid until the
+  // user sends a real message / switches chats.
+  CharacterCard? _exitUndoGuest;
+  ChatMessage? _exitUndoMessage;
+  String? _exitUndoOfferName;
+
+  /// Name to show in the UNDO SnackBar (null = nothing to offer).
+  String? get exitUndoOfferName => _exitUndoOfferName;
+
+  /// Consume the one-shot UNDO offer (the SnackBar was shown); the undo itself
+  /// stays available via [undoLastExit] until invalidated.
+  void consumeExitUndoOffer() => _exitUndoOfferName = null;
+
+  /// Capture undo state right after a `/exit` departure turn finished. The
+  /// just-generated host message (if any) is the departure to delete on undo.
+  void armSceneGuestExitUndo(CharacterCard guest) {
+    final departure =
+        (_messages.isNotEmpty &&
+            !_messages.last.isUser &&
+            _messages.last.sender != 'System')
+        ? _messages.last
+        : null;
+    _exitUndoGuest = guest;
+    _exitUndoMessage = departure;
+    _exitUndoOfferName = guest.name;
+    notifyListeners();
+  }
+
+  void _clearExitUndo() {
+    _exitUndoGuest = null;
+    _exitUndoMessage = null;
+    _exitUndoOfferName = null;
+  }
+
+  /// Undo the last `/exit`: delete the departure message (which reverts the host
+  /// realism it applied, via [deleteMessage]'s rollback) and restore the guest
+  /// to the scene with their full context (evolution + memory were never wiped).
+  Future<void> undoLastExit() async {
+    final guest = _exitUndoGuest;
+    final departure = _exitUndoMessage;
+    if (guest == null) return;
+    _clearExitUndo();
+    if (departure != null) {
+      final idx = _messages.indexOf(departure);
+      if (idx >= 0) deleteMessage(idx); // removes + reverts realism + saves
+    }
+    final id = guest.dbId;
+    if (id != null && !_sceneGuestIds.contains(id)) {
+      _sceneGuestIds.add(id);
+      await _resolveSceneGuestCards();
+      await _saveChat();
+    }
+    _setGuestStatus('${guest.name} is back in the scene.');
+    notifyListeners();
+  }
+
   /// Library characters eligible to `/join` this 1:1 scene as a Scene Guest:
   /// every loaded character EXCEPT the current host and anyone already present.
   /// Empty in group mode or before a 1:1 host is set. Drives both the `/join`
@@ -292,6 +353,7 @@ class ChatService extends ChangeNotifier {
       },
       runCastScan: runCastDetectionNow,
       speakGuest: speakGuestNow,
+      armExitUndo: armSceneGuestExitUndo,
     );
   }
 
@@ -635,6 +697,7 @@ class ChatService extends ChangeNotifier {
     _guestActivityIsError = false;
     _guestBusy = false;
     _guestAvatarEvictPath = null;
+    _clearExitUndo();
   }
 
   /// Single entry point for adding a Scene Guest with a busy guard + one live,
@@ -5302,6 +5365,9 @@ class ChatService extends ChangeNotifier {
       await sendDirectorNote(text);
       return;
     }
+
+    // Sending a real message ends the /exit undo window.
+    _clearExitUndo();
 
     final senderName = _userPersonaService.persona.name;
     _messages.add(ChatMessage(text: text, sender: senderName, isUser: true));

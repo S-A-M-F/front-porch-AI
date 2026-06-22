@@ -69,6 +69,7 @@ class ChatCommandHandler {
     required void Function(String initialFilter) requestGuestPicker,
     required Future<bool> Function() runCastScan,
     required Future<void> Function(CharacterCard guest) speakGuest,
+    required void Function(CharacterCard guest) armExitUndo,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -81,7 +82,8 @@ class ChatCommandHandler {
        _joinGuest = joinGuest,
        _requestGuestPicker = requestGuestPicker,
        _runCastScan = runCastScan,
-       _speakGuest = speakGuest;
+       _speakGuest = speakGuest,
+       _armExitUndo = armExitUndo;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -96,6 +98,7 @@ class ChatCommandHandler {
   final void Function(String initialFilter) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
+  final void Function(CharacterCard guest) _armExitUndo;
 
   /// The user-facing slash-command reference (single source of truth for the
   /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
@@ -391,5 +394,9 @@ class ChatCommandHandler {
 
     // Narrate the departure through the primary character's next turn.
     await _generatePrimaryTurn();
+
+    // Offer a brief UNDO — the departure message can be deleted and the guest
+    // restored with full context (their evolution/memory are not wiped by exit).
+    _armExitUndo(target);
   }
 }

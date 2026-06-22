@@ -28,6 +28,7 @@ void main() {
     late List<CharacterCard> joinable;
     late List<CharacterCard> joined;
     late List<CharacterCard> spoke;
+    late List<CharacterCard> undoArmed;
     late List<String> pickerRequests;
     late String? pendingDeparture;
     late int primaryTurns;
@@ -52,6 +53,7 @@ void main() {
           return castScanFound;
         },
         speakGuest: (g) async => spoke.add(g),
+        armExitUndo: (g) => undoArmed.add(g),
       );
     }
 
@@ -64,6 +66,7 @@ void main() {
       joinable = [];
       joined = [];
       spoke = [];
+      undoArmed = [];
       pickerRequests = [];
       pendingDeparture = null;
       primaryTurns = 0;
@@ -137,6 +140,15 @@ void main() {
       expect(exited.single.name, 'Bram'); // most-recent guest
       expect(pendingDeparture, 'Bram');
       expect(primaryTurns, 1);
+      // Undo is armed (after the departure turn) for the exited guest.
+      expect(undoArmed.single.name, 'Bram');
+    });
+
+    test('a failed /exit (unknown name) does NOT arm undo', () async {
+      guests = [_guest('Aria')];
+      final h = build();
+      await h.handle('/exit zzz');
+      expect(undoArmed, isEmpty);
     });
 
     test('/exit <name> selects the named guest (case-insensitive)', () async {
