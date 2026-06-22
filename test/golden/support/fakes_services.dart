@@ -30,7 +30,11 @@ import 'package:front_porch_ai/models/local_model_info.dart';
 import 'package:front_porch_ai/services/cloud_sync_service.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
 import 'package:front_porch_ai/services/hardware_service.dart';
+import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/services/pseudo_remote_service.dart';
+import 'package:front_porch_ai/services/voice_manager.dart';
 
 /// [CloudSyncService] double. Exposes the status surface that
 /// [CloudSyncPage._buildCloudSyncSection] reads at build time.
@@ -117,6 +121,79 @@ class FakeHardwareService extends ChangeNotifier implements HardwareService {
   HardwareInfo? get hardwareInfo => _hardwareInfo;
   @override
   bool get isDetecting => false;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [KoboldService] double for [KoboldLogDialog]. Exposes build-time reads:
+/// [isRunning], [isStarting], [isReady], and [logs].
+class FakeKoboldService extends ChangeNotifier implements KoboldService {
+  @override
+  bool get isRunning => false;
+  @override
+  bool get isStarting => false;
+  @override
+  bool get isReady => false;
+  @override
+  List<String> get logs => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [PseudoRemoteService] double for [KoboldLogDialog]. Needs to be in the
+/// provider tree even for [BackendType.kobold] because the Consumer builder
+/// does a one-off `Provider.of<PseudoRemoteService>(context, listen: false)`.
+class FakePseudoRemoteService extends ChangeNotifier
+    implements PseudoRemoteService {
+  @override
+  bool get isRunning => false;
+  @override
+  bool get isProcessRunning => false;
+  @override
+  bool get isStarting => false;
+  @override
+  bool get isReady => false;
+  @override
+  String get backendName => 'PseudoRemote';
+  @override
+  String get modelName => '';
+  @override
+  List<String> get logs => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [VoiceManager] double for [VoiceBrowserDialog] and [TtsSettingsDialog].
+/// [catalog] returns empty so the list shows an "empty" state.
+/// [fetchCatalog] and [listInstalledVoices] are no-ops / return empty lists so
+/// [_loadData] in [VoiceBrowserDialog] and [_loadInstalledVoices] in
+/// [TtsSettingsDialog] complete without IO.
+class FakeVoiceManager extends ChangeNotifier implements VoiceManager {
+  @override
+  List<PiperVoice> get catalog => const [];
+
+  @override
+  bool get isLoadingCatalog => false;
+
+  @override
+  Future<void> fetchCatalog() async {}
+
+  @override
+  Future<List<String>> listInstalledVoices() async => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [ImageGenService] double for [ImageGenSettingsDialog] (via
+/// [GenerationOptionsTab]). [fetchImageModels] returns an empty list so
+/// [_fetchModels] completes without network access.
+class FakeImageGenService extends ChangeNotifier implements ImageGenService {
+  @override
+  Future<List<ImageModelInfo>> fetchImageModels() async => const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

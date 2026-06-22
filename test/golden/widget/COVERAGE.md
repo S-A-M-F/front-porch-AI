@@ -34,7 +34,15 @@ and flip the row to ✅.
 - ✅ `support/fakes_storage.dart` — `FakeStorageService` with all build-time getters
   including `generationSettings` (for `resolveTemperature` etc.) and `backendSettings`
   (for `resolveContextSize`). Audited against CloudSyncPage, BackgroundSettingsDialog,
-  UiSettingsDialog, ChatSettingsDialog, ModelSettingsDialog, ModelManagerPage.
+  UiSettingsDialog, ChatSettingsDialog, ModelSettingsDialog, ModelManagerPage,
+  TtsSettingsDialog (ttsEngine/Enabled/SpeechRate/Concurrency/AutoPlay/NarrateQuotedOnly/
+  IgnoreAsterisks/ReplaceCurlyQuotes/VoiceModel/openaiTtsApiKey/BaseUrl/Model),
+  ImageGenSettingsDialog (imageGenEnabled/Model/Size/Style/PromptParadigm/
+  NegativePrompt/Backend/Seed/drawThingsGrpcHost/Port/localImageGenUrl).
+- ✅ `support/fakes_services.dart` — `FakeKoboldService` (logs/isRunning/isReady/isStarting),
+  `FakePseudoRemoteService` (logs/isRunning/isProcessRunning/isReady/backendName/modelName),
+  `FakeVoiceManager` (catalog=[]/isLoadingCatalog/fetchCatalog no-op/listInstalledVoices=>[]),
+  `FakeImageGenService` (fetchImageModels async=>[]).
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -126,11 +134,35 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 - ✅ `group_objectives_dialog.dart` — 2 characters (Aria Vale + Dex Marlowe), empty
   objectives list; `FakeChatService` injected directly. `settle: false` (_goalController).
   Pre-existing 6px layout overflow suppressed via `FlutterError.onError`. Surface 640×700.
+- ✅ `kobold_log_dialog.dart` — kobold backend stopped; FakeLLMProvider + FakeKoboldService +
+  FakePseudoRemoteService (`dialogs_remaining_golden_test.dart`)
+- ✅ `model_settings_dialog.dart` — openRouter backend renders _buildRemoteSettings() only
+  (avoids ModelManager/KoboldService/HardwareService); FakeLLMProvider + FakeStorageService
+- ✅ `user_persona_dialog.dart` — empty persona list; FakeUserPersonaService
+- ✅ `voice_browser_dialog.dart` — empty voice catalog; FakeVoiceManager.
+  Pre-existing filter-chip row overflow suppressed via FlutterError.onError.
+- ✅ `tts_settings_dialog.dart` — ttsEngine='disabled' hides all engine-specific sections;
+  FakeStorageService + FakeTtsService + FakeVoiceManager (initState calls
+  _loadInstalledVoices unconditionally via VoiceManager).
+- ✅ `image_gen_settings_dialog.dart` — imageGenBackend='remote' skips local fetches in
+  initState; fetchImageModels no-op; FakeStorageService + FakeImageGenService.
+- ✅ `character_avatars_dialog.dart` — 0 avatars; all deps injected as constructor params
+  (no Provider tree). FakeCharacterRepository + FakeStorageService.
+- ✅ `edit_character_dialog.dart` — tab 0 (Details); FakeStorageService for
+  _buildColorRow() globalXxxColor fallbacks. settle:false (StyledTextControllers).
+- ✅ `image_crop_dialog.dart` — 64×64 grey PNG bytes generated via image package;
+  no Provider tree needed.
+- ✅ `group_settings_dialog.dart` — activeGroup==null renders "No active group chat"
+  empty state in tab 0; FakeChatService + FakeGroupChatRepository injected as
+  constructor params. settle:false (TabController).
 - 🚫 `rocm_guidance_dialog.dart` — inner widget `_RocmGuidanceDialog` is private; public API
   is a function `showRocmGuidanceDialog(context, linuxDistro)`, not directly pumpable
 - 🚫 `lorebook_entry_dialog.dart` — inner widget `_LorebookEntryDialog` is private; public API
   is `showLorebookEntryDialog(...)`, not directly pumpable
-- ⬜ remaining 13 dialogs — pumped in compact surfaces at representative populated state
+- 🚫 `data_bank_dialog.dart` — initState calls `Provider.of<AppDatabase>.getDataBankEntriesForCharacter()`;
+  AppDatabase is a Drift-generated concrete class, not practically fakeable with noSuchMethod
+- 🚫 `database_cleanup_dialog.dart` — initState calls `Provider.of<AppDatabase>` then
+  `DatabaseCleanup.checkOrphans(db)`; same AppDatabase constraint as above
 
 ## Navigation sidebar — `lib/ui/widgets/sidebar.dart`
 - ✅ `widget/sidebar_nav_golden_test.dart`: Home selected (index 0), Settings selected (index 3),
