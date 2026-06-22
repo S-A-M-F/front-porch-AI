@@ -183,7 +183,7 @@ extension GenLlm on CharacterGenService {
         // blocks) as a failure so the retry loop can recover — otherwise the
         // caller cleans it to empty and the field (e.g. the first message) is
         // silently dropped.
-        if (_stripThinkBlocks(accumulated).isNotEmpty) return accumulated;
+        if (stripThinkBlocks(accumulated).isNotEmpty) return accumulated;
 
         // Empty / think-only response — retry with diagnostics
         debugPrint(
