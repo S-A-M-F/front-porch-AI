@@ -71,7 +71,7 @@ class VramUsageSection extends StatelessWidget {
     if (!fits) {
       barColor = Theme.of(context).colorScheme.error;
     } else if (fraction > 0.85) {
-      barColor = AppColors.logWarn;
+      barColor = AppColors.logError;
     } else if (fraction > 0.6) {
       barColor = AppColors.logWarn;
     } else {

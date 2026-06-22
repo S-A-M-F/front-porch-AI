@@ -1847,9 +1847,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 icon: const Icon(Icons.auto_fix_high, size: 18),
                 label: const Text('Generate KCPPS Config...'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
+                  foregroundColor: AppColors.textSecondary(context),
                   side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: AppColors.borderOf(context),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),

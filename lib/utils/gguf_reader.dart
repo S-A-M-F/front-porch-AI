@@ -96,7 +96,7 @@ class GGUFFileReader {
             else if (arrType == 3) { v = data.getInt16(offset, Endian.little); offset += 2; }
             else if (arrType == 4) { v = data.getUint32(offset, Endian.little); offset += 4; }
             else if (arrType == 5) { v = data.getInt32(offset, Endian.little); offset += 4; }
-            else { v = (data.getFloat32(offset, Endian.little) as num).toInt(); offset += 4; }
+            else { v = data.getFloat32(offset, Endian.little).toInt(); offset += 4; }
             values.add(v);
           }
           meta[key] = values;
@@ -171,7 +171,9 @@ class GGUFFileReader {
         if (offset + strLen > byteLength) return null;
         return _ScalarResult(
           utf8.decode(
-            data.buffer.asUint8List(offset, strLen),
+            // offset is relative to the ByteData view, so add its base offset
+            // to address the underlying buffer correctly even for sub-views.
+            data.buffer.asUint8List(data.offsetInBytes + offset, strLen),
             allowMalformed: true,
           ),
           offset + strLen,

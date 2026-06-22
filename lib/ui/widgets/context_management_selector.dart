@@ -6,13 +6,15 @@ class ContextManagementSelector extends StatelessWidget {
   const ContextManagementSelector({
     super.key,
     required this.currentMode,
-    required this.smartCacheSlots,
+    required this.smartCacheController,
     required this.onModeChanged,
     required this.onSmartCacheSlotsChanged,
   });
 
   final ContextManagementMode currentMode;
-  final int smartCacheSlots;
+
+  /// Owned and disposed by the parent so the field state survives rebuilds.
+  final TextEditingController smartCacheController;
   final ValueChanged<ContextManagementMode> onModeChanged;
   final ValueChanged<int> onSmartCacheSlotsChanged;
 
@@ -85,7 +87,7 @@ class ContextManagementSelector extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           TextField(
-            controller: TextEditingController(text: '$smartCacheSlots'),
+            controller: smartCacheController,
             keyboardType: TextInputType.number,
             style: theme.textTheme.bodyMedium,
             decoration: InputDecoration(

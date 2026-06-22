@@ -28,6 +28,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
   int _contextSize = 8192;
   String _kvQuant = 'f16';
   int _threads = 4;
+  final _threadsController = TextEditingController(text: '4');
   final _batchSizeController = TextEditingController(text: '512');
   final _batchSizeFocusNode = FocusNode();
   int _batchSize = 512;
@@ -70,6 +71,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
     _debounceTimer?.cancel();
     _batchSizeFocusNode.dispose();
     _batchSizeController.dispose();
+    _threadsController.dispose();
     Provider.of<HardwareService>(context, listen: false).removeListener(_onHardwareChanged);
     _contextSizeController.dispose();
     _smartCacheSlotsController.dispose();
@@ -102,6 +104,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
 
       setState(() {
         _threads = detected;
+        _threadsController.text = '$detected';
         _batchSize = _suggestBatchSize();
         _detecting = false;
       });
@@ -117,6 +120,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
     if (_selectedModelPath == null) return;
     final mgr = Provider.of<ModelManager>(context, listen: false);
     final info = await mgr.getModelArchitectureInfo(_selectedModelPath!);
+    if (!mounted) return;
     setState(() {
       _modelInfo = info;
       _batchSize = _suggestBatchSize();
@@ -227,6 +231,8 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
 
     try {
       final storage = Provider.of<StorageService>(context, listen: false);
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
       final content = KcppsGeneratorService.buildKcppsContent(
         modelPath: _selectedModelPath!,
         contextSize: _contextSize,
@@ -249,21 +255,23 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
       await storage.setActiveKcppsPath(kcppsFile.path);
 
       if (!mounted) return;
-      Navigator.of(context).pop(true);
-
-      ScaffoldMessenger.of(context).showSnackBar(
+      // Show the confirmation via the captured messenger (survives the pop)
+      // and close the dialog. Don't reset `_generating` here — the State is
+      // about to be torn down, so a setState after pop would be a no-op/error.
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             'KCPPS config generated for ${path.basename(_selectedModelPath!)}',
           ),
         ),
       );
+      navigator.pop(true);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
+        _generating = false;
         _errorMessage = 'Failed to generate config: $e';
       });
-    } finally {
-      setState(() => _generating = false);
     }
   }
 
@@ -408,7 +416,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                     ),
                     const SizedBox(height: 6),
                     TextField(
-                      controller: TextEditingController(text: '$_threads'),
+                      controller: _threadsController,
                       keyboardType: TextInputType.number,
                       style: theme.textTheme.bodyMedium,
                       decoration: InputDecoration(
@@ -472,7 +480,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
 
                     ContextManagementSelector(
                       currentMode: _contextMode,
-                      smartCacheSlots: _smartCacheSlots,
+                      smartCacheController: _smartCacheSlotsController,
                       onModeChanged: (v) {
                         setState(() => _contextMode = v);
                         _computeVramEstimate();
