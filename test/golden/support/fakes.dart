@@ -26,11 +26,14 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'package:front_porch_ai/database/database.dart' show Objective;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
+import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
+import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 
@@ -81,6 +84,18 @@ class FakeChatService extends ChangeNotifier implements ChatService {
     String timeOfDay = 'evening',
     int dayCount = 3,
     int startDayOfWeek = 1,
+    int shortTermBond = 120,
+    int longTermBond = 60,
+    int trustLevel = 40,
+    Map<String, int> needs = const {
+      'hunger': 70,
+      'bladder': 55,
+      'energy': 80,
+      'social': 45,
+      'fun': 65,
+      'hygiene': 75,
+      'comfort': 60,
+    },
   }) {
     _time = TimeService(
       onNotify: () {},
@@ -103,11 +118,67 @@ class FakeChatService extends ChangeNotifier implements ChatService {
       onSaveChat: () async {},
       onSetPendingRealismMetadata: (_, _) {},
     );
+    _needs = NeedsSimulation(
+      onNotify: () {},
+      onSaveChat: () async {},
+      getTimeOfDay: () => timeOfDay,
+      getRealismEnabled: () => realismEnabled,
+      getArousalLevel: () => 0,
+      getNsfwCooldownEnabled: () => false,
+      getCooldownTurnsRemaining: () => 0,
+      getObserverMode: () => false,
+      getCurrentSpeakerIdForRealism: () => '',
+      getIsGroupNonObserverMode: () => false,
+      getGroupNeeds: (_) => {},
+      setGroupNeeds: (_, _) {},
+      getEnjoysLowHygiene: () => false,
+      getNeedsSimEnabled: () => needsSimEnabled,
+      setArousalLevel: (_) {},
+    )..restoreFromSnapshot(needs);
+    _relationship = RelationshipService(
+      onNotify: () {},
+      onSaveChat: () async {},
+      getIsGroupActive: () => false,
+      getObserverMode: () => false,
+      getGroupCharacterCount: () => 0,
+      getShouldTrackInterCharacterRelationships: () => false,
+      getCurrentSpeakerIdForRealism: () => '',
+      getCurrentGroupMemberIds: () => <String>{},
+      getOtherGroupMemberIds: (_) => const [],
+      getOtherGroupMemberIdToLowerName: (_) => const {},
+      getRecentExchangeLowerText: () => '',
+      getMessageCount: () => 0,
+      getIsGroupRealismActive: () => false,
+      getGroupAffectionScore: (_, {int defaultValue = 0}) => defaultValue,
+      setGroupAffectionScore: (_, _) {},
+      getGroupLongTermScore: (_, {int defaultValue = 0}) => defaultValue,
+      setGroupLongTermScore: (_, _) {},
+      getGroupTrustLevel: (_, {int defaultValue = 0}) => defaultValue,
+      setGroupTrustLevel: (_, _) {},
+      getGroupFixation: (_, {String defaultValue = ''}) => defaultValue,
+      setGroupFixation: (_, _) {},
+      getGroupFixationLifespan: (_, {int defaultValue = 0}) => defaultValue,
+      setGroupFixationLifespan: (_, _) {},
+      getGroupRelationshipTier: (_, {int defaultValue = 0}) => defaultValue,
+      setGroupRelationshipTier: (_, _) {},
+      getGroupLongTermTier: (_, {int defaultValue = 0}) => defaultValue,
+      setGroupLongTermTier: (_, _) {},
+      getGroupSpatialStance: (_, {String defaultValue = ''}) => defaultValue,
+      setGroupSpatialStance: (_, _) {},
+      getGroupInterCharacterRelationships: (_) => <String, int>{},
+      setGroupInterCharacterRelationships: (_, _) {},
+    )..loadScalars(
+        affectionScore: shortTermBond,
+        longTermScore: longTermBond,
+        trustLevel: trustLevel,
+      );
   }
 
   late final TimeService _time;
   late final NsfwService _nsfw;
   late final ChaosModeService _chaos;
+  late final NeedsSimulation _needs;
+  late final RelationshipService _relationship;
 
   @override
   final bool realismEnabled;
@@ -142,12 +213,24 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   NsfwService get nsfwService => _nsfw;
   @override
   ChaosModeService get chaosModeService => _chaos;
+  @override
+  NeedsSimulation get needsSimulation => _needs;
+  @override
+  RelationshipService get relationshipService => _relationship;
 
   // 1:1 mode by default (no active group) for the simple sidebar sections.
   @override
   GroupChat? get activeGroup => null;
   @override
   bool get chaosNsfwEnabled => _chaos.chaosNsfwEnabled;
+
+  // Objective surface — empty by default (renders the "propose an objective" UI).
+  @override
+  Objective? get primaryObjective => null;
+  @override
+  List<Objective> get secondaryObjectives => const [];
+  @override
+  bool get isCheckingCompletion => false;
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>

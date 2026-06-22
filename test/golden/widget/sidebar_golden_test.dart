@@ -33,11 +33,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/chat_components/sidebar/author_note_section.dart';
 import 'package:front_porch_ai/ui/chat_components/sidebar/chaos_mode_section.dart';
 import 'package:front_porch_ai/ui/chat_components/sidebar/lorebook_section.dart';
 import 'package:front_porch_ai/ui/chat_components/sidebar/nsfw_section.dart';
+import 'package:front_porch_ai/ui/chat_components/sidebar/objective_section.dart';
+import 'package:front_porch_ai/ui/chat_components/sidebar/realism_section.dart';
 import 'package:front_porch_ai/ui/chat_components/sidebar/scene_time_section.dart';
 import 'package:front_porch_ai/ui/chat_components/sidebar/summary_section.dart';
 
@@ -168,6 +171,48 @@ void main() {
       group: 'sidebar',
       name: 'lorebook',
       surface: const Size(380, 420),
+      settle: false,
+    );
+  });
+
+  testWidgets('ObjectiveSection — no active objective', (tester) async {
+    final chat = FakeChatService();
+    addTearDown(chat.dispose);
+    await expectThemedGoldens(
+      tester,
+      // The section nests a Consumer<ChatService>, so provide it in the tree.
+      child: ChangeNotifierProvider<ChatService>.value(
+        value: chat,
+        child: SizedBox(width: 320, child: ObjectiveSection(chatService: chat)),
+      ),
+      group: 'sidebar',
+      name: 'objective_empty',
+      surface: const Size(360, 360),
+      settle: false,
+    );
+  });
+
+  testWidgets('RealismSection — bond/trust/needs populated', (tester) async {
+    final chat = FakeChatService(
+      activeCharacter: CharacterCard(name: 'Aria Vale'),
+      characterEmotion: 'affection',
+      emotionIntensity: 'strong',
+    );
+    addTearDown(chat.dispose);
+    final storage = _storage();
+    addTearDown(storage.dispose);
+    await expectThemedGoldens(
+      tester,
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider<StorageService>.value(value: storage),
+          ChangeNotifierProvider<ChatService>.value(value: chat),
+        ],
+        child: SizedBox(width: 340, child: RealismSection(chatService: chat)),
+      ),
+      group: 'sidebar',
+      name: 'realism',
+      surface: const Size(380, 900),
       settle: false,
     );
   });
