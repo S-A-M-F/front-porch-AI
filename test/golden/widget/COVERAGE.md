@@ -23,7 +23,8 @@ and flip the row to ✅.
   `realismEvalStreamTextClean` returns `''` so the "initializing" branch renders).
   `FakeTtsService` ✅. `FakeUserPersonaService` ✅. `FakeCharacterRepository` ✅.
   `FakeFolderService` ✅. `FakeGroupChatRepository` ✅. `FakeAppState` ✅.
-  `FakeUpdateService` ✅.
+  `FakeUpdateService` ✅ (extended with `downloadComplete`, `downloading`,
+  `displayLatestVersion`, `releaseNotes`, `downloadProgress` for UpdateDialog).
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -44,17 +45,26 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   needs those service doubles too.
 - ⬜ `GuidedConfigStep`, `AutomatedConfigStep`, `GeneratingStep`.
 
-## Leaf widgets — `lib/ui/widgets/` (prop-only, no provider tree)
+## Leaf widgets — `lib/ui/widgets/` and `lib/ui/chat_components/widgets/`
 - ✅ `needs_bar.dart` — `NeedsBar` (healthy/critical/mini) + `NeedsGrid` (full set)
-- ⬜ `fixation_chip.dart`, `realism_progress_row.dart`, `slider_with_input.dart`,
-  `styled_dropdown.dart`, `app_text_field.dart`, `character_name_input.dart`,
-  `age_gender_row.dart`, `nsfw_toggle.dart`, `persona_selector_dropdown.dart`,
-  `model_selector.dart`, `local_model_card.dart`, `hf_model_card.dart`,
-  `kcpps_selector.dart`, `greeting_tone_selector.dart`,
-  `avatar_art_style_selector.dart`, `first_message_length_dropdown.dart`,
-  `alternate_greetings_slider.dart`, `description_detail_chip_row.dart`,
-  `_hoverable_card.dart`, `log_view.dart`, `download_queue_panel.dart`, …
-- ⬜ `chat_components/widgets/` — `eval_pill.dart`, `settings_menu_item.dart`
+- ✅ `fixation_chip.dart` — compact variant; expanded with lifespan (`leaf_widgets_golden_test.dart`)
+- ✅ `realism_progress_row.dart` — positive bond "Close" tier; negative trust red
+- ✅ `slider_with_input.dart` — mid-range float (Builder for context param)
+- ✅ `styled_dropdown.dart` — three string options
+- ✅ `nsfw_toggle.dart` — off state; on state
+- ✅ `local_model_card.dart` — seeded Q4_K_M 8B model, 8 GB VRAM
+- ✅ `realism_form_section.dart` — enabled state, all required params as no-ops
+- ✅ `needs_form_section.dart` — enabled state, all per-need baselines set
+- ✅ `log_view.dart` — static log lines; no blinking ticker (`leaf_animated_golden_test.dart`)
+- ✅ `download_queue_panel.dart` — one active download task, panel expanded
+- ✅ `hf_model_card.dart` — collapsed state, seeded 8B model with two quant files
+- ✅ `chat_components/widgets/eval_pill.dart` — `AnimatedEvalPill` frozen at pulse 0.5
+- ✅ `chat_components/widgets/settings_menu_item.dart` — icon + label
+- ⬜ `app_text_field.dart`, `character_name_input.dart`, `age_gender_row.dart`,
+  `persona_selector_dropdown.dart`, `model_selector.dart`, `kcpps_selector.dart`,
+  `greeting_tone_selector.dart`, `avatar_art_style_selector.dart`,
+  `first_message_length_dropdown.dart`, `alternate_greetings_slider.dart`,
+  `description_detail_chip_row.dart`, `_hoverable_card.dart`
 
 ## Chat bubbles — `lib/ui/chat_components/bubbles/`
 - ✅ `message_bubble.dart` — `widget/chat_golden_test.dart`: user message, AI plain,
@@ -87,7 +97,16 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 - ⬜ `rag_setup_dialog.dart` — reads `EmbeddingSidecar` (RAG subprocess manager); needs that double
 
 ## Dialogs — `lib/ui/dialogs/` (25; skip `group_settings_dialog.dart.broken`)
-- ⬜ all — pumped in a compact surface at a representative populated state
+- ✅ `byaf_import_dialog.dart` — seeded preview (name + persona + first message) (`dialogs_golden_test.dart`)
+- ✅ `stable_db_import_dialog.dart` — glassmorphic import prompt (const, no providers)
+- ✅ `tag_dialog.dart` — character with two existing tags (CharacterRepository only
+  called from onChanged handler, never during static golden)
+- ✅ `update_dialog.dart` — prompt stage via `FakeUpdateService` in `ChangeNotifierProvider`
+- 🚫 `rocm_guidance_dialog.dart` — inner widget `_RocmGuidanceDialog` is private; public API
+  is a function `showRocmGuidanceDialog(context, linuxDistro)`, not directly pumpable
+- 🚫 `lorebook_entry_dialog.dart` — inner widget `_LorebookEntryDialog` is private; public API
+  is `showLorebookEntryDialog(...)`, not directly pumpable
+- ⬜ remaining 19 dialogs — pumped in compact surfaces at representative populated state
 
 ## Navigation sidebar — `lib/ui/widgets/sidebar.dart`
 - ✅ `widget/sidebar_nav_golden_test.dart`: Home selected (index 0), Settings selected (index 3),
@@ -119,6 +138,11 @@ Also `FakeKoboldService` to cover the home page status bar widget (currently
 inlined as a private method `_wrapWithStatusBar` in `HomePage` — not directly
 pumpable; extract or note as ⬜). With those, the remaining pages become
 component-by-component goldens like the sidebar.
+
+The remaining ⬜ dialogs (19 of 25) and leaf widgets (12 of 36) are the logical
+next batch. Dialogs that use providers beyond `UpdateService` need matching Fake
+doubles before they can be pumped. Leaf widgets with heavy service deps
+(model_selector, kcpps_selector, etc.) may need the same treatment.
 
 ## Image studio — `lib/ui/image_studio/`
 - ⬜ main surfaces + generation options tab (extend existing `test/ui/image_studio/`)
