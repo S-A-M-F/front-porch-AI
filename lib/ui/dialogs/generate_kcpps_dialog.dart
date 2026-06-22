@@ -167,7 +167,10 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
         batchSize: _batchSize,
         kvQuant: _kvQuant,
         isSwa: _contextMode == ContextManagementMode.slidingWindowAttention,
-        moeExpertsOnCpu: true,
+        // On Apple Silicon, CPU and GPU share unified memory: offloading MoE
+        // experts to "CPU" frees no memory and would only slow generation, so
+        // the whole quantized model is modelled as GPU-resident there.
+        moeExpertsOnCpu: !Platform.isMacOS,
       );
     } else if (_hardwareInfo?.vramMb != null && _hardwareInfo!.vramMb > 0) {
       final totalMb = VramEstimator.estimateVramNeeded(
@@ -212,7 +215,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
       contextSize: _contextSize,
       kvQuant: _kvQuant,
       isSwa: _contextMode == ContextManagementMode.slidingWindowAttention,
-      moeExpertsOnCpu: true,
+      moeExpertsOnCpu: !Platform.isMacOS, // unified memory; see _computeVramEstimate
       availableVramMb: vramMb,
       autofitpaddingMb: padding,
     );

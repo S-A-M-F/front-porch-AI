@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/services/hardware_service.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
@@ -171,6 +173,22 @@ class VramUsageSection extends StatelessWidget {
               color: AppColors.textSecondary(context),
             ),
           ),
+          if (Platform.isMacOS) ...[
+            const SizedBox(height: 6),
+            Text(
+              modelInfo?.isMoe == true
+                  ? 'macOS: CPU and GPU share unified memory, so the whole model '
+                      'loads into one pool — MoE experts are not offloaded to CPU '
+                      '(no memory saving, and it would slow generation). Estimate '
+                      'targets unified memory; budget against ~70% of total RAM.'
+                  : 'macOS: this estimates unified memory shared by CPU and GPU. '
+                      'Budget against ~70% of total RAM (the Metal allocation cap).',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: AppColors.textSecondary(context),
+              ),
+            ),
+          ],
           if (!fits) ...[
             const SizedBox(height: 4),
             Text(
