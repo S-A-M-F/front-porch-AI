@@ -8,6 +8,9 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/model_manager.dart';
 import 'package:front_porch_ai/services/kcpps_generator_service.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/context_management_selector.dart';
+import 'package:front_porch_ai/ui/widgets/gpu_info_tile.dart';
+import 'package:front_porch_ai/ui/widgets/vram_usage_section.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/utils/gguf_parser.dart';
 import 'package:front_porch_ai/utils/vram_estimator.dart';
@@ -38,14 +41,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
   HardwareInfo? _hardwareInfo;
   Map<String, dynamic> _gpuConfig = {};
   String? _errorMessage;
-  ({
-    int weightsMb,
-    int kvCacheMb,
-    int computeBufMb,
-    int overheadMb,
-    int totalMb,
-    double activeWeightRatio,
-  })? _vramEstimate;
+  VramEstimateBreakdown? _vramEstimate;
 
   final _kvQuantOptions = ['f16', 'q8_0', 'q4_0'];
   Timer? _debounceTimer;
@@ -474,96 +470,17 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Context Management
-                    Text(
-                      'Context Management',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary(context),
-                      ),
+                    ContextManagementSelector(
+                      currentMode: _contextMode,
+                      smartCacheSlots: _smartCacheSlots,
+                      onModeChanged: (v) {
+                        setState(() => _contextMode = v);
+                        _computeVramEstimate();
+                      },
+                      onSmartCacheSlotsChanged: (v) {
+                        _smartCacheSlots = v;
+                      },
                     ),
-                    const SizedBox(height: 6),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: colors,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: RadioGroup<ContextManagementMode>(
-                        groupValue: _contextMode,
-                        onChanged: (v) {
-                          if (v != null) {
-                            setState(() => _contextMode = v);
-                            _computeVramEstimate();
-                          }
-                        },
-                        child: Column(
-                          children: [
-                            RadioListTile<ContextManagementMode>(
-                              title: const Text(
-                                'Sliding Window Attention (SWA)',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                              subtitle: const Text(
-                                'Compact KV cache, incompatible with '
-                                'FastForwarding/ContextShift',
-                                style: TextStyle(fontSize: 11),
-                              ),
-                              dense: true,
-                              value: ContextManagementMode
-                                  .slidingWindowAttention,
-                            ),
-                            RadioListTile<ContextManagementMode>(
-                              title: const Text(
-                                'FastForwarding + ContextShift + SmartCache',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                              subtitle: const Text(
-                                'Faster context reprocessing, '
-                                'uses RAM for cached context',
-                                style: TextStyle(fontSize: 11),
-                              ),
-                              dense: true,
-                              value: ContextManagementMode
-                                  .fastForwardSmartCache,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_contextMode ==
-                        ContextManagementMode.fastForwardSmartCache) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'SmartCache Slots',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary(context),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: _smartCacheSlotsController,
-                        keyboardType: TextInputType.number,
-                        style: theme.textTheme.bodyMedium,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          filled: true,
-                          fillColor: colors,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        onChanged: (val) {
-                          final parsed = int.tryParse(val);
-                          if (parsed != null && parsed > 0) {
-                            _smartCacheSlots = parsed.clamp(1, 20);
-                          }
-                        },
-                      ),
-                    ],
                     const SizedBox(height: 20),
 
                     // Greedy allocation toggle
@@ -601,7 +518,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                           ),
                           Switch(
                             value: _greedyAllocation,
-                            activeTrackColor: Colors.blueAccent,
+                            activeTrackColor: Theme.of(context).colorScheme.primary,
                             onChanged: (val) {
                               setState(() => _greedyAllocation = val);
                               _computeVramEstimate();
@@ -612,44 +529,19 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                     ),
                     const SizedBox(height: 20),
 
-                    // GPU info (read-only)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.memory,
-                            size: 16,
-                            color: AppColors.textSecondary(context),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _hardwareInfo != null
-                                  ? 'GPU: ${_hardwareInfo!.gpuName} '
-                                      '(${_hardwareInfo!.vramMb}MB VRAM)'
-                                      '${_gpuConfig.isNotEmpty ? " — ${_gpuConfig.keys.first}" : " — CPU"}'
-                                  : 'GPU: detecting...',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: AppColors.textSecondary(context),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
+                    GpuInfoTile(
+                      hardwareInfo: _hardwareInfo,
+                      gpuConfig: _gpuConfig,
                     ),
 
                     const SizedBox(height: 16),
-                    _buildVramSection(context, theme, colors),
+                    VramUsageSection(
+                      selectedModelPath: _selectedModelPath,
+                      vramEstimate: _vramEstimate,
+                      modelInfo: _modelInfo,
+                      hardwareInfo: _hardwareInfo,
+                      isGreedyAllocation: _greedyAllocation,
+                    ),
                     const SizedBox(height: 4),
 
                     // Error message
@@ -657,7 +549,7 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
                       const SizedBox(height: 16),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(color: Colors.redAccent),
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
                       ),
                     ],
                   ],
@@ -702,168 +594,6 @@ class _GenerateKcppsDialogState extends State<GenerateKcppsDialog> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildVramSection(BuildContext context, ThemeData theme, Color colors) {
-    if (_selectedModelPath == null) return const SizedBox.shrink();
-
-    if (_vramEstimate == null) {
-      String msg;
-      if (_modelInfo == null) {
-        msg = _hardwareInfo?.vramMb != null
-            ? 'Parsing model metadata...'
-            : 'Detecting hardware...';
-      } else {
-        msg = _hardwareInfo?.vramMb != null
-            ? 'VRAM estimate unavailable'
-            : 'Waiting for GPU detection...';
-      }
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: colors,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.memory, size: 16,
-                color: AppColors.textSecondary(context)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                msg,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary(context),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final availableMb = _hardwareInfo?.vramMb ?? 0;
-    final fraction = availableMb > 0 ? _vramEstimate!.totalMb / availableMb : 0.0;
-    final fits = fraction <= 1.0;
-
-    final Color barColor;
-    if (!fits) {
-      barColor = Colors.redAccent;
-    } else if (fraction > 0.85) {
-      barColor = Colors.deepOrange;
-    } else if (fraction > 0.6) {
-      barColor = Colors.amber.shade700;
-    } else {
-      barColor = Colors.green;
-    }
-
-    final paddingMb = _greedyAllocation ? 32 : 1024;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: colors,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.memory, size: 16,
-                  color: AppColors.textSecondary(context)),
-              const SizedBox(width: 8),
-              Text(
-                'VRAM Usage Estimate',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary(context),
-                ),
-              ),
-              const Spacer(),
-              if (_modelInfo == null) ...[
-                Text(
-                  '(basic)',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 11,
-                    color: Colors.amber.shade500,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Icon(
-                fits
-                    ? Icons.check_circle_outline
-                    : Icons.warning_amber_rounded,
-                size: 16,
-                color: fits ? Colors.green : Colors.redAccent,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: fraction.clamp(0.0, 1.0),
-              backgroundColor: const Color(0x4D808080),
-              valueColor: AlwaysStoppedAnimation(barColor),
-              minHeight: 8,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Weights: ${_vramEstimate!.weightsMb} MB  ·  '
-            'KV: ${_vramEstimate!.kvCacheMb} MB  ·  '
-            'Compute: ${_vramEstimate!.computeBufMb} MB  ·  '
-            'Overhead: ${_vramEstimate!.overheadMb} MB',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 11,
-              color: AppColors.textSecondary(context),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Total: ${_vramEstimate!.totalMb} MB / $availableMb MB '
-            '(${(fraction * 100).toStringAsFixed(0)}%)'
-            '${fits ? "" : " — EXCEEDS VRAM"}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: fits ? null : Colors.redAccent,
-            ),
-          ),
-          if (_modelInfo?.isMoe == true) ...[
-            const SizedBox(height: 4),
-            Text(
-              'MoE: ${(_vramEstimate!.activeWeightRatio * 100).toStringAsFixed(0)}% active '
-              '(${_modelInfo!.expertUsedCount ?? "?"} of ${_modelInfo!.expertCount ?? "?"} experts on GPU)',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11,
-                color: AppColors.textSecondary(context),
-              ),
-            ),
-          ],
-          const SizedBox(height: 4),
-          Text(
-            'Autofit padding: $paddingMb MB${_greedyAllocation ? " (greedy)" : ""}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 11,
-              color: AppColors.textSecondary(context),
-            ),
-          ),
-          if (!fits) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Reduce context size or enable greedy allocation',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11,
-                color: Colors.redAccent,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

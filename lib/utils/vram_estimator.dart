@@ -17,7 +17,17 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/models/hf_model.dart';
-import 'package:front_porch_ai/utils/gguf_parser.dart';
+import 'package:front_porch_ai/utils/gguf_model_info.dart';
+
+/// Return type for [VramEstimator.estimateFromArchitecture].
+typedef VramEstimateBreakdown = ({
+  int weightsMb,
+  int kvCacheMb,
+  int computeBufMb,
+  int overheadMb,
+  int totalMb,
+  double activeWeightRatio,
+});
 
 /// Default context size used for VRAM estimation when none is specified.
 const int defaultContextSize = 8192;
@@ -202,14 +212,7 @@ class VramEstimator {
   ///
   /// Returns a breakdown of weights, KV cache, compute buffers, and overhead.
   /// Use [availableVramMb] to also compute fit status.
-  static ({
-    int weightsMb,
-    int kvCacheMb,
-    int computeBufMb,
-    int overheadMb,
-    int totalMb,
-    double activeWeightRatio,
-  }) estimateFromArchitecture({
+  static VramEstimateBreakdown estimateFromArchitecture({
     required GGUFModelInfo modelInfo,
     required int fileSizeBytes,
     required int contextSize,
