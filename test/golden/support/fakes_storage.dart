@@ -139,6 +139,62 @@ class FakeStorageService extends ChangeNotifier implements StorageService {
   @override
   bool? get useRocm => null;
 
+  // TTS settings — TtsSettingsDialog reads these unconditionally in build()
+  // via Consumer2<StorageService, TtsService>. Engine-specific sections are
+  // gated on engineId; using 'disabled' keeps all engine branches hidden.
+  @override
+  String get ttsEngine => 'disabled';
+  @override
+  bool get ttsEnabled => false;
+  @override
+  double get ttsSpeechRate => 1.0;
+  @override
+  int get ttsConcurrency => 1;
+  @override
+  bool get ttsAutoPlay => false;
+  @override
+  bool get ttsNarrateQuotedOnly => false;
+  @override
+  bool get ttsIgnoreAsterisks => false;
+  @override
+  bool get ttsReplaceCurlyQuotes => false;
+  @override
+  String get ttsVoiceModel => '';
+  // initState reads (TtsSettingsDialog creates TextEditingControllers from these)
+  @override
+  String get openaiTtsApiKey => '';
+  @override
+  String get openaiTtsBaseUrl => '';
+  @override
+  String get openaiTtsModel => '';
+
+  // Image generation settings — GenerationOptionsTab reads these in build().
+  // imageGenBackend='remote' causes initState to skip the local-model / sampler
+  // / lora fetch calls, so only fetchImageModels() (a no-op on
+  // FakeImageGenService) is triggered.
+  @override
+  String get imageGenBackend => 'remote';
+  @override
+  bool get imageGenEnabled => false;
+  @override
+  String get imageGenModel => '';
+  @override
+  String get imageGenSize => '1024x1024';
+  @override
+  String get imageGenStyle => 'photorealistic';
+  @override
+  String get imageGenPromptParadigm => 'natural';
+  @override
+  String get imageGenNegativePrompt => '';
+  @override
+  String get localImageGenUrl => '';
+  @override
+  int get imageGenSeed => 0;
+  @override
+  String get drawThingsGrpcHost => '';
+  @override
+  int get drawThingsGrpcPort => 8080;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
