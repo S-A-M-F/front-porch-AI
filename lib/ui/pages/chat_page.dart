@@ -45,6 +45,9 @@ import 'package:front_porch_ai/ui/dialogs/user_persona_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/context_viewer_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/group_objectives_dialog.dart';
+import 'package:front_porch_ai/ui/dialogs/scene_guest_detected_dialog.dart';
+import 'package:front_porch_ai/services/chat/chat_command_handler.dart';
+import 'package:front_porch_ai/ui/dialogs/scene_guest_picker_dialog.dart';
 // Old ImageGenDialog removed in Stage 3 (full from-scratch Image Studio).
 // Studio launched below; see lib/ui/image_studio/ and _showImageGenDialog.
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
@@ -60,7 +63,9 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final StyledTextController _controller = StyledTextController(preset: StyledTextPreset.chat);
+  final StyledTextController _controller = StyledTextController(
+    preset: StyledTextPreset.chat,
+  );
   final ScrollController _scrollController = ScrollController();
   late final FocusNode _chatFocusNode;
   bool _autoScroll = true;
@@ -68,6 +73,9 @@ class _ChatPageState extends State<ChatPage> {
   int _inputMinLines = 1;
   double _dragAccumulator = 0;
   bool _isCallActive = false;
+  // Guards the Scene Guest detection popup so it cannot stack while open.
+  bool _showingGuestDetection = false;
+  bool _showingGuestPicker = false;
   bool? _externalImagesAllowed;
   bool _imageConsentChecked = false;
   TtsService? _ttsService;
@@ -131,6 +139,50 @@ class _ChatPageState extends State<ChatPage> {
         (_) => _showChanceTimeOverlay(context),
       );
     }
+    // Scene Guest cast detection — same Chance-Time-style pending-flag pattern.
+    if (chat.pendingGuestDetection != null && !_showingGuestDetection) {
+      _showingGuestDetection = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showGuestDetectionDialog(chat),
+      );
+    }
+    // Scene Guest `/join` picker — same pending-flag pattern.
+    if (chat.pendingGuestPickerFilter != null && !_showingGuestPicker) {
+      _showingGuestPicker = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showGuestPickerDialog(chat),
+      );
+    }
+    // A guest's background portrait finished — evict its stale cached image so
+    // the new art replaces the initials avatar.
+    final evictPath = chat.guestAvatarEvictPath;
+    if (evictPath != null) {
+      chat.consumeGuestAvatarEvict();
+      FileImage(_resolveCharImage(evictPath)).evict().then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+    // A guest just /exit-ed — offer a brief UNDO (delete the departure message
+    // + restore the guest with full context). Consume the offer so it shows once.
+    final exitUndoName = chat.exitUndoOfferName;
+    if (exitUndoName != null) {
+      chat.consumeExitUndoOffer();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('$exitUndoName left the scene'),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'UNDO',
+              onPressed: () => _chatService?.undoLastExit(),
+            ),
+          ),
+        );
+      });
+    }
   }
 
   void _showChanceTimeOverlay(BuildContext context) {
@@ -139,6 +191,53 @@ class _ChatPageState extends State<ChatPage> {
       barrierDismissible: false,
       builder: (_) => const ChanceTimeOverlay(),
     );
+  }
+
+  Future<void> _showGuestDetectionDialog(ChatService chat) async {
+    final detected = chat.pendingGuestDetection;
+    if (detected == null || !mounted) {
+      _showingGuestDetection = false;
+      return;
+    }
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => SceneGuestDetectedDialog(
+        detected: detected,
+        hostName: chat.activeCharacter?.name ?? 'your character',
+      ),
+    );
+    _showingGuestDetection = false;
+    if (accepted == true) {
+      await chat.acceptDetectedGuest();
+    } else {
+      chat.dismissDetectedGuest();
+    }
+  }
+
+  /// Show the `/join` character picker, then bring the chosen library character
+  /// into the scene as a Scene Guest. The pending flag is always cleared so the
+  /// picker never re-opens for the same request.
+  Future<void> _showGuestPickerDialog(ChatService chat) async {
+    final initial = chat.pendingGuestPickerFilter;
+    if (initial == null || !mounted) {
+      _showingGuestPicker = false;
+      chat.dismissGuestPicker();
+      return;
+    }
+    final selected = await showDialog<CharacterCard>(
+      context: context,
+      builder: (_) => SceneGuestPickerDialog(
+        characters: chat.joinableGuestCharacters,
+        initialFilter: initial,
+        resolveImage: _resolveCharImage,
+      ),
+    );
+    _showingGuestPicker = false;
+    chat.dismissGuestPicker();
+    if (selected != null) {
+      await chat.joinSceneGuest(selected);
+    }
   }
 
   void _onTtsChanged() {
@@ -458,12 +557,69 @@ class _ChatPageState extends State<ChatPage> {
                                           senderIdx >= 0 ? senderIdx : 0,
                                         );
                                       } else {
-                                        senderImage =
-                                            character?.imagePath != null
-                                            ? _resolveCharImage(
-                                                character!.imagePath!,
+                                        // 1:1: a message may belong to a Scene
+                                        // Guest (Lite NPC) rather than the active
+                                        // character. Resolve the guest's own
+                                        // name/avatar/color the same way groups do.
+                                        CharacterCard? guestChar;
+                                        if (!msg.isUser) {
+                                          // characterId on a message is the
+                                          // card's stableGroupId (PNG basename),
+                                          // so match that or fall back to sender.
+                                          guestChar = chatService
+                                              .sceneGuestCards
+                                              .where(
+                                                (g) =>
+                                                    g.stableGroupId ==
+                                                        msg.characterId ||
+                                                    g.name == msg.sender,
                                               )
-                                            : null;
+                                              .firstOrNull;
+                                          if (guestChar != null &&
+                                              guestChar.name ==
+                                                  character?.name &&
+                                              guestChar.dbId ==
+                                                  character?.dbId) {
+                                            guestChar = null; // it's the host
+                                          }
+                                        }
+                                        if (guestChar != null) {
+                                          senderImage =
+                                              guestChar.imagePath != null
+                                              ? _resolveCharImage(
+                                                  guestChar.imagePath!,
+                                                )
+                                              : null;
+                                          final gIdx = chatService
+                                              .sceneGuestCards
+                                              .indexWhere(
+                                                (g) =>
+                                                    g.dbId == guestChar!.dbId,
+                                              );
+                                          senderColor = _groupCharacterColor(
+                                            gIdx >= 0 ? gIdx : 0,
+                                          );
+                                        } else {
+                                          // Not a resolved guest. Use the host's
+                                          // avatar ONLY for an actual host
+                                          // message — a non-host sender that no
+                                          // longer resolves (a deleted/departed
+                                          // guest) gets the placeholder, not the
+                                          // host's face under the guest's name.
+                                          final isHostMsg =
+                                              msg.isUser ||
+                                              msg.sender == character?.name ||
+                                              (msg.characterId != null &&
+                                                  msg.characterId ==
+                                                      character?.stableGroupId);
+                                          senderImage =
+                                              (isHostMsg &&
+                                                  character?.imagePath != null)
+                                              ? _resolveCharImage(
+                                                  character!.imagePath!,
+                                                )
+                                              : null;
+                                        }
                                       }
                                       return MessageBubble(
                                         key: ObjectKey(msg),
@@ -2029,6 +2185,84 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  /// The "type /" command list shown above the input. Tapping a row fills the
+  /// input with that command (trailing space) and keeps focus so the user can
+  /// continue typing arguments.
+  Widget _buildCommandHelper(
+    BuildContext context,
+    List<SlashCommandInfo> matches,
+  ) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 6),
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerOf(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.borderOf(context)),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: matches.length,
+        separatorBuilder: (_, _) => Divider(
+          height: 1,
+          thickness: 1,
+          color: AppColors.borderOf(context).withValues(alpha: 0.4),
+        ),
+        itemBuilder: (context, i) {
+          final c = matches[i];
+          return InkWell(
+            onTap: () {
+              final text = '/${c.command} ';
+              _controller.value = TextEditingValue(
+                text: text,
+                selection: TextSelection.collapsed(offset: text.length),
+              );
+              _chatFocusNode.requestFocus();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 200,
+                    child: Text(
+                      c.example,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        color: AppColors.relationshipAccent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      c.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildInputArea(BuildContext context, ChatService chatService) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2066,6 +2300,78 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ),
           ),
+
+        // ── Scene Guest activity banner ──────────────────────────────────
+        // One inline status line for the /create · /join · detection flow that
+        // updates in place (Creating → Entering → ✓ joined) and auto-clears.
+        // Replaces the old per-step 'System' chat messages so the scene stays
+        // clean and nothing is persisted into history.
+        if (chatService.guestActivityStatus != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: chatService.guestActivityIsError
+                ? AppColors.resolve(
+                    context,
+                    const Color(0xFF7C2D12),
+                    const Color(0xFFFEF3C7),
+                  )
+                : AppColors.surfaceContainerOf(context),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: chatService.isGuestBusy
+                      ? CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.relationshipAccent,
+                        )
+                      : Icon(
+                          chatService.guestActivityIsError
+                              ? Icons.warning_amber_rounded
+                              : Icons.info_outline,
+                          size: 14,
+                          color: chatService.guestActivityIsError
+                              ? Colors.orangeAccent
+                              : AppColors.relationshipAccent,
+                        ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    chatService.guestActivityStatus!,
+                    style: TextStyle(
+                      color: chatService.guestActivityIsError
+                          ? Colors.orangeAccent
+                          : AppColors.textSecondary(context),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // ── Slash-command helper ─────────────────────────────────────────
+        // When the input is a command-in-progress ("/", "/cr", …) show the
+        // matching commands above the bar; tap one to fill it in. Rendered in
+        // the input column (no overlay), and scoped to the controller via a
+        // ValueListenableBuilder so only this panel rebuilds per keystroke.
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _controller,
+          builder: (context, value, _) {
+            final m = RegExp(r'^/(\w*)$').firstMatch(value.text);
+            if (m == null) return const SizedBox.shrink();
+            final prefix = m.group(1)!.toLowerCase();
+            final matches = ChatCommandHandler.commands
+                .where((c) => c.command.startsWith(prefix))
+                .toList();
+            if (matches.isEmpty) return const SizedBox.shrink();
+            return _buildCommandHelper(context, matches);
+          },
+        ),
 
         // ── Input bar ────────────────────────────────────────────────────
         Column(
@@ -2550,13 +2856,16 @@ class _ChatPageState extends State<ChatPage> {
                               chatService.observerMode
                                   ? Icons.movie_creation
                                   : Icons.send,
-                              color: chatService.observerMode
-                                  ? Colors.amberAccent
-                                  : Colors.blueAccent,
+                              color: chatService.isGuestBusy
+                                  ? AppColors.iconSecondary(context)
+                                  : (chatService.observerMode
+                                        ? Colors.amberAccent
+                                        : Colors.blueAccent),
                             ),
                             onPressed: () {
                               if (_controller.text.isNotEmpty &&
-                                  !chatService.isGenerating) {
+                                  !chatService.isGenerating &&
+                                  !chatService.isGuestBusy) {
                                 chatService.sendMessage(_controller.text);
                                 _controller.clear();
                                 WidgetsBinding.instance.addPostFrameCallback(

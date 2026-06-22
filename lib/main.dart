@@ -534,6 +534,11 @@ void main(List<String> args) async {
               Provider.of<CharacterRepository>(context, listen: false),
             );
             ws.setChatService(chatService);
+            // Scene Guest background portraits (resolved here since ImageGenService
+            // is registered below ChatService in the provider tree).
+            chatService.setImageGenService(
+              Provider.of<ImageGenService>(context, listen: false),
+            );
             ws.setChatBridge(WebChatBridge(chatService));
             ws.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
             ws.setFolderService(
@@ -570,6 +575,9 @@ void main(List<String> args) async {
                 listen: false,
               );
               previous.setChatService(chatService);
+              chatService.setImageGenService(
+                Provider.of<ImageGenService>(context, listen: false),
+              );
               previous.setCharacterRepository(
                 Provider.of<CharacterRepository>(context, listen: false),
               );
@@ -615,6 +623,11 @@ void main(List<String> args) async {
               Provider.of<CharacterRepository>(context, listen: false),
             );
             ws.setChatService(chatService);
+            // Scene Guest background portraits (resolved here since ImageGenService
+            // is registered below ChatService in the provider tree).
+            chatService.setImageGenService(
+              Provider.of<ImageGenService>(context, listen: false),
+            );
             ws.setChatBridge(WebChatBridge(chatService));
             ws.setLLMProvider(Provider.of<LLMProvider>(context, listen: false));
             ws.setFolderService(
