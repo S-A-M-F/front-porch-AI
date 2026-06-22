@@ -18,10 +18,12 @@ and flip the row to ✅.
 - ✅ `flutter_test_config.dart` — google_fonts fetch disabled + bundled Roboto
 - ✅ `dart_test.yaml` + `@TestOn('linux')` gating + CI `--tags golden` step
 - ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
-- 🔶 `support/fakes.dart` — timer-free service doubles for provider-backed goldens.
-  `FakeLLMProvider` ✅ (unblocked ReviewStep). `FakeChatService` 🔶 (grows per
-  section; now covers sidebar + MessageBubble surface). `FakeTtsService` ✅ (unblocked
-  MessageBubble). `FakeUserPersonaService` ✅.
+- ✅ `support/fakes.dart` — timer-free service doubles for provider-backed goldens.
+  `FakeLLMProvider` ✅. `FakeChatService` ✅ (sidebar + bubble + overlay surface;
+  `realismEvalStreamTextClean` returns `''` so the "initializing" branch renders).
+  `FakeTtsService` ✅. `FakeUserPersonaService` ✅. `FakeCharacterRepository` ✅.
+  `FakeFolderService` ✅. `FakeGroupChatRepository` ✅. `FakeAppState` ✅.
+  `FakeUpdateService` ✅.
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -73,10 +75,25 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   CharacterRepository + StorageService; needs those doubles (deferred)
 
 ## Chat overlays — `lib/ui/chat_components/overlays/`
-- ⬜ generation status bar, objective check, RAG setup, realism processing
+- ✅ `generation_status_bar.dart` — `widget/chat_overlays_golden_test.dart`: idle (no metrics),
+  generating (50%, 32 t/s, token counter), prefilling (4200-token prompt). All `settle: false`
+  (Timer.periodic blocks pumpAndSettle). Light + dark.
+- ✅ `objective_check_overlay.dart` — objective engine overlay (animated orb + eval pills + body text).
+  Wrapped in `SizedBox>Stack` (Positioned.fill requires Stack ancestor). `settle: false`. Light + dark.
+- ✅ `realism_processing_overlay.dart` — realism eval (initializing), greeting baseline capture
+  (purple accent), verifying pass 1/2. `settle: false`. `realismEvalStreamTextClean` returns `''`
+  so the "initializing" text branch renders (avoids the live-eval-stream Cancel button path).
+  Light + dark.
+- ⬜ `rag_setup_dialog.dart` — reads `EmbeddingSidecar` (RAG subprocess manager); needs that double
 
 ## Dialogs — `lib/ui/dialogs/` (25; skip `group_settings_dialog.dart.broken`)
 - ⬜ all — pumped in a compact surface at a representative populated state
+
+## Navigation sidebar — `lib/ui/widgets/sidebar.dart`
+- ✅ `widget/sidebar_nav_golden_test.dart`: Home selected (index 0), Settings selected (index 3),
+  update-available badge shown. `FakeAppState` + `FakeUpdateService` supply both providers.
+  Sidebar wrapped in `SizedBox(width: 250, height: 700)` so `Column`'s `Spacer` has a bounded
+  height. Light + dark (3 × 2 = 6 PNGs).
 
 ## Pages — `lib/ui/pages/` (21; heaviest, need shared MultiProvider of fakes)
 - ✅ creator wizard — see "Character Creator" above (4 user-facing steps + engine)
@@ -98,8 +115,10 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 ### Next infrastructure step
 Build `FakeExpressionClassifierService` in `support/fakes.dart` to cover the
 expression/avatar panel (used on the chat page and character cards with avatars).
-Also `FakeAppState` + `FakeKoboldService` to cover the home page status bar. With
-those, the remaining pages become component-by-component goldens like the sidebar.
+Also `FakeKoboldService` to cover the home page status bar widget (currently
+inlined as a private method `_wrapWithStatusBar` in `HomePage` — not directly
+pumpable; extract or note as ⬜). With those, the remaining pages become
+component-by-component goldens like the sidebar.
 
 ## Image studio — `lib/ui/image_studio/`
 - ⬜ main surfaces + generation options tab (extend existing `test/ui/image_studio/`)
