@@ -118,6 +118,11 @@ tools/embed_server/target/
 # Allow DMG background image (the *.png rule above would otherwise block it)
 !assets/macos/dmg-background.png
 
+# Allow committed widget golden PNGs (the *.png rule above would block them, but
+# golden tests are worthless without their baseline images checked in).
+!test/golden/widget/_goldens/
+!test/golden/widget/_goldens/**
+
 # Testing
 .llm_context/
 bug_triage.md
