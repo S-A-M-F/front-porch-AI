@@ -59,9 +59,11 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 
 ## Sidebar sections — `lib/ui/chat_components/sidebar/` (`widget/sidebar_golden_test.dart`, FakeChatService)
 - ✅ scene-time (evening/day-3 + dawn/day-1), author-note, summary, nsfw,
-  chaos (enabled w/ pressure gauge), lorebook (header)
-- ⬜ realism/needs (needs NeedsSimulation + RelationshipService wired into the fake),
-  memory (activeCharacter + evolution), objective (Objective + tasks)
+  chaos (enabled w/ pressure gauge), lorebook (header), objective (empty/propose),
+  realism (seeded bond "Close"/long-term "Friendly"/trust "Trusting" + emotion +
+  needs + decay — RelationshipService + NeedsSimulation wired into FakeChatService)
+- ⬜ memory — reads `Provider<EmbeddingSidecar>` (RAG subprocess manager) +
+  CharacterRepository + StorageService; needs those doubles (deferred)
 
 ## Chat overlays — `lib/ui/chat_components/overlays/`
 - ⬜ generation status bar, objective check, RAG setup, realism processing
