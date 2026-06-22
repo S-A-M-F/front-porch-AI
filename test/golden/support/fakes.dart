@@ -26,7 +26,11 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
+import 'package:front_porch_ai/services/chat/chaos_mode_service.dart';
+import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 
@@ -63,6 +67,17 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   FakeChatService({
     this.realismEnabled = true,
     this.isGenerating = false,
+    this.authorNote = '',
+    this.authorNoteStrength = 3,
+    this.summary = '',
+    this.summaryLastIndex = 0,
+    this.summaryPaused = false,
+    this.isSummaryGenerating = false,
+    this.needsSimEnabled = true,
+    this.characterEmotion = 'neutral',
+    this.emotionIntensity = 'moderate',
+    this.characterEvolutionCount = 0,
+    this.activeCharacter,
     String timeOfDay = 'evening',
     int dayCount = 3,
     int startDayOfWeek = 1,
@@ -78,18 +93,61 @@ class FakeChatService extends ChangeNotifier implements ChatService {
         startDayOfWeek: startDayOfWeek,
         passageOfTimeEnabled: true,
       );
+    _nsfw = NsfwService(
+      getGroupInt: (_, _) => 0,
+      getGroupValue: (_, _) => null,
+      setGroupValue: (_, _, _) {},
+    );
+    _chaos = ChaosModeService(
+      onNotify: () {},
+      onSaveChat: () async {},
+      onSetPendingRealismMetadata: (_, _) {},
+    );
   }
 
   late final TimeService _time;
+  late final NsfwService _nsfw;
+  late final ChaosModeService _chaos;
 
   @override
   final bool realismEnabled;
-
   @override
   final bool isGenerating;
+  @override
+  final String authorNote;
+  @override
+  final int authorNoteStrength;
+  @override
+  final String summary;
+  @override
+  final int summaryLastIndex;
+  @override
+  final bool summaryPaused;
+  @override
+  final bool isSummaryGenerating;
+  @override
+  final bool needsSimEnabled;
+  @override
+  final String characterEmotion;
+  @override
+  final String emotionIntensity;
+  @override
+  final int characterEvolutionCount;
+  @override
+  final CharacterCard? activeCharacter;
 
   @override
   TimeService get timeService => _time;
+  @override
+  NsfwService get nsfwService => _nsfw;
+  @override
+  ChaosModeService get chaosModeService => _chaos;
+
+  // 1:1 mode by default (no active group) for the simple sidebar sections.
+  @override
+  GroupChat? get activeGroup => null;
+  @override
+  bool get chaosNsfwEnabled => _chaos.chaosNsfwEnabled;
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
