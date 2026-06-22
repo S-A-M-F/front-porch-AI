@@ -84,6 +84,25 @@ class _ChatPageState extends State<ChatPage> {
   // Slider drag tracking — store live value during drag, null on release
   double? _dragDirectorDelay;
 
+  /// The cast participant whose per-character sidebar sections are shown.
+  /// `null` = focus the host / first participant. Falls back automatically when
+  /// the id is no longer in the active cast (e.g. after switching chats).
+  String? _focusedParticipantId;
+
+  /// Resolve the currently-focused participant from the unified cast, defaulting
+  /// to the first participant (the host in a 1:1/NPC chat). Returns null only
+  /// when no chat is loaded.
+  ChatParticipant? _focusedParticipant(ChatService chat) {
+    final cast = chat.cast;
+    if (cast.isEmpty) return null;
+    if (_focusedParticipantId != null) {
+      for (final p in cast) {
+        if (p.id == _focusedParticipantId) return p;
+      }
+    }
+    return cast.first;
+  }
+
   /// Resolve a character [imagePath] (basename or full path) to a [File].
   /// Always use this instead of [File(imagePath)] directly.
   File _resolveCharImage(String imagePath) {
@@ -771,13 +790,9 @@ class _ChatPageState extends State<ChatPage> {
                       ],
                     ),
                   ),
-                  if (isGroup)
+                  if (isGroup || character != null)
                     _buildResizableSidebar(
-                      child: _buildGroupSidebar(chatService),
-                    )
-                  else if (character != null)
-                    _buildResizableSidebar(
-                      child: _buildRightSidebar(character, chatService),
+                      child: _buildRightSidebar(chatService),
                     ),
                 ],
               ),
@@ -2880,7 +2895,12 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildRightSidebar(CharacterCard character, ChatService chatService) {
+  Widget _buildRightSidebar(ChatService chatService) {
+    final focused = _focusedParticipant(chatService);
+    if (focused == null) return const SizedBox.shrink();
+    final character = focused.card;
+    final isGroup = chatService.isGroupMode;
+    final cast = chatService.cast;
     final userName = Provider.of<UserPersonaService>(
       context,
       listen: false,
@@ -3221,17 +3241,116 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
 
+          // ── Participant roster (only when more than one speaker) ──
+          if (cast.length > 1) _buildParticipantRoster(chatService, cast, focused),
+
+          // ── Director controls (group turn-taking) ──
+          if (isGroup) _buildDirectorControls(chatService),
+
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // ── Author's Note ──
+                // ── Author's Note (chat-level) ──
                 AuthorNoteSection(chatService: chatService),
                 const SizedBox(height: 16),
 
-                // ── RAG Memory ──
-                MemorySection(chatService: chatService),
-                const SizedBox(height: 16),
+                // ── Per-focused-participant detail (dispatched by store) ──
+                if (isGroup) ...[
+                  GroupMemberCard(
+                    character: character,
+                    chatService: chatService,
+                    avatarColor: _groupCharacterColor(
+                      cast.indexWhere((p) => p.id == focused.id) < 0
+                          ? 0
+                          : cast.indexWhere((p) => p.id == focused.id),
+                    ),
+                    isNextSpeaker:
+                        chatService.nextCharacter?.name == character.name,
+                    isExpanded: true,
+                    onTap: chatService.isGenerating
+                        ? () {}
+                        : () => chatService.setNextCharacter(character),
+                    avatarFile: character.imagePath != null
+                        ? _resolveCharImage(character.imagePath!)
+                        : null,
+                    evolutionCount: chatService.getEvolutionCountFor(character),
+                    canRemove: chatService.groupCharacters.length > 2 &&
+                        !chatService.isGenerating,
+                    onRemove:
+                        (chatService.groupCharacters.length > 2 &&
+                            !chatService.isGenerating)
+                        ? () async {
+                            final groupRepo =
+                                Provider.of<GroupChatRepository>(
+                                  context,
+                                  listen: false,
+                                );
+                            await chatService.removeCharacterFromGroup(
+                              character,
+                              groupRepo,
+                            );
+                          }
+                        : null,
+                    onOpenObjectives: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => GroupObjectivesDialog(
+                          chatService: chatService,
+                          groupCharacters: chatService.groupCharacters,
+                          initialCharacter: character,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: chatService.isGenerating
+                          ? null
+                          : () => _showAddCharacterToGroupDialog(
+                              context,
+                              chatService,
+                            ),
+                      icon: const Icon(
+                        Icons.person_add,
+                        size: 16,
+                        color: Colors.purpleAccent,
+                      ),
+                      label: const Text(
+                        'Add Character',
+                        style: TextStyle(
+                          color: Colors.purpleAccent,
+                          fontSize: 12,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: Colors.purpleAccent.withValues(alpha: 0.4),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Consumer<ChatService>(
+                    builder: (context, chat, _) => ChaosModeSection(
+                      chat: chat,
+                      onSpinRequested: () => _showChanceTimeOverlay(context),
+                    ),
+                  ),
+                  Consumer<ChatService>(
+                    builder: (context, chat, _) => SceneTimeSection(chat: chat),
+                  ),
+                  const SizedBox(height: 8),
+                  GroupLorebookSection(chatService: chatService),
+                  const SizedBox(height: 8),
+                  SummarySection(chatService: chatService),
+                ] else if (focused.realismEnabled) ...[
+                  // ── RAG Memory ──
+                  MemorySection(chatService: chatService),
+                  const SizedBox(height: 16),
 
                 // ── Active Fixation (always visible when set) ──
                 Consumer<ChatService>(
@@ -3549,15 +3668,70 @@ class _ChatPageState extends State<ChatPage> {
                   },
                 ),
 
-                // ── Lorebook Triggers (bottom) ──
-                const SizedBox(height: 16),
-                LorebookSection(character: character),
+                  // ── Lorebook Triggers (bottom) ──
+                  const SizedBox(height: 16),
+                  LorebookSection(character: character),
 
-                // ── Description ──
-                SidebarSection(
-                  title: 'Description',
-                  content: replace(character.description),
-                ),
+                  // ── Description ──
+                  SidebarSection(
+                    title: 'Description',
+                    content: replace(character.description),
+                  ),
+                ] else ...[
+                  // ── Lite NPC (Scene Guest) — realism tracking off ──
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerOf(context),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.visibility_off,
+                          size: 16,
+                          color: AppColors.iconSecondary(context),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Lite NPC — no realism or needs tracking for this guest.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary(context),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SidebarSection(
+                    title: 'Scenario',
+                    content: replace(character.scenario),
+                  ),
+                  const SizedBox(height: 8),
+                  LorebookSection(character: character),
+                  SidebarSection(
+                    title: 'Description',
+                    content: replace(character.description),
+                  ),
+                  const SizedBox(height: 16),
+                  Consumer<ChatService>(
+                    builder: (context, chat, _) => ChaosModeSection(
+                      chat: chat,
+                      onSpinRequested: () => _showChanceTimeOverlay(context),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SummarySection(chatService: chatService),
+                ],
               ],
             ),
           ),
@@ -3566,364 +3740,202 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  /// Sidebar showing all characters in a group.
-  Widget _buildGroupSidebar(ChatService chatService) {
-    final chars = chatService.groupCharacters;
+  /// Horizontal roster of all cast participants. Tapping one focuses its
+  /// per-character sidebar sections. Shown only when more than one speaker is
+  /// present (1:1 + guests, or a group).
+  Widget _buildParticipantRoster(
+    ChatService chatService,
+    List<ChatParticipant> cast,
+    ChatParticipant focused,
+  ) {
     return Container(
+      height: 66,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surfaceOf(context),
         border: Border(
-          left: BorderSide(
+          bottom: BorderSide(
+            color: AppColors.borderOf(context).withValues(alpha: 0.35),
+          ),
+        ),
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: cast.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final p = cast[i];
+          final isFocused = p.id == focused.id;
+          final color = _groupCharacterColor(i);
+          final img = p.card.imagePath != null
+              ? _resolveCharImage(p.card.imagePath!)
+              : null;
+          return InkWell(
+            onTap: () => setState(() => _focusedParticipantId = p.id),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isFocused ? color : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: color,
+                    backgroundImage: img != null ? FileImage(img) : null,
+                    child: img == null
+                        ? Text(
+                            p.name.isNotEmpty ? p.name[0] : '?',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    p.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: isFocused
+                          ? AppColors.textPrimary(context)
+                          : AppColors.textTertiary(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Group turn-taking controls (Group Settings + Director Mode + response
+  /// delay). Shown when the chat has scheduled speakers (a group).
+  Widget _buildDirectorControls(ChatService chatService) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
             color: AppColors.borderOf(context).withValues(alpha: 0.35),
           ),
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Settings buttons ──
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: AppColors.borderOf(context).withValues(alpha: 0.35),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showGroupSettingsDialog(chatService),
+              icon: const Icon(Icons.settings, size: 16),
+              label: const Text('Group Settings'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textSecondary(context),
+                side: BorderSide(
+                  color: AppColors.borderOf(context).withValues(alpha: 0.4),
                 ),
               ),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => const ChatSettingsDialog(),
-                          );
-                        },
-                        icon: const Icon(Icons.settings, size: 16),
-                        label: const Text(
-                          'Chat',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary(context),
-                          side: BorderSide(
-                            color: AppColors.borderOf(
-                              context,
-                            ).withValues(alpha: 0.4),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => const ModelSettingsDialog(),
-                          );
-                        },
-                        icon: const Icon(Icons.memory, size: 16),
-                        label: const Text(
-                          'Model',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary(context),
-                          side: BorderSide(
-                            color: AppColors.borderOf(
-                              context,
-                            ).withValues(alpha: 0.4),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => const TtsSettingsDialog(),
-                          );
-                        },
-                        icon: const Icon(Icons.volume_up, size: 16),
-                        label: const Text(
-                          'TTS',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary(context),
-                          side: BorderSide(
-                            color: AppColors.borderOf(
-                              context,
-                            ).withValues(alpha: 0.4),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showGroupSettingsDialog(chatService),
-                    icon: const Icon(Icons.settings, size: 16),
-                    label: const Text('Group Settings'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary(context),
-                      side: BorderSide(
-                        color: AppColors.borderOf(
-                          context,
-                        ).withValues(alpha: 0.4),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // ── Director Mode toggle ──
-                Row(
-                  children: [
-                    Icon(
-                      Icons.movie_creation,
-                      size: 16,
-                      color: AppColors.iconSecondary(context),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Director Mode',
-                      style: TextStyle(
-                        color: AppColors.textSecondary(context),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const Spacer(),
-                    Switch(
-                      value: chatService.observerMode,
-                      activeTrackColor: Colors.amberAccent,
-                      onChanged: chatService.isGenerating
-                          ? null
-                          : (val) => chatService.setObserverMode(val),
-                    ),
-                  ],
-                ),
-                if (chatService.observerMode) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2, bottom: 4),
-                    child: Text(
-                      'Characters chat autonomously. Use the input box to direct the scene.',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.amberAccent.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                  // Delay slider
-                  Consumer<StorageService>(
-                    builder: (context, storage, _) {
-                      chatService.directorDelaySec = storage.directorDelay;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Text(
-                                'Response Delay',
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                '${(_dragDirectorDelay ?? storage.directorDelay).toStringAsFixed(1)}s',
-                                style: const TextStyle(
-                                  color: Colors.amberAccent,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              trackHeight: 3,
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 6,
-                              ),
-                            ),
-                            child: Slider(
-                              value:
-                                  _dragDirectorDelay ?? storage.directorDelay,
-                              min: 0.5,
-                              max: 60.0,
-                              divisions: 119,
-                              activeColor: Colors.amberAccent,
-                              inactiveColor: Colors.white12,
-                              onChanged: (val) =>
-                                  setState(() => _dragDirectorDelay = val),
-                              onChangeEnd: (val) {
-                                _dragDirectorDelay = null;
-                                storage.setDirectorDelay(val);
-                              },
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ],
-            ),
           ),
-
-          // ── Author's Note ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: AuthorNoteSection(chatService: chatService),
-          ),
-
-          // ── Chaos Mode (global for the group chat) ──
-          Consumer<ChatService>(
-            builder: (context, chat, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ChaosModeSection(
-                  chat: chat,
-                  onSpinRequested: () => _showChanceTimeOverlay(context),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                Icons.movie_creation,
+                size: 16,
+                color: AppColors.iconSecondary(context),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Director Mode',
+                style: TextStyle(
+                  color: AppColors.textSecondary(context),
+                  fontSize: 13,
                 ),
-                // Scene time tracker (day of week + time of day + nudges + dots)
-                // Placed here with Chaos as they are both global/scene-level state.
-                SceneTimeSection(chat: chat),
-              ],
-            ),
+              ),
+              const Spacer(),
+              Switch(
+                value: chatService.observerMode,
+                activeTrackColor: Colors.amberAccent,
+                onChanged: chatService.isGenerating
+                    ? null
+                    : (val) => chatService.setObserverMode(val),
+              ),
+            ],
           ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: Row(
-              children: [
-                const Text(
-                  'Characters',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          if (chatService.observerMode) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 4),
+              child: Text(
+                'Characters chat autonomously. Use the input box to direct the scene.',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.amberAccent.withValues(alpha: 0.7),
                 ),
-                const Spacer(),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              'Tap a character to focus their full state (emotion, bond, needs, fixation)',
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textTertiary(context).withValues(alpha: 0.6),
               ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: ListView.builder(
-              itemCount: chars.length,
-              itemBuilder: (context, index) {
-                final ch = chars[index];
-                final color = _groupCharacterColor(index);
-                final isNext = chatService.nextCharacter?.name == ch.name;
-                final evolutionCount = chatService.getEvolutionCountFor(ch);
-                final canRemove = chars.length > 2 && !chatService.isGenerating;
-
-                File? avatarFile;
-                if (ch.imagePath != null) {
-                  try {
-                    avatarFile = _resolveCharImage(ch.imagePath!);
-                  } catch (_) {}
-                }
-
-                return GroupMemberCard(
-                  character: ch,
-                  chatService: chatService,
-                  avatarColor: color,
-                  isNextSpeaker: isNext,
-                  isExpanded:
-                      isNext, // current/next speaker gets the full 1:1-parity rich view
-                  onTap: chatService.isGenerating
-                      ? () {}
-                      : () => chatService.setNextCharacter(ch),
-                  avatarFile: avatarFile,
-                  evolutionCount: evolutionCount,
-                  canRemove: canRemove,
-                  onRemove: canRemove
-                      ? () async {
-                          final groupRepo = Provider.of<GroupChatRepository>(
-                            context,
-                            listen: false,
-                          );
-                          await chatService.removeCharacterFromGroup(
-                            ch,
-                            groupRepo,
-                          );
-                        }
-                      : null,
-                  onOpenObjectives: () {
-                    showDialog(
-                      context: context,
-                      builder: (_) => GroupObjectivesDialog(
-                        chatService: chatService,
-                        groupCharacters: chatService.groupCharacters,
-                        initialCharacter: ch,
+            Consumer<StorageService>(
+              builder: (context, storage, _) {
+                chatService.directorDelaySec = storage.directorDelay;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Response Delay',
+                          style: TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${(_dragDirectorDelay ?? storage.directorDelay).toStringAsFixed(1)}s',
+                          style: const TextStyle(
+                            color: Colors.amberAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 6,
+                        ),
                       ),
-                    );
-                  },
+                      child: Slider(
+                        value: _dragDirectorDelay ?? storage.directorDelay,
+                        min: 0.5,
+                        max: 60.0,
+                        divisions: 119,
+                        activeColor: Colors.amberAccent,
+                        inactiveColor: Colors.white12,
+                        onChanged: (val) =>
+                            setState(() => _dragDirectorDelay = val),
+                        onChangeEnd: (val) {
+                          _dragDirectorDelay = null;
+                          storage.setDirectorDelay(val);
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
-          ),
-          // ── Add Character Button ──
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: chatService.isGenerating
-                    ? null
-                    : () =>
-                          _showAddCharacterToGroupDialog(context, chatService),
-                icon: const Icon(
-                  Icons.person_add,
-                  size: 16,
-                  color: Colors.purpleAccent,
-                ),
-                label: const Text(
-                  'Add Character',
-                  style: TextStyle(color: Colors.purpleAccent, fontSize: 12),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(
-                    color: Colors.purpleAccent.withValues(alpha: 0.4),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                ),
-              ),
-            ),
-          ),
-
-          // ── Lorebook Triggers & Chat Summary moved below the character list
-          // (global sections that apply to the whole group scene).
-          const SizedBox(height: 8),
-          GroupLorebookSection(chatService: chatService),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: SummarySection(chatService: chatService),
-          ),
+          ],
         ],
       ),
     );
