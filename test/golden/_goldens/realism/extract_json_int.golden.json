@@ -1,0 +1,10 @@
+{
+  "amongOthers": 9,
+  "malformedNoValue": null,
+  "missing": null,
+  "negative": -20,
+  "padded": 7,
+  "positive": 15,
+  "substringKeyNotMatched": null,
+  "thinkPrefixed": 4
+}
