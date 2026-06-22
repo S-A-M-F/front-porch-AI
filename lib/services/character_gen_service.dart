@@ -23,6 +23,7 @@ import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
+import 'package:front_porch_ai/services/chargen/char_macro.dart';
 
 part 'chargen/character_gen_llm.dart';
 part 'chargen/character_gen_prompts.dart';
@@ -443,53 +444,10 @@ class CharacterGenService {
     // Models don't reliably emit {{char}} for description/personality even when
     // instructed to, and a literal name baked into the card can confuse models
     // mid-chat. Normalize every generated text field to the portable macro.
-    _applyCharMacro(card, name);
+    // (Logic lives in chargen/char_macro.dart so it stays unit-testable.)
+    applyCharMacroToCard(card, name);
 
     onStatus?.call('Character generated!');
     return card;
-  }
-
-  /// Strip `<think>`…`</think>` reasoning blocks (fuzzy — models misspell the
-  /// tag at high temperature) so we can tell whether a stream actually produced
-  /// content or only "thought".
-  String _stripThinkBlocks(String raw) {
-    const open = r'<(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
-    const close = r'</(?:think|thinking|thnk|thik|tink|thin|hink|ink)>';
-    return raw
-        .replaceAll(RegExp('$open[\\s\\S]*?$close', caseSensitive: false), '')
-        .replaceAll(RegExp('$open[\\s\\S]*\$', caseSensitive: false), '')
-        .trim();
-  }
-
-  /// Replace literal occurrences of the character's [name] (whole name and each
-  /// significant name part) with the portable `{{char}}` macro across every
-  /// generated text field, so the saved card travels well and reads
-  /// consistently to the chat model.
-  void _applyCharMacro(CharacterCard card, String name) {
-    final full = name.trim();
-    if (full.isEmpty) return;
-    // Whole name first (so multi-word names are caught intact), then each part
-    // of 3+ chars. Whole-word + case-insensitive.
-    final targets = <String>[full];
-    for (final part in full.split(RegExp(r'\s+'))) {
-      if (part.length >= 3 && !targets.contains(part)) targets.add(part);
-    }
-    String apply(String s) {
-      var out = s;
-      for (final t in targets) {
-        out = out.replaceAll(
-          RegExp('\\b${RegExp.escape(t)}\\b', caseSensitive: false),
-          '{{char}}',
-        );
-      }
-      return out;
-    }
-
-    card.description = apply(card.description);
-    card.personality = apply(card.personality);
-    card.scenario = apply(card.scenario);
-    card.firstMessage = apply(card.firstMessage);
-    card.mesExample = apply(card.mesExample);
-    card.alternateGreetings = card.alternateGreetings.map(apply).toList();
   }
 }
