@@ -1,0 +1,68 @@
+{
+  "alternate_greetings": [
+    "A second greeting."
+  ],
+  "character_book": null,
+  "description": "{{char}} is a fixture used to lock serialization.",
+  "extensions": {
+    "front_porch": {
+      "realism_engine": {
+        "action_color": null,
+        "ai_bubble_color": null,
+        "ai_text_color": null,
+        "avatar_locked": false,
+        "chaos_mode_enabled": false,
+        "character_emotion": "curiosity",
+        "chat_font_family": null,
+        "current_task": "",
+        "day_count": 3,
+        "dialogue_color": null,
+        "emotion_intensity": "moderate",
+        "enabled": true,
+        "enjoys_low_hygiene": false,
+        "long_term_bond": 0,
+        "needs_baseline_bladder": 80,
+        "needs_baseline_comfort": 80,
+        "needs_baseline_energy": 80,
+        "needs_baseline_fun": 80,
+        "needs_baseline_hunger": 80,
+        "needs_baseline_hygiene": 80,
+        "needs_baseline_social": 80,
+        "needs_decay_bladder": 6,
+        "needs_decay_comfort": 2,
+        "needs_decay_energy": 3,
+        "needs_decay_fun": 2,
+        "needs_decay_hunger": 4,
+        "needs_decay_hygiene": 1,
+        "needs_decay_social": 2,
+        "needs_sim_enabled": true,
+        "needs_sim_strength": 1,
+        "nsfw_cooldown_enabled": false,
+        "passage_of_time_enabled": true,
+        "realism_needs_director_authority": false,
+        "realism_verification_enabled": false,
+        "realism_verification_max_reprocesses": 1,
+        "realism_verification_strictness": 3,
+        "short_term_bond": 0,
+        "stable_id": "fixture-stable-id",
+        "time_of_day": "evening",
+        "trust_level": 0,
+        "user_bubble_color": null,
+        "user_text_color": null
+      },
+      "version": "2.5"
+    }
+  },
+  "first_mes": "Hello, {{user}}.",
+  "mes_example": "{{user}}: Hi\n{{char}}: Hi back.",
+  "name": "Test Character",
+  "personality": "Methodical, deterministic.",
+  "post_history_instructions": "Be concise.",
+  "scenario": "{{user}} opens a test harness.",
+  "system_prompt": "Stay in character.",
+  "tags": [
+    "fixture",
+    "golden"
+  ],
+  "world_names": []
+}

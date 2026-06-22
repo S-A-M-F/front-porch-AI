@@ -19,12 +19,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/services/character_gen_service.dart';
-import 'package:front_porch_ai/services/character_repository.dart';
-import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/backend_manager.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
@@ -139,7 +138,7 @@ class CreatorState extends ChangeNotifier {
 
   // Lore (for automated/guided)
   final loreUrlsController = TextEditingController();
-  List<File> loreFiles = [];
+  List<PlatformFile> loreFiles = [];
 
   // Review editable controllers (lifted)
   final descController = TextEditingController();
@@ -232,8 +231,58 @@ class CreatorState extends ChangeNotifier {
   Uint8List? generatedAvatar;
   String? imagePrompt;
   bool isGeneratingAvatar = false;
-  Map<String, bool> lorebookEntryEnabled = {};
+  Map<int, bool> lorebookEntryEnabled = {};
   bool imagePromptExpanded = false;
+
+  // Quick-mode NSFW flag (synced into [nsfwEnabled] when generation starts).
+  bool quickNsfwEnabled = false;
+
+  // Async flags for AI-assisted helpers (magic-wand description, name/concept
+  // randomizers, guided narrative expansion) — drive spinners in the steps.
+  bool isExpandingNarrative = false;
+  bool isRandomizing = false;
+  double conceptGenProgress = 0.0;
+
+  // Transient error surfaced by a step (e.g. "no LLM available"). The step
+  // shows a SnackBar then clears it. Lives here because the engine has no
+  // BuildContext of its own.
+  String? engineError;
+
+  // Realism Engine seed values — written into the saved card's
+  // FrontPorchExtensions when [realismStepEnabled] is true. The Realism step
+  // edits these; save consumes them. (Verification fields already exist above.)
+  bool realismStepEnabled = false;
+  int realismShortTermBond = 0;
+  int realismLongTermBond = 0;
+  int realismTrustLevel = 0;
+  int realismDayCount = 1;
+  String realismTimeOfDay = 'morning';
+  String realismEmotion = 'neutral';
+  String realismEmotionIntensity = 'moderate';
+  bool realismNsfwCooldown = false;
+  bool realismChaosMode = false;
+  bool realismNeedsSim = false;
+  bool realismEnjoysLowHygiene = false;
+  String realismCurrentTask = '';
+
+  // Needs simulation tuning — custom per-character baselines (0-100 starting
+  // levels) and decay rates (drop per tick). Mirrors the character editor so
+  // AI-created characters can ship the same custom needs setup; written into
+  // FrontPorchExtensions on save. Defaults match create_character_page.
+  int needsBaselineHunger = 80;
+  int needsBaselineBladder = 80;
+  int needsBaselineEnergy = 80;
+  int needsBaselineSocial = 80;
+  int needsBaselineFun = 80;
+  int needsBaselineHygiene = 80;
+  int needsBaselineComfort = 80;
+  int needsDecayHunger = 5;
+  int needsDecayBladder = 5;
+  int needsDecayEnergy = 5;
+  int needsDecaySocial = 5;
+  int needsDecayFun = 5;
+  int needsDecayHygiene = 5;
+  int needsDecayComfort = 5;
 
   // Model / backend state (lifted)
   String selectedModelId = '';
@@ -254,6 +303,13 @@ class CreatorState extends ChangeNotifier {
   Uint8List? avatarBytesForReview;
 
   // Options (lifted statics)
+  static const generationDetailOptions = {
+    'Brief': '1 short paragraph (80-150 words max)',
+    'Standard': '2-3 paragraphs (200-400 words max)',
+    'Detailed': '3-4 paragraphs (300-500 words max)',
+    'Comprehensive': '4-5 paragraphs (500-700 words max)',
+  };
+
   static const loreCategoryOptions = [
     'Locations',
     'NPCs/Allies',
@@ -866,67 +922,23 @@ class CreatorState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Generation orchestration stubs (full lift in practice; here representative to keep shell thin)
-  Future<void> startGeneration({
-    required LLMProvider llmProvider,
-    required CharacterGenService genService,
-    required ImageGenService imageService,
-    // other deps...
-  }) async {
-    // Full dispatch from pre _startQuickGeneration / _startGuided / _buildConfig (automated) + streaming (adapted notify, no setState/mounted)
-    isGenerating = true;
-    _currentStep = 3;
-    generationStatus = 'Crafting character with AI...';
-    generationPreview = '';
-    progress = 0.0;
-    activeGenService = genService;
-    notifyListeners();
+  /// The real generation + save engine lives in `creator_state_engine.dart`
+  /// (a CreatorState extension) to keep this file focused on state and honor
+  /// the per-file size cap. The shell calls `generateFromMode(...)` and
+  /// `saveCharacter(...)` from there.
 
-    // Quick mode example (full from pre _startQuickGeneration logic, adapted; guided/automated similar dispatch in full)
-    final name = nameController.text.trim().isNotEmpty
-        ? nameController.text.trim()
-        : 'Generated Hero';
-    final concept = conceptController.text.trim().isNotEmpty
-        ? conceptController.text.trim()
-        : 'Interesting unique character for roleplay.';
-
-    // Select llmService (from pre)
-    // (llm logic omitted for brevity in this lift; in full would use llmProvider.activeService or OpenRouter with selectedModelId)
-    // Call gen (the service would stream updates to preview/status/progress via callbacks, then onDone:)
-    // For functional smoke: simulate complete and set card
-    await Future.delayed(const Duration(milliseconds: 800)); // simulate work
-    generatedCard = CharacterCard(
-      name: name,
-      description: concept,
-      personality: 'Brave and clever',
-      scenario: 'In a fantasy world',
-      // firstMessage from model (lifted/adapted from pre-extraction god gen result)
-    );
-    generationStatus = 'Generation complete!';
-    progress = 1.0;
-    _currentStep = 4; // to realism per pre flow (or 5 review)
-    isGenerating = false;
-    activeGenService = null;
-    notifyListeners();
-    // In full lift: the streaming would update generationPreview live, onDone set card + step + saveState()
+  /// Allow direct step assignment from the engine extension (which only sees
+  /// public members) without firing a listener per intermediate change.
+  void setStep(int value) {
+    _currentStep = value;
   }
 
-  Future<void> saveGeneratedCharacter(
-    CharacterRepository repo, {
-    Uint8List? finalAvatar,
-  }) async {
-    // Full lift from pre review save logic + avatar handling + lorebook (adapted notify)
-    if (generatedCard == null) return;
-    try {
-      // Lifted save + avatar + lorebook creation from pre review step (adapted; repo.save per CharacterRepository API in pre)
-      // (the actual persist call from pre review save logic)
-      // await repo.save(generatedCard!); // API may vary; full lift would match the pre call
-      // lorebook if generateLorebook, avatar if finalAvatar
-      generationStatus = 'Saved successfully!';
-      notifyListeners();
-    } catch (e) {
-      generationStatus = 'Save failed: $e';
-      notifyListeners();
+  /// Clear the core saved-form prefs after a character is successfully created,
+  /// so the next visit starts fresh. Mirrors the original review-step save.
+  Future<void> clearSavedFormPrefsAfterSave() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [_prefName, _prefConcept, _prefKeywords, _prefArtStyle]) {
+      await prefs.remove(key);
     }
   }
 

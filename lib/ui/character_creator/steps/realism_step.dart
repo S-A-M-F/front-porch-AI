@@ -4,10 +4,12 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 import 'package:front_porch_ai/ui/widgets/needs_form_section.dart';
+import 'package:front_porch_ai/ui/widgets/realism_form_section.dart';
 
-/// Realism initial state step (lifted).
+/// Step 4: seed the Realism Engine's initial state for the generated character.
+/// Restored from the god file's `_buildRealismStep` — the full form is now wired
+/// to CreatorState instead of the dummy hardcoded values the refactor shipped.
 class RealismStep extends StatelessWidget {
   final CreatorState state;
 
@@ -15,6 +17,52 @@ class RealismStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Generation-error fallback: if the LLM produced nothing, offer a retry
+    // back to the config step (the wizard advanced here regardless).
+    if (state.generatedCard == null) {
+      return Center(
+        key: const ValueKey('realism-error'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: AppColors.resolve(
+                context,
+                Colors.redAccent,
+                Colors.red.shade700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Generation failed. The LLM did not produce valid output.',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                state.generationPreview = '';
+                state.currentStep = 2;
+              },
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.resolve(
+                  context,
+                  Colors.blueAccent,
+                  Colors.blue.shade700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Center(
       key: const ValueKey('realism'),
       child: SingleChildScrollView(
@@ -25,7 +73,7 @@ class RealismStep extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Initial Realism State (optional)',
+                'Realism Engine',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -34,92 +82,178 @@ class RealismStep extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Set starting bond, trust, emotion, needs sim etc for the character. Full form lifted from original _buildRealismStep using RealismFormSection + toggles bound to state.',
-                style: TextStyle(color: AppColors.textSecondary(context)),
+                'Set the initial state for the Realism Engine when a new conversation starts. '
+                'These values will seed the relationship, emotion, and time-of-day systems.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary(context),
+                  height: 1.5,
+                ),
               ),
-              const SizedBox(height: 16),
-              // Threaded verif controls (3: toggle + 2 sliders) per approved plan "wire in all current form users" + realism_step.
-              // Other realism seeds (bond etc) are stub in creator_state; dummies here for required form props.
+              const SizedBox(height: 32),
               RealismFormSection(
-                enabled: false,
-                onEnabledChanged: (_) {},
-                timeOfDay: 'morning',
-                onTimeOfDayChanged: (_) {},
-                dayCount: 1,
-                onDayCountChanged: (_) {},
-                shortTermBond: 0,
-                onShortTermBondChanged: (_) {},
-                longTermBond: 0,
-                onLongTermBondChanged: (_) {},
-                trustLevel: 0,
-                onTrustLevelChanged: (_) {},
-                emotion: 'neutral',
-                onEmotionChanged: (_) {},
-                emotionIntensity: 'mild',
-                onEmotionIntensityChanged: (_) {},
-                nsfwCooldownEnabled: false,
-                onNsfwCooldownChanged: (_) {},
-                chaosModeEnabled: false,
-                onChaosModeChanged: (_) {},
-                currentTask: '',
-                onCurrentTaskChanged: (_) {},
+                enabled: state.realismStepEnabled,
+                onEnabledChanged: (v) {
+                  state.realismStepEnabled = v;
+                  state.notify();
+                },
+                timeOfDay: state.realismTimeOfDay,
+                onTimeOfDayChanged: (v) {
+                  state.realismTimeOfDay = v;
+                  state.notify();
+                },
+                dayCount: state.realismDayCount,
+                onDayCountChanged: (v) {
+                  state.realismDayCount = v;
+                  state.notify();
+                },
+                shortTermBond: state.realismShortTermBond,
+                onShortTermBondChanged: (v) {
+                  state.realismShortTermBond = v;
+                  state.notify();
+                },
+                longTermBond: state.realismLongTermBond,
+                onLongTermBondChanged: (v) {
+                  state.realismLongTermBond = v;
+                  state.notify();
+                },
+                trustLevel: state.realismTrustLevel,
+                onTrustLevelChanged: (v) {
+                  state.realismTrustLevel = v;
+                  state.notify();
+                },
+                emotion: state.realismEmotion,
+                onEmotionChanged: (v) {
+                  state.realismEmotion = v;
+                  state.notify();
+                },
+                emotionIntensity: state.realismEmotionIntensity,
+                onEmotionIntensityChanged: (v) {
+                  state.realismEmotionIntensity = v;
+                  state.notify();
+                },
+                nsfwCooldownEnabled: state.realismNsfwCooldown,
+                onNsfwCooldownChanged: (v) {
+                  state.realismNsfwCooldown = v;
+                  state.notify();
+                },
+                chaosModeEnabled: state.realismChaosMode,
+                onChaosModeChanged: (v) {
+                  state.realismChaosMode = v;
+                  state.notify();
+                },
+                currentTask: state.realismCurrentTask,
+                onCurrentTaskChanged: (v) {
+                  state.realismCurrentTask = v;
+                  state.notify();
+                },
                 realismVerificationEnabled: state.realismVerificationEnabled,
                 onRealismVerificationChanged: (v) {
                   state.realismVerificationEnabled = v;
+                  state.saveState();
                   state.notify();
                 },
                 realismVerificationMaxReprocesses:
                     state.realismVerificationMaxReprocesses,
                 onRealismVerificationMaxReprocessesChanged: (v) {
                   state.realismVerificationMaxReprocesses = v;
+                  state.saveState();
                   state.notify();
                 },
                 realismVerificationStrictness:
                     state.realismVerificationStrictness,
                 onRealismVerificationStrictnessChanged: (v) {
                   state.realismVerificationStrictness = v;
+                  state.saveState();
                   state.notify();
                 },
+                // Full needs editor (enable, enjoys-low-hygiene, custom 0-100
+                // baselines + per-tick decay rates) — same widget the character
+                // editor uses, so AI-created characters can ship custom needs
+                // tuning. Strength stays at the default (not exposed here).
                 needsFormSection: NeedsFormSection(
-                  enabled: false,
-                  onEnabledChanged: (_) {},
-                  enjoysLowHygiene: false,
-                  onEnjoysLowHygieneChanged: (_) {},
+                  enabled: state.realismNeedsSim,
+                  onEnabledChanged: (v) {
+                    state.realismNeedsSim = v;
+                    state.notify();
+                  },
+                  enjoysLowHygiene: state.realismEnjoysLowHygiene,
+                  onEnjoysLowHygieneChanged: (v) {
+                    state.realismEnjoysLowHygiene = v;
+                    state.notify();
+                  },
                   needsSimStrength: 1,
-                  baselineHunger: 80,
-                  onBaselineHungerChanged: (_) {},
-                  baselineBladder: 80,
-                  onBaselineBladderChanged: (_) {},
-                  baselineEnergy: 80,
-                  onBaselineEnergyChanged: (_) {},
-                  baselineSocial: 80,
-                  onBaselineSocialChanged: (_) {},
-                  baselineFun: 80,
-                  onBaselineFunChanged: (_) {},
-                  baselineHygiene: 80,
-                  onBaselineHygieneChanged: (_) {},
-                  baselineComfort: 80,
-                  onBaselineComfortChanged: (_) {},
-                  decayHunger: 5,
-                  onDecayHungerChanged: (_) {},
-                  decayBladder: 5,
-                  onDecayBladderChanged: (_) {},
-                  decayEnergy: 5,
-                  onDecayEnergyChanged: (_) {},
-                  decaySocial: 5,
-                  onDecaySocialChanged: (_) {},
-                  decayFun: 5,
-                  onDecayFunChanged: (_) {},
-                  decayHygiene: 5,
-                  onDecayHygieneChanged: (_) {},
-                  decayComfort: 5,
-                  onDecayComfortChanged: (_) {},
+                  baselineHunger: state.needsBaselineHunger,
+                  onBaselineHungerChanged: (v) {
+                    state.needsBaselineHunger = v;
+                    state.notify();
+                  },
+                  baselineBladder: state.needsBaselineBladder,
+                  onBaselineBladderChanged: (v) {
+                    state.needsBaselineBladder = v;
+                    state.notify();
+                  },
+                  baselineEnergy: state.needsBaselineEnergy,
+                  onBaselineEnergyChanged: (v) {
+                    state.needsBaselineEnergy = v;
+                    state.notify();
+                  },
+                  baselineSocial: state.needsBaselineSocial,
+                  onBaselineSocialChanged: (v) {
+                    state.needsBaselineSocial = v;
+                    state.notify();
+                  },
+                  baselineFun: state.needsBaselineFun,
+                  onBaselineFunChanged: (v) {
+                    state.needsBaselineFun = v;
+                    state.notify();
+                  },
+                  baselineHygiene: state.needsBaselineHygiene,
+                  onBaselineHygieneChanged: (v) {
+                    state.needsBaselineHygiene = v;
+                    state.notify();
+                  },
+                  baselineComfort: state.needsBaselineComfort,
+                  onBaselineComfortChanged: (v) {
+                    state.needsBaselineComfort = v;
+                    state.notify();
+                  },
+                  decayHunger: state.needsDecayHunger,
+                  onDecayHungerChanged: (v) {
+                    state.needsDecayHunger = v;
+                    state.notify();
+                  },
+                  decayBladder: state.needsDecayBladder,
+                  onDecayBladderChanged: (v) {
+                    state.needsDecayBladder = v;
+                    state.notify();
+                  },
+                  decayEnergy: state.needsDecayEnergy,
+                  onDecayEnergyChanged: (v) {
+                    state.needsDecayEnergy = v;
+                    state.notify();
+                  },
+                  decaySocial: state.needsDecaySocial,
+                  onDecaySocialChanged: (v) {
+                    state.needsDecaySocial = v;
+                    state.notify();
+                  },
+                  decayFun: state.needsDecayFun,
+                  onDecayFunChanged: (v) {
+                    state.needsDecayFun = v;
+                    state.notify();
+                  },
+                  decayHygiene: state.needsDecayHygiene,
+                  onDecayHygieneChanged: (v) {
+                    state.needsDecayHygiene = v;
+                    state.notify();
+                  },
+                  decayComfort: state.needsDecayComfort,
+                  onDecayComfortChanged: (v) {
+                    state.needsDecayComfort = v;
+                    state.notify();
+                  },
                 ),
-                showVerificationToggle: true,
-                showNsfwCooldownToggle: false,
-                showChaosToggle: false,
-                showTimeAndDay: false,
-                showMasterEnabledToggle: false,
               ),
             ],
           ),

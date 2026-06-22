@@ -926,6 +926,9 @@ class _HomePageState extends State<HomePage> {
       case 'export':
         _exportCharacter(context, character);
         break;
+      case 'export_json':
+        _exportCharacterJson(context, character);
+        break;
       case 'remove_folder':
         final folderService = Provider.of<FolderService>(
           context,
@@ -1699,17 +1702,25 @@ class _HomePageState extends State<HomePage> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['byaf'],
-      allowMultiple: false,
+      allowMultiple: true,
     );
 
-    if (result == null ||
-        result.files.isEmpty ||
-        result.files.first.path == null) {
+    if (result == null || result.files.isEmpty) return;
+    final paths = result.files
+        .where((f) => f.path != null)
+        .map((f) => f.path!)
+        .toList();
+    if (paths.isEmpty || !context.mounted) return;
+
+    // Multiple files → bulk import with a progress dialog (no per-file preview),
+    // mirroring the bulk V2 PNG importer. A single file keeps the rich preview
+    // dialog below.
+    if (paths.length > 1) {
+      await _runBulkByafImport(context, paths);
       return;
     }
-    if (!context.mounted) return;
 
-    final filePath = result.files.first.path!;
+    final filePath = paths.first;
     final byafService = ByafService();
 
     try {
@@ -1782,42 +1793,392 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Mass BYAF import: confirm once (with a chat-history choice for the whole
+  /// batch), then drive the shared bulk-progress dialog over the files.
+  Future<void> _runBulkByafImport(
+    BuildContext context,
+    List<String> paths,
+  ) async {
+    bool importChats = true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surfaceOf(ctx),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.library_add,
+                color: AppColors.resolve(
+                  ctx,
+                  Colors.blueAccent,
+                  Colors.blue.shade700,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Import ${paths.length} Backyard AI characters?',
+                  style: TextStyle(color: AppColors.textPrimary(ctx)),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Each .byaf will be imported as a character card. (No per-file '
+                'preview is shown for batch imports.)',
+                style: TextStyle(
+                  color: AppColors.textSecondary(ctx),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: importChats,
+                onChanged: (v) => setLocal(() => importChats = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(
+                  'Also import chat history',
+                  style: TextStyle(color: AppColors.textPrimary(ctx)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textTertiary(ctx)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Import ${paths.length}'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    _runBulkProgressImport(
+      context,
+      title: 'Import Backyard AI',
+      totalCount: paths.length,
+      runImport: ({required onProgress, required isCancelled}) =>
+          _importByafFiles(
+            context,
+            paths,
+            importChats,
+            onProgress: onProgress,
+            isCancelled: isCancelled,
+          ),
+    );
+  }
+
+  /// Per-file BYAF import loop used by the bulk progress dialog. Mirrors the
+  /// single-file `_importByaf` pipeline (parse → convert → embed V2 PNG →
+  /// import → optional chat history) and reports progress per file.
+  Future<void> _importByafFiles(
+    BuildContext context,
+    List<String> paths,
+    bool importChats, {
+    required void Function(int current, int total, String name, String? error)
+    onProgress,
+    required bool Function() isCancelled,
+  }) async {
+    final byafService = ByafService();
+    final v2Service = V2CardService();
+    final repo = Provider.of<CharacterRepository>(context, listen: false);
+    final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+    final storage = Provider.of<StorageService>(context, listen: false);
+
+    for (int i = 0; i < paths.length; i++) {
+      if (isCancelled()) break;
+      final name = paths[i].split(Platform.pathSeparator).last;
+      try {
+        final preview = await byafService.parseByaf(paths[i]);
+        final card = byafService.toCharacterCard(preview);
+        final pngPath = await byafService.saveCharacterPng(
+          card,
+          charactersDirPath: storage.charactersDir.path,
+        );
+        await v2Service.saveCardAsPng(card, pngPath, preview.extractedImagePath);
+        final imported = await repo.importCharacter(
+          File(pngPath),
+          worldRepo: worldRepo,
+        );
+        if (importChats &&
+            preview.messages.isNotEmpty &&
+            imported != null) {
+          final db = await AppDatabase.instance();
+          await byafService.importChatHistory(db, preview, imported);
+        }
+        onProgress(
+          i + 1,
+          paths.length,
+          imported?.name ?? name,
+          imported == null ? 'Import returned no character' : null,
+        );
+      } catch (e) {
+        onProgress(i + 1, paths.length, name, '$e');
+      }
+    }
+  }
+
   Future<void> _folderImportCharacters(BuildContext context) async {
     final dirPath = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Select folder containing character PNGs',
+      dialogTitle: 'Select folder containing character files',
     );
 
     if (dirPath == null) return;
     if (!context.mounted) return;
 
-    // Scan the folder for PNG files
-    final dir = Directory(dirPath);
-    final files = <File>[];
-    await for (final entity in dir.list(recursive: true)) {
-      if (entity is File && entity.path.toLowerCase().endsWith('.png')) {
-        files.add(entity);
+    // Scan for both V2 PNG cards and Backyard AI (.byaf) files.
+    final pngFiles = <File>[];
+    final byafFiles = <File>[];
+    await for (final entity in Directory(dirPath).list(recursive: true)) {
+      if (entity is! File) continue;
+      final lower = entity.path.toLowerCase();
+      if (lower.endsWith('.png')) {
+        pngFiles.add(entity);
+      } else if (lower.endsWith('.byaf')) {
+        byafFiles.add(entity);
       }
     }
 
-    if (files.isEmpty) {
+    if (pngFiles.isEmpty && byafFiles.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No PNG files found in the selected folder.'),
+            content: Text(
+              'No character cards (.png) or Backyard AI files (.byaf) found in '
+              'the selected folder.',
+            ),
           ),
         );
       }
       return;
     }
+    if (!context.mounted) return;
 
-    _runBulkImport(context, files);
+    // Breakdown + per-type confirm: a mixed folder never imports anything
+    // unexpectedly — the user sees exactly what's there and picks.
+    final sel = await _confirmFolderImport(context, pngFiles, byafFiles);
+    if (sel == null || !context.mounted) return;
+    final (importPng, importByaf, importChats) = sel;
+
+    final pngs = importPng ? pngFiles : <File>[];
+    final byafs = importByaf
+        ? byafFiles.map((f) => f.path).toList()
+        : <String>[];
+    if (pngs.isEmpty && byafs.isEmpty) return;
+
+    final total = pngs.length + byafs.length;
+    _runBulkProgressImport(
+      context,
+      title: 'Import Folder',
+      totalCount: total,
+      runImport: ({required onProgress, required isCancelled}) async {
+        var done = 0;
+        if (pngs.isNotEmpty) {
+          final repo = Provider.of<CharacterRepository>(context, listen: false);
+          final worldRepo = Provider.of<WorldRepository>(
+            context,
+            listen: false,
+          );
+          await repo.importCharacters(
+            pngs,
+            worldRepo: worldRepo,
+            isCancelled: isCancelled,
+            onProgress: (current, _, name, error) =>
+                onProgress(done + current, total, name, error),
+          );
+          done += pngs.length;
+        }
+        if (byafs.isNotEmpty && !isCancelled()) {
+          await _importByafFiles(
+            context,
+            byafs,
+            importChats,
+            onProgress: (current, _, name, error) =>
+                onProgress(done + current, total, name, error),
+            isCancelled: isCancelled,
+          );
+        }
+      },
+    );
   }
 
-  /// Shared bulk import with progress dialog — used by both multi-select and folder import.
+  /// Per-type confirm for folder import. Shows the breakdown (PNG vs BYAF) with
+  /// independent checkboxes so a mixed folder is a conscious choice, not a
+  /// surprise. Returns (importPng, importByaf, importChats), or null on cancel.
+  Future<(bool, bool, bool)?> _confirmFolderImport(
+    BuildContext context,
+    List<File> pngFiles,
+    List<File> byafFiles,
+  ) {
+    bool importPng = pngFiles.isNotEmpty;
+    bool importByaf = byafFiles.isNotEmpty;
+    bool importChats = true;
+    final accent = AppColors.resolve(
+      context,
+      Colors.blueAccent,
+      Colors.blue.shade700,
+    );
+    return showDialog<(bool, bool, bool)>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final count =
+              (importPng ? pngFiles.length : 0) +
+              (importByaf ? byafFiles.length : 0);
+          return AlertDialog(
+            backgroundColor: AppColors.surfaceOf(ctx),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.library_add, color: accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Import from folder',
+                    style: TextStyle(color: AppColors.textPrimary(ctx)),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This folder contains:',
+                  style: TextStyle(
+                    color: AppColors.textSecondary(ctx),
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (pngFiles.isNotEmpty)
+                  CheckboxListTile(
+                    value: importPng,
+                    onChanged: (v) => setLocal(() => importPng = v ?? false),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      '${pngFiles.length} character card${pngFiles.length == 1 ? '' : 's'} (V2 PNG)',
+                      style: TextStyle(color: AppColors.textPrimary(ctx)),
+                    ),
+                  ),
+                if (byafFiles.isNotEmpty)
+                  CheckboxListTile(
+                    value: importByaf,
+                    onChanged: (v) => setLocal(() => importByaf = v ?? false),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      '${byafFiles.length} Backyard AI file${byafFiles.length == 1 ? '' : 's'} (.byaf)',
+                      style: TextStyle(color: AppColors.textPrimary(ctx)),
+                    ),
+                  ),
+                if (byafFiles.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: CheckboxListTile(
+                      value: importChats && importByaf,
+                      onChanged: importByaf
+                          ? (v) => setLocal(() => importChats = v ?? true)
+                          : null,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: Text(
+                        'also import their chat history',
+                        style: TextStyle(
+                          color: importByaf
+                              ? AppColors.textSecondary(ctx)
+                              : AppColors.textTertiary(ctx),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: AppColors.textTertiary(ctx)),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: count == 0
+                    ? null
+                    : () => Navigator.pop(ctx, (
+                        importPng,
+                        importByaf,
+                        importChats,
+                      )),
+                child: Text('Import $count'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Shared bulk PNG import with progress dialog — used by both multi-select
+  /// and folder import.
   void _runBulkImport(BuildContext context, List<File> files) {
+    _runBulkProgressImport(
+      context,
+      title: 'Bulk Import',
+      totalCount: files.length,
+      runImport: ({required onProgress, required isCancelled}) async {
+        final repo = Provider.of<CharacterRepository>(context, listen: false);
+        final worldRepo = Provider.of<WorldRepository>(context, listen: false);
+        await repo.importCharacters(
+          files,
+          worldRepo: worldRepo,
+          isCancelled: isCancelled,
+          onProgress: onProgress,
+        );
+      },
+    );
+  }
+
+  /// Generic bulk-import progress dialog. Drives any import that reports
+  /// (current, total, name, error) per item and honors a cancel flag — used by
+  /// both the V2 PNG bulk import and the BYAF (Backyard AI) bulk import.
+  void _runBulkProgressImport(
+    BuildContext context, {
+    required String title,
+    required int totalCount,
+    required Future<void> Function({
+      required void Function(int current, int total, String name, String? error)
+      onProgress,
+      required bool Function() isCancelled,
+    })
+    runImport,
+  }) {
     bool cancelled = false;
+    bool started = false;
     int currentCount = 0;
-    int totalCount = files.length;
     int importedCount = 0;
     int failedCount = 0;
     String currentName = '';
@@ -1828,46 +2189,35 @@ class _HomePageState extends State<HomePage> {
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
-            // Start the import on first build
-            if (currentCount == 0 && !cancelled) {
-              final repo = Provider.of<CharacterRepository>(
-                context,
-                listen: false,
-              );
-              final worldRepo = Provider.of<WorldRepository>(
-                context,
-                listen: false,
-              );
-              repo
-                  .importCharacters(
-                    files,
-                    worldRepo: worldRepo,
-                    isCancelled: () => cancelled,
-                    onProgress: (current, total, name, error) {
-                      if (ctx.mounted) {
-                        setDialogState(() {
-                          currentCount = current;
-                          currentName = name;
-                          if (error == null) {
-                            importedCount++;
-                          } else {
-                            failedCount++;
-                          }
-                        });
+            // Start the import on first build.
+            if (!started) {
+              started = true;
+              runImport(
+                isCancelled: () => cancelled,
+                onProgress: (current, total, name, error) {
+                  if (ctx.mounted) {
+                    setDialogState(() {
+                      currentCount = current;
+                      currentName = name;
+                      if (error == null) {
+                        importedCount++;
+                      } else {
+                        failedCount++;
                       }
-                    },
-                  )
-                  .then((summary) {
-                    if (ctx.mounted) Navigator.of(ctx).pop();
-                    if (context.mounted) {
-                      final msg = failedCount > 0
-                          ? 'Imported $importedCount character${importedCount == 1 ? '' : 's'} ($failedCount failed)'
-                          : 'Imported $importedCount character${importedCount == 1 ? '' : 's'} successfully!';
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(msg)));
-                    }
-                  });
+                    });
+                  }
+                },
+              ).then((_) {
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (context.mounted) {
+                  final msg = failedCount > 0
+                      ? 'Imported $importedCount character${importedCount == 1 ? '' : 's'} ($failedCount failed)'
+                      : 'Imported $importedCount character${importedCount == 1 ? '' : 's'} successfully!';
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(msg)));
+                }
+              });
             }
 
             final progress = totalCount > 0 ? currentCount / totalCount : 0.0;
@@ -1880,13 +2230,13 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.blueAccent.withValues(alpha: 0.5),
                 ),
               ),
-              title: const Row(
+              title: Row(
                 children: [
-                  Icon(Icons.library_add, color: Colors.blueAccent),
-                  SizedBox(width: 12),
+                  const Icon(Icons.library_add, color: Colors.blueAccent),
+                  const SizedBox(width: 12),
                   Text(
-                    'Bulk Import',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -2014,6 +2364,39 @@ class _HomePageState extends State<HomePage> {
             context,
           ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
         }
+      }
+    }
+  }
+
+  /// Export a character as a standalone Character Card V2 `.json` file.
+  /// This is the same JSON embedded in exported PNGs and what the importer
+  /// accepts, just without the avatar image.
+  Future<void> _exportCharacterJson(BuildContext context, character) async {
+    final safeName = character.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export Character Card (JSON)',
+      fileName: '$safeName.json',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+
+    if (outputFile == null) return;
+    if (!outputFile.toLowerCase().endsWith('.json')) {
+      outputFile += '.json';
+    }
+
+    try {
+      await V2CardService().saveCardAsJson(character, outputFile);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Exported to $outputFile')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
       }
     }
   }

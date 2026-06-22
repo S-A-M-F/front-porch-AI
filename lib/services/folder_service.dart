@@ -77,20 +77,26 @@ class FolderService extends ChangeNotifier {
     try {
       final dbFolders = await _db.getAllFolders();
       _folders.clear();
-      for (final f in dbFolders) {
-        // Find characters assigned to this folder
-        final chars = await _db.getAllCharacters();
-        final charPaths = chars
-            .where((c) => c.folderId == f.id && c.imagePath != null)
-            .map((c) => _normalize(c.imagePath!))
-            .toList();
 
+      // Fetch every character once, then bucket their normalized filenames by
+      // folderId. Previously getAllCharacters() ran once per folder, so a
+      // library with N characters and M folders did N*M work on every reload.
+      final chars = await _db.getAllCharacters();
+      final pathsByFolder = <String, List<String>>{};
+      for (final c in chars) {
+        final fid = c.folderId;
+        if (fid != null && c.imagePath != null) {
+          (pathsByFolder[fid] ??= <String>[]).add(_normalize(c.imagePath!));
+        }
+      }
+
+      for (final f in dbFolders) {
         _folders.add(
           CharacterFolder(
             id: f.id,
             name: f.name,
             parentId: f.parentId,
-            characterPaths: charPaths,
+            characterPaths: pathsByFolder[f.id] ?? const <String>[],
           ),
         );
       }

@@ -567,5 +567,56 @@ void main() {
         await tmpDir.delete(recursive: true);
       },
     );
+
+    test(
+      'standalone .json import parses fields and synthesizes a placeholder avatar',
+      () async {
+        // Covers the user-facing fix: a raw .json card carries no image, so the
+        // importer must route through readCardFromJsonFile and let persist
+        // synthesize a placeholder PNG instead of producing an empty,
+        // name-only character (the pre-fix behavior).
+        final card = CharacterCard(
+          name: 'JsonImportChar',
+          description: 'imported from json',
+          personality: 'Curious',
+          firstMessage: 'Hi from JSON',
+          tags: ['imported'],
+          lorebook: Lorebook(
+            entries: [LorebookEntry(key: 'lore', content: 'Some lore')],
+          ),
+          frontPorchExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            trustLevel: 15,
+          ),
+        );
+        final v2 = V2CardService();
+        final tmpDir = Directory.systemTemp.createTempSync('json_import_');
+        final jsonPath = '${tmpDir.path}/card.json';
+        await v2.saveCardAsJson(card, jsonPath);
+
+        final imported = await repo.importCharacter(File(jsonPath));
+        // Note: this file imports drift, whose `isNotNull` collides with the
+        // matcher of the same name — use the `!= null` idiom like the rest.
+        expect(imported != null, true);
+        expect(imported!.name, 'JsonImportChar');
+        expect(imported.description, 'imported from json');
+        expect(imported.personality, 'Curious');
+        expect(imported.firstMessage, 'Hi from JSON');
+        expect(imported.tags, ['imported']);
+        expect(imported.lorebook?.entries.length, 1);
+        expect(imported.frontPorchExtensions?.trustLevel, 15);
+
+        // JSON has no avatar, so persist must synthesize a placeholder PNG
+        // that actually exists on disk.
+        expect(imported.imagePath != null, true);
+        expect(imported.imagePath, endsWith('.png'));
+        expect(File(imported.imagePath!).existsSync(), isTrue);
+
+        // The character lands in the repo's in-memory list.
+        expect(repo.characters.any((c) => c.name == 'JsonImportChar'), isTrue);
+
+        await tmpDir.delete(recursive: true);
+      },
+    );
   });
 }
