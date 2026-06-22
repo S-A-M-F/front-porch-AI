@@ -20,11 +20,21 @@ and flip the row to ✅.
 - ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
 - ✅ `support/fakes.dart` — timer-free service doubles for provider-backed goldens.
   `FakeLLMProvider` ✅. `FakeChatService` ✅ (sidebar + bubble + overlay surface;
-  `realismEvalStreamTextClean` returns `''` so the "initializing" branch renders).
+  `realismEvalStreamTextClean` returns `''` so the "initializing" branch renders;
+  `sessionGenSettings` returns `ChatGenerationSettings(bannedPhrases: [])` so
+  `resolveBannedPhrases` short-circuits before reaching `storage.realismSettings`).
   `FakeTtsService` ✅. `FakeUserPersonaService` ✅. `FakeCharacterRepository` ✅.
   `FakeFolderService` ✅. `FakeGroupChatRepository` ✅. `FakeAppState` ✅.
   `FakeUpdateService` ✅ (extended with `downloadComplete`, `downloading`,
   `displayLatestVersion`, `releaseNotes`, `downloadProgress` for UpdateDialog).
+- ✅ `support/fakes_services.dart` — `FakeCloudSyncService`, `FakeModelManager`
+  (with real `DownloadManager` for `DownloadQueuePanel`; `refreshModels()` no-ops
+  so `ModelManagerPage.initState` doesn't throw), `FakeHardwareService` (seeded
+  RTX 4070 hardware info).
+- ✅ `support/fakes_storage.dart` — `FakeStorageService` with all build-time getters
+  including `generationSettings` (for `resolveTemperature` etc.) and `backendSettings`
+  (for `resolveContextSize`). Audited against CloudSyncPage, BackgroundSettingsDialog,
+  UiSettingsDialog, ChatSettingsDialog, ModelSettingsDialog, ModelManagerPage.
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -102,11 +112,25 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 - ✅ `tag_dialog.dart` — character with two existing tags (CharacterRepository only
   called from onChanged handler, never during static golden)
 - ✅ `update_dialog.dart` — prompt stage via `FakeUpdateService` in `ChangeNotifierProvider`
+- ✅ `export_persona_dialog.dart` — 2 seeded UserPersonas (Casual + Professional);
+  no providers needed (`dialogs_more_golden_test.dart`). Surface 520×440.
+- ✅ `context_viewer_dialog.dart` — empty prompt budget; `FakeChatService` injected
+  directly (not via provider). Surface 560×640.
+- ✅ `background_settings_dialog.dart` — "none" background selected; `FakeStorageService`
+  in `ChangeNotifierProvider<StorageService>`. Surface 600×680.
+- ✅ `ui_settings_dialog.dart` — global defaults (no character override);
+  `FakeStorageService`. Surface 580×960.
+- ✅ `chat_settings_dialog.dart` — local backend, default gen settings; `FakeStorageService`
+  + `FakeLLMProvider` + `FakeChatService`. `settle: false` (TextEditingController tickers).
+  Surface 580×1020.
+- ✅ `group_objectives_dialog.dart` — 2 characters (Aria Vale + Dex Marlowe), empty
+  objectives list; `FakeChatService` injected directly. `settle: false` (_goalController).
+  Pre-existing 6px layout overflow suppressed via `FlutterError.onError`. Surface 640×700.
 - 🚫 `rocm_guidance_dialog.dart` — inner widget `_RocmGuidanceDialog` is private; public API
   is a function `showRocmGuidanceDialog(context, linuxDistro)`, not directly pumpable
 - 🚫 `lorebook_entry_dialog.dart` — inner widget `_LorebookEntryDialog` is private; public API
   is `showLorebookEntryDialog(...)`, not directly pumpable
-- ⬜ remaining 19 dialogs — pumped in compact surfaces at representative populated state
+- ⬜ remaining 13 dialogs — pumped in compact surfaces at representative populated state
 
 ## Navigation sidebar — `lib/ui/widgets/sidebar.dart`
 - ✅ `widget/sidebar_nav_golden_test.dart`: Home selected (index 0), Settings selected (index 3),
@@ -123,13 +147,26 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   `FakeFolderService` + `FakeGroupChatRepository` supply the three repo
   dependencies; `CharacterCardGrid` is fully param-driven so no heavy provider
   tree is needed. Light + dark.
+- ✅ `create_character_page.dart` — step 0 Identity at rest. No providers needed
+  (all `Provider.of` calls are inside `onPressed` lambdas). `settle: false`
+  (TextEditingController + StyledTextController tickers). Surface 1280×900.
+  (`pages_golden_test.dart`)
+- ✅ `user_persona_page.dart` — empty persona list (empty-state "Add your first
+  persona" UI). `FakeUserPersonaService` in `ChangeNotifierProvider`. `settle: false`
+  (`AnimationController.repeat()` header glow). Surface 1280×900.
+- ✅ `model_manager_page.dart` — My Models tab, empty local model list.
+  `FakeModelManager` + `FakeHardwareService` + `FakeStorageService` multi-provider.
+  Surface 1280×900.
+- ✅ `world_management_page.dart` — empty world list (empty state). `FakeWorldRepository`
+  in provider. `settle: false` (`AnimationController.repeat()` header glow). Surface 1280×900.
+- ✅ `cloud_sync_page.dart` — disconnected / idle (full sync section; `isPreRelease=false`).
+  `FakeStorageService` + `FakeCloudSyncService` multi-provider. Surface 1280×900.
 - ⬜ **chat page** (`chat_page.dart`, ~3800 lines) — the MessageBubble surface is
   now covered (see Chat bubbles above). Full page golden deferred: needs
   `FakeExpressionClassifierService` + a seeded `ChatService` with a message list;
   the component-by-component path (individual consumers extracted) is the route.
 - ⬜ settings, character create/edit, group create/edit, story (dashboard/setup/
-  writer/reader/structure), model manager, cloud sync, world management,
-  user persona, fork-to-group
+  writer/reader/structure), fork-to-group
 
 ### Next infrastructure step
 Build `FakeExpressionClassifierService` in `support/fakes.dart` to cover the
