@@ -1,0 +1,46 @@
+{
+  "0": {
+    "enjoysLow": 5,
+    "normal": 0
+  },
+  "10": {
+    "enjoysLow": 4,
+    "normal": 1
+  },
+  "100": {
+    "enjoysLow": 0,
+    "normal": 5
+  },
+  "20": {
+    "enjoysLow": 3,
+    "normal": 2
+  },
+  "30": {
+    "enjoysLow": 3,
+    "normal": 2
+  },
+  "40": {
+    "enjoysLow": 2,
+    "normal": 3
+  },
+  "50": {
+    "enjoysLow": 1,
+    "normal": 4
+  },
+  "60": {
+    "enjoysLow": 1,
+    "normal": 4
+  },
+  "70": {
+    "enjoysLow": 0,
+    "normal": 5
+  },
+  "80": {
+    "enjoysLow": 0,
+    "normal": 5
+  },
+  "90": {
+    "enjoysLow": 0,
+    "normal": 5
+  }
+}
