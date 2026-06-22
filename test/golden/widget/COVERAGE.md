@@ -80,25 +80,26 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
 
 ## Pages — `lib/ui/pages/` (21; heaviest, need shared MultiProvider of fakes)
 - ✅ creator wizard — see "Character Creator" above (4 user-facing steps + engine)
-- ⬜ **chat page** (`chat_page.dart`, ~3800 lines) — reads 9 providers incl.
-  TtsService / ExpressionClassifierService / WorldRepository and a fully-populated
-  ChatService with a message list. Not a clean static golden as a whole; the path
-  is to cover it component-by-component (MessageBubble first) once the heavy
-  service doubles exist. Blocked on the same `support/fakes.dart` work as the bubble.
-- ⬜ **home screen** (`home_page.dart`, ~3400 lines) — reads 10 providers incl.
-  AppDatabase / FolderService / CloudSyncService / KoboldService / AppState +
-  seeded CharacterRepository (the character grid). Needs the app-level fake-provider
-  harness; cover the character-grid/card components first.
+- ✅ **home screen — character grid** (`CharacterCardGrid` widget) —
+  `widget/home_golden_test.dart`: empty library state ("This folder is empty") +
+  3-character grid (cards with name labels, tag chips, placeholder avatar icons,
+  grid header with sort/scale controls). `FakeCharacterRepository` +
+  `FakeFolderService` + `FakeGroupChatRepository` supply the three repo
+  dependencies; `CharacterCardGrid` is fully param-driven so no heavy provider
+  tree is needed. Light + dark.
+- ⬜ **chat page** (`chat_page.dart`, ~3800 lines) — the MessageBubble surface is
+  now covered (see Chat bubbles above). Full page golden deferred: needs
+  `FakeExpressionClassifierService` + a seeded `ChatService` with a message list;
+  the component-by-component path (individual consumers extracted) is the route.
 - ⬜ settings, character create/edit, group create/edit, story (dashboard/setup/
   writer/reader/structure), model manager, cloud sync, world management,
   user persona, fork-to-group
 
-### Next infrastructure step (unblocks home page and remaining heavy pages)
-Build `FakeCharacterRepository` (seeded `List<CharacterCard>`, no DB load) in
-`support/fakes.dart`, then a `pumpPage` helper that wires the full MultiProvider
-tree (StorageService, TtsService, ChatService, UserPersonaService, CharacterRepository,
-AppState, …). The chat page's MessageBubble surface is now covered; the home page's
-character-grid components are the next target once FakeCharacterRepository exists.
+### Next infrastructure step
+Build `FakeExpressionClassifierService` in `support/fakes.dart` to cover the
+expression/avatar panel (used on the chat page and character cards with avatars).
+Also `FakeAppState` + `FakeKoboldService` to cover the home page status bar. With
+those, the remaining pages become component-by-component goldens like the sidebar.
 
 ## Image studio — `lib/ui/image_studio/`
 - ⬜ main surfaces + generation options tab (extend existing `test/ui/image_studio/`)
