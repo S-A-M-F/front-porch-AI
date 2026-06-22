@@ -31,11 +31,16 @@ const Key _rootKey = Key('golden-root');
 
 /// Pump [child] in a deterministic MaterialApp for the given [brightness] and
 /// [surface] size, then settle.
+///
+/// Set [settle] to false for screens that own a perpetual ticker (e.g. a focused
+/// text field's blinking cursor): `pumpAndSettle` would never return, so we pump
+/// a couple of bounded frames instead — enough to lay out a static golden.
 Future<void> pumpGolden(
   WidgetTester tester,
   Widget child, {
   required Brightness brightness,
   required Size surface,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = surface;
   tester.view.devicePixelRatio = 1.0;
@@ -58,7 +63,12 @@ Future<void> pumpGolden(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+  }
 }
 
 /// Render [child] in both light and dark themes and assert each against its
@@ -70,10 +80,12 @@ Future<void> expectThemedGoldens(
   required String group,
   required String name,
   Size surface = const Size(420, 220),
+  bool settle = true,
 }) async {
   for (final brightness in Brightness.values) {
     final mode = brightness == Brightness.light ? 'light' : 'dark';
-    await pumpGolden(tester, child, brightness: brightness, surface: surface);
+    await pumpGolden(tester, child,
+        brightness: brightness, surface: surface, settle: settle);
     await expectLater(
       find.byKey(_rootKey),
       matchesGoldenFile('_goldens/$group/$name.$mode.png'),

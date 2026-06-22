@@ -30,21 +30,30 @@ library;
 // pixel golden of each screen freezes the restored layout so a regression back
 // to placeholders fails loudly here.
 //
-// These render statically from a seeded CreatorState — the steps only reach for
-// Provider inside button callbacks, which never fire during a static pump. The
-// Review screen is covered separately (its avatar panel needs a live LLMProvider
-// whose readiness probe is incompatible with a static golden — see COVERAGE.md).
+// The config/realism steps render statically from a seeded CreatorState — they
+// only reach for Provider inside button callbacks, which never fire during a
+// static pump. The Review step additionally reads an LLMProvider/ImageGenService
+// (its avatar panel), supplied here via the timer-free FakeLLMProvider so the
+// screen settles deterministically.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/services/image_gen_service.dart';
+import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/mode_select_step.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/quick_config_step.dart';
 import 'package:front_porch_ai/ui/character_creator/steps/realism_step.dart';
+import 'package:front_porch_ai/ui/character_creator/steps/review_step.dart';
 
+import '../support/creator_test_support.dart';
+import '../support/fakes.dart';
 import '../support/golden_app.dart';
 
 /// A deterministically seeded CreatorState with a generated card, so the realism
@@ -79,6 +88,8 @@ CreatorState _seedState() {
 }
 
 void main() {
+  setupPathProviderMock();
+
   testWidgets('ModeSelectStep — three mode cards', (tester) async {
     final state = _seedState();
     addTearDown(state.dispose);
@@ -119,6 +130,39 @@ void main() {
       group: 'creator_steps',
       name: 'realism',
       surface: const Size(860, 1140),
+    );
+  });
+
+  testWidgets('ReviewStep — generated card review', (tester) async {
+    final state = _seedState();
+    addTearDown(state.dispose);
+    // ReviewStep's avatar panel reads LLMProvider (backend type) at build and
+    // ImageGenService only in button callbacks. Use the timer-free fake provider
+    // and a non-awaited StorageService (its async init is irrelevant to a static
+    // render, and awaiting it inside testWidgets would never resolve).
+    SharedPreferences.setMockInitialValues({});
+    final storage = StorageService();
+    addTearDown(storage.dispose);
+    final llm = FakeLLMProvider();
+    addTearDown(llm.dispose);
+    final imageService = ImageGenService(storage);
+    addTearDown(imageService.dispose);
+    await expectThemedGoldens(
+      tester,
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider<LLMProvider>.value(value: llm),
+          ChangeNotifierProvider<ImageGenService>.value(value: imageService),
+        ],
+        child:
+            SizedBox(width: 900, height: 1100, child: ReviewStep(state: state)),
+      ),
+      group: 'creator_steps',
+      name: 'review',
+      surface: const Size(940, 1140),
+      // The editable review fields own a blinking-cursor ticker; pump bounded
+      // frames instead of settling.
+      settle: false,
     );
   });
 }

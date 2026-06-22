@@ -18,7 +18,9 @@ and flip the row to ✅.
 - ✅ `flutter_test_config.dart` — google_fonts fetch disabled + bundled Roboto
 - ✅ `dart_test.yaml` + `@TestOn('linux')` gating + CI `--tags golden` step
 - ✅ `support/creator_test_support.dart` — path_provider mock + `makeGoldenStorage`
-- ⬜ `support/fakes.dart` — shared `FakeChatService`/`FakeStorageService`/… (promote the ad-hoc `_Fake*` from `test/ui/`); needed before provider-backed surfaces
+- 🔶 `support/fakes.dart` — timer-free service doubles for provider-backed goldens.
+  `FakeLLMProvider` ✅ (done — unblocked ReviewStep). `FakeChatService` ⬜ (needed
+  for sidebar/chat/overlays/home).
 - ⬜ `support/fixtures.dart` — canonical deterministic CharacterCard / chat / group / needs / lorebook
 
 ## Character Creator — `lib/ui/character_creator/`
@@ -32,13 +34,11 @@ The June-6 "Stage 4" refactor shipped a *functionally dead* creator to stable
   A pixel golden cannot catch a stubbed engine — these assert the behavior directly.
 - ✅ **Wizard screens** — `widget/creator_steps_golden_test.dart`: `ModeSelectStep`
   (3 mode cards), `QuickConfigStep` (concept + options), `RealismStep` (full
-  realism/needs form). Light + dark.
-- ⬜ `ReviewStep` — deferred: its avatar panel reads a live `LLMProvider`, whose
-  backend readiness probe schedules a recurring timer that never lets a static
-  golden settle. Needs a timer-free `LLMProvider` double (part of the pending
-  `support/fakes.dart`).
-- ⬜ `SetupStep` (backend config) — Provider-heavy (LLMProvider/ModelManager/
-  Kobold/PseudoRemote/BackendManager); same `support/fakes.dart` prerequisite.
+  realism/needs form), `ReviewStep` (avatar panel + editable card fields, via
+  `FakeLLMProvider` + bounded-frame pump for the cursor ticker). Light + dark.
+- ⬜ `SetupStep` (backend config) — Provider-heavy (ModelManager/Kobold/
+  PseudoRemote/BackendManager state drives live model lists + status dots);
+  needs those service doubles too.
 - ⬜ `GuidedConfigStep`, `AutomatedConfigStep`, `GeneratingStep`.
 
 ## Leaf widgets — `lib/ui/widgets/` (prop-only, no provider tree)
