@@ -91,6 +91,49 @@ class _ChatPageState extends State<ChatPage> {
     return storage.resolveCharacterImage(imagePath);
   }
 
+  /// Resolve the avatar + name color for a message's speaker from the unified
+  /// [ChatService.cast], replacing the old group-vs-1:1/guest branches with one
+  /// path. A non-host participant (group member or Scene Guest) gets its own
+  /// avatar and a palette color keyed by its order among non-host speakers
+  /// (preserving the previous per-mode coloring). The host gets its avatar and
+  /// no color; an unresolved sender (a departed guest) gets the placeholder.
+  (File?, Color?) _resolveSpeaker(ChatService chatService, ChatMessage msg) {
+    if (msg.isUser) return (null, null);
+    final cast = chatService.cast;
+    final nonHost = cast.where((p) => !p.isHost).toList();
+
+    ChatParticipant? speaker;
+    for (final p in cast) {
+      if ((msg.characterId != null && p.id == msg.characterId) ||
+          p.name == msg.sender) {
+        speaker = p;
+        break;
+      }
+    }
+
+    if (speaker != null && !speaker.isHost) {
+      final img = speaker.card.imagePath != null
+          ? _resolveCharImage(speaker.card.imagePath!)
+          : null;
+      final idx = nonHost.indexWhere((p) => p.id == speaker!.id);
+      return (img, _groupCharacterColor(idx >= 0 ? idx : 0));
+    }
+
+    // Host message (or an unresolved/departed sender). Use the host avatar only
+    // for an actual host message; an unknown non-host sender gets the
+    // placeholder rather than the host's face under someone else's name.
+    final host = cast.where((p) => p.isHost).firstOrNull;
+    final isHostMsg =
+        (speaker != null && speaker.isHost) ||
+        (host != null &&
+            (msg.sender == host.name ||
+                (msg.characterId != null && msg.characterId == host.id)));
+    final img = (isHostMsg && host?.card.imagePath != null)
+        ? _resolveCharImage(host!.card.imagePath!)
+        : null;
+    return (img, null);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -534,93 +577,11 @@ class _ChatPageState extends State<ChatPage> {
                                       final reversedIndex =
                                           messages.length - 1 - index;
                                       final msg = messages[reversedIndex];
-                                      // In group mode, pass the character's image based on sender
-                                      File? senderImage;
-                                      Color? senderColor;
-                                      if (isGroup && !msg.isUser) {
-                                        final senderChar = chatService
-                                            .groupCharacters
-                                            .where((c) => c.name == msg.sender)
-                                            .firstOrNull;
-                                        senderImage =
-                                            senderChar?.imagePath != null
-                                            ? _resolveCharImage(
-                                                senderChar!.imagePath!,
-                                              )
-                                            : null;
-                                        final senderIdx = chatService
-                                            .groupCharacters
-                                            .indexWhere(
-                                              (c) => c.name == msg.sender,
-                                            );
-                                        senderColor = _groupCharacterColor(
-                                          senderIdx >= 0 ? senderIdx : 0,
-                                        );
-                                      } else {
-                                        // 1:1: a message may belong to a Scene
-                                        // Guest (Lite NPC) rather than the active
-                                        // character. Resolve the guest's own
-                                        // name/avatar/color the same way groups do.
-                                        CharacterCard? guestChar;
-                                        if (!msg.isUser) {
-                                          // characterId on a message is the
-                                          // card's stableGroupId (PNG basename),
-                                          // so match that or fall back to sender.
-                                          guestChar = chatService
-                                              .sceneGuestCards
-                                              .where(
-                                                (g) =>
-                                                    g.stableGroupId ==
-                                                        msg.characterId ||
-                                                    g.name == msg.sender,
-                                              )
-                                              .firstOrNull;
-                                          if (guestChar != null &&
-                                              guestChar.name ==
-                                                  character?.name &&
-                                              guestChar.dbId ==
-                                                  character?.dbId) {
-                                            guestChar = null; // it's the host
-                                          }
-                                        }
-                                        if (guestChar != null) {
-                                          senderImage =
-                                              guestChar.imagePath != null
-                                              ? _resolveCharImage(
-                                                  guestChar.imagePath!,
-                                                )
-                                              : null;
-                                          final gIdx = chatService
-                                              .sceneGuestCards
-                                              .indexWhere(
-                                                (g) =>
-                                                    g.dbId == guestChar!.dbId,
-                                              );
-                                          senderColor = _groupCharacterColor(
-                                            gIdx >= 0 ? gIdx : 0,
-                                          );
-                                        } else {
-                                          // Not a resolved guest. Use the host's
-                                          // avatar ONLY for an actual host
-                                          // message — a non-host sender that no
-                                          // longer resolves (a deleted/departed
-                                          // guest) gets the placeholder, not the
-                                          // host's face under the guest's name.
-                                          final isHostMsg =
-                                              msg.isUser ||
-                                              msg.sender == character?.name ||
-                                              (msg.characterId != null &&
-                                                  msg.characterId ==
-                                                      character?.stableGroupId);
-                                          senderImage =
-                                              (isHostMsg &&
-                                                  character?.imagePath != null)
-                                              ? _resolveCharImage(
-                                                  character!.imagePath!,
-                                                )
-                                              : null;
-                                        }
-                                      }
+                                      // Resolve the speaker's avatar + name color
+                                      // from the unified cast (host, group member,
+                                      // or Scene Guest) — one path for all modes.
+                                      final (senderImage, senderColor) =
+                                          _resolveSpeaker(chatService, msg);
                                       return MessageBubble(
                                         key: ObjectKey(msg),
                                         message: msg,

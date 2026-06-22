@@ -39,6 +39,7 @@ import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
+import 'package:front_porch_ai/models/chat_participant.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/group_member.dart';
@@ -2190,6 +2191,28 @@ class ChatService extends ChangeNotifier {
   /// The character who will speak next in group mode.
   /// Fully delegated to GroupTurnManager (supports forced override + both turn orders + Director Mode).
   CharacterCard? get nextCharacter => _groupManager?.nextSpeaker;
+
+  /// The unified ordered cast of speakers for the active chat, regardless of
+  /// mode. This is the single roster the UI reads instead of branching on
+  /// `isGroupMode` between `activeCharacter`, `groupCharacters`, and
+  /// `sceneGuestCards`:
+  ///   - Group chat → each group member, in turn order (no distinct host).
+  ///   - 1:1 / NPC chat → the host (`cast[0]`, realism-bearing) followed by any
+  ///     present Scene Guests (lite NPCs, realism off).
+  /// Empty only when no chat is loaded.
+  List<ChatParticipant> get cast {
+    if (isGroupMode) {
+      return [
+        for (final c in groupCharacters)
+          ChatParticipant(card: c, isHost: false),
+      ];
+    }
+    final host = _activeCharacter;
+    return [
+      if (host != null) ChatParticipant(card: host, isHost: true),
+      for (final g in _sceneGuestCards) ChatParticipant(card: g, isHost: false),
+    ];
+  }
 
   // ── Group RAG / Memory Settings (stored in checkpoint) ───────────────────
   bool get groupRagEnabled => _groupRagEnabled;
