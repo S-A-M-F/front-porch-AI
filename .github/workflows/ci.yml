@@ -81,7 +81,7 @@ jobs:
         run: flutter analyze --no-fatal-warnings --no-fatal-infos || true
 
   test:
-    name: CI
+    name: Tests (unit + integration)
     runs-on: ubuntu-latest
     needs: analyze
     steps:
@@ -116,17 +116,37 @@ jobs:
         # forTesting DBs) even with the internal while-loop settles.
         # See test file comments on "robust settle", "under load/CI", and the
         # card-seed / inter-char key handling.
-        # Exclude the `golden` tag here so render-sensitive widget pixel goldens
-        # don't interleave with the timing-sensitive integration tests; they run
-        # in the dedicated step below. Text/JSON snapshot goldens are untagged
-        # and run as part of this step on every platform.
+        # Pixel golden tests run in the dedicated `golden` job below so a render
+        # diff never masks a logic failure here and vice-versa.
         run: flutter test --concurrency=1 --reporter expanded --exclude-tags golden
         timeout-minutes: 20
 
-      - name: Run Widget Golden Tests (Linux-authored pixel goldens)
-        # Pixel goldens are authored against this ubuntu image; running them in an
-        # isolated step keeps a render diff from masking a logic failure above and
-        # vice-versa. To refresh after an intentional UI change, run locally on
-        # Linux: `flutter test --tags golden --update-goldens`.
+  golden:
+    name: Widget Golden Tests
+    runs-on: ubuntu-latest
+    needs: analyze
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.1'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run Widget Golden Tests
+        # Pixel goldens are authored against this ubuntu image and must match
+        # exactly. Any UI change that shifts a pixel will fail this job.
+        # To update goldens after an intentional UI change, run on Linux:
+        #   flutter test --tags golden --update-goldens
+        # then commit the refreshed PNGs alongside the UI change.
+        #
+        # This job runs in parallel with `test` (both need `analyze` to pass)
+        # so a golden failure is always reported independently of logic failures.
         run: flutter test --concurrency=1 --reporter expanded --tags golden
         timeout-minutes: 10
