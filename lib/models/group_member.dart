@@ -156,6 +156,54 @@ class GroupMember {
     );
   }
 
+  // ── Provenance (Phase 0 of the "one chat, changing cast" unification) ──────
+  // A group member is a copy of a library character under a fresh UUID, so on
+  // its own it can't be traced back to the character it came from. These stamp
+  // and read the origin identity in [memberState] (a Forge-invisible blob — no
+  // DB migration), so later work can collapse a chat back to a 1:1 with the
+  // ORIGINAL library character and avoid orphaned duplicates.
+
+  /// The origin library character's `stableGroupId` this member was copied from
+  /// (or the imported `_original_stable_id`). Null for legacy members created
+  /// before provenance stamping (their [memberState] was '{}').
+  String? get originStableId {
+    final v = memberState['originStableId'];
+    return (v is String && v.isNotEmpty) ? v : null;
+  }
+
+  /// The origin library character's `dbId` when known (stamped alongside
+  /// [originStableId]). Null for external imports (no library row) and legacy
+  /// members.
+  String? get originLibraryDbId {
+    final v = memberState['originLibraryDbId'];
+    return (v is String && v.isNotEmpty) ? v : null;
+  }
+
+  /// Builds the `group_members.memberState` JSON that stamps a new member's
+  /// origin at creation. Single source of truth for the blob shape so every
+  /// creation site stamps identically and stays in sync with the
+  /// [originStableId] / [originLibraryDbId] getters. Stamped by:
+  ///   • _createGroupMember — the one path behind the 1:1→group fork (host +
+  ///     arrivals), live `/join` adds (addCharacterToGroup), and the web-API
+  ///     fork (which routes through forkToGroupChat); and
+  ///   • the create-group wizard.
+  /// Group-card IMPORT deliberately does NOT stamp: the portable format carries
+  /// the exporter's per-member UUID, not a resolvable library origin, so
+  /// imported members stay origin-unknown ('{}') and are reconnected by name in
+  /// a later phase. Empty/blank values are omitted, so a member with no
+  /// resolvable origin yields '{}' (legacy shape).
+  static String encodeProvenance({
+    required String? originStableId,
+    String? originLibraryDbId,
+  }) {
+    final map = <String, dynamic>{};
+    final sid = originStableId?.trim();
+    if (sid != null && sid.isNotEmpty) map['originStableId'] = sid;
+    final dbId = originLibraryDbId?.trim();
+    if (dbId != null && dbId.isNotEmpty) map['originLibraryDbId'] = dbId;
+    return jsonEncode(map);
+  }
+
   /// Reconstructs a transient CharacterCard for widgets / FileImage / existing
   /// code that still expects the old shape (GroupMemberCard, NeedsBar, etc.).
   ///

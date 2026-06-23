@@ -2575,6 +2575,13 @@ class _HomePageState extends State<HomePage> {
                     )
                   : null,
             ),
+            // Provenance: deliberately NOT stamped on import. A Group Card export
+            // carries the exporting device's per-member UUID (its avatar
+            // basename) in `_original_stable_id`, not the source library
+            // character's stableGroupId — so there's no resolvable library origin
+            // to stamp here. Leave it origin-unknown ('{}'); Phase 1's name-match
+            // resolver reconnects imported members to a local library character.
+            // (Making the portable format carry the true origin is Phase 4.)
             memberState: const Value('{}'),
           ),
         );

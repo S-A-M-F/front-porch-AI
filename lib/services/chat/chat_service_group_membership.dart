@@ -291,7 +291,14 @@ extension ChatServiceGroupMembership on ChatService {
               ? jsonEncode(character.rawExtensions!)
               : null,
         ),
-        memberState: drift.Value('{}'),
+        // Provenance: stamp which library character this member was copied from
+        // so a chat can later collapse back to a 1:1 with the original (no orphans).
+        memberState: drift.Value(
+          GroupMember.encodeProvenance(
+            originStableId: character.stableGroupId,
+            originLibraryDbId: character.dbId,
+          ),
+        ),
       ),
     );
   }
