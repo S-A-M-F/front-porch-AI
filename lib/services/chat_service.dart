@@ -5328,6 +5328,13 @@ class ChatService extends ChangeNotifier {
           '[Realism:Unified] 1:1 host — syncing post-decay realism into the cast store',
         );
         _saveScalarsIntoGroupRealism(_getCharacterId());
+        // Run the SINGLE eval path for the host now — on a fresh user turn only.
+        // (Regen/continue call _generateResponse directly, bypassing this, so the
+        // host is not re-evaluated; cancellation is caught by the check below,
+        // before generation — preserving the cancel-aborts-generation escape.)
+        if (_activeCharacter != null) {
+          await _evaluateRealismForUpcomingSpeaker(_activeCharacter!);
+        }
       }
     }
 
@@ -6649,10 +6656,15 @@ class ChatService extends ChangeNotifier {
         speakingCharacter = _activeCharacter!;
       }
 
-      // SINGLE realism eval path: the upcoming speaker — the 1:1 host OR the
-      // picked group member — gets their per-turn eval before we build their
-      // prompt. Lite Scene Guests (guestSpeaker != null) carry no realism.
-      if (guestSpeaker == null && _realismActiveThisMode) {
+      // SINGLE realism eval path (group trigger): the picked group member gets
+      // their per-turn eval here, after selection, as it always has. The 1:1
+      // host runs the SAME `_evaluateRealismForUpcomingSpeaker` from sendMessage
+      // instead (fresh turns only) so regen — which calls _generateResponse
+      // directly — does NOT re-evaluate and drift the host's realism. Lite Scene
+      // Guests (guestSpeaker != null) carry no realism.
+      if (guestSpeaker == null &&
+          _activeGroup != null &&
+          _realismActiveThisMode) {
         await _evaluateRealismForUpcomingSpeaker(speakingCharacter);
       }
 
