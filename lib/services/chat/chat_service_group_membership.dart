@@ -402,6 +402,7 @@ extension ChatServiceGroupMembership on ChatService {
         }
       }
     }
+    _inheritGroupExpressionAvatars(resolved);
     _groupManager?.refreshCharacters(resolved);
 
     debugPrint(
@@ -434,6 +435,7 @@ extension ChatServiceGroupMembership on ChatService {
         }
       }
     }
+    _inheritGroupExpressionAvatars(resolved);
     _groupManager?.refreshCharacters(resolved);
     return resolved;
   }

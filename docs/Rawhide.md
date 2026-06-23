@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🎭 **Character expressions now work in group chats** — if you'd set up Expression Images for a character, they only showed in 1:1 chats; in a group everyone was stuck on their single portrait. Now each group member automatically **inherits the expression set from your library character of the same name** — so the same emotional faces you see in a solo chat play during group scenes too. Nothing to configure: set expressions up once on the character in your library and they follow them into every group. (Characters with no expressions set up just keep their single portrait, as before.)
+
 - 🧬 **Evolve the character you actually picked** — opening Character Evolution in a group used to show whoever was next to speak, not the character you'd selected in the sidebar. Now it follows your selection, and in a group it has a **member-picker at the top** so you can view or manually evolve *any* cast member. Evolution also no longer re-fires on a regenerate (it was double-counting), and it's been told to refine rather than pile on — so characters stop endlessly repeating the same self-coined phrases.
 
 - 🤝 **Trust actually moves now** — the trust meter was so conservative it basically never budged. It now responds to everyday trustworthiness — honesty, consistency, showing up, small kindnesses — not only grand gestures, while big betrayals still land hard.

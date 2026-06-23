@@ -150,6 +150,10 @@ extension ChatServiceGroupEntry on ChatService {
       }
     }
 
+    // Group members are single-avatar copies; let them borrow their origin
+    // library character's expression images so expressions work in groups.
+    _inheritGroupExpressionAvatars(resolved);
+
     // Hand off to the turn manager (single source of truth for group turn state)
     _groupManager ??= GroupTurnManager();
     _groupManager!.enterGroup(
@@ -286,4 +290,29 @@ extension ChatServiceGroupEntry on ChatService {
     notifyListeners();
   }
 
+  /// Group members are single-avatar copies of LIBRARY characters (the decoupled
+  /// model stores one PNG per member, no expression set). For the expression
+  /// display, inherit the origin library character's expression images — matched
+  /// by name, since the member shares the name and the display resolves avatar
+  /// files via `characterAvatarDir(name)`, which lands on the same folder. No
+  /// per-member storage: a character that has expressions set up in your library
+  /// shows them in the group; a member with no library match keeps its single
+  /// avatar. Mutates each card's `avatarImages` in place.
+  void _inheritGroupExpressionAvatars(List<CharacterCard> members) {
+    final lib = _characterRepository?.characters;
+    if (lib == null || lib.isEmpty) return;
+    for (final m in members) {
+      if (m.avatarImages != null && m.avatarImages!.isNotEmpty) continue;
+      for (final c in lib) {
+        if (c.name.toLowerCase() == m.name.toLowerCase() &&
+            c.avatarImages != null &&
+            c.avatarImages!.isNotEmpty) {
+          // Defensive copy so the member never shares (and so can't mutate) the
+          // library card's list. Files resolve via the shared name, not these ids.
+          m.avatarImages = List<AvatarImage>.from(c.avatarImages!);
+          break;
+        }
+      }
+    }
+  }
 }
