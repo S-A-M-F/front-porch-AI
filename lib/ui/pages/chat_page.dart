@@ -1253,6 +1253,44 @@ class _ChatPageState extends State<ChatPage> {
                               : Colors.white38,
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      // Evolution frequency (global setting). In a group it now
+                      // counts each character's OWN turns, so adding members no
+                      // longer speeds everyone's evolution up.
+                      Builder(
+                        builder: (ctx2) {
+                          final storage = Provider.of<StorageService>(
+                            ctx2,
+                            listen: false,
+                          );
+                          final iv = storage.evolutionInterval.clamp(10, 50);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Evolve every $iv turns'
+                                '${members.length > 1 ? ' (per character)' : ''}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                              Slider(
+                                value: iv.toDouble(),
+                                min: 10,
+                                max: 50,
+                                divisions: 8,
+                                label: '$iv',
+                                activeColor: Colors.tealAccent,
+                                onChanged: (v) {
+                                  storage.setEvolutionInterval(v.round());
+                                  setLocal(() {});
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                       const SizedBox(height: 12),
                       // Original personality (read-only)
                       const Text(

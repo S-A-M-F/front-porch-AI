@@ -738,7 +738,11 @@ class RealismEvals {
         'Do NOT use markdown code blocks — return raw JSON only.';
 
     try {
-      debugPrint('[Realism] Evaluating emotional state...');
+      debugPrint(
+        '[Realism] Evaluating emotional state... '
+        '(nsfwArousal=${nsfwService.nsfwCooldownEnabled}, '
+        'arousalLevel=${nsfwService.arousalLevel})',
+      );
       final raw = await fireLLMEval(prompt, onChunk: onChunk);
       if (raw == null) return;
 

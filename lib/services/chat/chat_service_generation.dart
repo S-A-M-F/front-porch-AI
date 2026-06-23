@@ -215,15 +215,19 @@ extension ChatServiceGeneration on ChatService {
       // User persona — inject user's self-description + learned facts
       final userPersonaBlock = await _buildUserPersonaBlock(userName);
 
-      // Scenario — use group scenario override if set, else first character
+      // Scenario — the group scene is SHARED across the whole cast (one identical
+      // scenario), so a group never uses a per-character EVOLVED scenario (that
+      // drifts the story). Use the group override if set, else the anchor
+      // member's ORIGINAL scenario. A 1:1 still uses its evolved scenario.
       final String rawScenario;
-      if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
-        rawScenario = _activeGroup!.scenario;
+      if (_activeGroup != null) {
+        rawScenario = _activeGroup!.scenario.isNotEmpty
+            ? _activeGroup!.scenario
+            : (_groupCharacters.isNotEmpty
+                  ? _groupCharacters.first.scenario
+                  : '');
       } else {
-        final scenarioChar = _activeGroup != null
-            ? _groupCharacters.first
-            : speakingCharacter;
-        rawScenario = _getEffectiveScenario(scenarioChar);
+        rawScenario = _getEffectiveScenario(speakingCharacter);
       }
       String scenario = rawScenario;
       // A Scene Guest drops into the HOST's ongoing scene — it has no scenario

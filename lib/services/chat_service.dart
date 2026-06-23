@@ -2248,21 +2248,22 @@ class ChatService extends ChangeNotifier {
       }
       if (_currentSessionId != null) {
         if (_activeGroup != null) {
+          // GROUP: only the PERSONALITY evolves per-character. The scenario is the
+          // ONE shared scene — evolving it per-character drifts the story (each
+          // member ends up in a slightly different scenario), so it is left to the
+          // group's single shared scenario and not written per-character here.
           final session = await _db.getSessionById(_currentSessionId!);
           if (session != null) {
             final personalities = _tryParseJsonMap(
               session.groupEvolvedPersonalities,
             );
-            final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
             personalities[charId] = pers;
-            scenarios[charId] = scen;
             await _db.patchSession(
               SessionsCompanion(
                 id: drift.Value(_currentSessionId!),
                 groupEvolvedPersonalities: drift.Value(
                   jsonEncode(personalities),
                 ),
-                groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
               ),
             );
           }
@@ -2278,7 +2279,12 @@ class ChatService extends ChangeNotifier {
         }
       }
       _evolvedPersonalities[charId] = pers;
-      _evolvedScenarios[charId] = scen;
+      // In a group the scenario is shared (not per-character) — see the persist
+      // branch above; don't stamp a per-character evolved scenario that would
+      // drift the story. 1:1 keeps its evolved scenario.
+      if (_activeGroup == null) {
+        _evolvedScenarios[charId] = scen;
+      }
       _groupEvolutionCounts[charId] = count;
       if (_activeCharacter != null &&
           _getCharacterIdFromCard(_activeCharacter!) == charId) {
@@ -3707,17 +3713,29 @@ class ChatService extends ChangeNotifier {
     }
 
     if (autoEvolution && !_isEvolvingCharacter) {
-      // Use actual user message count + persisted evolution count for robust scheduling.
-      // This makes "Evolve every X messages" (per the slider) work reliably based on
-      // conversation progress, even after loads/reloads or mid-chat enable.
-      // Previously relied solely on mutable side-counter which could appear not to fire
-      // on the expected schedule after context changes.
+      // Cadence is "evolve every N turns vs the persisted evolution count" — robust
+      // across loads/reloads (no fragile side-counter). In a GROUP this counts the
+      // speaker's OWN turns + their OWN evolution count, so each character evolves
+      // every N of THEIR turns. (Previously a group counted TOTAL user messages, so
+      // a 2-character group evolved each character ~twice as fast, worse with more
+      // characters — see the user report.) 1:1 counts user messages as before.
       final interval = _storageService.memorySettings.evolutionInterval;
-      final userMsgCount = _messages.where((m) => m.isUser).length;
-      final currentEvos = _characterEvolutionCount;
-      final expectedEvos = (interval > 0) ? (userMsgCount ~/ interval) : 0;
-      if (expectedEvos > currentEvos) {
-        evoDue = true;
+      if (interval > 0) {
+        if (_activeGroup != null && _activeCharacter != null) {
+          final sid = _getCharacterIdFromCard(_activeCharacter!);
+          final speakerTurns = _messages
+              .where((m) => !m.isUser && m.characterId == sid)
+              .length;
+          final speakerEvos = _groupEvolutionCounts[sid] ?? 0;
+          if (speakerTurns ~/ interval > speakerEvos) {
+            evoDue = true;
+          }
+        } else {
+          final userMsgCount = _messages.where((m) => m.isUser).length;
+          if (userMsgCount ~/ interval > _characterEvolutionCount) {
+            evoDue = true;
+          }
+        }
       }
     }
 

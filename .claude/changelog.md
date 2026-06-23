@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-23 (fix: group scenario shared (no per-char drift), per-character evolution cadence + UI slider, arousal diagnostic)
+- **Files changed**:
+  - lib/services/chat_service.dart, lib/services/chat/chat_service_generation.dart — **group scenario is now ONE shared scene**. Evolution was saving a per-character evolved scenario, so each member drifted into a slightly different scenario (story drift). Now `persistEvolvedForCharacter` in a group writes ONLY the per-character personality (not a per-character scenario), the in-memory `_evolvedScenarios` map is not stamped in groups, and the prompt scenario resolution uses the group override or the anchor member's ORIGINAL scenario — never a per-character evolved one — so the whole cast always sees an identical scene. (1:1 still evolves its scenario.)
+  - lib/services/chat_service.dart — **per-character evolution cadence in groups**. `_maybeRunPeriodicEvals` counted TOTAL user messages, so a 2-character group evolved each character ~twice as fast (worse with more characters). In a group it now counts the SPEAKER's own turns vs the SPEAKER's own evolution count, so each character evolves every N of THEIR turns regardless of cast size. 1:1 unchanged.
+  - lib/ui/pages/chat_page.dart — **evolution-frequency slider added to the Character Evolution dialog** (10–50 turns), so it's adjustable from the chat-management menu (it previously only existed buried in the memory sidebar). Labeled "(per character)" in groups.
+  - lib/services/chat/realism_evals.dart — **arousal diagnostic**: the "[Realism] Evaluating emotional state…" log now prints `nsfwArousal=<bool>` and `arousalLevel`, to settle whether the group NSFW flag is actually reaching the eval at runtime (the data path + load-before-eval ordering are provably correct, so the remaining question is runtime state).
+- **Reason**: user group-chat reports — story drift from per-character scenarios; evolution firing too often (per-message, not per-character) with no in-chat frequency control; and arousal still not tracking despite the toggle.
+- **Verification**: full flutter analyze clean; 545 chat + model tests pass (incl. realism parity).
+- **Arousal still open**: needs a retest — the next run's `nsfwArousal=` log will say whether the flag is reaching the eval (toggle/propagation) or the model isn't returning a delta.
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-23 (feat: /turnorder accepts a "you"/{{user}} slot)
 - **Files changed**:
   - lib/services/chat/chat_command_handler.dart — `_handleTurnOrder` now recognizes a `you` / `{{user}}` / `user` / `me` token in the explicit order (previously it errored: "No group member matches"). The token is NOT added to the AI character rotation — in a group you already speak between characters every turn, so you aren't a scheduled member-slot — but it's accepted and shown in the confirmation ("Rachel → you → Vanessa") so you can express where you sit. Help text + the unknown-name error now mention "you". Added an empty-rotation guard (a list of only user tokens). +1 test.
