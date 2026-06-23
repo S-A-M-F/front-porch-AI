@@ -290,28 +290,37 @@ extension ChatServiceGroupEntry on ChatService {
     notifyListeners();
   }
 
+  /// The LIBRARY character a group member was copied from, matched by NAME — the
+  /// single home for that character's expression images and edits. Returns null
+  /// if the member has no library counterpart (e.g. an imported-only member).
+  /// Name-matching is the right key: a member keeps the library character's name,
+  /// and the display resolves avatar files via `characterAvatarDir(name)`, so the
+  /// origin's files land on the member's folder too. Used both to inherit
+  /// expressions for display and to route the in-chat Expression Images editor at
+  /// the member's real library home (where edits persist).
+  CharacterCard? originLibraryCardFor(CharacterCard member) {
+    final lib = _characterRepository?.characters;
+    if (lib == null) return null;
+    final name = member.name.toLowerCase();
+    for (final c in lib) {
+      if (c.name.toLowerCase() == name) return c;
+    }
+    return null;
+  }
+
   /// Group members are single-avatar copies of LIBRARY characters (the decoupled
   /// model stores one PNG per member, no expression set). For the expression
-  /// display, inherit the origin library character's expression images — matched
-  /// by name, since the member shares the name and the display resolves avatar
-  /// files via `characterAvatarDir(name)`, which lands on the same folder. No
+  /// display, inherit the origin library character's expression images. No
   /// per-member storage: a character that has expressions set up in your library
   /// shows them in the group; a member with no library match keeps its single
-  /// avatar. Mutates each card's `avatarImages` in place.
+  /// avatar. Mutates each card's `avatarImages` in place (defensive copy so the
+  /// member can never mutate the shared library list).
   void _inheritGroupExpressionAvatars(List<CharacterCard> members) {
-    final lib = _characterRepository?.characters;
-    if (lib == null || lib.isEmpty) return;
     for (final m in members) {
       if (m.avatarImages != null && m.avatarImages!.isNotEmpty) continue;
-      for (final c in lib) {
-        if (c.name.toLowerCase() == m.name.toLowerCase() &&
-            c.avatarImages != null &&
-            c.avatarImages!.isNotEmpty) {
-          // Defensive copy so the member never shares (and so can't mutate) the
-          // library card's list. Files resolve via the shared name, not these ids.
-          m.avatarImages = List<AvatarImage>.from(c.avatarImages!);
-          break;
-        }
+      final origin = originLibraryCardFor(m);
+      if (origin?.avatarImages != null && origin!.avatarImages!.isNotEmpty) {
+        m.avatarImages = List<AvatarImage>.from(origin.avatarImages!);
       }
     }
   }

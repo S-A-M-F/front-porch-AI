@@ -3333,13 +3333,33 @@ class _ChatPageState extends State<ChatPage> {
                         context,
                         listen: false,
                       );
+                      // In a group, members are single-avatar copies — editing
+                      // one would write to a throwaway id and never inherit. Route
+                      // the editor at the real LIBRARY character (the shared home)
+                      // so expression edits persist and flow back to the group.
+                      // 1:1 already passes the library character itself.
+                      final exprTarget = isGroup
+                          ? (chatService.originLibraryCardFor(character) ??
+                                character)
+                          : character;
                       final result = await CharacterAvatarsDialog.show(
                         context: context,
-                        character: character,
+                        character: exprTarget,
                         repository: repo,
                         storage: storage,
                       );
                       if (result == true) {
+                        // Push the freshly edited library expressions onto the
+                        // live member card so the group reflects them immediately
+                        // (inheritance otherwise skips members already populated).
+                        if (!identical(exprTarget, character)) {
+                          character.avatarImages =
+                              exprTarget.avatarImages == null
+                              ? null
+                              : List<AvatarImage>.from(
+                                  exprTarget.avatarImages!,
+                                );
+                        }
                         setState(() {});
                       }
                       break;
