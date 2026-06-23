@@ -3436,13 +3436,42 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ],
                 child: const Text(
-                  'Settings',
+                  'Main Settings',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70),
                 ),
               ),
             ),
           ),
+
+          // ── Group Settings (group only; sits directly under Main Settings,
+          //    above the cast roster, so the whole-group controls are found
+          //    before per-character ones) ──
+          if (isGroup)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: AppColors.borderOf(context).withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showGroupSettingsDialog(chatService),
+                  icon: const Icon(Icons.settings, size: 16),
+                  label: const Text('Group Settings'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary(context),
+                    side: BorderSide(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           // ── Participant roster (only when more than one speaker) ──
           if (cast.length > 1) _buildParticipantRoster(chatService, cast, focused),
@@ -4060,21 +4089,6 @@ class _ChatPageState extends State<ChatPage> {
       ),
       child: Column(
         children: [
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _showGroupSettingsDialog(chatService),
-              icon: const Icon(Icons.settings, size: 16),
-              label: const Text('Group Settings'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textSecondary(context),
-                side: BorderSide(
-                  color: AppColors.borderOf(context).withValues(alpha: 0.4),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
               Icon(
