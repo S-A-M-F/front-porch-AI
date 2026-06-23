@@ -120,6 +120,7 @@ extension ChatServiceSessionLoad on ChatService {
       nsfwCooldownEnabled: lastSession.nsfwCooldownEnabled,
       arousalLevel: lastSession.arousalLevel,
       cooldownTurnsRemaining: lastSession.cooldownTurnsRemaining,
+      cooldownTurnsTotal: lastSession.cooldownTurnsTotal,
     );
     _needsSimEnabled = lastSession.needsSimEnabled;
     if (_needsSimEnabled) {
@@ -477,6 +478,7 @@ extension ChatServiceSessionLoad on ChatService {
         nsfwCooldownEnabled: session.nsfwCooldownEnabled,
         arousalLevel: session.arousalLevel,
         cooldownTurnsRemaining: session.cooldownTurnsRemaining,
+        cooldownTurnsTotal: session.cooldownTurnsTotal,
       );
       _needsSimEnabled = session.needsSimEnabled;
       if (_needsSimEnabled) {

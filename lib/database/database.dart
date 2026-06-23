@@ -141,6 +141,9 @@ class Sessions extends Table {
       integer().withDefault(const Constant(0))(); // 0 to 10 scale
   IntColumn get cooldownTurnsRemaining =>
       integer().withDefault(const Constant(0))(); // 0 = no cooldown
+  IntColumn get cooldownTurnsTotal => integer().withDefault(
+    const Constant(0),
+  )(); // refractory length at climax — persists the cooldown progress denominator
 
   // Realism Engine v3.0 Behavioral Mechanics
   IntColumn get trustLevel =>
@@ -713,6 +716,7 @@ class AppDatabase extends _$AppDatabase {
         'passage_of_time_enabled INTEGER NOT NULL DEFAULT 1',
         'nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0',
         'cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0',
+        'cooldown_turns_total INTEGER NOT NULL DEFAULT 0',
       ],
       'group_members': [
         // Per current GroupMembers Dart definition + created_at (to match the repair-path CREATE TABLE).

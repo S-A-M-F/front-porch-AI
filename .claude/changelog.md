@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-23 (fix: persist NSFW cooldown TOTAL so arousal refractory survives reload — sessions schema add)
+- **Files changed**:
+  - lib/database/database.dart — added `cooldownTurnsTotal` IntColumn (default 0) to the Sessions table, and `'cooldown_turns_total INTEGER NOT NULL DEFAULT 0'` to the `_repairMissingSchemaColumns` `columnsToEnsure['sessions']` list so existing user DBs ALTER it in on next launch (with the automatic timestamped backup the repair already takes). schemaVersion unchanged (32) — this matches how the other realism columns were added (the always-on repair, not onUpgrade).
+  - lib/database/database.g.dart — regenerated (`dart run build_runner build`); the generated column is `cooldown_turns_total`, matching the repair entry exactly.
+  - lib/services/chat/chat_service_session_state.dart — `_doSaveChat` now writes `cooldownTurnsTotal: _nsfwService.cooldownTurnsTotal`.
+  - lib/services/chat/chat_service_session_load.dart — both load paths (`_loadLastSession`, `loadSession`) now pass `cooldownTurnsTotal: session.cooldownTurnsTotal` to `loadNsfwScalars` (which already accepted the param).
+- **Reason**: The NSFW arousal refractory tracks BOTH "cooldown turns remaining" and the TOTAL it started from (the denominator for the cooldown progress). Only "remaining" had a session column, so on a normal 1:1 reload the total reset to 0 — losing the refractory context (a real part of the Realism Engine, per the maintainer). It already carried across 1:1<->group conversion via the realism snapshot; this fixes the plain reload. Maintainer explicitly approved the sessions schema change.
+- **Forge compatibility**: the new column is `INTEGER NOT NULL DEFAULT 0`, so Character Card Forge's direct `sessions` INSERTs that omit it use the default and keep working — backward compatible.
+- **Verification**: `flutter analyze` clean; FULL `flutter test` suite passes (1369 tests). Generated SQL column name (`cooldown_turns_total`) confirmed to match the repair-list entry. Only the 4 intended source files + the regenerated `.g.dart` changed.
+- **Commit hash**: (uncommitted)
+
+
 ## 2026-06-23 (feat: make 1:1<->group conversion lossless — carry flags/evolution/objectives/author-notes/RAG both directions)
 - **Files changed**:
   - lib/database/database.dart — new `reassignObjectives(from,to,{chatId})` and `reassignEmbeddings(from,to,{chatId})` (UPDATE-by-characterId re-key methods; both bump sync version). No schema change.

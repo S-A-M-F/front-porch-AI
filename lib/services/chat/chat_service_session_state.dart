@@ -323,6 +323,7 @@ extension ChatServiceSessionState on ChatService {
         cooldownTurnsRemaining: drift.Value(
           _nsfwService.cooldownTurnsRemaining,
         ),
+        cooldownTurnsTotal: drift.Value(_nsfwService.cooldownTurnsTotal),
         trustLevel: drift.Value(_relationshipService.trustLevel),
         activeFixation: drift.Value(_relationshipService.activeFixation),
         fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
