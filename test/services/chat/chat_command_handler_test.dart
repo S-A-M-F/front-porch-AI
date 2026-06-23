@@ -328,6 +328,18 @@ void main() {
       expect(call.$2!.map((c) => c.name).toList(), ['Bryn', 'Aria', 'Cleo']);
     });
 
+    test('/turnorder accepts a "you"/{{user}} slot (skipped in AI rotation)', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn'), _guest('Cleo')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/turnorder Bryn, {{user}}, Aria'), true);
+      final call = turnOrderCalls.single;
+      expect(call.$1, false);
+      // The user token is NOT a character — rotation is the named members
+      // (unnamed appended), and the confirmation mentions "you".
+      expect(call.$2!.map((c) => c.name).toList(), ['Bryn', 'Aria', 'Cleo']);
+      expect(systemMessages.single, contains('you'));
+    });
+
     test('/turnorder <unknown name> errors and sets nothing', () async {
       groupMembers = [_guest('Aria'), _guest('Bryn')];
       final h = build(activeSet: false);

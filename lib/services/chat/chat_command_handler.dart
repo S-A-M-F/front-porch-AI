@@ -611,7 +611,8 @@ class ChatCommandHandler {
       _onSystemMessage(
         'Turn order: $mode. Current rotation: $order.\n'
         'Change it with /turnorder random, /turnorder roundrobin, or '
-        '/turnorder <name>, <name>, … for an explicit order.',
+        '/turnorder <name>, you, <name>, … for an explicit order '
+        '(include "you" to mark your own slot).',
       );
       return;
     }
@@ -638,9 +639,21 @@ class ChatCommandHandler {
         : spec.split(RegExp(r'\s+'));
     final wanted = raw.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
-    final ordered = <CharacterCard>[];
+    final ordered = <CharacterCard>[]; // the AI character rotation
+    final displayOrder = <String>[]; // includes a 'you' marker for the message
     final used = <String>{};
+    bool userPlaced = false;
     for (final w in wanted) {
+      // A 'you' / {{user}} / me / user token marks YOUR slot. In a group you
+      // already speak between characters every turn, so the user isn't part of
+      // the AI rotation — accept the token (don't error on it) and just show
+      // where you sit in the order.
+      final token = w.replaceAll(RegExp(r'[{}]'), '').trim().toLowerCase();
+      if (token == 'you' || token == 'user' || token == 'me') {
+        userPlaced = true;
+        displayOrder.add('you');
+        continue;
+      }
       final lw = w.toLowerCase();
       CharacterCard? match;
       for (final m in members) {
@@ -660,21 +673,29 @@ class ChatCommandHandler {
       if (match == null) {
         _onSystemMessage(
           '⚠ No group member matches "$w". Members: '
-          '${members.map((m) => m.name).join(', ')}.',
+          '${members.map((m) => m.name).join(', ')} (use "you" for your own slot).',
         );
         return;
       }
       ordered.add(match);
+      displayOrder.add(match.name);
       used.add(match.name);
+    }
+    if (ordered.isEmpty) {
+      _onSystemMessage('⚠ Name at least one character for the turn order.');
+      return;
     }
     // Keep anyone not named (in their existing order) so nobody drops out.
     for (final m in members) {
-      if (!used.contains(m.name)) ordered.add(m);
+      if (!used.contains(m.name)) {
+        ordered.add(m);
+        displayOrder.add(m.name);
+      }
     }
     await _setGroupTurnOrder(false, ordered);
     _onSystemMessage(
-      '🔁 Turn order set to: ${ordered.map((m) => m.name).join(' → ')} '
-      '(this session).',
+      '🔁 Turn order set to: ${displayOrder.join(' → ')} (this session).'
+      '${userPlaced ? ' You take your turn by typing.' : ''}',
     );
   }
 }

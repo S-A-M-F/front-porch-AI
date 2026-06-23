@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-23 (feat: /turnorder accepts a "you"/{{user}} slot)
+- **Files changed**:
+  - lib/services/chat/chat_command_handler.dart — `_handleTurnOrder` now recognizes a `you` / `{{user}}` / `user` / `me` token in the explicit order (previously it errored: "No group member matches"). The token is NOT added to the AI character rotation — in a group you already speak between characters every turn, so you aren't a scheduled member-slot — but it's accepted and shown in the confirmation ("Rachel → you → Vanessa") so you can express where you sit. Help text + the unknown-name error now mention "you". Added an empty-rotation guard (a list of only user tokens). +1 test.
+- **Reason**: user tried `/turnorder Rachel, {{user}}, Vanessa` and it rejected the user token. The character rotation is now the named members in that order (Rachel → Vanessa) with the user slot acknowledged.
+- **Known limitation (honest)**: this does NOT make the group auto-advance multiple characters with a true pause at the user's slot — that would be a bigger turn-flow change (auto-play currently only runs in observer mode). In normal participating play you already type each turn, so the user slot is positional. Flagged for a possible follow-up if auto-advancing groups are wanted.
+- **Verification**: flutter analyze clean; 59 command-handler tests pass.
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-23 (fix: needs-impact eval lowballed relief — going to the bathroom only refilled +8)
 - **Files changed**:
   - lib/services/chat/llm_eval_engine.dart — added explicit RELIEF/RESTORATION magnitude guidance to BOTH needs-impact prompts (the main first-call prompt AND the Director-correction prompt, for parity). Needs run 0–100 (100 = satisfied); the prompt never said so and anchored low ("small effects stay small", "use small numbers or zeros"), so the model returned tiny deltas (e.g. bladder_delta +8) for a COMPLETE relief — leaving the character still "needing". Now the model is told a full relief must use a large delta: using the bathroom → bladder +60..+100; full meal → hunger +50..+90; sleeping / long rest → energy +60..+100 (broadly restores physical needs); thorough wash → hygiene +50..+90; deep connection/play → social/fun/comfort +20..+50. Small numbers (±1..±8) reserved for incidental effects. (1x baselines; still scaled by the user's strength factor; the +100 clamp already allowed this.)
