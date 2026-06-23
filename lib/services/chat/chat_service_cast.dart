@@ -68,7 +68,7 @@ extension ChatServiceCast on ChatService {
   /// into a 1:1 with that member's ORIGINAL library character (a one-character
   /// group is nonsense). Re-homes the CURRENT session in place (keeps all
   /// history), carries the survivor's realism back into the 1:1 scalar columns
-  /// (the inverse of Phase 2's [_carryHostRealismIntoForkedGroup]), then
+  /// (the inverse of Phase 2's [_carryHostStateIntoForkedGroup]), then
   /// dissolves the now-empty group (member rows + private avatars + definition).
   ///
   /// If the survivor's origin can't be resolved (legacy/ambiguous — see
@@ -129,16 +129,32 @@ extension ChatServiceCast on ChatService {
       return false;
     }
 
-    // 1) While still in group mode, load the survivor's per-character realism
-    //    into the working scalars and snapshot it (the same snapshot shape
-    //    regenerate/Phase-2 use, incl. time + needs).
+    // 1) While still in group mode, capture the survivor's full state to carry
+    //    back to the 1:1: the realism snapshot (gated on realism being on) PLUS
+    //    the enable-flags, author note, and evolution (carried regardless of
+    //    realism). originId = the id the collapsed 1:1 will key realism/memory by.
+    final originId = _getCharacterIdFromCard(origin);
     final bool wasRealismOn = _realismEnabled;
     final bool wasNeedsOn = _needsSimEnabled;
     Map<String, dynamic>? snapshot;
     if (wasRealismOn) {
-      _loadGroupRealismIntoScalars(soleId);
+      _loadGroupRealismIntoScalars(soleId); // loads the survivor's per-char nsfw flag too
       snapshot = _captureRealismState();
     }
+    // Read the survivor's per-char NSFW flag straight from the group store (the
+    // per-speaker load only ran above when realism is on; reading the live nsfw
+    // scalar otherwise could pick up a stale impersonated value).
+    final bool soleNsfwEnabled =
+        (_groupRealism[soleId]?['nsfwCooldownEnabled'] as bool?) ??
+        _nsfwService.nsfwCooldownEnabled;
+    final bool solePassageEnabled = _timeService.passageOfTimeEnabled;
+    final bool soleChaosEnabled = _chaosModeService.chaosModeEnabled;
+    final int soleChaosPressure = _chaosModeService.chaosPressure;
+    final String soleAuthorNote = _groupAuthorNotes[soleId] ?? '';
+    final int soleAuthorStrength = _groupAuthorNoteStrengths[soleId] ?? 4;
+    final String soleEvoPers = _evolvedPersonalities[soleId] ?? '';
+    final String soleEvoScen = _evolvedScenarios[soleId] ?? '';
+    final int soleEvoCount = _groupEvolutionCounts[soleId] ?? 0;
 
     // 2) Re-home the session to a 1:1 owned by the library character. Bump
     //    createdAt so setActiveCharacter's most-recent-session load lands on
@@ -167,18 +183,21 @@ extension ChatServiceCast on ChatService {
     //    by-groupId session sweep cannot touch it (its history survives).
     await groupRepo.delete(group.id);
 
-    // Clean up the survivor's now-orphaned per-member persisted state: its member
-    // row is gone, and the collapsed 1:1 keys realism/memory by the library id,
-    // not the old instance id — so drop the group's RAG embeddings + the
-    // survivor's objectives/data-bank rows so nothing dangles. (Group-era quests
-    // and semantic memory do NOT carry into the 1:1 — messages and realism do;
-    // re-keying for full continuity is a future refinement.)
+    // Carry the survivor's group-era objectives + semantic memory (RAG
+    // embeddings) into the collapsed 1:1 by RE-KEYING them from the member
+    // instance id (and the group RAG key 'group_<id>') to the origin library id,
+    // so quests and conversation memory survive the collapse instead of being
+    // deleted. (Data-bank rows are rarely used and not re-keyed.)
     try {
-      await _db.deleteEmbeddingsForCharacter('group_${group.id}');
-      await _db.deleteObjectivesForCharacter(soleId);
+      await _db.reassignObjectives(soleId, originId, chatId: sessionId);
+      await _db.reassignEmbeddings(
+        'group_${group.id}',
+        originId,
+        chatId: sessionId,
+      );
       await _db.deleteDataBankEntriesForCharacter(soleId);
     } catch (e) {
-      debugPrint('[Cast] orphan cleanup (non-fatal): $e');
+      debugPrint('[Cast] state re-key (non-fatal): $e');
     }
 
     // 4) Re-enter as a 1:1 on the re-homed session (newest → loaded). Safety net:
@@ -188,9 +207,10 @@ extension ChatServiceCast on ChatService {
       await loadSession(sessionId);
     }
 
-    // 5) Restore the carried realism into the 1:1 scalars and persist to the
-    //    session's scalar columns (setActiveCharacter reset them; the re-homed
-    //    session's stale columns are overwritten here with the survivor's state).
+    // 5) Restore the carried state into the 1:1 (setActiveCharacter reset it; the
+    //    re-homed session's stale columns are overwritten here with the
+    //    survivor's state). Realism values are gated on realism being on; the
+    //    enable-flags, author note and evolution carry regardless.
     if (wasRealismOn && snapshot != null) {
       _realismEnabled = true;
       _needsSimEnabled = wasNeedsOn;
@@ -215,10 +235,173 @@ extension ChatServiceCast on ChatService {
       } else {
         _needsSimulation.clearVector();
       }
-      await _saveChat();
     }
+
+    // Enable-flags + author note (persisted by _doSaveChat below) — carry
+    // regardless of realism so the NSFW toggle, passage-of-time, chaos, and the
+    // note are not reset to defaults on collapse.
+    _nsfwService.setNsfwCooldownEnabled(soleNsfwEnabled);
+    _timeService.setPassageOfTimeEnabled(solePassageEnabled);
+    _chaosModeService.loadScalars(
+      modeEnabled: soleChaosEnabled,
+      pressure: soleChaosPressure,
+    );
+    _authorNote = soleAuthorNote;
+    _authorNoteStrength = soleAuthorStrength;
+
+    // Character evolution -> the 1:1 evolved columns (not written by _doSaveChat,
+    // so persist explicitly via patchSession).
+    if (soleEvoPers.isNotEmpty) _evolvedPersonalities[originId] = soleEvoPers;
+    if (soleEvoScen.isNotEmpty) _evolvedScenarios[originId] = soleEvoScen;
+    _characterEvolutionCount = soleEvoCount;
+    _groupEvolutionCounts[originId] = soleEvoCount;
+    if (_currentSessionId != null &&
+        (soleEvoPers.isNotEmpty || soleEvoScen.isNotEmpty || soleEvoCount > 0)) {
+      await _db.patchSession(
+        SessionsCompanion(
+          id: drift.Value(_currentSessionId!),
+          evolvedPersonality: drift.Value(soleEvoPers),
+          evolvedScenario: drift.Value(soleEvoScen),
+          evolutionCount: drift.Value(soleEvoCount),
+        ),
+      );
+    }
+    await _saveChat();
     notifyListeners();
     debugPrint('[Cast] collapsed group "${group.name}" → 1:1 with ${origin.name}');
     return true;
+  }
+
+  /// Carry the host's full captured 1:1 [state] (taken before the fork switched
+  /// into group mode) onto the host member, making 1:1->group lossless. The
+  /// realism snapshot is applied only when realism was on at fork time; the
+  /// enable-flags (NSFW/passage-of-time/chaos), the per-character author note,
+  /// character evolution (into the group_evolved_* columns), and a COPY of the
+  /// host's objectives all carry REGARDLESS of realism. No-op when the host
+  /// member can't be resolved (so a mis-keyed carry can't corrupt state).
+  /// [originalCharId] / [hostSessionId] are the host's 1:1 keys (evolution +
+  /// objectives source).
+  Future<void> _carryHostStateIntoForkedGroup(
+    String hostName,
+    String originalCharId,
+    String? hostSessionId,
+    Map<String, dynamic> state,
+  ) async {
+    if (_activeGroup == null) return;
+    CharacterCard? hostMember;
+    for (final c in _groupCharacters) {
+      if (c.name == hostName) {
+        hostMember = c;
+        break;
+      }
+    }
+    if (hostMember == null) return; // host member not found — don't mis-key
+    final hostId = _getCharacterIdFromCard(hostMember);
+    final realismOn = state['realismOn'] as bool? ?? false;
+    final needsEnabled = state['needsSimEnabled'] as bool? ?? false;
+    _needsSimEnabled = needsEnabled;
+
+    // Realism VALUES (gated on realism being on at fork time): relationship +
+    // emotion + nsfw + time via the regenerate restore path, then the canonical
+    // _groupRealism write for the host member.
+    if (realismOn) {
+      _realismEnabled = true;
+      _relationshipService.restoreFromMessageState(state);
+      _moodDecayCounter =
+          (state['moodDecayCounter'] as int?) ?? _moodDecayCounter;
+      _characterEmotion =
+          (state['characterEmotion'] as String?) ?? _characterEmotion;
+      _emotionIntensity =
+          (state['emotionIntensity'] as String?) ?? _emotionIntensity;
+      _nsfwService.restoreNsfwFromMessageState(state);
+      _timeService.restoreTimeFromRealismState(state);
+      if (needsEnabled) {
+        final needs = state['needs'];
+        if (needs is Map && needs['vector'] is Map) {
+          _needsSimulation.restoreFromSnapshot({
+            'vector': Map<String, int>.from(needs['vector'] as Map),
+          });
+        } else {
+          _needsSimulation.initializeFresh();
+        }
+      } else {
+        _needsSimulation.clearVector();
+      }
+      _saveScalarsIntoGroupRealism(hostId);
+    }
+
+    // Enable-flags (independent of realism; persist via _doSaveChat columns in
+    // both modes) + author note + evolution + objectives carry REGARDLESS.
+    _nsfwService.setNsfwCooldownEnabled(
+      state['nsfwCooldownEnabled'] as bool? ?? false,
+    );
+    _timeService.setPassageOfTimeEnabled(
+      state['passageOfTimeEnabled'] as bool? ?? true,
+    );
+    _chaosModeService.loadScalars(
+      modeEnabled: state['chaosModeEnabled'] as bool? ?? false,
+      pressure: state['chaosPressure'] as int? ?? 0,
+    );
+
+    // Author note -> the host member's per-character group note (serialized into
+    // group_realism_state by _saveChat).
+    final note = state['authorNote'] as String? ?? '';
+    if (note.isNotEmpty) {
+      _groupAuthorNotes[hostId] = note;
+      _groupAuthorNoteStrengths[hostId] =
+          state['authorNoteStrength'] as int? ?? 4;
+    }
+
+    // Character evolution -> the host member's group evolved entries, persisted
+    // to the group_evolved_* JSON columns (count is group-mem-only).
+    final evoPers = state['evolvedPersonality'] as String? ?? '';
+    final evoScen = state['evolvedScenario'] as String? ?? '';
+    if (evoPers.isNotEmpty) _evolvedPersonalities[hostId] = evoPers;
+    if (evoScen.isNotEmpty) _evolvedScenarios[hostId] = evoScen;
+    _groupEvolutionCounts[hostId] = state['evolutionCount'] as int? ?? 0;
+    if ((evoPers.isNotEmpty || evoScen.isNotEmpty) && _currentSessionId != null) {
+      final session = await _db.getSessionById(_currentSessionId!);
+      if (session != null) {
+        final persMap = _tryParseJsonMap(session.groupEvolvedPersonalities);
+        final scenMap = _tryParseJsonMap(session.groupEvolvedScenarios);
+        if (evoPers.isNotEmpty) persMap[hostId] = evoPers;
+        if (evoScen.isNotEmpty) scenMap[hostId] = evoScen;
+        await _db.patchSession(
+          SessionsCompanion(
+            id: drift.Value(_currentSessionId!),
+            groupEvolvedPersonalities: drift.Value(jsonEncode(persMap)),
+            groupEvolvedScenarios: drift.Value(jsonEncode(scenMap)),
+          ),
+        );
+      }
+    }
+
+    // Objectives -> COPY the host's 1:1 objectives onto the host member, re-keyed
+    // to its instance id + the new group session. (The original 1:1 session keeps
+    // its own copy as the revert snapshot.)
+    if (hostSessionId != null && _currentSessionId != null) {
+      final origObjs = await _db.getObjectivesForCharacter(
+        originalCharId,
+        chatId: hostSessionId,
+      );
+      for (final o in origObjs) {
+        await _db.insertObjective(
+          ObjectivesCompanion.insert(
+            id: const Uuid().v4(),
+            characterId: hostId,
+            objective: o.objective,
+            chatId: drift.Value(_currentSessionId),
+            tasks: drift.Value(o.tasks),
+            active: drift.Value(o.active),
+            isPrimary: drift.Value(o.isPrimary),
+            checkFrequency: drift.Value(o.checkFrequency),
+            injectionDepth: drift.Value(o.injectionDepth),
+          ),
+        );
+      }
+    }
+
+    await _saveChat();
+    notifyListeners();
   }
 }

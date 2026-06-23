@@ -2398,6 +2398,39 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteObjective(String id) =>
       (delete(objectives)..where((o) => o.id.equals(id))).go();
 
+  /// Re-key objectives from one character id to another within a session (used
+  /// when a chat collapses group->1:1: the survivor's objectives move from its
+  /// group member instance id to the origin library id, preserving the rows).
+  Future<int> reassignObjectives(
+    String fromCharacterId,
+    String toCharacterId, {
+    required String chatId,
+  }) async {
+    final n = await (update(objectives)
+          ..where((o) => o.characterId.equals(fromCharacterId))
+          ..where((o) => o.chatId.equals(chatId)))
+        .write(ObjectivesCompanion(characterId: Value(toCharacterId)));
+    await bumpSyncVersion();
+    return n;
+  }
+
+  /// Re-key message embeddings from one character id to another within a session
+  /// (used on group->1:1 collapse so the group-era semantic memory, stored under
+  /// the `group_id` RAG key, moves to the origin library id and stays
+  /// retrievable in 1:1).
+  Future<int> reassignEmbeddings(
+    String fromCharacterId,
+    String toCharacterId, {
+    required String chatId,
+  }) async {
+    final n = await (update(messageEmbeddings)
+          ..where((e) => e.characterId.equals(fromCharacterId))
+          ..where((e) => e.sessionId.equals(chatId)))
+        .write(MessageEmbeddingsCompanion(characterId: Value(toCharacterId)));
+    await bumpSyncVersion();
+    return n;
+  }
+
   Future<int> deleteObjectivesForCharacter(String characterId) => (delete(
     objectives,
   )..where((o) => o.characterId.equals(characterId))).go();
