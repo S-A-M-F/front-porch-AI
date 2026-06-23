@@ -1287,6 +1287,15 @@ extension ChatServiceGeneration on ChatService {
             }
           }
 
+          // Per-message needs chips for whoever just spoke. Lives here (not in
+          // sendMessage) so EVERY speaker gets them — group auto-advance, /speak
+          // and chime-ins reach _generateResponse but never sendMessage's old
+          // chip block, which is why only the first responder showed chips.
+          // Normal turns only; regen/continue manage their own chips.
+          if (mode == GenerationMode.normal) {
+            await _attachNeedsDeltaChipToLastMessage();
+          }
+
           // Check if summary needs updating (fire-and-forget)
           // Group name resolution for {{char}} in summary prompt is best-effort at trigger time (after prePostActiveChar restore dance); correct for 1:1, may use restored active or group fallback in group non-obs (timing-dependent per group impersonation; dispatch preserved via cbs). See leaf header + test for qualify.
           _maybeUpdateSummary();

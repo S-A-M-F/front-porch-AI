@@ -93,4 +93,41 @@ extension ChatServiceGroupRealismHelpers on ChatService {
   void _setGroupNeeds(String charId, Map<String, int> needs) {
     _setGroupRealismValue(charId, 'needs', needs);
   }
+
+  /// Compute + attach this message's needs-delta chips (`needs_deltas`) from the
+  /// speaker's pre-turn baseline to their post-turn (decay + impact) needs.
+  ///
+  /// Called from `_generateResponse` so EVERY generated turn gets chips — 1:1
+  /// host, group first responder, group auto-advance (`triggerNextCharacter`),
+  /// and `/speak` alike. The old block lived only in `sendMessage`, so any group
+  /// speaker after the first (who reaches `_generateResponse` by another door)
+  /// showed no needs chips even though their needs were simulated correctly.
+  ///
+  /// Baseline is the message's own `needs_pre_turn_vector` — stamped per-speaker
+  /// (1:1 in `sendMessage` pre-tick; group in the realism dance pre-decay) — with
+  /// the `realism_state` snapshot's needs vector as a fallback. No-op when there
+  /// is no baseline or no net change (`message_bubble` hides zero-delta needs).
+  Future<void> _attachNeedsDeltaChipToLastMessage() async {
+    if (!_needsSimEnabled || _messages.isEmpty) return;
+    var preVec = _coerceNeedsVector(
+      _messages.last.activeMetadata?['needs_pre_turn_vector'],
+    );
+    if (preVec.isEmpty) {
+      preVec = _coerceNeedsVector(
+        (_messages.last.activeMetadata?['realism_state']
+            as Map<String, dynamic>?)?['needs']?['vector'],
+      );
+    }
+    if (preVec.isEmpty) return;
+    final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(preVec);
+    if (needsDeltas.isEmpty) return;
+    _messages.last.activeMetadata ??= {};
+    _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
+    debugPrint(
+      '[Realism:Needs] Chip: ${needsDeltas.length} need delta(s) attached for '
+      '${_messages.last.sender}',
+    );
+    await _saveChat();
+    notifyListeners();
+  }
 }

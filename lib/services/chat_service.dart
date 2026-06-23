@@ -3150,28 +3150,11 @@ class ChatService extends ChangeNotifier {
     // can use the same delta-revert mechanism the classic realism fields
     // (bond/trust/arousal) use.
     Map<String, int>? preTurnVector;
-    // For group chips, snapshot the *pre-decay* needs for the *upcoming* speaker (from map)
-    // before tickDecay runs. This lets the post-gen chip deltas include the turn's decay + scene
-    // effects (1:1 parity). The per-speaker pre-eval will see the post-decay value after load.
-    Map<String, int>? groupSpeakerPreDecayNeeds;
     if (_realismActiveThisMode) {
       if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
         preTurnVector = Map<String, int>.from(_needsSimulation.vector);
         _pendingRealismMetadata ??= {};
         _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
-      }
-
-      if (_activeGroup != null &&
-          _needsSimEnabled &&
-          isGroupRealismActive &&
-          !_observerMode) {
-        final upcoming = nextCharacter;
-        if (upcoming != null) {
-          final sid = _getCharacterIdFromCard(upcoming);
-          if (sid.isNotEmpty) {
-            groupSpeakerPreDecayNeeds = _getGroupNeeds(sid);
-          }
-        }
       }
 
       _applyMoodDecay();
@@ -3219,66 +3202,11 @@ class ChatService extends ChangeNotifier {
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
-    if (_needsSimEnabled && _messages.isNotEmpty) {
-      if (_activeGroup == null) {
-        // 1:1 path: preTurnVector captured in this scope (pre-tick) is correct.
-        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-          preTurnVector ?? const <String, int>{},
-        );
-        if (needsDeltas.isNotEmpty) {
-          _messages.last.activeMetadata ??= {};
-          _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
-          await _saveChat();
-          notifyListeners();
-        }
-      } else {
-        // Group: use the pre-decay snapshot for this speaker (captured before tick using nextCharacter,
-        // or stashed from inside the per-speaker eval for random turn order) so chips reflect
-        // the full net turn effect (decay + scene deltas) for 1:1 parity.
-        // Fall back to a top-level 'needs_pre_turn_vector' on the message metadata (our stash),
-        // then to the vector embedded in the per-speaker realism_state snapshot.
-        Map<String, int> preVec = groupSpeakerPreDecayNeeds ?? const {};
-        if (preVec.isEmpty) {
-          preVec = _coerceNeedsVector(
-            _messages.last.activeMetadata?['needs_pre_turn_vector'],
-          );
-        }
-        if (preVec.isEmpty) {
-          preVec = _coerceNeedsVector(
-            ((_messages.last.activeMetadata?['realism_state']
-                as Map<String, dynamic>?)?['needs']?['vector']),
-          );
-        }
-        if (preVec.isNotEmpty) {
-          final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-            preVec,
-          );
-          debugPrint(
-            '[Realism:Needs] Group chip compute: ${needsDeltas.length} '
-            'non-zero need delta(s) vs pre-turn vector for '
-            '${_messages.last.sender}'
-            '${needsDeltas.isEmpty ? " — nothing to show" : ""}',
-          );
-          if (needsDeltas.isNotEmpty) {
-            _messages.last.activeMetadata ??= {};
-            _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
-            await _saveChat();
-            notifyListeners();
-          }
-        } else {
-          debugPrint(
-            '[Realism:Needs] Group chip SKIPPED — no pre-turn needs vector '
-            'found for ${_messages.last.sender} (no chips this turn)',
-          );
-        }
-      }
-      // Final snapshot of what actually landed on the message (after ALL post-gen
-      // attachment) — unlike the PRE-GEN log, this reflects needs/bond/etc. chips.
-      debugPrint(
-        '[Realism:Metadata] FINAL keys on ${_messages.last.sender}: '
-        '${_messages.last.activeMetadata?.keys.toList()}',
-      );
-    }
+    // Per-message needs-delta chips are attached inside _generateResponse (via
+    // _attachNeedsDeltaChipToLastMessage) so EVERY speaker gets them — group
+    // auto-advance, /speak and chime-ins reach _generateResponse but never this
+    // sendMessage scope, which is why only the first responder used to show
+    // chips. preTurnVector is still stamped above as the message's baseline.
 
     // ── Scene Guests: auto chime-in ─────────────────────────────────────────
     // The primary 1:1 turn is now 100% finalized (response + chip/realism block
