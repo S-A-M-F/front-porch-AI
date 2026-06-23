@@ -2443,12 +2443,6 @@ class _NeedsTabState extends State<_NeedsTab> {
   // Per-character static preference overrides (e.g. enjoys low hygiene) for this group.
   final Map<String, bool> _enjoysLowHygiene = {};
 
-  // Per-member Director/Verifier settings for groups.
-  final Map<String, bool> _verificationEnabled = {};
-  final Map<String, int> _verificationMaxReprocesses = {};
-  final Map<String, int> _verificationStrictness = {};
-  final Map<String, bool> _needsDirectorAuthority = {};
-
   List<CharacterCard> _chars = [];
 
   // Field name constants for needs baselines map keys.
@@ -2493,13 +2487,6 @@ class _NeedsTabState extends State<_NeedsTab> {
       };
 
       _enjoysLowHygiene[id] = ext?.enjoysLowHygiene ?? false;
-
-      // Load per-member Director/Verifier settings.
-      _verificationEnabled[id] = ext?.realismVerificationEnabled ?? false;
-      _verificationMaxReprocesses[id] =
-          ext?.realismVerificationMaxReprocesses ?? 1;
-      _verificationStrictness[id] = ext?.realismVerificationStrictness ?? 3;
-      _needsDirectorAuthority[id] = ext?.realismNeedsDirectorAuthority ?? false;
     }
   }
 
@@ -2546,45 +2533,6 @@ class _NeedsTabState extends State<_NeedsTab> {
         char.frontPorchExtensions?.ensureStableId();
     });
     _persistMemberVerificationPref(id, 'enjoysLowHygiene', value);
-  }
-
-  void _updateMemberVerificationMaxReprocesses(CharacterCard char, int value) {
-    final id = _getCharId(char);
-    setState(() {
-      _verificationMaxReprocesses[id] = value;
-      char.frontPorchExtensions =
-          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-            realismVerificationMaxReprocesses: value,
-          );
-        char.frontPorchExtensions?.ensureStableId();
-    });
-    _persistMemberVerificationPref(id, 'maxReprocesses', value);
-  }
-
-  void _updateMemberVerificationStrictness(CharacterCard char, int value) {
-    final id = _getCharId(char);
-    setState(() {
-      _verificationStrictness[id] = value;
-      char.frontPorchExtensions =
-          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-            realismVerificationStrictness: value,
-          );
-        char.frontPorchExtensions?.ensureStableId();
-    });
-    _persistMemberVerificationPref(id, 'strictness', value);
-  }
-
-  void _updateMemberNeedsDirectorAuthority(CharacterCard char, bool value) {
-    final id = _getCharId(char);
-    setState(() {
-      _needsDirectorAuthority[id] = value;
-      char.frontPorchExtensions =
-          (char.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
-            realismNeedsDirectorAuthority: value,
-          );
-        char.frontPorchExtensions?.ensureStableId();
-    });
-    _persistMemberVerificationPref(id, 'needsDirectorAuthority', value);
   }
 
   void _persistMemberVerificationPref(String id, String key, dynamic value) {
@@ -3105,123 +3053,6 @@ class _NeedsTabState extends State<_NeedsTab> {
                           ),
                         ],
                       ),
-
-                      const SizedBox(height: 6),
-
-                      // Director/Verifier section (gated)
-                      if (_verificationEnabled[id] ?? false) ...[
-                        const Text(
-                          'Director/Verifier settings',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white54,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Text(
-                              'Max: ${_verificationMaxReprocesses[id] ?? 1}',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.white54,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            SizedBox(
-                              width: 80,
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 4,
-                                  ),
-                                  overlayShape: const RoundSliderOverlayShape(
-                                    overlayRadius: 8,
-                                  ),
-                                ),
-                                child: Slider(
-                                  value: (_verificationMaxReprocesses[id] ?? 1)
-                                      .toDouble(),
-                                  min: 1,
-                                  max: 5,
-                                  divisions: 4,
-                                  onChanged: (d) {
-                                    _updateMemberVerificationMaxReprocesses(
-                                      char,
-                                      d.round(),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Strict: ${_verificationStrictness[id] ?? 3}',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.white54,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            SizedBox(
-                              width: 80,
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 4,
-                                  ),
-                                ),
-                                child: Slider(
-                                  value: (_verificationStrictness[id] ?? 3)
-                                      .toDouble(),
-                                  min: 1,
-                                  max: 5,
-                                  divisions: 4,
-                                  onChanged: (d) {
-                                    _updateMemberVerificationStrictness(
-                                      char,
-                                      d.round(),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            const Text(
-                              'Director authority (needs)',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.white54,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: Checkbox(
-                                value: _needsDirectorAuthority[id] ?? false,
-                                onChanged: (v) {
-                                  if (v != null) {
-                                    _updateMemberNeedsDirectorAuthority(
-                                      char,
-                                      v,
-                                    );
-                                  }
-                                },
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                     ],
                   ),
                 );
