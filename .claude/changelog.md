@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-23 (fix: Character Evolution settings unreachable in group chats)
+- **Files changed**:
+  - lib/ui/pages/chat_page.dart — the "Character Evolution" overflow-menu item (which opens the evolution dialog) was gated on `chatService.activeCharacter != null`, but `activeCharacter` is NULL in a group — so the entry vanished and the dialog (the only place with the new frequency slider + per-character picker) was unreachable in groups. Now shows in a 1:1 OR a group, and regardless of the enabled flag. Also ADDED the Character-Evolution on/off toggle to the dialog itself (next to the frequency slider), so evolution can be enabled/disabled from a group too (the memory-sidebar copy of these settings isn't rendered in groups).
+- **Reason**: user report — after the evolution frequency slider moved into the dialog, group chats had no way to reach it or any evolution setting.
+- **Verification**: flutter analyze clean.
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-23 (fix: group scenario shared (no per-char drift), per-character evolution cadence + UI slider, arousal diagnostic)
 - **Files changed**:
   - lib/services/chat_service.dart, lib/services/chat/chat_service_generation.dart — **group scenario is now ONE shared scene**. Evolution was saving a per-character evolved scenario, so each member drifted into a slightly different scenario (story drift). Now `persistEvolvedForCharacter` in a group writes ONLY the per-character personality (not a per-character scenario), the in-memory `_evolvedScenarios` map is not stamped in groups, and the prompt scenario resolution uses the group override or the anchor member's ORIGINAL scenario — never a per-character evolved one — so the whole cast always sees an identical scene. (1:1 still evolves its scenario.)

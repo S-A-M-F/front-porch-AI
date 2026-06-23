@@ -1254,39 +1254,70 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Evolution frequency (global setting). In a group it now
-                      // counts each character's OWN turns, so adding members no
-                      // longer speeds everyone's evolution up.
+                      // Evolution settings (global). Hosted here so they are
+                      // reachable in a GROUP too (the memory-sidebar copy isn't
+                      // shown in groups). Frequency now counts each character's
+                      // OWN turns, so adding members doesn't speed everyone up.
                       Builder(
                         builder: (ctx2) {
                           final storage = Provider.of<StorageService>(
                             ctx2,
                             listen: false,
                           );
+                          final enabled = storage.characterEvolutionEnabled;
                           final iv = storage.evolutionInterval.clamp(10, 50);
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Evolve every $iv turns'
-                                '${members.length > 1 ? ' (per character)' : ''}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white54,
+                              Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'Character Evolution',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.tealAccent,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    height: 20,
+                                    child: Switch(
+                                      value: enabled,
+                                      activeThumbColor: Colors.tealAccent,
+                                      onChanged: (val) {
+                                        storage.setCharacterEvolutionEnabled(
+                                          val,
+                                        );
+                                        setLocal(() {});
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (enabled) ...[
+                                Text(
+                                  'Evolve every $iv turns'
+                                  '${members.length > 1 ? ' (per character)' : ''}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white54,
+                                  ),
                                 ),
-                              ),
-                              Slider(
-                                value: iv.toDouble(),
-                                min: 10,
-                                max: 50,
-                                divisions: 8,
-                                label: '$iv',
-                                activeColor: Colors.tealAccent,
-                                onChanged: (v) {
-                                  storage.setEvolutionInterval(v.round());
-                                  setLocal(() {});
-                                },
-                              ),
+                                Slider(
+                                  value: iv.toDouble(),
+                                  min: 10,
+                                  max: 50,
+                                  divisions: 8,
+                                  label: '$iv',
+                                  activeColor: Colors.tealAccent,
+                                  onChanged: (v) {
+                                    storage.setEvolutionInterval(v.round());
+                                    setLocal(() {});
+                                  },
+                                ),
+                              ],
                             ],
                           );
                         },
@@ -2639,11 +2670,12 @@ class _ChatPageState extends State<ChatPage> {
                           ],
                         ),
                       ),
-                      if (chatService.activeCharacter != null &&
-                          Provider.of<StorageService>(
-                            context,
-                            listen: false,
-                          ).characterEvolutionEnabled)
+                      // Show in a 1:1 OR a group (activeCharacter is null in a
+                      // group, which used to hide this entirely), and regardless
+                      // of the enabled flag — the dialog itself hosts the on/off
+                      // toggle, so it must be reachable to turn evolution back on.
+                      if (chatService.activeCharacter != null ||
+                          chatService.isGroupMode)
                         PopupMenuItem(
                           value: 'evolution',
                           child: Row(
