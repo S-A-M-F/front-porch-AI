@@ -4,6 +4,12 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🧬 **Evolve the character you actually picked** — opening Character Evolution in a group used to show whoever was next to speak, not the character you'd selected in the sidebar. Now it follows your selection, and in a group it has a **member-picker at the top** so you can view or manually evolve *any* cast member. Evolution also no longer re-fires on a regenerate (it was double-counting), and it's been told to refine rather than pile on — so characters stop endlessly repeating the same self-coined phrases.
+
+- 🤝 **Trust actually moves now** — the trust meter was so conservative it basically never budged. It now responds to everyday trustworthiness — honesty, consistency, showing up, small kindnesses — not only grand gestures, while big betrayals still land hard.
+
+- 🪪 **Characters use your name** — if a character kept calling you "the boy" / "the girl" instead of your name, the prompt now always establishes your name (even with a blank persona) and nudges the model to use it. (It won't be 100% — a literary model will still reach for the occasional epithet — but it's much better.)
+
 - 🔀 **`/turnorder` — control who speaks when in a group** — tired of characters answering in a random order? In any group chat, type **`/turnorder roundrobin`** for a predictable cycle, **`/turnorder random`** to shuffle, or set an exact sequence with **`/turnorder Mara, Kai, Rin`** (anyone you leave out is added to the end, so nobody drops out of the rotation). `/turnorder` on its own shows the current mode and order. No more spamming `/speak` to wrangle the order.
 
 - 🔥 **NSFW Enhancement (arousal) now works in group chats** — the arousal/lust toggle used to only exist in 1:1 chats, so in a group there was literally no way to turn it on and arousal never tracked. It now appears in the group sidebar, and flipping it correctly applies to **every** member (not just one), so lust starts moving for the whole cast.

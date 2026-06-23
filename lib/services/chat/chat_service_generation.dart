@@ -1290,10 +1290,15 @@ extension ChatServiceGeneration on ChatService {
           // Embed messages for RAG memory (fire-and-forget)
           _maybeEmbedMessages();
 
-          // Periodic evaluations coordinator (facts + character evolution).
-          // Each now respects its own interval (autoPersonaInterval / evolutionInterval)
-          // via dedicated god-owned counters. Sequenced here when they coincide.
-          _maybeRunPeriodicEvals();
+          // Periodic evaluations coordinator (facts + character evolution + cast
+          // detection). These are NEW-TURN work — only on a normal generation,
+          // never on regen/continue (which replay or extend an existing turn).
+          // Re-running on regen double-fired character evolution (inflating the
+          // count and amplifying the model's own baked-in motifs every turn) and
+          // re-extracted facts. Each respects its own interval inside.
+          if (mode == GenerationMode.normal) {
+            _maybeRunPeriodicEvals();
+          }
         } // end Scene Guest parity guard (guestSpeaker == null)
 
         // (Task completion check now runs pre-generation in sendMessage)

@@ -1152,240 +1152,325 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  void _showEvolutionDialog(BuildContext context, ChatService chat) {
-    final character = chat.activeCharacter;
-    if (character == null) return;
-    final charName = character.name;
-    final evolvedPersonality =
-        chat.getEffectivePersonality ?? character.personality;
-    final evolvedScenario = chat.getEffectiveScenario ?? character.scenario;
-
-    final personalityController = TextEditingController(
-      text: evolvedPersonality,
-    );
-    final scenarioController = TextEditingController(text: evolvedScenario);
+  void _showEvolutionDialog(
+    BuildContext context,
+    ChatService chat, {
+    CharacterCard? focusedCard,
+  }) {
+    // Evolve/view the FOCUSED participant (sidebar selection) — not the active /
+    // next-queued speaker, which is why a group used to show the wrong character.
+    // In a group the dialog gets a top member-picker so any cast member can be
+    // viewed/evolved manually. Everything is targeted per-member.
+    final members = chat.cast.map((p) => p.card).toList();
+    final CharacterCard? initial =
+        focusedCard ??
+        chat.activeCharacter ??
+        (members.isNotEmpty ? members.first : null);
+    if (initial == null) return;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceOf(context),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.psychology_alt,
-              size: 18,
-              color: Colors.tealAccent,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '$charName — Evolution',
-                style: const TextStyle(fontSize: 14),
+      builder: (ctx) {
+        CharacterCard selected = initial;
+        final personalityController = TextEditingController(
+          text: chat.getEvolvedPersonalityFor(selected) ?? selected.personality,
+        );
+        final scenarioController = TextEditingController(
+          text: chat.getEvolvedScenarioFor(selected) ?? selected.scenario,
+        );
+
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final count = chat.getEvolutionCountFor(selected);
+
+            void switchTo(CharacterCard c) {
+              selected = c;
+              personalityController.text =
+                  chat.getEvolvedPersonalityFor(c) ?? c.personality;
+              scenarioController.text =
+                  chat.getEvolvedScenarioFor(c) ?? c.scenario;
+              setLocal(() {});
+            }
+
+            return AlertDialog(
+              backgroundColor: AppColors.surfaceOf(context),
+              title: Row(
+                children: [
+                  const Icon(
+                    Icons.psychology_alt,
+                    size: 18,
+                    color: Colors.tealAccent,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${selected.name} — Evolution',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  chat.characterEvolutionCount > 0
-                      ? 'Evolved ${chat.characterEvolutionCount} time${chat.characterEvolutionCount > 1 ? "s" : ""}'
-                      : 'Not yet evolved — personality will evolve as you chat',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: chat.characterEvolutionCount > 0
-                        ? Colors.tealAccent
-                        : Colors.white38,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Original personality (read-only)
-                const Text(
-                  'Original Personality',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.white38,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D1117),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  constraints: const BoxConstraints(maxHeight: 80),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      character.personality,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white30,
+              content: SizedBox(
+                width: 500,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Member picker (group only) — pick who to view / evolve.
+                      if (members.length > 1) ...[
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: members.map((m) {
+                            final isSel = m.name == selected.name;
+                            return ChoiceChip(
+                              label: Text(
+                                m.name,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              selected: isSel,
+                              onSelected: (_) {
+                                if (!isSel) switchTo(m);
+                              },
+                              selectedColor: Colors.tealAccent.shade700,
+                              labelStyle: TextStyle(
+                                color: isSel ? Colors.black : Colors.white70,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        count > 0
+                            ? 'Evolved $count time${count > 1 ? "s" : ""}'
+                            : 'Not yet evolved — personality will evolve as you chat',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: count > 0
+                              ? Colors.tealAccent
+                              : Colors.white38,
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Evolved personality (editable)
-                const Text(
-                  'Evolved Personality',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.tealAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                AppTextField(
-                  controller: personalityController,
-                  maxLines: 4,
-                  style: const TextStyle(fontSize: 11, color: Colors.white70),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: const Color(0xFF111827),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: Colors.tealAccent),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: Colors.tealAccent),
-                    ),
-                    contentPadding: const EdgeInsets.all(8),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Original scenario (read-only)
-                const Text(
-                  'Original Scenario',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.white38,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D1117),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  constraints: const BoxConstraints(maxHeight: 80),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      character.scenario,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white30,
+                      const SizedBox(height: 12),
+                      // Original personality (read-only)
+                      const Text(
+                        'Original Personality',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white38,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D1117),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        constraints: const BoxConstraints(maxHeight: 80),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            selected.personality,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.white30,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Evolved personality (editable)
+                      const Text(
+                        'Evolved Personality',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.tealAccent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      AppTextField(
+                        controller: personalityController,
+                        maxLines: 4,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white70,
+                        ),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: const Color(0xFF111827),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: const BorderSide(
+                              color: Colors.tealAccent,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: const BorderSide(
+                              color: Colors.tealAccent,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.all(8),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Original scenario (read-only)
+                      const Text(
+                        'Original Scenario',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white38,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D1117),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        constraints: const BoxConstraints(maxHeight: 80),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            selected.scenario,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.white30,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Evolved scenario (editable)
+                      const Text(
+                        'Evolved Scenario',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.tealAccent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      AppTextField(
+                        controller: scenarioController,
+                        maxLines: 4,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white70,
+                        ),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: const Color(0xFF111827),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: const BorderSide(
+                              color: Colors.tealAccent,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: const BorderSide(
+                              color: Colors.tealAccent,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.all(8),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                // Evolved scenario (editable)
-                const Text(
-                  'Evolved Scenario',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.tealAccent,
-                    fontWeight: FontWeight.w600,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                if (count > 0)
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _showResetEvolutionConfirmSidebar(
+                        context,
+                        chat,
+                        target: selected,
+                      );
+                    },
+                    child: const Text(
+                      'Reset',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                TextButton(
+                  onPressed: chat.isEvolvingCharacter
+                      ? null
+                      : () async {
+                          final target = selected;
+                          final ok = await chat.triggerEvolutionNow(
+                            target: target,
+                          );
+                          Navigator.of(ctx).pop();
+                          if (ok && mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${target.name} evolved!'),
+                                backgroundColor: Colors.teal,
+                              ),
+                            );
+                          }
+                        },
+                  child: Text(
+                    chat.isEvolvingCharacter ? 'Evolving...' : 'Evolve Now',
+                    style: const TextStyle(color: Colors.tealAccent),
                   ),
                 ),
-                const SizedBox(height: 4),
-                AppTextField(
-                  controller: scenarioController,
-                  maxLines: 4,
-                  style: const TextStyle(fontSize: 11, color: Colors.white70),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: const Color(0xFF111827),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: Colors.tealAccent),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: Colors.tealAccent),
-                    ),
-                    contentPadding: const EdgeInsets.all(8),
+                ElevatedButton(
+                  onPressed: () {
+                    chat.updateEvolvedPersonality(
+                      personalityController.text,
+                      target: selected,
+                    );
+                    chat.updateEvolvedScenario(
+                      scenarioController.text,
+                      target: selected,
+                    );
+                    Navigator.of(ctx).pop();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.tealAccent.shade700,
                   ),
+                  child: const Text('Save Changes'),
                 ),
               ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          if (chat.characterEvolutionCount > 0)
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _showResetEvolutionConfirmSidebar(context, chat);
-              },
-              child: const Text(
-                'Reset',
-                style: TextStyle(color: Colors.redAccent),
-              ),
-            ),
-          TextButton(
-            onPressed: chat.isEvolvingCharacter
-                ? null
-                : () async {
-                    final ok = await chat.triggerEvolutionNow();
-                    Navigator.of(ctx).pop();
-                    if (ok && mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Character evolved!'),
-                          backgroundColor: Colors.teal,
-                        ),
-                      );
-                    }
-                  },
-            child: Text(
-              chat.isEvolvingCharacter ? 'Evolving...' : 'Evolve Now',
-              style: const TextStyle(color: Colors.tealAccent),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              chat.updateEvolvedPersonality(personalityController.text);
-              chat.updateEvolvedScenario(scenarioController.text);
-              Navigator.of(ctx).pop();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.tealAccent.shade700,
-            ),
-            child: const Text('Save Changes'),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
   void _showResetEvolutionConfirmSidebar(
     BuildContext context,
-    ChatService chat,
-  ) {
+    ChatService chat, {
+    CharacterCard? target,
+  }) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceOf(context),
-        title: const Text('Reset Character Evolution?'),
+        title: Text(
+          target != null
+              ? 'Reset ${target.name}\'s Evolution?'
+              : 'Reset Character Evolution?',
+        ),
         content: const Text(
           'This will reset the character\'s personality and scenario back to the original card values. '
           'The evolution count will also reset to 0. This cannot be undone.',
@@ -1398,7 +1483,7 @@ class _ChatPageState extends State<ChatPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              chat.resetCharacterEvolution();
+              chat.resetCharacterEvolution(target: target);
               Navigator.of(ctx).pop();
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -2441,7 +2526,11 @@ class _ChatPageState extends State<ChatPage> {
                       } else if (value == 'export') {
                         _exportChat();
                       } else if (value == 'evolution') {
-                        _showEvolutionDialog(context, chatService);
+                        _showEvolutionDialog(
+                          context,
+                          chatService,
+                          focusedCard: _focusedParticipant(chatService)?.card,
+                        );
                       } else if (value == 'context') {
                         showDialog(
                           context: context,
@@ -3343,12 +3432,47 @@ class _ChatPageState extends State<ChatPage> {
                   Consumer<ChatService>(
                     builder: (context, chat, _) => SceneTimeSection(chat: chat),
                   ),
-                  // NSFW Enhancement (arousal) — chat-wide toggle. Previously only
-                  // in the 1:1 RealismSection, so groups had no way to enable it;
-                  // the ChatService setter propagates the flag to every member.
+                  // NSFW Enhancement (arousal) — chat-wide toggle for the group.
+                  // A simple on/off (NOT the 1:1 NsfwEnhancementsSection, whose
+                  // per-speaker arousal gauge is volatile here and renders an empty
+                  // box when off — per-member arousal already shows in member cards).
+                  // Reads the stable group flag; the setter propagates to every
+                  // member so each speaker's eval actually evaluates arousal.
                   Consumer<ChatService>(
-                    builder: (context, chat, _) =>
-                        NsfwEnhancementsSection(chat: chat),
+                    builder: (context, chat, _) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: Color(0xFFEA580C),
+                          ),
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: Text(
+                              'NSFW Enhancement (arousal)',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFEA580C),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          SizedBox(
+                            height: 20,
+                            child: Switch(
+                              value: chat.isGroupNsfwEnabled,
+                              activeThumbColor: const Color(0xFFF97316),
+                              onChanged: chat.isGenerating
+                                  ? null
+                                  : (val) => chat.setNsfwCooldownEnabled(val),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   GroupLorebookSection(chatService: chatService),
@@ -3572,8 +3696,12 @@ class _ChatPageState extends State<ChatPage> {
                             Row(
                               children: [
                                 OutlinedButton.icon(
-                                  onPressed: () =>
-                                      _showEvolutionDialog(context, chat),
+                                  onPressed: () => _showEvolutionDialog(
+                                    context,
+                                    chat,
+                                    focusedCard:
+                                        _focusedParticipant(chat)?.card,
+                                  ),
                                   icon: const Icon(
                                     Icons.edit,
                                     size: 14,

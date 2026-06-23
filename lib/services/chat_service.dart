@@ -2761,9 +2761,7 @@ class ChatService extends ChangeNotifier {
     final persona = _userPersonaService.persona;
     final personaText = persona.persona.trim();
     final allFacts = persona.learnedFacts;
-
-    // Nothing to inject
-    if (personaText.isEmpty && allFacts.isEmpty) return '';
+    final safeUserName = userName.replaceAll(RegExp(r'[\n\r"]'), ' ').trim();
 
     // Select relevant facts using embeddings if available
     List<String> facts;
@@ -2783,11 +2781,18 @@ class ChatService extends ChangeNotifier {
     }
 
     final buf = StringBuffer();
-    final safeUserName = userName.replaceAll(RegExp(r'[\n\r"]'), ' ').trim();
-    final safePersonaText = personaText
-        .replaceAll(RegExp(r'[\n\r"]'), ' ')
-        .trim();
-    buf.writeln("$safeUserName's Persona: $safePersonaText");
+    // ALWAYS establish the user's identity by NAME — even with no persona text.
+    // Otherwise the model only sees "$userName:" history labels and invents a
+    // generic descriptor ("the boy"/"the girl") for the human. (Previously this
+    // returned '' entirely when the persona had no description.)
+    if (personaText.isNotEmpty) {
+      final safePersonaText = personaText
+          .replaceAll(RegExp(r'[\n\r"]'), ' ')
+          .trim();
+      buf.writeln("$safeUserName's Persona: $safePersonaText");
+    } else {
+      buf.writeln('$safeUserName is the human you are talking with.');
+    }
 
     if (facts.isNotEmpty) {
       buf.writeln(
@@ -2799,6 +2804,12 @@ class ChatService extends ChangeNotifier {
         buf.writeln('- $safeFact');
       }
     }
+    // The model HAS the name above — nudge it to actually use it instead of
+    // reaching for a generic epithet for the human.
+    buf.writeln(
+      'Always refer to $safeUserName by name; never substitute a generic '
+      'descriptor like "the boy", "the girl", or "the user".',
+    );
     buf.writeln();
     return buf.toString();
   }

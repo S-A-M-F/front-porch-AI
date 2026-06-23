@@ -77,6 +77,23 @@ extension ChatServiceGroupSettings on ChatService {
   bool get isGroupTurnOrderRandom =>
       _activeGroup?.turnOrder == TurnOrder.random;
 
+  /// Chat-wide "is NSFW Enhancement on" for the group toggle. Reads the STABLE
+  /// per-character flag from `_groupRealism` (which `setNsfwCooldownEnabled`
+  /// propagates to every member) rather than `_nsfwService.nsfwCooldownEnabled`
+  /// — the live scalar is per-speaker-volatile in a group (reset on entry,
+  /// overwritten by `loadNsfwScalarsForSpeaker` each turn), so a toggle bound to
+  /// it wouldn't reflect the user's choice. Falls back to the scalar (1:1, or
+  /// before any member flag exists).
+  bool get isGroupNsfwEnabled {
+    if (_activeGroup != null) {
+      for (final c in _groupCharacters) {
+        final v = _groupRealism[_getCharacterIdFromCard(c)]?['nsfwCooldownEnabled'];
+        if (v is bool) return v;
+      }
+    }
+    return _nsfwService.nsfwCooldownEnabled;
+  }
+
   /// Set the active group's turn order on the fly (the `/turnorder` macro).
   /// [random] true → a random member answers each turn; false → round-robin.
   /// When [customOrder] is supplied (round-robin only) the live roster is
