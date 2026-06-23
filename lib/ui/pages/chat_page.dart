@@ -4030,22 +4030,10 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       onTap: () async {
                         Navigator.pop(ctx);
-                        final groupRepo = Provider.of<GroupChatRepository>(
-                          context,
-                          listen: false,
-                        );
-                        final success = await chatService.addCharacterToGroup(
-                          ch,
-                          groupRepo,
-                        );
-                        if (success && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${ch.name} added to group!'),
-                              backgroundColor: Colors.purpleAccent.shade700,
-                            ),
-                          );
-                        }
+                        // Unified full-member add: joinFull adds the member and
+                        // has them make an organic entrance (same path as
+                        // /join --full), instead of appearing silently.
+                        await chatService.joinFull(ch);
                       },
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),

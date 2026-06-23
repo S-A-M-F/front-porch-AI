@@ -351,7 +351,18 @@ class ChatService extends ChangeNotifier {
           '⚠ Could not add ${card.name} to the group.',
           isError: true,
         );
+        return;
       }
+      // Members are copied under fresh UUIDs, so resolve the live member by name
+      // before having them make their organic entrance.
+      final resolved = groupCharacters.firstWhere(
+        (c) => c.name == card.name,
+        orElse: () => card,
+      );
+      await _generateMemberEntrance(
+        resolved,
+        'enter the scene naturally, reacting to what is happening',
+      );
       return;
     }
 
@@ -390,6 +401,36 @@ class ChatService extends ChangeNotifier {
         '⚠ Could not convert this chat into a group.',
         isError: true,
       );
+    }
+  }
+
+  /// Have [resolved] (a current group member) make an organic, LLM-written
+  /// entrance: force them to speak next under a hidden stage-direction so they
+  /// write their own entrance from the chat so far + their card. Shared by the
+  /// 1:1→group conversion (via forkToGroupChat) and live `/join --full` / sidebar
+  /// adds. Returns true on success. [intent] is sanitized so it cannot break out
+  /// of the bracketed directive injection.
+  Future<bool> _generateMemberEntrance(
+    CharacterCard resolved,
+    String intent,
+  ) async {
+    final safeText = intent
+        .replaceAll(']', ')')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    _groupManager?.setNextSpeaker(resolved);
+    _entranceDirective =
+        'Stage direction (hidden — do NOT quote, repeat, or copy this '
+        'text into the reply): ${resolved.name} enters the scene now, '
+        'following this intent — "$safeText". Write ${resolved.name}\'s '
+        'entrance fresh, in their own voice and words.';
+    try {
+      await _generateResponse(GenerationMode.normal);
+      return true;
+    } catch (e) {
+      debugPrint('[Join:Entrance] ${resolved.name} failed: $e');
+      _entranceDirective = null; // don't leak into a later turn
+      return false;
     }
   }
 
@@ -3336,26 +3377,12 @@ class ChatService extends ChangeNotifier {
             final resolvedId = _getCharacterIdFromCard(resolved);
 
             if (entry.creative) {
-              // Direction: hidden one-shot directive; force this char to speak.
-              // Sanitize so the user's text can't break out of the [bracketed]
-              // author-note injection or split it across lines.
-              final safeText = text
-                  .replaceAll(']', ')')
-                  .replaceAll(RegExp(r'\s+'), ' ')
-                  .trim();
-              _groupManager?.setNextSpeaker(resolved);
-              _entranceDirective =
-                  'Stage direction (hidden — do NOT quote, repeat, or copy this '
-                  'text into the reply): ${resolved.name} enters the scene now, '
-                  'following this intent — "$safeText". Write ${resolved.name}\'s '
-                  'entrance fresh, in their own voice and words.';
-              try {
-                await _generateResponse(GenerationMode.normal);
-              } catch (e) {
+              // Hidden one-shot directive; the member writes their own entrance.
+              // Shared with live /join --full + sidebar adds via the helper.
+              final ok = await _generateMemberEntrance(resolved, text);
+              if (!ok) {
                 // Surface the failure so the user isn't left wondering why the
                 // group loaded with no entrance.
-                debugPrint('[Fork:Entrance] ${resolved.name} failed: $e');
-                _entranceDirective = null; // don't leak into a later turn
                 _messages.add(
                   ChatMessage(
                     text:
