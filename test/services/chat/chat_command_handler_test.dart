@@ -35,6 +35,9 @@ void main() {
     late String? pendingDeparture;
     late int primaryTurns;
     late int castScans;
+    late List<CharacterCard> groupMembers;
+    late List<CharacterCard> groupJoinable;
+    late List<CharacterCard> removedMembers;
     bool castScanFound = false;
 
     ChatCommandHandler build({bool activeSet = true}) {
@@ -58,6 +61,12 @@ void main() {
         },
         speakGuest: (g) async => spoke.add(g),
         armExitUndo: (g) => undoArmed.add(g),
+        getGroupMembers: () => groupMembers,
+        getGroupJoinableCharacters: () => groupJoinable,
+        removeGroupMember: (m) async {
+          removedMembers.add(m);
+          return true;
+        },
       );
     }
 
@@ -77,6 +86,9 @@ void main() {
       pendingDeparture = null;
       primaryTurns = 0;
       castScans = 0;
+      groupMembers = [];
+      groupJoinable = [];
+      removedMembers = [];
       castScanFound = false;
     });
 
@@ -185,13 +197,63 @@ void main() {
       },
     );
 
-    test('/join outside a 1:1 chat is rejected', () async {
+    test('/join with no chat open (no 1:1, no group) is rejected', () async {
       joinable = [_guest('Nora')];
-      final h = build(activeSet: false);
+      final h = build(activeSet: false); // not a 1:1 and groupMembers stays empty
       expect(await h.handle('/join Nora'), true);
-      expect(systemMessages.single, contains('1:1'));
+      expect(systemMessages.single, contains('Open a chat'));
       expect(joined, isEmpty);
       expect(pickerRequests, isEmpty);
+    });
+
+    test('/join <name> in a group routes to a FULL join (no lite tier)', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      groupJoinable = [_guest('Nora')];
+      final h = build(activeSet: false); // group mode (activeCharacterIsSet false)
+      expect(await h.handle('/join Nora'), true);
+      expect(joinedFull.single.name, 'Nora'); // full, not lite
+      expect(joined, isEmpty);
+      expect(pickerRequests, isEmpty);
+    });
+
+    test('/join --full <name> in a group adds the member', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      groupJoinable = [_guest('Nora')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/join --full Nora'), true);
+      expect(joinedFull.single.name, 'Nora');
+    });
+
+    test('/exit <name> in a group removes that full member', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/exit Bryn'), true);
+      expect(removedMembers.single.name, 'Bryn');
+      expect(exited, isEmpty); // not the Lite-NPC path
+    });
+
+    test('/exit (no name) in a group asks which member', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/exit'), true);
+      expect(removedMembers, isEmpty);
+      expect(systemMessages.single, contains('Who should leave'));
+    });
+
+    test('/exit <unknown> in a group surfaces a message', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/exit Zed'), true);
+      expect(removedMembers, isEmpty);
+      expect(systemMessages.single, contains('No group member'));
+    });
+
+    test('/exit cannot remove the only remaining group member', () async {
+      groupMembers = [_guest('Aria')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/exit Aria'), true);
+      expect(removedMembers, isEmpty);
+      expect(systemMessages.single, contains('only remaining'));
     });
 
     test('/join with no joinable characters surfaces a message', () async {

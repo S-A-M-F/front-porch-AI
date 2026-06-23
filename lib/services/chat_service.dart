@@ -342,6 +342,21 @@ class ChatService extends ChangeNotifier {
     }).toList();
   }
 
+  /// Library characters eligible to `/join` an active GROUP as a full member:
+  /// every loaded character except those already in the cast (excluded by name —
+  /// addCharacterToGroup's stable-identity D5 guard is the real backstop). Empty
+  /// outside a group. Drives `/join` resolution in group chats.
+  List<CharacterCard> get joinableGroupCharacters {
+    final repo = _characterRepository;
+    if (repo == null || _activeGroup == null) return const [];
+    final memberNames = _groupCharacters
+        .map((c) => c.name.trim().toLowerCase())
+        .toSet();
+    return repo.characters
+        .where((c) => !memberNames.contains(c.name.trim().toLowerCase()))
+        .toList();
+  }
+
   /// Bring an existing library [card] into the scene as a Scene Guest (the
   /// picker's selection handler; same parity-safe enter path as `/create`).
   Future<void> joinSceneGuest(CharacterCard card) =>
@@ -544,6 +559,14 @@ class ChatService extends ChangeNotifier {
       runCastScan: runCastDetectionNow,
       speakGuest: speakGuestNow,
       armExitUndo: armSceneGuestExitUndo,
+      getGroupMembers: () =>
+          _activeGroup != null ? _groupCharacters : const <CharacterCard>[],
+      getGroupJoinableCharacters: () => joinableGroupCharacters,
+      removeGroupMember: (member) async {
+        final repo = _groupChatRepository;
+        if (repo == null) return false;
+        return removeCharacterFromGroup(member, repo);
+      },
     );
   }
 

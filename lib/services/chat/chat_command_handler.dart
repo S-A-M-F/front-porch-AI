@@ -72,6 +72,9 @@ class ChatCommandHandler {
     required Future<bool> Function() runCastScan,
     required Future<void> Function(CharacterCard guest) speakGuest,
     required void Function(CharacterCard guest) armExitUndo,
+    required List<CharacterCard> Function() getGroupMembers,
+    required List<CharacterCard> Function() getGroupJoinableCharacters,
+    required Future<bool> Function(CharacterCard member) removeGroupMember,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -87,7 +90,10 @@ class ChatCommandHandler {
        _requestGuestPicker = requestGuestPicker,
        _runCastScan = runCastScan,
        _speakGuest = speakGuest,
-       _armExitUndo = armExitUndo;
+       _armExitUndo = armExitUndo,
+       _getGroupMembers = getGroupMembers,
+       _getGroupJoinableCharacters = getGroupJoinableCharacters,
+       _removeGroupMember = removeGroupMember;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -105,6 +111,9 @@ class ChatCommandHandler {
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
   final void Function(CharacterCard guest) _armExitUndo;
+  final List<CharacterCard> Function() _getGroupMembers;
+  final List<CharacterCard> Function() _getGroupJoinableCharacters;
+  final Future<bool> Function(CharacterCard member) _removeGroupMember;
 
   /// The user-facing slash-command reference (single source of truth for the
   /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
@@ -118,7 +127,7 @@ class ChatCommandHandler {
     SlashCommandInfo(
       'join',
       '/join [--full] [name]',
-      'Bring an existing character in — add --full to make them a full group member',
+      'Bring a character in — --full makes a full member; in a group, always full',
     ),
     SlashCommandInfo(
       'promote',
@@ -133,7 +142,7 @@ class ChatCommandHandler {
     SlashCommandInfo(
       'exit',
       '/exit [name]',
-      'Have a guest leave the scene (narrated by your character)',
+      'A guest leaves (narrated); in a group, removes that full member by name',
     ),
     SlashCommandInfo(
       'scan',
@@ -271,19 +280,28 @@ class ChatCommandHandler {
   // The candidate list (injected) already excludes the host and anyone already
   // present, so this leaf only resolves the user's intent against it.
   Future<void> _handleJoin(String args) async {
-    if (!_activeCharacterIsSet()) {
-      _onSystemMessage('⚠ Characters can only be added inside a 1:1 chat.');
+    final inGroup = _getGroupMembers().isNotEmpty;
+    if (!inGroup && !_activeCharacterIsSet()) {
+      _onSystemMessage('⚠ Open a chat first to add a character.');
       return;
     }
 
-    final (full: full, name: wanted) = _parseJoinFlags(args);
+    final (full: requestedFull, name: wanted) = _parseJoinFlags(args);
+    // A group has no "lite" tier — everyone is a full member — so a plain `/join`
+    // (or even `/join --lite`) silently becomes a full join inside a group.
+    final full = inGroup ? true : requestedFull;
 
-    // Lite can only pull in characters not already present. Full (convert to a
-    // group) can ALSO target a character who is currently a lite guest —
-    // promoting them — so its candidate pool includes present guests.
-    final candidates = full
-        ? <CharacterCard>[..._getJoinableCharacters(), ..._getSceneGuestCards()]
-        : _getJoinableCharacters();
+    // Candidate pool. In a group: library characters not already members. In a
+    // 1:1: joinable guests; a full (convert) join can also target a present lite
+    // guest (promoting them), so its pool includes the present scene guests.
+    final candidates = inGroup
+        ? _getGroupJoinableCharacters()
+        : (full
+              ? <CharacterCard>[
+                  ..._getJoinableCharacters(),
+                  ..._getSceneGuestCards(),
+                ]
+              : _getJoinableCharacters());
     if (candidates.isEmpty) {
       _onSystemMessage(
         '⚠ No other characters are available to join this chat.',
@@ -293,15 +311,17 @@ class ChatCommandHandler {
 
     if (wanted.isEmpty) {
       if (full) {
-        // `/join` is about bringing a SPECIFIC character in, so a full join needs
-        // a name. To turn the whole present scene into a group, use `/promote`.
+        // `/join` brings in a SPECIFIC character, so a full join needs a name.
         _onSystemMessage(
-          '⚠ Name a character to bring in as a full member '
-          '(e.g. /join --full Mara), or use /promote to make the whole scene a group.',
+          inGroup
+              ? '⚠ Name a character to add (e.g. /join Mara).'
+              : '⚠ Name a character to bring in as a full member '
+                    '(e.g. /join --full Mara), or use /promote to make the whole '
+                    'scene a group.',
         );
         return;
       }
-      _requestGuestPicker(''); // lite: browse the full list
+      _requestGuestPicker(''); // lite (1:1 only): browse the full list
       return;
     }
 
@@ -429,6 +449,15 @@ class ChatCommandHandler {
   // the one-shot directive + removes the guest; we then trigger a primary
   // generation). The character stays in the library (still "known").
   Future<void> _handleExit(String args) async {
+    // Full group: /exit <name> removes that member outright (Scene Guests are
+    // 1:1-only, so a non-empty group roster means we're in a full group). When
+    // the removal leaves one member the group auto-collapses back to a 1:1.
+    final members = _getGroupMembers();
+    if (members.isNotEmpty) {
+      await _handleGroupMemberExit(args, members);
+      return;
+    }
+
     final guests = _getSceneGuestCards();
     if (guests.isEmpty) {
       _onSystemMessage('⚠ There are no scene guests to exit.');
@@ -477,5 +506,58 @@ class ChatCommandHandler {
     // Offer a brief UNDO — the departure message can be deleted and the guest
     // restored with full context (their evolution/memory are not wiped by exit).
     _armExitUndo(target);
+  }
+
+  // ── Full group member: /exit <name> ─────────────────────────────────────
+  // Removes a full member from the active group via the real removal path
+  // (deletes their copy + state; auto-collapses to a 1:1 when one remains).
+  // Unlike a Lite NPC exit, this is a structural removal, not a narrated
+  // goodbye, so it needs an unambiguous name.
+  Future<void> _handleGroupMemberExit(
+    String args,
+    List<CharacterCard> members,
+  ) async {
+    if (members.length <= 1) {
+      _onSystemMessage('⚠ Can’t remove the only remaining character.');
+      return;
+    }
+    final wanted = args.trim().toLowerCase();
+    if (wanted.isEmpty) {
+      _onSystemMessage(
+        '⚠ Who should leave? Use /exit <name> — '
+        '${members.map((m) => m.name).join(', ')}.',
+      );
+      return;
+    }
+    CharacterCard? target;
+    for (final m in members) {
+      if (m.name.toLowerCase() == wanted) {
+        target = m;
+        break;
+      }
+    }
+    if (target == null) {
+      final partial = members
+          .where((m) => m.name.toLowerCase().contains(wanted))
+          .toList();
+      if (partial.length > 1) {
+        _onSystemMessage(
+          '⚠ "$args" matches multiple members '
+          '(${partial.map((m) => m.name).join(', ')}). Use the full name.',
+        );
+        return;
+      }
+      if (partial.length == 1) target = partial.first;
+    }
+    if (target == null) {
+      _onSystemMessage('⚠ No group member named "$args" is here.');
+      return;
+    }
+    // removeGroupMember handles the real delete + auto-collapse (and surfaces its
+    // own banner on the collapse/dead-end paths).
+    final ok = await _removeGroupMember(target);
+    if (!ok) {
+      _onSystemMessage('⚠ Couldn’t remove ${target.name} from the group.');
+    }
   }
 }

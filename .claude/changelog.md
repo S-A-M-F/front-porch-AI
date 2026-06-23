@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-23 (feat: /join and /exit macros now work in full group chats, not just 1:1)
+- **Files changed**:
+  - lib/services/chat/chat_command_handler.dart — `/exit <name>` now removes a FULL group member (new `_handleGroupMemberExit`, branches at the top of `_handleExit` when a group roster is present — Scene Guests are 1:1-only so a non-empty roster means a full group; guards against removing the only remaining member). `/join` is now group-aware: it works in a group (the old hard `_activeCharacterIsSet()` 1:1-only guard is replaced with "open a chat first"), and inside a group a plain `/join <name>` (or `--lite`) silently becomes a full join (groups have no lite tier). Added 3 callbacks (getGroupMembers / getGroupJoinableCharacters / removeGroupMember). Help text for both commands updated.
+  - lib/services/chat_service.dart — wired the 3 new command callbacks; new `joinableGroupCharacters` getter (library minus current members by name; addCharacterToGroup's D5 stable-identity guard is the real backstop).
+  - lib/ui/pages/chat_page.dart — removed the sidebar "Add Character" button (adding a member is now `/join <name>`, surfaced by the "type /" command helper) and deleted the now-dead `_showAddCharacterToGroupDialog` + its unused `path` import — frees sidebar space / cleaner UI.
+  - test/services/chat/chat_command_handler_test.dart — updated the "no chat open" rejection test and added 6 group cases (/join routes to full, /join --full adds, /exit removes a member, /exit no-name asks, /exit unknown name, /exit can't remove the last).
+- **Reason**: Macros should work the same in groups and 1:1 — users hit "only works in 1:1 chats" on `/join --full` and found `/exit` couldn't remove full members (only Lite NPCs). The underlying `joinFull` (→ addCharacterToGroup, Phase 2) and `removeCharacterFromGroup` (→ real removal + auto-collapse, Phase 3) already handle groups; this just wires the macros to them and removes the now-redundant sidebar button.
+- **Verification**: `flutter analyze` clean; `flutter test test/services/chat/ test/services/group_entrance_test.dart test/models/` → all 540 pass (incl. the 6 new group-command tests). One new private method (`_handleGroupMemberExit`). The "…" menu's separate "Add Character (Group)…" (fork_group) entry was left as-is (possible follow-up cleanup). No commit yet (uncommitted on branch claude/unify-chat-interfaces-tyzeb4).
+- **Commit hash**: (uncommitted)
+
+
 ## 2026-06-23 (feat: Phase 3 of "one chat, changing cast" — real member removal + auto-collapse group→1:1)
 - **Files changed**:
   - lib/database/database.dart — new `deleteGroupMember(memberId)` (single-row delete; complements the existing per-group delete).

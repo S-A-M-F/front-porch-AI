@@ -18,7 +18,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -3318,36 +3317,10 @@ class _ChatPageState extends State<ChatPage> {
                       );
                     },
                   ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: chatService.isGenerating
-                          ? null
-                          : () => _showAddCharacterToGroupDialog(
-                              context,
-                              chatService,
-                            ),
-                      icon: const Icon(
-                        Icons.person_add,
-                        size: 16,
-                        color: Colors.purpleAccent,
-                      ),
-                      label: const Text(
-                        'Add Character',
-                        style: TextStyle(
-                          color: Colors.purpleAccent,
-                          fontSize: 12,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: Colors.purpleAccent.withValues(alpha: 0.4),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
+                  // The sidebar "Add Character" button was removed: adding a
+                  // member is now the `/join <name>` macro (always a full member
+                  // in a group), surfaced by the "type /" command helper. This
+                  // keeps the roster panel clean.
                   const SizedBox(height: 12),
                   Consumer<ChatService>(
                     builder: (context, chat, _) => ChaosModeSection(
@@ -3956,108 +3929,6 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  /// Show dialog to add a character to the active group chat.
-  void _showAddCharacterToGroupDialog(
-    BuildContext context,
-    ChatService chatService,
-  ) {
-    final charRepo = Provider.of<CharacterRepository>(context, listen: false);
-    // characterIds removed from GroupChat (decoupled). Use chatService or group members for active set.
-    final currentIds =
-        <String>[]; // TODO: derive from active group members when needed
-
-    // Get characters not already in the group
-    final available = charRepo.characters.where((c) {
-      final id = c.imagePath != null
-          ? p.basenameWithoutExtension(c.imagePath!)
-          : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
-      return !currentIds.contains(id);
-    }).toList();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceOf(context),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Colors.purpleAccent, width: 0.5),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.person_add, color: Colors.purpleAccent),
-            SizedBox(width: 10),
-            Text(
-              'Add Character',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 380,
-          height: 350,
-          child: available.isEmpty
-              ? const Center(
-                  child: Text(
-                    'All characters are already in this group.',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: available.length,
-                  itemBuilder: (context, index) {
-                    final ch = available[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        radius: 20,
-                        backgroundImage: ch.imagePath != null
-                            ? FileImage(_resolveCharImage(ch.imagePath!))
-                            : null,
-                        child: ch.imagePath == null ? Text(ch.name[0]) : null,
-                      ),
-                      title: Text(
-                        ch.name,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.white,
-                        ),
-                      ),
-                      subtitle: Text(
-                        ch.description.length > 50
-                            ? '${ch.description.substring(0, 50)}...'
-                            : ch.description,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white38,
-                        ),
-                      ),
-                      onTap: () async {
-                        Navigator.pop(ctx);
-                        // Unified full-member add: joinFull adds the member and
-                        // has them make an organic entrance (same path as
-                        // /join --full), instead of appearing silently.
-                        await chatService.joinFull(ch);
-                      },
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      hoverColor: Colors.white10,
-                      dense: true,
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white54),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 Widget _buildRiskItem(IconData icon, String text) {
