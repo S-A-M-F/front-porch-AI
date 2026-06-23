@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-23 (fix: needs-impact eval lowballed relief — going to the bathroom only refilled +8)
+- **Files changed**:
+  - lib/services/chat/llm_eval_engine.dart — added explicit RELIEF/RESTORATION magnitude guidance to BOTH needs-impact prompts (the main first-call prompt AND the Director-correction prompt, for parity). Needs run 0–100 (100 = satisfied); the prompt never said so and anchored low ("small effects stay small", "use small numbers or zeros"), so the model returned tiny deltas (e.g. bladder_delta +8) for a COMPLETE relief — leaving the character still "needing". Now the model is told a full relief must use a large delta: using the bathroom → bladder +60..+100; full meal → hunger +50..+90; sleeping / long rest → energy +60..+100 (broadly restores physical needs); thorough wash → hygiene +50..+90; deep connection/play → social/fun/comfort +20..+50. Small numbers (±1..±8) reserved for incidental effects. (1x baselines; still scaled by the user's strength factor; the +100 clamp already allowed this.)
+- **Reason**: user report — going to the bathroom gave only +8 bladder (still needs to go), and sleeping (an OOC time-skip, which the user keeps passage-of-time OFF for on purpose) didn't refill needs. Both are the SAME root cause: the needs-impact eval, which reacts to the narrated scene, lowballed restorative activities. With passage-of-time off (intentional), a narrated sleep's energy refill must come from this eval — so the magnitude fix covers both. The annoying "manual reprocess every turn" was a workaround for this same lowballing.
+- **Verification**: flutter analyze clean. Prompt-only change; needs clamp (-30..+100) and apply path unchanged. Parity kept across both needs prompts.
+- **Not touched** (per user): passage-of-time is intentionally disabled — the OOC time-skip "ignored" log is expected, not a bug.
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-23 (fix: group NSFW toggle was dead + rendered a borked empty box)
 - **Files changed**:
   - lib/ui/pages/chat_page.dart — replaced the embedded 1:1 `NsfwEnhancementsSection` in the group sidebar (added in `1e05dd0`) with a **simple, dedicated chat-wide toggle**. The 1:1 widget was wrong here: its Switch bound to `nsfwService.nsfwCooldownEnabled` (the per-speaker-volatile scalar — reset on group entry, overwritten by `loadNsfwScalarsForSpeaker` each turn) so the toggle wouldn't stick, and its expanded content is entirely gated on that flag so when OFF it rendered an empty orange-bordered box (the "borked element"). The new toggle has no per-speaker arousal gauge (per-member arousal already shows in the member cards).
