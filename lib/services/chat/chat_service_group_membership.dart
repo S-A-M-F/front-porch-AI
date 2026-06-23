@@ -44,12 +44,37 @@ extension ChatServiceGroupMembership on ChatService {
 
     final originalCharId = _getCharacterIdFromCard(_activeCharacter!);
 
+    // Capture the host's live 1:1 realism BEFORE the fork switches into group
+    // mode (setActiveGroup, below, resets the working registers). It is carried
+    // into the host member's per-character group store after the switch so the
+    // converted group opens with realism ON and the host's bond/trust/emotion/
+    // arousal/fixation/needs intact — fixing the realism-reset-on-convert
+    // (/promote) bug. Present lite guests carried no realism (by design) and
+    // become full members seeded with neutral defaults on first entry.
+    final String hostName = _activeCharacter!.name;
+    final bool hostRealismEnabled = _realismEnabled;
+    final bool hostNeedsEnabled = _needsSimEnabled;
+    final Map<String, dynamic>? hostRealismSnapshot = hostRealismEnabled
+        ? _captureRealismState()
+        : null;
+
+    // D5 — one instance per library character per chat. Drop any arrival that
+    // repeats the host or another arrival (matched by stable identity). The
+    // in-app callers (joinFull / promoteSceneToFull) already dedup, but the web
+    // /api/groups/fork path forwards raw character_ids — this is the single
+    // chokepoint that keeps every conversion path duplicate-free.
+    final seenMemberIds = <String>{originalCharId};
+    final arrivals = <CharacterCard>[
+      for (final c in additionalCharacters)
+        if (seenMemberIds.add(_getCharacterIdFromCard(c))) c,
+    ];
+
     // Build a default group name
     final name = groupName?.isNotEmpty == true
         ? groupName!
         : [
             _activeCharacter!.name,
-            ...additionalCharacters.map((c) => c.name),
+            ...arrivals.map((c) => c.name),
           ].join(' & ');
 
     // Create the group
@@ -73,10 +98,8 @@ extension ChatServiceGroupMembership on ChatService {
     bool hasEntrance(CharacterCard c) =>
         (entrances[_getCharacterIdFromCard(c)]?.text.trim().isNotEmpty) ??
         false;
-    final entranceArrivals = additionalCharacters.where(hasEntrance).toList();
-    final silentArrivals = additionalCharacters
-        .where((c) => !hasEntrance(c))
-        .toList();
+    final entranceArrivals = arrivals.where(hasEntrance).toList();
+    final silentArrivals = arrivals.where((c) => !hasEntrance(c)).toList();
     final orderedArrivals = [...entranceArrivals, ...silentArrivals];
 
     // Decoupled model: ensure members exist for the original 1:1 character
@@ -147,6 +170,17 @@ extension ChatServiceGroupMembership on ChatService {
 
     // Switch to the new group (this loads the session we just created)
     await setActiveGroup(group, groupRepo: groupRepo);
+
+    // Carry the captured 1:1 host realism into the host member's per-character
+    // store now that group mode is active (the group-scoped writes are gated on
+    // _activeGroup != null). Without this the converted group opens realism-off
+    // with the host's relationship/needs reset to defaults (the /promote bug).
+    await _carryHostRealismIntoForkedGroup(
+      hostName,
+      hostRealismSnapshot,
+      realismEnabled: hostRealismEnabled,
+      needsEnabled: hostNeedsEnabled,
+    );
 
     // Run any custom entrances WITHOUT blocking the caller, so the wizard can
     // navigate to the group immediately and the entrance messages stream into
@@ -303,6 +337,70 @@ extension ChatServiceGroupMembership on ChatService {
     );
   }
 
+  /// Carry a captured 1:1 host realism [snapshot] (taken before the fork switched
+  /// into group mode) onto the host member's per-character group store, so a
+  /// converted group opens with realism ON and the host's relationship/needs
+  /// intact instead of reset. Reuses the same restore path as regenerate
+  /// (message-state snapshot shape) + the canonical [_saveScalarsIntoGroupRealism]
+  /// write — no schema duplication. No-op when the host had realism disabled or
+  /// the host member can't be resolved (so a mis-keyed carry can't corrupt state).
+  Future<void> _carryHostRealismIntoForkedGroup(
+    String hostName,
+    Map<String, dynamic>? snapshot, {
+    required bool realismEnabled,
+    required bool needsEnabled,
+  }) async {
+    if (snapshot == null || !realismEnabled || _activeGroup == null) return;
+    CharacterCard? hostMember;
+    for (final c in _groupCharacters) {
+      if (c.name == hostName) {
+        hostMember = c;
+        break;
+      }
+    }
+    if (hostMember == null) return; // host member not found — don't mis-key
+    final hostId = _getCharacterIdFromCard(hostMember);
+
+    _realismEnabled = true;
+    _needsSimEnabled = needsEnabled;
+    // Relationship (bond/long/trust/fixation/spatial/tiers) + emotion + nsfw —
+    // identical restore path regenerate uses (the message-state snapshot shape).
+    _relationshipService.restoreFromMessageState(snapshot);
+    _moodDecayCounter =
+        (snapshot['moodDecayCounter'] as int?) ?? _moodDecayCounter;
+    _characterEmotion =
+        (snapshot['characterEmotion'] as String?) ?? _characterEmotion;
+    _emotionIntensity =
+        (snapshot['emotionIntensity'] as String?) ?? _emotionIntensity;
+    _nsfwService.restoreNsfwFromMessageState(snapshot);
+    // Narrative time is a single per-chat scalar in BOTH 1:1 and group (not
+    // per-character), so carry it too — exactly as the regen restore path does.
+    // Without this the converted group resets to Day 1 / morning. Gated
+    // internally on passage-of-time.
+    _timeService.restoreTimeFromRealismState(snapshot);
+    if (needsEnabled) {
+      final needs = snapshot['needs'];
+      if (needs is Map && needs['vector'] is Map) {
+        _needsSimulation.restoreFromSnapshot({
+          'vector': Map<String, int>.from(needs['vector'] as Map),
+        });
+      } else {
+        // Enabled but no captured vector (unusual) → fresh baseline, matching
+        // the _loadGroupRealismIntoScalars fresh-start fallback. Never a zeroed
+        // vector (which an empty snapshot + setActiveGroup's clear would leave).
+        _needsSimulation.initializeFresh();
+      }
+    } else {
+      _needsSimulation.clearVector();
+    }
+    // Canonical write into _groupRealism[hostId] + persist to the session's
+    // group_realism_state column so reloads + the first-entry promotion see
+    // realism ON for the host.
+    _saveScalarsIntoGroupRealism(hostId);
+    await _saveChat();
+    notifyListeners();
+  }
+
   /// Add a character to the currently active group chat.
   Future<bool> addCharacterToGroup(
     CharacterCard character,
@@ -310,6 +408,26 @@ extension ChatServiceGroupMembership on ChatService {
   ) async {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
+
+    // D5 — one instance per library character per chat. Refuse to add a
+    // character already present (the host or an existing member), matched by
+    // stable LIBRARY identity (Phase 0 originStableId), with a name fallback for
+    // legacy members that predate provenance stamping.
+    final incomingId = _getCharacterIdFromCard(character);
+    final incomingName = character.name.trim().toLowerCase();
+    final existingMembers = await groupRepo.getMembersForGroup(_activeGroup!.id);
+    final alreadyPresent = existingMembers.any((m) {
+      final origin = m.originStableId;
+      if (origin != null && origin == incomingId) return true;
+      return m.name.trim().toLowerCase() == incomingName;
+    });
+    if (alreadyPresent) {
+      _setGuestStatus(
+        '⚠ ${character.name} is already in this chat.',
+        isError: true,
+      );
+      return false;
+    }
 
     // Decoupled model: copy the character's avatar into the group's private
     // storage and insert a group_members row. Shared with forkToGroupChat

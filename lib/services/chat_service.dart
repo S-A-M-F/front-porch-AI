@@ -368,10 +368,8 @@ class ChatService extends ChangeNotifier {
     if (_activeGroup != null) {
       final ok = await addCharacterToGroup(card, repo);
       if (!ok) {
-        _setGuestStatus(
-          '⚠ Could not add ${card.name} to the group.',
-          isError: true,
-        );
+        // addCharacterToGroup already surfaced a specific reason (e.g. the D5
+        // "already in this chat" banner); don't clobber it with a generic one.
         return;
       }
       // Members are copied under fresh UUIDs, so resolve the live member by name
