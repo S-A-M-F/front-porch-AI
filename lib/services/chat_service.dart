@@ -2213,7 +2213,7 @@ class ChatService extends ChangeNotifier {
   // core sendMessage pre/post + _generateResponse (pick/eval dance/impersonation/
   // build* stayed / post-gen finalization) ; _buildChatHistoryWithBudget ;
   // _loadLastSession / _saveChat / _doSaveChat ; _pickNextGroupCharacter ;
-  // _evaluateRealismForUpcomingGroupSpeaker ; _waitForTtsThenContinue + drain
+  // _evaluateRealismForUpcomingSpeaker ; _waitForTtsThenContinue + drain
   // buffer / _flush / _startDrainTimer ; _applyMoodDecay ; _maybeEmbedMessages ;
   // _runPostGenNeedsChecks thin + periodic thins; all reset keep-sync + "now complete" (see CLAUDE.md); 0 new god priv _ (count=15); thins + coord only. Buffer removal + simple authority complete.
   // (3 vestigial phrases cleaned: 2 briefing + 1 per-thin at _getNsfwCooldownInjection:7742) + thin consistency as part of
@@ -5308,140 +5308,27 @@ class ChatService extends ChangeNotifier {
       _applyMoodDecay();
       // Needs decay for 1:1 always here. For group non-observer, speaker-specific decay
       // (respecting the actual picked speaker for random turn order) is applied inside
-      // _evaluateRealismForUpcomingGroupSpeaker after _pickNextGroupCharacter has run.
+      // _evaluateRealismForUpcomingSpeaker after _pickNextGroupCharacter has run.
       if (_activeGroup == null || _observerMode || !_needsSimEnabled) {
         _needsSimulation.tickDecay();
       } else {
-        // Group non-obs + needs on: defer to per-speaker path (see _evaluateRealismForUpcomingGroupSpeaker).
+        // Group non-obs + needs on: decay is applied per-speaker inside the
+        // single eval path (_evaluateRealismForUpcomingSpeaker).
       }
       _nsfwService.decrementCooldownIfActive();
-      _isEvaluatingRealism = true;
-      _realismEvalStreamText = '';
-      notifyListeners();
 
-      void handleChunk(String chunk) {
-        _realismEvalStreamText += chunk;
-        // Debounce: coalesce rapid token arrivals into one rebuild per 150 ms
-        _evalChunkTimer?.cancel();
-        _evalChunkTimer = Timer(const Duration(milliseconds: 150), () {
-          try {
-            notifyListeners();
-          } catch (_) {
-            // Widget was deactivated — timer fired after navigation
-          }
-        });
-      }
-
-      // Group chats use per-speaker realism evaluation inside _generateResponse
-      // (right after speaker selection via _pickNextGroupCharacter). This is the
-      // core of Phase 1: the character about to reply gets their own LLM eval.
-      final bool skipCentralizedEvalForGroup =
-          _activeGroup != null && isGroupRealismActive && !_observerMode;
-
-      if (skipCentralizedEvalForGroup) {
+      // Single-path bridge: realism evaluation now runs inside _generateResponse
+      // for EVERY speaker (1:1 host or group member) via
+      // _evaluateRealismForUpcomingSpeaker. For the 1:1 host, mirror the
+      // just-decayed working registers into the cast store so that path's load
+      // reads the correct post-decay state instead of a stale entry. (Group
+      // speakers persist their own state inside that eval.)
+      if (_activeGroup == null) {
         debugPrint(
-          '[Realism:Group] Skipping centralized LLM eval block — per-speaker evaluation will run inside _generateResponse for the upcoming speaker',
+          '[Realism:Unified] 1:1 host — syncing post-decay realism into the cast store',
         );
-      } else if (_relationshipService.pendingTrustRepair) {
-        _relationshipService
-            .consumePendingTrustRepair(); // consume — resets for next drop
-        await _evaluateTrustRepairCall(text, onChunk: handleChunk);
-
-        if (!_realismEvalCancelled) {
-          // Wire the realism_state into pending for snapshot/timeline use.
-          // (Fulfillment verification is now post-response so it adds zero
-          // latency to the pre-response realism phase.)
-          _pendingRealismMetadata ??= {};
-          _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-          _pendingRealismMetadata!['realism_state'] = _captureRealismState(
-            preTurn: preTurnVector,
-          );
-          _saveChat();
-        }
-
-        // Check for cancellation after trust repair eval
-        if (_realismEvalCancelled) {
-          debugPrint(
-            '[Realism] Evaluation cancelled during trust repair, aborting',
-          );
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          _evalChunkTimer?.cancel();
-          _evalChunkTimer = null;
-          _isEvaluatingRealism = false;
-          notifyListeners();
-          return;
-        }
-      } else {
-        // Fire all evals concurrently.
-        if (_storageService.realismSettings.realismOneShotEval) {
-          await _evaluateOneShotCall(onChunk: handleChunk);
-        } else {
-          _realismEvals.beginCollectForBatchedVerification();
-          await _fireStaggeredRealismEvals(handleChunk);
-          await _realismEvals.finalizeBatchedRealismVerifications();
-
-          // One-shot director batch (user proposal): after the mains, use the collected from the leaf
-          // and the god's _realismVerifier to do the single batch verify pass on all 5 (or 4).
-          // This reduces verifier LLM calls from up to 5 to 1 when the per-char flag is on.
-          final collected = _realismEvals.getCollectedForBatch();
-          if (collected.isNotEmpty) {
-            final items = collected
-                .map(
-                  (p) => (
-                    evalKind: p['kind'] as String,
-                    rawOutput: p['raw'] as String,
-                    sceneResponse: p['scene'] as String,
-                    preState: null,
-                    activeChar: _activeCharacter,
-                    activeGroup: _activeGroup,
-                    recentMessages: _messages,
-                    promptText: p['prompt'] as String?,
-                    injections: (p['injections'] as Map?)
-                        ?.cast<String, String>(),
-                    strictnessOverride: null,
-                    maxPassesOverride: null,
-                  ),
-                )
-                .toList();
-            final batchRes = await _realismVerifier.verifyBatch(items);
-            await _realismEvals.applyBatchResults(batchRes);
-          }
-        }
-
-        // Check for cancellation after evals complete but before saving
-        if (_realismEvalCancelled) {
-          debugPrint(
-            '[Realism] Evaluation cancelled during/after evals, aborting',
-          );
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          _evalChunkTimer?.cancel();
-          _evalChunkTimer = null;
-          _isEvaluatingRealism = false;
-          notifyListeners();
-          return;
-        }
-
-        // Synthesize metadata after all evals complete
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-        _pendingRealismMetadata!['realism_state'] = _captureRealismState(
-          preTurn: preTurnVector,
-        );
-
-        debugPrint(
-          '[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}',
-        );
-        _saveChat();
+        _saveScalarsIntoGroupRealism(_getCharacterId());
       }
-
-      // Cancel any pending debounce notify before closing the overlay
-      _evalChunkTimer?.cancel();
-      _evalChunkTimer = null;
-      await Future.delayed(const Duration(milliseconds: 500));
-      _isEvaluatingRealism = false;
-      notifyListeners();
     }
 
     // If cancellation was requested during realism evaluation, abort generation
@@ -6148,7 +6035,7 @@ class ChatService extends ChangeNotifier {
       }
 
       // In group mode the per-speaker realism eval (and its metadata / needs deltas)
-      // happens inside _generateResponse via _evaluateRealismForUpcomingGroupSpeaker
+      // happens inside _generateResponse via _evaluateRealismForUpcomingSpeaker
       // for the correctly-forced speaker. Skip the 1:1 scalar synthesis here.
       Map<String, int>? regenPreTurn;
       Map<String, dynamic>? needsDeltas;
@@ -6762,10 +6649,11 @@ class ChatService extends ChangeNotifier {
         speakingCharacter = _activeCharacter!;
       }
 
-      // Phase 1: Per-character realism evaluation for the upcoming speaker in groups.
-      // We evaluate the specific character who is about to reply, before building their prompt.
-      if (_activeGroup != null && isGroupRealismActive && !observerMode) {
-        await _evaluateRealismForUpcomingGroupSpeaker(speakingCharacter);
+      // SINGLE realism eval path: the upcoming speaker — the 1:1 host OR the
+      // picked group member — gets their per-turn eval before we build their
+      // prompt. Lite Scene Guests (guestSpeaker != null) carry no realism.
+      if (guestSpeaker == null && _realismActiveThisMode) {
+        await _evaluateRealismForUpcomingSpeaker(speakingCharacter);
       }
 
       // ── System prompt selection (Path B clean hierarchy) ──
@@ -9304,16 +9192,20 @@ class ChatService extends ChangeNotifier {
   /// Uses temporary impersonation of _activeCharacter so that all existing
   /// realism eval methods (_evaluateOneShotCall, _evaluateRelationshipCall, etc.)
   /// and their parsing/inertia logic are reused without duplication.
-  Future<void> _evaluateRealismForUpcomingGroupSpeaker(
+  Future<void> _evaluateRealismForUpcomingSpeaker(
     CharacterCard speaker,
   ) async {
-    if (!isGroupRealismActive || observerMode) return;
+    // Unified gate: runs for the 1:1 host AND each group speaker (one at a time);
+    // skips group observer mode and realism-off. This is the single realism eval
+    // path — the former centralized 1:1 block was removed in favour of this.
+    if (!_realismActiveThisMode) return;
 
     final charId = _getCharacterIdFromCard(speaker);
     if (charId.isEmpty) return;
 
     debugPrint(
-      '[Realism:Group] Running pre-turn eval for upcoming speaker: ${speaker.name} ($charId)',
+      '[Realism:Unified] Pre-turn eval for upcoming speaker: ${speaker.name} '
+      '($charId) — mode=${_activeGroup == null ? "1:1" : "group"}',
     );
 
     // Save previous 1:1 context (normally null in pure group sessions)
@@ -9402,7 +9294,22 @@ class ChatService extends ChangeNotifier {
         return;
       }
 
-      if (_storageService.realismSettings.realismOneShotEval) {
+      if (_relationshipService.pendingTrustRepair) {
+        // Trust-repair eval (fires when trust dropped sharply). Was 1:1-only in
+        // the old centralized block; now part of the single path so the host
+        // keeps it (and a group member would too, if their trust ever flags it).
+        debugPrint(
+          '[Realism:Unified] Trust-repair eval for ${speaker.name} ($charId)',
+        );
+        _relationshipService.consumePendingTrustRepair();
+        final userText = _messages
+            .lastWhere(
+              (m) => m.isUser,
+              orElse: () => ChatMessage(text: '', sender: '', isUser: true),
+            )
+            .text;
+        await _evaluateTrustRepairCall(userText, onChunk: handleChunk);
+      } else if (_storageService.realismSettings.realismOneShotEval) {
         debugPrint(
           '[Realism:Unified] One-shot eval for ${speaker.name} ($charId)',
         );
