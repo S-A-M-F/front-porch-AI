@@ -411,6 +411,33 @@ extension ChatServiceGroupMembership on ChatService {
     return true;
   }
 
+  /// Re-resolve the group's live roster from the member table and push it to the
+  /// turn manager, returning the resolved cards. Members whose private avatar is
+  /// missing are skipped (same rule as the initial group load). Shared by member
+  /// removal (after the delete) and the deferred-exit undo (after a soft-remove,
+  /// where the row still exists so the member comes straight back).
+  Future<List<CharacterCard>> _reloadGroupRoster() async {
+    final repo = _groupChatRepository;
+    if (_activeGroup == null || repo == null) return const <CharacterCard>[];
+    final rows = await repo.getMembersForGroup(_activeGroup!.id);
+    final resolved = <CharacterCard>[];
+    for (final m in rows) {
+      if (m.avatarFilename != null) {
+        final p = path.join(
+          _storageService.groupsDir.path,
+          _activeGroup!.id,
+          'avatars',
+          m.avatarFilename!,
+        );
+        if (await File(p).exists()) {
+          resolved.add(m.toCharacterCard(resolvedImagePath: p));
+        }
+      }
+    }
+    _groupManager?.refreshCharacters(resolved);
+    return resolved;
+  }
+
   /// Remove a character from the active group chat: deletes the member's row,
   /// private avatar, and ALL per-member state (realism / notes / prompts / RAG /
   /// objectives / embeddings / data-bank), then re-resolves the surviving cast.
@@ -441,22 +468,7 @@ extension ChatServiceGroupMembership on ChatService {
     await groupRepo.save(_activeGroup!);
 
     // Re-resolve the surviving members from the (now smaller) member table.
-    final remainingRows = await groupRepo.getMembersForGroup(_activeGroup!.id);
-    final resolved = <CharacterCard>[];
-    for (final m in remainingRows) {
-      if (m.avatarFilename != null) {
-        final p = path.join(
-          _storageService.groupsDir.path,
-          _activeGroup!.id,
-          'avatars',
-          m.avatarFilename!,
-        );
-        if (await File(p).exists()) {
-          resolved.add(m.toCharacterCard(resolvedImagePath: p));
-        }
-      }
-    }
-    _groupManager?.refreshCharacters(resolved);
+    final resolved = await _reloadGroupRoster();
 
     debugPrint(
       '[ChatService] \u{2796} Removed ${character.name} from group '

@@ -278,6 +278,13 @@ class ChatService extends ChangeNotifier {
   ChatMessage? _exitUndoMessage;
   String? _exitUndoOfferName;
 
+  /// Set when a FULL group member's `/exit` is awaiting commit. They have said
+  /// goodbye and left the live roster, but their DB row/realism/evolution/quests/
+  /// memory are untouched and the real removal (plus any collapse to a 1:1) is
+  /// deferred until the user continues — so [undoLastExit] can restore them
+  /// losslessly. Committed in `sendMessage` via [_commitPendingMemberExit].
+  CharacterCard? _pendingMemberExit;
+
   /// Name to show in the UNDO SnackBar (null = nothing to offer).
   String? get exitUndoOfferName => _exitUndoOfferName;
 
@@ -304,12 +311,37 @@ class ChatService extends ChangeNotifier {
     _exitUndoGuest = null;
     _exitUndoMessage = null;
     _exitUndoOfferName = null;
+    // A pending full-member exit that is cleared WITHOUT committing (context
+    // switch / new chat) is simply cancelled: the member's row was never deleted,
+    // so they stay. The sendMessage commit path runs _commitPendingMemberExit
+    // before this, so a real "continue" still finalizes the removal.
+    _pendingMemberExit = null;
   }
 
   /// Undo the last `/exit`: delete the departure message (which reverts the host
   /// realism it applied, via [deleteMessage]'s rollback) and restore the guest
   /// to the scene with their full context (evolution + memory were never wiped).
   Future<void> undoLastExit() async {
+    // Full group member (deferred-deletion): the member's DB row, realism,
+    // evolution, quests and memory were never touched — restoring is just a
+    // roster reload plus deleting their goodbye turn (which reverts the realism
+    // that turn applied). The destructive removal never ran, so there is nothing
+    // to un-collapse.
+    final pendingMember = _pendingMemberExit;
+    if (pendingMember != null) {
+      final departure = _exitUndoMessage;
+      _pendingMemberExit = null;
+      _clearExitUndo();
+      if (departure != null) {
+        final idx = _messages.indexOf(departure);
+        if (idx >= 0) deleteMessage(idx); // removes + reverts realism + saves
+      }
+      await _reloadGroupRoster();
+      _setGuestStatus('${pendingMember.name} is back in the chat.');
+      notifyListeners();
+      return;
+    }
+
     final guest = _exitUndoGuest;
     final departure = _exitUndoMessage;
     if (guest == null) return;
@@ -573,7 +605,9 @@ class ChatService extends ChangeNotifier {
       removeGroupMember: (member) async {
         final repo = _groupChatRepository;
         if (repo == null) return false;
-        return removeCharacterFromGroup(member, repo);
+        // Narrate the member's goodbye + arm a deferred-deletion UNDO; the real
+        // removal commits when the user continues (mirrors the Lite-NPC exit).
+        return exitGroupMember(member, repo);
       },
     );
   }
@@ -3029,7 +3063,10 @@ class ChatService extends ChangeNotifier {
       return;
     }
 
-    // Sending a real message ends the /exit undo window.
+    // Sending a real message ends the /exit undo window. A pending full-member
+    // exit commits now (real removal + any collapse to a 1:1) so this turn runs
+    // in the settled cast; lite-guest undo state is just cleared.
+    await _commitPendingMemberExit();
     _clearExitUndo();
 
     final senderName = _userPersonaService.persona.name;
