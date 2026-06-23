@@ -164,8 +164,10 @@ class GroupMember {
   // ORIGINAL library character and avoid orphaned duplicates.
 
   /// The origin library character's `stableGroupId` this member was copied from
-  /// (or the imported `_original_stable_id`). Null for legacy members created
-  /// before provenance stamping (their [memberState] was '{}').
+  /// (for an imported member, the portable `_origin_library_stable_id` the Group
+  /// Card carried — NOT `_original_stable_id`, which is the realism-remap instance
+  /// id). Null for legacy/foreign members with no resolvable origin (their
+  /// [memberState] is '{}').
   String? get originStableId {
     final v = memberState['originStableId'];
     return (v is String && v.isNotEmpty) ? v : null;
@@ -187,11 +189,13 @@ class GroupMember {
   ///     arrivals), live `/join` adds (addCharacterToGroup), and the web-API
   ///     fork (which routes through forkToGroupChat); and
   ///   • the create-group wizard.
-  /// Group-card IMPORT deliberately does NOT stamp: the portable format carries
-  /// the exporter's per-member UUID, not a resolvable library origin, so
-  /// imported members stay origin-unknown ('{}') and are reconnected by name in
-  /// a later phase. Empty/blank values are omitted, so a member with no
-  /// resolvable origin yields '{}' (legacy shape).
+  /// Group-card IMPORT (home_page.dart `_importGroupCard`) ALSO stamps via this
+  /// method, reading the portable `_origin_library_stable_id` the export wrote
+  /// (the Group Card portable-origin work). Foreign/legacy cards that lack the
+  /// key pass `null` here and stay
+  /// origin-unknown ('{}'), reconnected by MemberOriginResolver's name fallback.
+  /// Empty/blank values are omitted, so a member with no resolvable origin yields
+  /// '{}' (legacy shape). The machine-local `originLibraryDbId` is never exported.
   static String encodeProvenance({
     required String? originStableId,
     String? originLibraryDbId,
