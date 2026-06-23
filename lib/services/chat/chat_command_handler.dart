@@ -118,7 +118,12 @@ class ChatCommandHandler {
     SlashCommandInfo(
       'join',
       '/join [--full] [name]',
-      '--full makes a full group member; bare /join --full promotes the whole scene',
+      'Bring an existing character in — add --full to make them a full group member',
+    ),
+    SlashCommandInfo(
+      'promote',
+      '/promote',
+      'Turn the present scene into a full group (everyone becomes a full member)',
     ),
     SlashCommandInfo(
       'speak',
@@ -173,6 +178,12 @@ class ChatCommandHandler {
 
       case 'join':
         await _handleJoin(args);
+        return true;
+
+      case 'promote':
+        // Turn the whole present scene (host + every present lite guest) into a
+        // real group where everyone is a full, realism-bearing member.
+        await _promoteScene();
         return true;
 
       case 'speak':
@@ -282,17 +293,12 @@ class ChatCommandHandler {
 
     if (wanted.isEmpty) {
       if (full) {
-        // Bare `/join --full`: promote the whole present scene (host + every
-        // lite guest) into a full group. With no guests present there is nobody
-        // to promote, so ask for a name instead.
-        if (_getSceneGuestCards().isNotEmpty) {
-          await _promoteScene();
-        } else {
-          _onSystemMessage(
-            '⚠ Name a character to bring in as a full member, '
-            'e.g. /join --full Mara.',
-          );
-        }
+        // `/join` is about bringing a SPECIFIC character in, so a full join needs
+        // a name. To turn the whole present scene into a group, use `/promote`.
+        _onSystemMessage(
+          '⚠ Name a character to bring in as a full member '
+          '(e.g. /join --full Mara), or use /promote to make the whole scene a group.',
+        );
         return;
       }
       _requestGuestPicker(''); // lite: browse the full list

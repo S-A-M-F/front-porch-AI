@@ -266,25 +266,23 @@ void main() {
       expect(joinedFull, isEmpty);
     });
 
-    test('bare /join --full with no guests asks for a name', () async {
+    test('bare /join --full asks for a name (never auto-promotes)', () async {
       joinable = [_guest('Nora'), _guest('Pax')];
-      guests = []; // nobody present to promote
+      guests = [_guest('Mara')]; // even with guests present, /join needs a name
       final h = build();
       await h.handle('/join --full');
       expect(joinedFull, isEmpty);
-      expect(scenePromotions, 0);
+      expect(scenePromotions, 0); // promotion is /promote's job, not bare /join
       expect(pickerRequests, isEmpty);
-      expect(systemMessages.single, contains('Name a character'));
+      expect(systemMessages.single, contains('/promote'));
     });
 
-    test('bare /join --full WITH present guests promotes the scene', () async {
-      joinable = [_guest('Nora')];
-      guests = [_guest('Mara'), _guest('Pax')]; // present lite guests
+    test('/promote turns the scene into a full group', () async {
+      guests = [_guest('Mara'), _guest('Pax')];
       final h = build();
-      expect(await h.handle('/join --full'), true);
+      expect(await h.handle('/promote'), true);
       expect(scenePromotions, 1);
-      expect(joinedFull, isEmpty); // promotion, not a named full join
-      expect(systemMessages, isEmpty);
+      expect(joinedFull, isEmpty);
     });
 
     test('/join --full ambiguous name is rejected (no silent pick)', () async {
