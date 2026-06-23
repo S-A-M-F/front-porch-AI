@@ -66,6 +66,7 @@ class ChatCommandHandler {
     required Future<void> Function(CharacterCard guest) exitGuest,
     required List<CharacterCard> Function() getJoinableCharacters,
     required Future<void> Function(CharacterCard guest) joinGuest,
+    required Future<void> Function(CharacterCard character) joinFull,
     required void Function(String initialFilter) requestGuestPicker,
     required Future<bool> Function() runCastScan,
     required Future<void> Function(CharacterCard guest) speakGuest,
@@ -80,6 +81,7 @@ class ChatCommandHandler {
        _exitGuest = exitGuest,
        _getJoinableCharacters = getJoinableCharacters,
        _joinGuest = joinGuest,
+       _joinFull = joinFull,
        _requestGuestPicker = requestGuestPicker,
        _runCastScan = runCastScan,
        _speakGuest = speakGuest,
@@ -95,6 +97,7 @@ class ChatCommandHandler {
   final Future<void> Function(CharacterCard guest) _exitGuest;
   final List<CharacterCard> Function() _getJoinableCharacters;
   final Future<void> Function(CharacterCard guest) _joinGuest;
+  final Future<void> Function(CharacterCard character) _joinFull;
   final void Function(String initialFilter) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
@@ -111,8 +114,8 @@ class ChatCommandHandler {
     ),
     SlashCommandInfo(
       'join',
-      '/join [name]',
-      'Bring one of your existing characters in as a guest',
+      '/join [--full] [name]',
+      'Bring an existing character in — add --full to make them a full group member',
     ),
     SlashCommandInfo(
       'speak',
@@ -235,21 +238,31 @@ class ChatCommandHandler {
     await _createGuest(name, concept);
   }
 
-  // ── Scene Guest: /join [name] ───────────────────────────────────────────
-  // Brings an EXISTING library character into the 1:1 scene as a Scene Guest —
-  // no new card is minted; it reuses the SAME parity-safe enter path as
-  // `/create` (the joined character generates a contextual entrance from the
-  // chat history + its own card, and carries no Realism/Needs while a guest).
-  //   • `/join`            → open the character picker (browse the full list).
-  //   • `/join <name>`     → join an unambiguous match outright; otherwise open
-  //                          the picker pre-filtered to the typed text.
+  // ── Join an existing character: /join [--full|--lite] [name] ────────────
+  // Brings an EXISTING library character into the scene. Two tiers:
+  //   • lite (default)  → a Scene Guest: no new card minted, reuses the same
+  //                       parity-safe enter path as `/create`, carries no
+  //                       Realism/Needs. Lite only exists inside a 1:1.
+  //   • --full          → a full participant: converts the 1:1 into a group
+  //                       (host + the named character) in place — no wizard, no
+  //                       screen switch. The character speaks on its own turns
+  //                       with full Realism/Needs. This is the macro path that
+  //                       replaces the old Fork-to-Group wizard.
+  // Resolution:
+  //   • `/join`               → open the picker (lite browse of the full list).
+  //   • `/join <name>`        → lite-join an unambiguous match; else open the
+  //                             picker pre-filtered to the typed text.
+  //   • `/join --full <name>` → full-join (convert) an unambiguous match; a
+  //                             full request requires a clear name (no picker).
   // The candidate list (injected) already excludes the host and anyone already
   // present, so this leaf only resolves the user's intent against it.
   Future<void> _handleJoin(String args) async {
     if (!_activeCharacterIsSet()) {
-      _onSystemMessage('⚠ Scene Guests can only be added inside a 1:1 chat.');
+      _onSystemMessage('⚠ Characters can only be added inside a 1:1 chat.');
       return;
     }
+
+    final (full: full, name: wanted) = _parseJoinFlags(args);
 
     final candidates = _getJoinableCharacters();
     if (candidates.isEmpty) {
@@ -259,31 +272,76 @@ class ChatCommandHandler {
       return;
     }
 
-    final wanted = args.trim();
     if (wanted.isEmpty) {
-      _requestGuestPicker(''); // browse the full list
+      if (full) {
+        _onSystemMessage(
+          '⚠ Name a character to bring in as a full member, '
+          'e.g. /join --full Mara.',
+        );
+        return;
+      }
+      _requestGuestPicker(''); // lite: browse the full list
       return;
     }
 
-    // Exact (case-insensitive) name match wins outright.
+    // Resolve the name: exact (case-insensitive) match wins, else a single
+    // substring match.
     final lower = wanted.toLowerCase();
+    CharacterCard? match;
     for (final c in candidates) {
       if (c.name.toLowerCase() == lower) {
-        await _joinGuest(c);
+        match = c;
+        break;
+      }
+    }
+    if (match == null) {
+      final partial = candidates
+          .where((c) => c.name.toLowerCase().contains(lower))
+          .toList();
+      if (partial.length == 1) {
+        match = partial.first;
+      } else {
+        // 0 or 2+ matches. Full needs an unambiguous name; lite falls back to
+        // the picker pre-filtered to what was typed.
+        if (full) {
+          _onSystemMessage(
+            '⚠ "$wanted" didn\'t match exactly one character — use the full name.',
+          );
+        } else {
+          _requestGuestPicker(wanted);
+        }
         return;
       }
     }
 
-    // Otherwise a single substring match joins directly; 0 or 2+ matches fall
-    // back to the picker pre-filtered to what was typed.
-    final partial = candidates
-        .where((c) => c.name.toLowerCase().contains(lower))
-        .toList();
-    if (partial.length == 1) {
-      await _joinGuest(partial.first);
-      return;
+    if (full) {
+      await _joinFull(match);
+    } else {
+      await _joinGuest(match);
     }
-    _requestGuestPicker(wanted);
+  }
+
+  /// Parse an optional `--full` / `--lite` (or `-full` / `-lite`) flag out of
+  /// the `/join` arguments, returning whether a full join was requested and the
+  /// remaining name text. Lite is the default. The flag may appear anywhere in
+  /// the arguments (e.g. `--full Mara` or `Mara --full`).
+  ({bool full, String name}) _parseJoinFlags(String args) {
+    var full = false;
+    final kept = <String>[];
+    for (final token in args.split(RegExp(r'\s+'))) {
+      if (token.isEmpty) continue;
+      switch (token.toLowerCase()) {
+        case '--full':
+        case '-full':
+          full = true;
+        case '--lite':
+        case '-lite':
+          full = false;
+        default:
+          kept.add(token);
+      }
+    }
+    return (full: full, name: kept.join(' ').trim());
   }
 
   // ── Scene Guest: /speak [name] (alias /turn) ────────────────────────────

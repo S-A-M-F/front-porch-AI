@@ -324,6 +324,57 @@ class ChatService extends ChangeNotifier {
   Future<void> joinSceneGuest(CharacterCard card) =>
       _addGuestWithStatus(displayName: card.name, existing: card);
 
+  /// Bring an existing library [card] in as a FULL participant (realism-bearing).
+  ///
+  /// In a 1:1 this converts the chat into a group *in place* (host + [card]) by
+  /// reusing [forkToGroupChat]; in an existing group it adds the member via
+  /// [addCharacterToGroup]. This is the macro path (`/join --full`) that replaces
+  /// the separate Fork-to-Group wizard — same underlying machinery, no screen
+  /// switch. Requires the group repository (wired from main.dart).
+  Future<void> joinFull(CharacterCard card) async {
+    final repo = _groupChatRepository;
+    if (repo == null) {
+      _setGuestStatus('⚠ Group support is unavailable right now.', isError: true);
+      return;
+    }
+    if (_isGenerating) {
+      _setGuestStatus(
+        '⚠ Wait for the current reply to finish first.',
+        isError: true,
+      );
+      return;
+    }
+    if (_activeGroup != null) {
+      final ok = await addCharacterToGroup(card, repo);
+      if (!ok) {
+        _setGuestStatus(
+          '⚠ Could not add ${card.name} to the group.',
+          isError: true,
+        );
+      }
+      return;
+    }
+    // Convert the 1:1 into a group AND have the arriving character make an
+    // organic entrance (creative = LLM-written from the chat so far + their
+    // card), mirroring the lite /join flow — they don't just pop in silently.
+    final group = await forkToGroupChat(
+      [card],
+      repo,
+      entrances: {
+        _getCharacterIdFromCard(card): (
+          text: 'enter the scene naturally, reacting to what is happening',
+          creative: true,
+        ),
+      },
+    );
+    if (group == null) {
+      _setGuestStatus(
+        '⚠ Could not convert this chat into a group.',
+        isError: true,
+      );
+    }
+  }
+
   /// Clear a pending picker request (user cancelled or finished picking).
   void dismissGuestPicker() {
     _pendingGuestPickerFilter = null;
@@ -358,6 +409,7 @@ class ChatService extends ChangeNotifier {
       },
       getJoinableCharacters: () => joinableGuestCharacters,
       joinGuest: joinSceneGuest,
+      joinFull: joinFull,
       requestGuestPicker: (filter) {
         _pendingGuestPickerFilter = filter;
         notifyListeners();

@@ -27,6 +27,7 @@ void main() {
     late List<CharacterCard> exited;
     late List<CharacterCard> joinable;
     late List<CharacterCard> joined;
+    late List<CharacterCard> joinedFull;
     late List<CharacterCard> spoke;
     late List<CharacterCard> undoArmed;
     late List<String> pickerRequests;
@@ -47,6 +48,7 @@ void main() {
         exitGuest: (g) async => exited.add(g),
         getJoinableCharacters: () => joinable,
         joinGuest: (g) async => joined.add(g),
+        joinFull: (c) async => joinedFull.add(c),
         requestGuestPicker: pickerRequests.add,
         runCastScan: () async {
           castScans++;
@@ -65,6 +67,7 @@ void main() {
       exited = [];
       joinable = [];
       joined = [];
+      joinedFull = [];
       spoke = [];
       undoArmed = [];
       pickerRequests = [];
@@ -233,6 +236,49 @@ void main() {
       await h.handle('/join zzz');
       expect(joined, isEmpty);
       expect(pickerRequests.single, 'zzz');
+    });
+
+    test('/join --full <exact name> routes to full join, not lite', () async {
+      joinable = [_guest('Nora'), _guest('Pax')];
+      final h = build();
+      expect(await h.handle('/join --full nora'), true);
+      expect(joinedFull.single.name, 'Nora');
+      expect(joined, isEmpty); // not a lite guest
+      expect(pickerRequests, isEmpty);
+    });
+
+    test('--full flag is positional-agnostic (name --full)', () async {
+      joinable = [_guest('Nora Vance')];
+      final h = build();
+      await h.handle('/join vance --full');
+      expect(joinedFull.single.name, 'Nora Vance');
+      expect(joined, isEmpty);
+    });
+
+    test('/join --lite forces the lite path (default)', () async {
+      joinable = [_guest('Nora')];
+      final h = build();
+      await h.handle('/join --lite nora');
+      expect(joined.single.name, 'Nora');
+      expect(joinedFull, isEmpty);
+    });
+
+    test('/join --full with no name asks for a name (no full picker)', () async {
+      joinable = [_guest('Nora'), _guest('Pax')];
+      final h = build();
+      await h.handle('/join --full');
+      expect(joinedFull, isEmpty);
+      expect(pickerRequests, isEmpty);
+      expect(systemMessages.single, contains('Name a character'));
+    });
+
+    test('/join --full ambiguous name is rejected (no silent pick)', () async {
+      joinable = [_guest('Nora'), _guest('Norbert')];
+      final h = build();
+      await h.handle('/join --full nor');
+      expect(joinedFull, isEmpty);
+      expect(pickerRequests, isEmpty); // full never falls back to the picker
+      expect(systemMessages.single, contains('full name'));
     });
 
     test('/scan outside a 1:1 chat is rejected before scanning', () async {
