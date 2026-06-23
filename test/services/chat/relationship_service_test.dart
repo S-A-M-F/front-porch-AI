@@ -312,8 +312,8 @@ void main() {
     );
 
     test(
-      'KNOWN GAP: clearing fixation/spatial does NOT propagate through save '
-      '(save guards skip empty) — host-onto-shared-store collapse must fix this',
+      'clearing fixation/spatial DOES propagate through save/load (unconditional '
+      'persist — required for unifying the always-loaded host onto this store)',
       () {
         final svc = createTestRelationship(
           isGroup: true,
@@ -336,15 +336,12 @@ void main() {
         expect(svc.activeFixation, '');
         svc.saveRelationshipScalarsToGroup('spk');
 
-        // Reload: the OLD values survive because the save guards skip empties.
+        // Reload: the clears now persist (no stale fixation/spatial survives).
         svc.resetForFreshChat();
         svc.loadRelationshipScalarsForSpeaker('spk');
-        expect(
-          svc.activeFixation,
-          'her smile',
-          reason: 'documents the current save-guard gap; a fix here changes this',
-        );
-        expect(svc.spatialStance, 'near');
+        expect(svc.activeFixation, '');
+        expect(svc.fixationLifespan, 0);
+        expect(svc.spatialStance, '');
       },
     );
 
