@@ -89,6 +89,7 @@ part 'chat/chat_service_group_read.dart';
 part 'chat/chat_service_group_settings.dart';
 part 'chat/chat_service_evolution.dart';
 part 'chat/chat_service_sillytavern.dart';
+part 'chat/chat_service_group_realism_helpers.dart';
 
 // Internal flag to signal a cancellation request for realism evaluation.
 // This is a file-scope flag to avoid needing to thread state through the
@@ -6600,74 +6601,6 @@ class ChatService extends ChangeNotifier {
     return _groupManager!.pickNextSpeaker();
   }
 
-  /// Returns the stable charId of the character whose realism state should be
-  /// read/written for the current turn. In group mode this is the speaker
-  /// we are about to generate for (or just generated for).
-  String _getCurrentSpeakerIdForRealism() {
-    if (_activeGroup == null || _groupCharacters.isEmpty) {
-      return _getCharacterId();
-    }
-    final next = nextCharacter;
-    if (next != null) {
-      return _getCharacterIdFromCard(next);
-    }
-    return _getCharacterIdFromCard(_groupCharacters.first);
-  }
-
-  // ── Per-character realism state helpers (group mode) ────────────────────
-  void _setGroupRealismValue(String charId, String key, dynamic value) {
-    if (_activeGroup == null) return;
-    _groupRealism.putIfAbsent(charId, () => <String, dynamic>{});
-    _groupRealism[charId]![key] = value;
-  }
-
-  int _getGroupInt(String charId, String key, {int defaultValue = 0}) =>
-      (_groupRealism[charId]?[key] as num?)?.toInt() ?? defaultValue;
-
-  String _getGroupString(
-    String charId,
-    String key, {
-    String defaultValue = '',
-  }) => (_groupRealism[charId]?[key] as String?) ?? defaultValue;
-
-  // Tolerant coercion for a needs vector that may arrive as JSON-decoded
-  // (num values), dynamic map from metadata/snapshots/pre_state, or proper
-  // Map<String,int>. Used for pre-turn vectors in chips, restores, and fallbacks.
-  Map<String, int> _coerceNeedsVector(dynamic src) {
-    if (src == null) return const {};
-    if (src is Map<String, int>) return Map<String, int>.from(src);
-    if (src is Map) {
-      final out = <String, int>{};
-      src.forEach((k, v) {
-        final key = k.toString();
-        if (v is num) {
-          out[key] = v.toInt();
-        } else if (v is int) {
-          out[key] = v;
-        }
-      });
-      return out;
-    }
-    return const {};
-  }
-
-  Map<String, int> _getGroupNeeds(String charId) {
-    final raw = _groupRealism[charId]?['needs'];
-    final result = <String, int>{};
-    for (final k in NeedsSimulation.needKeys) {
-      final v = (raw is Map) ? raw[k] : null;
-      if (v is num) {
-        result[k] = v.toInt();
-      } else {
-        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
-      }
-    }
-    return result;
-  }
-
-  void _setGroupNeeds(String charId, Map<String, int> needs) {
-    _setGroupRealismValue(charId, 'needs', needs);
-  }
 
   // ensureInterCharacterRelationshipsSeeded / updateInterCharacterFeelingsFromRecentExchange
   // moved verbatim to RelationshipService (with callbacks for group/messages). Old bodies deleted.
