@@ -285,10 +285,18 @@ class _ChatPageState extends State<ChatPage> {
       chat.dismissGuestPicker();
       return;
     }
+    final full = chat.pendingGuestPickerFull;
+    // Full picker: in a group it adds a member; in a 1:1 it converts to a group.
+    // Lite picker: a Scene Guest inside a 1:1.
+    final characters = full
+        ? (chat.activeGroup != null
+              ? chat.joinableGroupCharacters
+              : chat.joinableGuestCharacters)
+        : chat.joinableGuestCharacters;
     final selected = await showDialog<CharacterCard>(
       context: context,
       builder: (_) => SceneGuestPickerDialog(
-        characters: chat.joinableGuestCharacters,
+        characters: characters,
         initialFilter: initial,
         resolveImage: _resolveCharImage,
       ),
@@ -296,7 +304,11 @@ class _ChatPageState extends State<ChatPage> {
     _showingGuestPicker = false;
     chat.dismissGuestPicker();
     if (selected != null) {
-      await chat.joinSceneGuest(selected);
+      if (full) {
+        await chat.joinFull(selected);
+      } else {
+        await chat.joinSceneGuest(selected);
+      }
     }
   }
 

@@ -245,6 +245,12 @@ class ChatService extends ChangeNotifier {
   /// Initial filter for a pending `/join` picker, or null when none is pending.
   String? get pendingGuestPickerFilter => _pendingGuestPickerFilter;
 
+  bool _pendingGuestPickerFull = false;
+
+  /// Whether the pending picker should add the picked character as a FULL member
+  /// (group member / 1:1->group convert) vs a lite Scene Guest.
+  bool get pendingGuestPickerFull => _pendingGuestPickerFull;
+
   /// Transient Scene Guest create/join status line (null when idle).
   String? get guestActivityStatus => _guestActivityStatus;
 
@@ -519,6 +525,7 @@ class ChatService extends ChangeNotifier {
   /// Clear a pending picker request (user cancelled or finished picking).
   void dismissGuestPicker() {
     _pendingGuestPickerFilter = null;
+    _pendingGuestPickerFull = false;
     notifyListeners();
   }
 
@@ -552,8 +559,9 @@ class ChatService extends ChangeNotifier {
       joinGuest: joinSceneGuest,
       joinFull: joinFull,
       promoteScene: promoteSceneToFull,
-      requestGuestPicker: (filter) {
+      requestGuestPicker: (filter, full) {
         _pendingGuestPickerFilter = filter;
+        _pendingGuestPickerFull = full;
         notifyListeners();
       },
       runCastScan: runCastDetectionNow,

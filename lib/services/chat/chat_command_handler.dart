@@ -68,7 +68,7 @@ class ChatCommandHandler {
     required Future<void> Function(CharacterCard guest) joinGuest,
     required Future<void> Function(CharacterCard character) joinFull,
     required Future<void> Function() promoteScene,
-    required void Function(String initialFilter) requestGuestPicker,
+    required void Function(String initialFilter, bool full) requestGuestPicker,
     required Future<bool> Function() runCastScan,
     required Future<void> Function(CharacterCard guest) speakGuest,
     required void Function(CharacterCard guest) armExitUndo,
@@ -107,7 +107,7 @@ class ChatCommandHandler {
   final Future<void> Function(CharacterCard guest) _joinGuest;
   final Future<void> Function(CharacterCard character) _joinFull;
   final Future<void> Function() _promoteScene;
-  final void Function(String initialFilter) _requestGuestPicker;
+  final void Function(String initialFilter, bool full) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
   final void Function(CharacterCard guest) _armExitUndo;
@@ -310,18 +310,10 @@ class ChatCommandHandler {
     }
 
     if (wanted.isEmpty) {
-      if (full) {
-        // `/join` brings in a SPECIFIC character, so a full join needs a name.
-        _onSystemMessage(
-          inGroup
-              ? '⚠ Name a character to add (e.g. /join Mara).'
-              : '⚠ Name a character to bring in as a full member '
-                    '(e.g. /join --full Mara), or use /promote to make the whole '
-                    'scene a group.',
-        );
-        return;
-      }
-      _requestGuestPicker(''); // lite (1:1 only): browse the full list
+      // No name -> open the picker to browse the list. The `full` flag tells the
+      // UI whether picking does a full join (group member / convert) or a lite
+      // Scene Guest join, so /join --full (and /join in a group) get a picker too.
+      _requestGuestPicker('', full);
       return;
     }
 
@@ -342,15 +334,9 @@ class ChatCommandHandler {
       if (partial.length == 1) {
         match = partial.first;
       } else {
-        // 0 or 2+ matches. Full needs an unambiguous name; lite falls back to
-        // the picker pre-filtered to what was typed.
-        if (full) {
-          _onSystemMessage(
-            '⚠ "$wanted" didn\'t match exactly one character — use the full name.',
-          );
-        } else {
-          _requestGuestPicker(wanted);
-        }
+        // 0 or 2+ matches -> open the picker pre-filtered to what was typed
+        // (for both full and lite — no more "use the full name" dead end).
+        _requestGuestPicker(wanted, full);
         return;
       }
     }

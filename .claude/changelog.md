@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-23 (fix: /join --full opens the character picker too — no more needing an exact name)
+- **Files changed**:
+  - lib/services/chat/chat_command_handler.dart — the `requestGuestPicker` callback now takes a `full` flag. `/join --full` with no name, or with an ambiguous/no match, now OPENS the picker (pre-filtered to any typed text) instead of erroring with "name a character" / "use the full name". Lite `/join` is unchanged (passes `full: false`).
+  - lib/services/chat_service.dart — added `_pendingGuestPickerFull` + `pendingGuestPickerFull` getter; reset on dismiss; wired into the picker-request callback.
+  - lib/ui/pages/chat_page.dart — `_showGuestPickerDialog` now reads the full flag: in full mode it lists `joinableGroupCharacters` (in a group) or `joinableGuestCharacters` (1:1 convert) and, on pick, calls `joinFull`; in lite mode it lists guests and calls `joinSceneGuest`.
+  - test/services/chat/chat_command_handler_test.dart — updated the picker stub to the 2-arg signature; the two "full needs an exact name" tests now assert the picker opens (full flag true).
+- **Reason**: `/join --full` (and `/join` in a group, which is always full) previously required typing the character's exact name — the picker only worked for lite `/join`. Now the full path gets the same browsable picker.
+- **Verification**: `flutter analyze` clean; `flutter test test/services/chat/ test/models/` → all 532 pass.
+- **Commit hash**: (uncommitted)
+
+
 ## 2026-06-23 (fix: persist NSFW cooldown TOTAL so arousal refractory survives reload — sessions schema add)
 - **Files changed**:
   - lib/database/database.dart — added `cooldownTurnsTotal` IntColumn (default 0) to the Sessions table, and `'cooldown_turns_total INTEGER NOT NULL DEFAULT 0'` to the `_repairMissingSchemaColumns` `columnsToEnsure['sessions']` list so existing user DBs ALTER it in on next launch (with the automatic timestamped backup the repair already takes). schemaVersion unchanged (32) — this matches how the other realism columns were added (the always-on repair, not onUpgrade).

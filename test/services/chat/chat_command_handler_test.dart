@@ -32,6 +32,7 @@ void main() {
     late List<CharacterCard> spoke;
     late List<CharacterCard> undoArmed;
     late List<String> pickerRequests;
+    late List<bool> pickerFull;
     late String? pendingDeparture;
     late int primaryTurns;
     late int castScans;
@@ -54,7 +55,10 @@ void main() {
         joinGuest: (g) async => joined.add(g),
         joinFull: (c) async => joinedFull.add(c),
         promoteScene: () async => scenePromotions++,
-        requestGuestPicker: pickerRequests.add,
+        requestGuestPicker: (filter, full) {
+          pickerRequests.add(filter);
+          pickerFull.add(full);
+        },
         runCastScan: () async {
           castScans++;
           return castScanFound;
@@ -83,6 +87,7 @@ void main() {
       spoke = [];
       undoArmed = [];
       pickerRequests = [];
+      pickerFull = [];
       pendingDeparture = null;
       primaryTurns = 0;
       castScans = 0;
@@ -328,15 +333,14 @@ void main() {
       expect(joinedFull, isEmpty);
     });
 
-    test('bare /join --full asks for a name (never auto-promotes)', () async {
+    test('bare /join --full opens the FULL picker (no exact name needed)', () async {
       joinable = [_guest('Nora'), _guest('Pax')];
-      guests = [_guest('Mara')]; // even with guests present, /join needs a name
       final h = build();
       await h.handle('/join --full');
-      expect(joinedFull, isEmpty);
-      expect(scenePromotions, 0); // promotion is /promote's job, not bare /join
-      expect(pickerRequests, isEmpty);
-      expect(systemMessages.single, contains('/promote'));
+      expect(joinedFull, isEmpty); // not joined yet — the picker is shown first
+      expect(pickerRequests.single, ''); // browse the whole list
+      expect(pickerFull.single, true); // ...as a FULL-join picker
+      expect(systemMessages, isEmpty);
     });
 
     test('/promote turns the scene into a full group', () async {
@@ -347,13 +351,13 @@ void main() {
       expect(joinedFull, isEmpty);
     });
 
-    test('/join --full ambiguous name is rejected (no silent pick)', () async {
+    test('/join --full <ambiguous> opens the FULL picker pre-filtered', () async {
       joinable = [_guest('Nora'), _guest('Norbert')];
       final h = build();
       await h.handle('/join --full nor');
-      expect(joinedFull, isEmpty);
-      expect(pickerRequests, isEmpty); // full never falls back to the picker
-      expect(systemMessages.single, contains('full name'));
+      expect(joinedFull, isEmpty); // not joined — picker shown to disambiguate
+      expect(pickerRequests.single, 'nor'); // pre-filtered to the typed text
+      expect(pickerFull.single, true);
     });
 
     test('/join --full can target a PRESENT guest (promotion)', () async {
