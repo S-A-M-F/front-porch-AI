@@ -391,6 +391,52 @@ class ChatService extends ChangeNotifier {
             ),
           };
 
+    await _convertOneToOneToGroup(additional, entrances, repo);
+  }
+
+  /// Promote the entire present scene — the host plus every present lite guest —
+  /// into a full group, with no new arrival. This is the bare `/join --full`
+  /// (and any "make this a group" affordance): it turns a 1:1 that has picked up
+  /// lite NPCs into a real group where everyone is a full, realism-bearing member.
+  Future<void> promoteSceneToFull() async {
+    final repo = _groupChatRepository;
+    if (repo == null) {
+      _setGuestStatus('⚠ Group support is unavailable right now.', isError: true);
+      return;
+    }
+    if (_isGenerating) {
+      _setGuestStatus(
+        '⚠ Wait for the current reply to finish first.',
+        isError: true,
+      );
+      return;
+    }
+    if (_activeGroup != null) return; // already a group
+    final present = List<CharacterCard>.from(_sceneGuestCards);
+    if (present.isEmpty) {
+      _setGuestStatus(
+        '⚠ No guests to promote — bring one in with /join --full <name>.',
+        isError: true,
+      );
+      return;
+    }
+    // No fresh entrance: everyone is already in the scene, they just become full.
+    await _convertOneToOneToGroup(
+      present,
+      const <String, ({String text, bool creative})>{},
+      repo,
+    );
+  }
+
+  /// Shared 1:1→group conversion core used by [joinFull] and
+  /// [promoteSceneToFull]. Drops present guests' lite state (they become full
+  /// members) and forks the current chat into a group with [additional] members
+  /// and any creative [entrances], surfacing a failure banner if it can't.
+  Future<void> _convertOneToOneToGroup(
+    List<CharacterCard> additional,
+    Map<String, ({String text, bool creative})> entrances,
+    GroupChatRepository repo,
+  ) async {
     // The present guests are becoming full members — drop their lite state so
     // they aren't represented twice once we switch into group mode.
     _sceneGuestIds.clear();
@@ -469,6 +515,7 @@ class ChatService extends ChangeNotifier {
       getJoinableCharacters: () => joinableGuestCharacters,
       joinGuest: joinSceneGuest,
       joinFull: joinFull,
+      promoteScene: promoteSceneToFull,
       requestGuestPicker: (filter) {
         _pendingGuestPickerFilter = filter;
         notifyListeners();

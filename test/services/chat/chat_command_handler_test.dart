@@ -28,6 +28,7 @@ void main() {
     late List<CharacterCard> joinable;
     late List<CharacterCard> joined;
     late List<CharacterCard> joinedFull;
+    late int scenePromotions;
     late List<CharacterCard> spoke;
     late List<CharacterCard> undoArmed;
     late List<String> pickerRequests;
@@ -49,6 +50,7 @@ void main() {
         getJoinableCharacters: () => joinable,
         joinGuest: (g) async => joined.add(g),
         joinFull: (c) async => joinedFull.add(c),
+        promoteScene: () async => scenePromotions++,
         requestGuestPicker: pickerRequests.add,
         runCastScan: () async {
           castScans++;
@@ -68,6 +70,7 @@ void main() {
       joinable = [];
       joined = [];
       joinedFull = [];
+      scenePromotions = 0;
       spoke = [];
       undoArmed = [];
       pickerRequests = [];
@@ -263,13 +266,25 @@ void main() {
       expect(joinedFull, isEmpty);
     });
 
-    test('/join --full with no name asks for a name (no full picker)', () async {
+    test('bare /join --full with no guests asks for a name', () async {
       joinable = [_guest('Nora'), _guest('Pax')];
+      guests = []; // nobody present to promote
       final h = build();
       await h.handle('/join --full');
       expect(joinedFull, isEmpty);
+      expect(scenePromotions, 0);
       expect(pickerRequests, isEmpty);
       expect(systemMessages.single, contains('Name a character'));
+    });
+
+    test('bare /join --full WITH present guests promotes the scene', () async {
+      joinable = [_guest('Nora')];
+      guests = [_guest('Mara'), _guest('Pax')]; // present lite guests
+      final h = build();
+      expect(await h.handle('/join --full'), true);
+      expect(scenePromotions, 1);
+      expect(joinedFull, isEmpty); // promotion, not a named full join
+      expect(systemMessages, isEmpty);
     });
 
     test('/join --full ambiguous name is rejected (no silent pick)', () async {

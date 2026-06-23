@@ -67,6 +67,7 @@ class ChatCommandHandler {
     required List<CharacterCard> Function() getJoinableCharacters,
     required Future<void> Function(CharacterCard guest) joinGuest,
     required Future<void> Function(CharacterCard character) joinFull,
+    required Future<void> Function() promoteScene,
     required void Function(String initialFilter) requestGuestPicker,
     required Future<bool> Function() runCastScan,
     required Future<void> Function(CharacterCard guest) speakGuest,
@@ -82,6 +83,7 @@ class ChatCommandHandler {
        _getJoinableCharacters = getJoinableCharacters,
        _joinGuest = joinGuest,
        _joinFull = joinFull,
+       _promoteScene = promoteScene,
        _requestGuestPicker = requestGuestPicker,
        _runCastScan = runCastScan,
        _speakGuest = speakGuest,
@@ -98,6 +100,7 @@ class ChatCommandHandler {
   final List<CharacterCard> Function() _getJoinableCharacters;
   final Future<void> Function(CharacterCard guest) _joinGuest;
   final Future<void> Function(CharacterCard character) _joinFull;
+  final Future<void> Function() _promoteScene;
   final void Function(String initialFilter) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
@@ -115,7 +118,7 @@ class ChatCommandHandler {
     SlashCommandInfo(
       'join',
       '/join [--full] [name]',
-      'Bring an existing character in — add --full to make them a full group member',
+      '--full makes a full group member; bare /join --full promotes the whole scene',
     ),
     SlashCommandInfo(
       'speak',
@@ -279,10 +282,17 @@ class ChatCommandHandler {
 
     if (wanted.isEmpty) {
       if (full) {
-        _onSystemMessage(
-          '⚠ Name a character to bring in as a full member, '
-          'e.g. /join --full Mara.',
-        );
+        // Bare `/join --full`: promote the whole present scene (host + every
+        // lite guest) into a full group. With no guests present there is nobody
+        // to promote, so ask for a name instead.
+        if (_getSceneGuestCards().isNotEmpty) {
+          await _promoteScene();
+        } else {
+          _onSystemMessage(
+            '⚠ Name a character to bring in as a full member, '
+            'e.g. /join --full Mara.',
+          );
+        }
         return;
       }
       _requestGuestPicker(''); // lite: browse the full list
