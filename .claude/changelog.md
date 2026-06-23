@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-23 (feat: two-tier rolling backups (30-min + weekly dailies) + Cloud Sync deprecation notice)
+- **Files changed**:
+  - lib/services/backup_service.dart — auto-backup interval 10min -> **30min**. Retention reworked from a single "keep newest 10" into **two-tier rolling**: keep the newest `maxBackups` (10) recent snapshots PLUS one-per-calendar-day for the last `dailyRetentionDays` (7) days. Extracted the pure policy into `backupsToKeep(entriesNewestFirst, now)` (filesystem-free, `@visibleForTesting`); `pruneBackups()` now just gathers (path, mtime) and deletes the complement. Backups were already timestamped (filename ISO + mtime) — no new stamping needed.
+  - test/services/backup_service_test.dart — NEW. 6 tests for the retention policy: few-backups keep-all, recent tier caps at maxBackups (same-day), daily tier keeps 1/day for 7 days and drops older, most-recent-of-day wins for an old day, the exact 7-day boundary (day6 kept / day7 dropped), and future-date (clock skew) is not a daily keeper.
+  - lib/ui/pages/cloud_sync_page.dart — added `_buildDeprecationBanner` (prominent notice at the top of the page: Cloud Sync is deprecated, no longer supported, will be removed in a future release; steer users to local Backups + Card export/import). Updated the page subtitle and the Backups-section description to describe the new 30-min + recent + 7-day-daily retention.
+  - docs/Rawhide.md — user-facing bullets for the improved backups and the Cloud Sync deprecation.
+- **Reason**: user decision — Cloud Sync is fragile across devices (version-based whole-file sync with download-and-replace branches; a real "deleted characters resurrect" bug on WebDAV because the global sync version isn't always bumped, so the tombstone never uploads). Rather than extend it (Phase 5) or rip it out now, leave it running but clearly deprecate it, and make automatic local backups the real safety net. Backups bumped to 30-min cadence with a rolling week of dailies so there's always a good restore point.
+- **Verification**: flutter analyze clean (backup_service + cloud_sync_page); 6/6 backup retention tests pass. No cloud-sync code removed (deprecation is notice-only this round).
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-23 (feat: /speak works in full group chats, not just Lite NPCs)
 - **Files changed**:
   - lib/services/chat/chat_command_handler.dart — `/speak` now routes to a group branch when getGroupMembers() is non-empty (mirrors how /exit already routes), forcing the named member to take their turn now. Member name-resolution (exact -> unique substring -> empty/ambiguous/unknown errors) is consolidated into a new shared `_resolveGroupMember` used by BOTH /speak and /exit — the old inline /exit resolution is deleted (no duplicate logic). /speak command-registry description updated.
