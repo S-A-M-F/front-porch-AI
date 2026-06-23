@@ -5378,23 +5378,7 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           _realismEvals.beginCollectForBatchedVerification();
-          await Future.wait([
-            _evaluateRelationshipCall(
-              onChunk: handleChunk,
-            ), // step 10 thins (full in realism_evals)
-            Future.delayed(
-              _kEvalDispatchStagger,
-              () => _evaluateEmotionalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 2,
-              () => _evaluatePhysicalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 3,
-              () => _evaluateNarrativeCall(onChunk: handleChunk),
-            ),
-          ]);
+          await _fireStaggeredRealismEvals(handleChunk);
           await _realismEvals.finalizeBatchedRealismVerifications();
 
           // One-shot director batch (user proposal): after the mains, use the collected from the leaf
@@ -6111,23 +6095,7 @@ class ChatService extends ChangeNotifier {
           await _evaluateOneShotCall(onChunk: handleChunk);
         } else {
           _realismEvals.beginCollectForBatchedVerification();
-          await Future.wait([
-            _evaluateRelationshipCall(
-              onChunk: handleChunk,
-            ), // step 10 thins (full in realism_evals)
-            Future.delayed(
-              _kEvalDispatchStagger,
-              () => _evaluateEmotionalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 2,
-              () => _evaluatePhysicalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 3,
-              () => _evaluateNarrativeCall(onChunk: handleChunk),
-            ),
-          ]);
+          await _fireStaggeredRealismEvals(handleChunk);
           await _realismEvals.finalizeBatchedRealismVerifications();
 
           // Mirror of the primary send path: apply the one director batch (or the cheap
@@ -9303,6 +9271,32 @@ class ChatService extends ChangeNotifier {
   }
 
   // ── Phase 1: Per-character realism evaluation for the upcoming speaker ────
+  /// Fire the four realism eval calls (relationship / emotional / physical /
+  /// narrative) concurrently with the standard dispatch stagger. This exact
+  /// 4-call block was duplicated byte-for-byte in the centralized 1:1 path and
+  /// the per-speaker group path; sharing it is the first DRY step toward a single
+  /// eval path. The caller decides whether to wrap it in batched verification
+  /// (`beginCollect`/`finalize`) — that wrapping currently differs between the
+  /// two paths and is deliberately left to the caller until that divergence is
+  /// reconciled.
+  Future<void> _fireStaggeredRealismEvals(void Function(String) onChunk) async {
+    await Future.wait([
+      _evaluateRelationshipCall(onChunk: onChunk),
+      Future.delayed(
+        _kEvalDispatchStagger,
+        () => _evaluateEmotionalStateCall(onChunk: onChunk),
+      ),
+      Future.delayed(
+        _kEvalDispatchStagger * 2,
+        () => _evaluatePhysicalStateCall(onChunk: onChunk),
+      ),
+      Future.delayed(
+        _kEvalDispatchStagger * 3,
+        () => _evaluateNarrativeCall(onChunk: onChunk),
+      ),
+    ]);
+  }
+
   /// Runs targeted realism evaluation for the specific character who is about
   /// to speak next in a group chat. This is the core of making realism work
   /// on a per-character, turn-timed basis.
@@ -9411,21 +9405,7 @@ class ChatService extends ChangeNotifier {
       if (_storageService.realismSettings.realismOneShotEval) {
         await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
-        await Future.wait([
-          _evaluateRelationshipCall(onChunk: handleChunk),
-          Future.delayed(
-            _kEvalDispatchStagger,
-            () => _evaluateEmotionalStateCall(onChunk: handleChunk),
-          ),
-          Future.delayed(
-            _kEvalDispatchStagger * 2,
-            () => _evaluatePhysicalStateCall(onChunk: handleChunk),
-          ),
-          Future.delayed(
-            _kEvalDispatchStagger * 3,
-            () => _evaluateNarrativeCall(onChunk: handleChunk),
-          ),
-        ]);
+        await _fireStaggeredRealismEvals(handleChunk);
       }
 
       // Handle cancellation after the eval calls
