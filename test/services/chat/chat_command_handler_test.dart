@@ -39,6 +39,7 @@ void main() {
     late List<CharacterCard> groupMembers;
     late List<CharacterCard> groupJoinable;
     late List<CharacterCard> removedMembers;
+    late List<CharacterCard> spokeMembers;
     bool castScanFound = false;
 
     ChatCommandHandler build({bool activeSet = true}) {
@@ -71,6 +72,7 @@ void main() {
           removedMembers.add(m);
           return true;
         },
+        speakGroupMember: (m) async => spokeMembers.add(m),
       );
     }
 
@@ -94,6 +96,7 @@ void main() {
       groupMembers = [];
       groupJoinable = [];
       removedMembers = [];
+      spokeMembers = [];
       castScanFound = false;
     });
 
@@ -251,6 +254,45 @@ void main() {
       expect(await h.handle('/exit Zed'), true);
       expect(removedMembers, isEmpty);
       expect(systemMessages.single, contains('No group member'));
+    });
+
+    test('/speak <name> in a group forces that member to take a turn', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/speak Bryn'), true);
+      expect(spokeMembers.single.name, 'Bryn');
+      expect(spoke, isEmpty); // not the Lite-NPC path
+    });
+
+    test('/speak <unique substring> in a group forces the single match', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/speak bry'), true);
+      expect(spokeMembers.single.name, 'Bryn');
+    });
+
+    test('/speak (no name) in a group asks which member', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/speak'), true);
+      expect(spokeMembers, isEmpty);
+      expect(systemMessages.single, contains('Who should speak'));
+    });
+
+    test('/speak <unknown> in a group speaks nobody and surfaces a message', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/speak Zed'), true);
+      expect(spokeMembers, isEmpty);
+      expect(systemMessages.single, contains('No group member'));
+    });
+
+    test('/speak <ambiguous substring> in a group speaks nobody', () async {
+      groupMembers = [_guest('Aria'), _guest('Arien')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/speak Ar'), true);
+      expect(spokeMembers, isEmpty);
+      expect(systemMessages.single, contains('matches multiple members'));
     });
 
     test('/exit cannot remove the only remaining group member', () async {

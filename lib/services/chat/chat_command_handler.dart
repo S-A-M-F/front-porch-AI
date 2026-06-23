@@ -75,6 +75,7 @@ class ChatCommandHandler {
     required List<CharacterCard> Function() getGroupMembers,
     required List<CharacterCard> Function() getGroupJoinableCharacters,
     required Future<bool> Function(CharacterCard member) removeGroupMember,
+    required Future<void> Function(CharacterCard member) speakGroupMember,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -93,7 +94,8 @@ class ChatCommandHandler {
        _armExitUndo = armExitUndo,
        _getGroupMembers = getGroupMembers,
        _getGroupJoinableCharacters = getGroupJoinableCharacters,
-       _removeGroupMember = removeGroupMember;
+       _removeGroupMember = removeGroupMember,
+       _speakGroupMember = speakGroupMember;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -114,6 +116,7 @@ class ChatCommandHandler {
   final List<CharacterCard> Function() _getGroupMembers;
   final List<CharacterCard> Function() _getGroupJoinableCharacters;
   final Future<bool> Function(CharacterCard member) _removeGroupMember;
+  final Future<void> Function(CharacterCard member) _speakGroupMember;
 
   /// The user-facing slash-command reference (single source of truth for the
   /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
@@ -137,7 +140,7 @@ class ChatCommandHandler {
     SlashCommandInfo(
       'speak',
       '/speak [name]',
-      'Make a guest who is present take a turn right now',
+      'Make someone present take a turn now — a guest, or a group member by name',
     ),
     SlashCommandInfo(
       'exit',
@@ -377,6 +380,20 @@ class ChatCommandHandler {
   // unrecognized name surfaces the list of valid guests instead of doing
   // nothing.
   Future<void> _handleSpeak(String args) async {
+    // Full group: /speak <name> forces that member to take their turn now (Scene
+    // Guests are 1:1-only, so a non-empty group roster means we're in a group).
+    final members = _getGroupMembers();
+    if (members.isNotEmpty) {
+      final target = _resolveGroupMember(
+        args,
+        members,
+        command: 'speak',
+        emptyVerb: 'speak',
+      );
+      if (target != null) await _speakGroupMember(target);
+      return;
+    }
+
     if (!_activeCharacterIsSet()) {
       _onSystemMessage('⚠ Scene Guests only exist inside a 1:1 chat.');
       return;
@@ -507,43 +524,53 @@ class ChatCommandHandler {
       _onSystemMessage('⚠ Can’t remove the only remaining character.');
       return;
     }
-    final wanted = args.trim().toLowerCase();
-    if (wanted.isEmpty) {
-      _onSystemMessage(
-        '⚠ Who should leave? Use /exit <name> — '
-        '${members.map((m) => m.name).join(', ')}.',
-      );
-      return;
-    }
-    CharacterCard? target;
-    for (final m in members) {
-      if (m.name.toLowerCase() == wanted) {
-        target = m;
-        break;
-      }
-    }
-    if (target == null) {
-      final partial = members
-          .where((m) => m.name.toLowerCase().contains(wanted))
-          .toList();
-      if (partial.length > 1) {
-        _onSystemMessage(
-          '⚠ "$args" matches multiple members '
-          '(${partial.map((m) => m.name).join(', ')}). Use the full name.',
-        );
-        return;
-      }
-      if (partial.length == 1) target = partial.first;
-    }
-    if (target == null) {
-      _onSystemMessage('⚠ No group member named "$args" is here.');
-      return;
-    }
+    final target = _resolveGroupMember(
+      args,
+      members,
+      command: 'exit',
+      emptyVerb: 'leave',
+    );
+    if (target == null) return;
     // removeGroupMember handles the real delete + auto-collapse (and surfaces its
     // own banner on the collapse/dead-end paths).
     final ok = await _removeGroupMember(target);
     if (!ok) {
       _onSystemMessage('⚠ Couldn’t remove ${target.name} from the group.');
     }
+  }
+
+  /// Resolve a group member by name from `/exit` and `/speak` args — exact match,
+  /// then unique case-insensitive substring. Emits the right inline error (and
+  /// returns null) for empty / ambiguous / unknown input. [command] names the
+  /// slash command and [emptyVerb] the action, so the empty-args prompt reads
+  /// naturally (`Who should leave? Use /exit <name>` vs the `/speak` wording).
+  CharacterCard? _resolveGroupMember(
+    String args,
+    List<CharacterCard> members, {
+    required String command,
+    required String emptyVerb,
+  }) {
+    final names = members.map((m) => m.name).join(', ');
+    final wanted = args.trim().toLowerCase();
+    if (wanted.isEmpty) {
+      _onSystemMessage('⚠ Who should $emptyVerb? Use /$command <name> — $names.');
+      return null;
+    }
+    for (final m in members) {
+      if (m.name.toLowerCase() == wanted) return m;
+    }
+    final partial = members
+        .where((m) => m.name.toLowerCase().contains(wanted))
+        .toList();
+    if (partial.length > 1) {
+      _onSystemMessage(
+        '⚠ "$args" matches multiple members '
+        '(${partial.map((m) => m.name).join(', ')}). Use the full name.',
+      );
+      return null;
+    }
+    if (partial.length == 1) return partial.first;
+    _onSystemMessage('⚠ No group member named "$args" is here.');
+    return null;
   }
 }

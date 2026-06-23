@@ -609,6 +609,14 @@ class ChatService extends ChangeNotifier {
         // removal commits when the user continues (mirrors the Lite-NPC exit).
         return exitGroupMember(member, repo);
       },
+      speakGroupMember: (member) async {
+        // /speak <name> in a full group: force that member to take their turn now
+        // (jump the rotation), mirroring the Lite-NPC /speak. Same setNextSpeaker
+        // + generate path the goodbye narration uses, minus the removal/directive.
+        if (_activeGroup == null || _isGenerating) return;
+        _groupManager?.setNextSpeaker(member);
+        await _generateResponse(GenerationMode.normal);
+      },
     );
   }
 

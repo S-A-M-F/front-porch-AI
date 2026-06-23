@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-23 (feat: /speak works in full group chats, not just Lite NPCs)
+- **Files changed**:
+  - lib/services/chat/chat_command_handler.dart — `/speak` now routes to a group branch when getGroupMembers() is non-empty (mirrors how /exit already routes), forcing the named member to take their turn now. Member name-resolution (exact -> unique substring -> empty/ambiguous/unknown errors) is consolidated into a new shared `_resolveGroupMember` used by BOTH /speak and /exit — the old inline /exit resolution is deleted (no duplicate logic). /speak command-registry description updated.
+  - lib/services/chat_service.dart — wired the `speakGroupMember` callback: `setNextSpeaker(member)` + `_generateResponse(GenerationMode.normal)`, the same path the goodbye narration uses, minus the removal/directive.
+  - test/services/chat/chat_command_handler_test.dart — +5 /speak group tests (forces by name, unique substring, empty asks who, unknown + ambiguous speak nobody). 52 handler tests pass.
+  - docs/Rawhide.md — user-facing bullets for /speak-in-groups, the bidirectional RAG carry, and the Group Card origin reconnect.
+- **Reason**: /speak (force a present character to take their turn now) only worked for Lite NPC scene guests; in a full group it did nothing useful. Now it forces a full member by name, completing /join + /exit + /speak group-macro parity with the lite scene.
+- **Verification**: flutter analyze clean; 52 command-handler tests pass; full chat suite green. Reviewed (speak-parity dimension): /exit behavior unchanged by the consolidation, single realism/needs eval, post-gen checks intact. Known no-op nit (consistent with ALL direct-generate paths — goodbye narration, director notes, auto-play — NOT a regression): a /speak-forced bubble shows no per-message needs-delta CHIP (the simulation runs correctly; only the chip widget lives in sendMessage). Out of scope to refactor here.
+- **Commit hash**: (uncommitted)
+
+
 ## 2026-06-23 (feat: RAG memory now carries 1:1 -> group on /join — recall of pre-conversion events)
 - **Files changed**:
   - lib/database/database.dart — new `copyEmbeddingsForSession(fromCharacterId, fromSessionId, {toCharacterId, toSessionId})`: COPIES a character's RAG embeddings for one session under a new character id + session id (fresh row ids via insertEmbeddings), leaving the originals untouched. COPY — not the collapse direction's in-place `reassignEmbeddings` re-key — because the source 1:1 is preserved as the revert snapshot and must keep its own memory. No schema/build_runner change (query method, not a table change).
