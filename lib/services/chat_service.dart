@@ -43,6 +43,7 @@ import 'package:front_porch_ai/models/chat_participant.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/group_member.dart';
+import 'package:front_porch_ai/services/chat/member_origin_resolver.dart';
 import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/needs_impact.dart';
@@ -105,6 +106,7 @@ part 'chat/chat_service_speaker_objectives.dart';
 part 'chat/chat_service_impersonate.dart';
 part 'chat/chat_service_session_manage.dart';
 part 'chat/chat_service_generation.dart';
+part 'chat/chat_service_cast.dart';
 
 // Internal flag to signal a cancellation request for realism evaluation.
 // This is a file-scope flag to avoid needing to thread state through the

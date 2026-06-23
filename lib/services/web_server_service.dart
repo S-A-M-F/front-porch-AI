@@ -3165,7 +3165,10 @@ class WebServerService extends ChangeNotifier {
       final charId = body['character_id']?.toString() ?? '';
       if (charId.isEmpty) return _errorResponse(400, 'character_id required');
 
-      final match = _characterRepository!.characters.where((c) {
+      // Resolve against the LIVE group members (whose id is the member instance
+      // id), NOT the library — removeCharacterFromGroup matches member rows by
+      // that instance id, so a library lookup here silently matched nothing.
+      final match = _chatService!.groupCharacters.where((c) {
         final id = c.imagePath != null
             ? p.basenameWithoutExtension(c.imagePath!)
             : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
@@ -3181,7 +3184,7 @@ class WebServerService extends ChangeNotifier {
       if (!ok) {
         return _errorResponse(
           400,
-          'Could not remove character (min 2 required or not in group mode)',
+          'Could not remove character (not in a group, or a reply is generating)',
         );
       }
 

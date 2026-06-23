@@ -2157,6 +2157,16 @@ class AppDatabase extends _$AppDatabase {
     return count;
   }
 
+  /// Delete a single group member row by its instance id (the UUID primary key).
+  /// Used when one character is removed from a group (not full-group teardown).
+  Future<int> deleteGroupMember(String memberId) async {
+    final count = await (delete(
+      groupMembers,
+    )..where((m) => m.id.equals(memberId))).go();
+    await bumpSyncVersion();
+    return count;
+  }
+
   // ── Folder Queries ──────────────────────────────────────────────────
 
   Future<List<Folder>> getAllFolders() =>

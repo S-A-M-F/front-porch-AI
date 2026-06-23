@@ -462,39 +462,73 @@ extension ChatServiceGroupMembership on ChatService {
     return true;
   }
 
-  /// Remove a character from the currently active group chat.
-  /// Returns false if the group would have fewer than 2 characters.
+  /// Remove a character from the active group chat: deletes the member's row,
+  /// private avatar, and ALL per-member state (realism / notes / prompts / RAG /
+  /// objectives / embeddings / data-bank), then re-resolves the surviving cast.
+  /// When the removal leaves exactly ONE member the group auto-collapses back
+  /// into a 1:1 with that member's ORIGINAL library character (a one-character
+  /// group is nonsense) — see [_collapseGroupToSolo].
   Future<bool> removeCharacterFromGroup(
     CharacterCard character,
     GroupChatRepository groupRepo,
   ) async {
     if (_activeGroup == null || _characterRepository == null) return false;
     if (_isGenerating) return false;
-    // Minimum member count now based on loaded group members (decoupled).
-    // (enforcement wired via member list length in calling paths)
 
-    // remove ID path removed (decoupled). Real remove deletes the GroupMember row + avatar file.
-    final charId = _getCharacterIdFromCard(character);
-    // (old removeCharacterId deleted)
-    await groupRepo.save(_activeGroup!);
+    final charId = _getCharacterIdFromCard(character); // member instance id (mid)
 
-    // Drop any per-char state for the removed member (realism + author notes + per-char system prompts + rag priority)
-    _groupRealism.remove(charId);
-    _groupAuthorNotes.remove(charId);
-    _groupAuthorNoteStrengths.remove(charId);
-    _groupCharacterSystemPrompts.remove(charId);
-    _groupCharacterRAGPriorities.remove(charId);
-    if (_activeGroup != null) {
-      // (old checkpoint call removed in v30)
+    // Find the member's avatar filename before the row is deleted.
+    final beforeRows = await groupRepo.getMembersForGroup(_activeGroup!.id);
+    String? removedAvatar;
+    for (final m in beforeRows) {
+      if (m.id == charId) {
+        removedAvatar = m.avatarFilename;
+        break;
+      }
     }
 
-    // Re-resolve after remove — old IDs path removed (decoupled).
-    final resolved = <CharacterCard>[]; // from group members
+    // Delete the row + avatar + per-member DB state + in-memory maps.
+    await _deleteMemberCleanup(charId, removedAvatar);
+    await groupRepo.save(_activeGroup!);
+
+    // Re-resolve the surviving members from the (now smaller) member table.
+    final remainingRows = await groupRepo.getMembersForGroup(_activeGroup!.id);
+    final resolved = <CharacterCard>[];
+    for (final m in remainingRows) {
+      if (m.avatarFilename != null) {
+        final p = path.join(
+          _storageService.groupsDir.path,
+          _activeGroup!.id,
+          'avatars',
+          m.avatarFilename!,
+        );
+        if (await File(p).exists()) {
+          resolved.add(m.toCharacterCard(resolvedImagePath: p));
+        }
+      }
+    }
     _groupManager?.refreshCharacters(resolved);
 
     debugPrint(
-      '[ChatService] \u{2796} Removed ${character.name} from group ${_activeGroup!.name}',
+      '[ChatService] \u{2796} Removed ${character.name} from group '
+      '${_activeGroup!.name} (${resolved.length} left)',
     );
+
+    // Persist the cleaned per-character maps to the session now, so the removed
+    // member's realism/notes/etc. can't re-enter the group_realism_state blob on
+    // a later save.
+    await _saveChat();
+
+    // A one-character group is nonsense — collapse straight back to a 1:1 with
+    // the survivor's original library character (auto, no prompt). If the collapse
+    // can't proceed (origin unresolvable, or the group has other saved
+    // conversations), _collapseGroupToSolo surfaces a banner and we stay a
+    // one-member cast.
+    if (resolved.length == 1) {
+      await _collapseGroupToSolo(groupRepo);
+      return true;
+    }
+
     notifyListeners();
     return true;
   }

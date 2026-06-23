@@ -3288,10 +3288,12 @@ class _ChatPageState extends State<ChatPage> {
                         ? _resolveCharImage(character.imagePath!)
                         : null,
                     evolutionCount: chatService.getEvolutionCountFor(character),
-                    canRemove: chatService.groupCharacters.length > 2 &&
+                    // > 1 (not > 2): removing the second-to-last member is
+                    // allowed and auto-collapses the group back to a 1:1.
+                    canRemove: chatService.groupCharacters.length > 1 &&
                         !chatService.isGenerating,
                     onRemove:
-                        (chatService.groupCharacters.length > 2 &&
+                        (chatService.groupCharacters.length > 1 &&
                             !chatService.isGenerating)
                         ? () async {
                             final groupRepo =
