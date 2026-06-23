@@ -522,6 +522,8 @@ Images are never deleted automatically when you delete a character (soft-delete 
 
 ### Cloud sync failing
 
+> ⚠️ **Cloud Sync is deprecated and will be removed in a future release.** It is unreliable across devices (a known issue can resurrect deleted characters when the deletion isn't propagated). Rather than troubleshoot it, prefer the **automatic local Backups** (every 30 min, with daily restore points kept for a week) and **Card export / import** for moving data between devices. The notes below are retained only for existing setups.
+
 **CloudSyncService + provider-specific logic (`GoogleDriveProvider`, `DatabaseMergeService`):**
 
 1. **Connection / auth failures**:
