@@ -318,6 +318,58 @@ extension ChatServiceReprocess on ChatService {
     return true;
   }
 
+  /// Regenerate the main character's (host's) most recent message when it has
+  /// been buried under Scene Guest (Lite NPC) chime-in replies — the case the
+  /// last-message-only [regenerateLastMessage] button can no longer reach (the
+  /// guest spoke last). The guest replies were reactions to the host text we are
+  /// about to discard, so they are removed from the chat (UI + context) first;
+  /// the host message is then regenerated as a new swipe via
+  /// [regenerateLastMessage] (so realism is reverted to the previous accepted
+  /// baseline exactly as for a normal regen — no parallel logic); finally the
+  /// guest chime gate is re-run against the NEW host reply, so a guest speaks
+  /// again only if it is still warranted (mention / relevance), never blindly.
+  ///
+  /// When the host message is already last (no trailing guests) this simply
+  /// delegates to [regenerateLastMessage].
+  Future<void> regenerateMainCharacter() async {
+    if (_messages.isEmpty || _isGenerating || _guestBusy) return;
+
+    // Walk back past the trailing guest replies to the host message beneath them.
+    int hostIndex = -1;
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.isUser || m.sender == 'System') return; // user/System tail — nothing to regen
+      if (!_isGuestAuthoredMessage(m)) {
+        hostIndex = i;
+        break;
+      }
+    }
+    if (hostIndex < 0) return; // only guest messages present — no host to regen
+
+    // Host already last → plain regen (no guests to pop).
+    if (hostIndex == _messages.length - 1) {
+      await regenerateLastMessage();
+      return;
+    }
+
+    // Reconstruct the user text that prompted the host turn for the re-chime gate.
+    String userText = '';
+    for (int i = hostIndex - 1; i >= 0; i--) {
+      if (_messages[i].isUser) {
+        userText = _messages[i].text;
+        break;
+      }
+    }
+
+    // Remove the now-stale trailing guest replies from UI + context, then regen
+    // the (now last) host message and re-run the chime gate on the new reply.
+    _messages.removeRange(hostIndex + 1, _messages.length);
+    await _saveChat();
+    notifyListeners();
+    await regenerateLastMessage();
+    await _maybeRunSceneGuestChimeIns(userText: userText);
+  }
+
   Future<void> regenerateLastMessage() async {
     if (_messages.isEmpty || _isGenerating || _guestBusy) return;
 

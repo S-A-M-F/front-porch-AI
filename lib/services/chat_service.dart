@@ -3169,27 +3169,55 @@ class ChatService extends ChangeNotifier {
 
     // ── Scene Guests: auto chime-in ─────────────────────────────────────────
     // The primary 1:1 turn is now 100% finalized (response + chip/realism block
-    // above). In a 1:1 scene with guests present, let the director decide which
-    // guest(s) speak next (each via the parity-safe generateGuestTurn). Group
-    // chats never use scene guests. Guarded so it only runs for a normal,
-    // fully-finished primary user turn (not group, not mid-generation).
-    if (_activeGroup == null &&
-        _sceneGuestCards.isNotEmpty &&
-        !_isGenerating &&
-        !_entrancesInFlight) {
-      final primaryResponse = _messages.isNotEmpty && !_messages.last.isUser
-          ? _messages.last.displayText
-          : '';
-      final token = _currentSessionId;
-      await _ensureSceneGuestDirector().runChimeIns(
-        userText: text,
-        primaryResponse: primaryResponse,
-        // Each gate eval + guest turn is a slow LLM call; stop the loop if the
-        // user switches chats / the scene changes so guests can't speak into the
-        // wrong conversation.
-        isContextValid: () => !_sceneChanged(token) && _activeGroup == null,
-      );
+    // above). Let the director decide which guest(s) speak next. Shared with
+    // regenerateMainCharacter() so the re-chime gate is identical after a regen.
+    await _maybeRunSceneGuestChimeIns(userText: text);
+  }
+
+  /// Run the Scene Guest director's chime-in gate after a finalized primary/host
+  /// turn: it decides which present guest(s) (if any) speak next, each via the
+  /// parity-safe [generateGuestTurn]. Shared by the normal send path and the
+  /// "regenerate the main character beneath a guest reply" path so the re-chime
+  /// decision (mention / relevance) is byte-for-byte identical in both.
+  ///
+  /// No-op in group chats, mid-generation, during entrances, or with no guests
+  /// present. Each gate eval + guest turn is a slow LLM call, so it bails if the
+  /// user switches chats / the scene changes (so guests never speak into the
+  /// wrong conversation).
+  Future<void> _maybeRunSceneGuestChimeIns({required String userText}) async {
+    if (_activeGroup != null ||
+        _sceneGuestCards.isEmpty ||
+        _isGenerating ||
+        _entrancesInFlight) {
+      return;
     }
+    final primaryResponse = _messages.isNotEmpty && !_messages.last.isUser
+        ? _messages.last.displayText
+        : '';
+    final token = _currentSessionId;
+    await _ensureSceneGuestDirector().runChimeIns(
+      userText: userText,
+      primaryResponse: primaryResponse,
+      isContextValid: () => !_sceneChanged(token) && _activeGroup == null,
+    );
+  }
+
+  /// Index of the most recent host (main character) message that is buried only
+  /// under Scene Guest (Lite NPC) chime-in replies — i.e. the tail of the chat
+  /// is one or more guest messages sitting directly on top of it. Returns null
+  /// when the last message is already the host's (use the normal last-message
+  /// regen), when a user/System message breaks the guest tail, or outside a 1:1
+  /// scene. The UI uses this to offer "regenerate the main character" on a host
+  /// bubble that the last-message-only regen button can no longer reach.
+  int? get regenerableHostBelowGuestsIndex {
+    if (_activeGroup != null || _messages.isEmpty) return null;
+    if (!_isGuestAuthoredMessage(_messages.last)) return null;
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.isUser || m.sender == 'System') return null;
+      if (!_isGuestAuthoredMessage(m)) return i;
+    }
+    return null;
   }
 
   /// Set observer mode on/off.
