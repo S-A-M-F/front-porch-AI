@@ -86,6 +86,9 @@ import 'package:drift/drift.dart' as drift;
 // toward the 500-line cap (see CLAUDE.md). Parts share this library's imports and
 // private members; behaviour is unchanged.
 part 'chat/chat_service_group_read.dart';
+part 'chat/chat_service_group_settings.dart';
+part 'chat/chat_service_evolution.dart';
+part 'chat/chat_service_sillytavern.dart';
 
 // Internal flag to signal a cancellation request for realism evaluation.
 // This is a file-scope flag to avoid needing to thread state through the
@@ -2219,54 +2222,6 @@ class ChatService extends ChangeNotifier {
     ];
   }
 
-  // ── Group RAG / Memory Settings (stored in checkpoint) ───────────────────
-  bool get groupRagEnabled => _groupRagEnabled;
-
-  int get groupRetrievalCount => _groupRetrievalCount;
-
-  double get groupMemoryBudgetPercent => _groupMemoryBudgetPercent;
-
-  double getCharacterRAGPriority(String charId) {
-    return _groupCharacterRAGPriorities[charId] ?? 1.0;
-  }
-
-  Map<String, double> get currentGroupRAGPriorities =>
-      Map.unmodifiable(_groupCharacterRAGPriorities);
-
-  void setGroupRAGEnabled(bool value) {
-    if (_activeGroup == null) return;
-    _groupRagEnabled = value;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void setGroupRetrievalCount(int value) {
-    if (_activeGroup == null) return;
-    _groupRetrievalCount = value;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void setGroupMemoryBudgetPercent(double value) {
-    if (_activeGroup == null) return;
-    _groupMemoryBudgetPercent = value;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void setCharacterRAGPriority(String charId, double priority) {
-    if (_activeGroup == null) return;
-    _groupCharacterRAGPriorities[charId] = priority;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void clearCharacterRAGPriority(String charId) {
-    _groupCharacterRAGPriorities.remove(charId);
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
   /// True only for regular (non-Director) group chats where the Realism Engine
   /// is enabled. Used by the group sidebar to decide whether to show per-character
   /// emotion / needs indicators.
@@ -2322,88 +2277,6 @@ class ChatService extends ChangeNotifier {
 
   String get authorNote => _authorNote;
   int get authorNoteStrength => _authorNoteStrength;
-
-  /// Returns the Author's Note text (if any) stored specifically for this
-  /// character within the current *group* chat. Uses the stable char ID.
-  /// Returns '' if not in group mode or no per-character note has been set.
-  /// (The group's authorNoteStrength is used for formatting during injection.)
-  String getAuthorNoteForGroupCharacter(CharacterCard c) {
-    if (_activeGroup == null) return '';
-    final id = _getCharacterIdFromCard(c);
-    return _groupAuthorNotes[id] ?? '';
-  }
-
-  /// Returns the strength (1-10) for this character's Author's Note.
-  /// Falls back to the group's current authorNoteStrength if no per-character
-  /// strength has been explicitly set.
-  int getAuthorNoteStrengthForGroupCharacter(CharacterCard c) {
-    if (_activeGroup == null) return _authorNoteStrength;
-    final id = _getCharacterIdFromCard(c);
-    return _groupAuthorNoteStrengths[id] ?? _authorNoteStrength;
-  }
-
-  /// Sets or clears a per-character Author's Note for the given card while in
-  /// a group chat. The value is persisted via the hidden group state checkpoint.
-  /// [strength] is accepted for forward compatibility (per-note strength) but
-  /// currently all per-char notes use the group's authorNoteStrength for
-  /// prompt formatting. Pass empty [note] to clear.
-  void setAuthorNoteForGroupCharacter(
-    CharacterCard c,
-    String note, {
-    int? strength,
-  }) {
-    if (_activeGroup == null) return;
-    final id = _getCharacterIdFromCard(c);
-    final trimmed = note.trim();
-
-    if (trimmed.isEmpty) {
-      _groupAuthorNotes.remove(id);
-      _groupAuthorNoteStrengths.remove(id);
-    } else {
-      _groupAuthorNotes[id] = trimmed;
-      // Store per-character strength if provided, otherwise fall back to group default
-      final effectiveStrength = strength ?? _authorNoteStrength;
-      _groupAuthorNoteStrengths[id] = effectiveStrength;
-    }
-
-    // (old checkpoint call removed in v30)
-    _saveChat();
-    notifyListeners();
-  }
-
-  /// Returns the system prompt (if any) stored specifically for this character
-  /// *within the current group chat*. This is completely separate from the
-  /// character's normal `systemPrompt` on their card (used in 1:1 chats).
-  /// Returns '' if not in a group or no per-character group prompt has been set.
-  /// When non-empty, this value wins over the character's normal systemPrompt
-  /// for prompt construction inside this group.
-  String getSystemPromptForGroupCharacter(CharacterCard c) {
-    if (_activeGroup == null) return '';
-    final id = _getCharacterIdFromCard(c);
-    return _groupCharacterSystemPrompts[id] ?? '';
-  }
-
-  /// Sets or clears a per-character system prompt override for the given
-  /// character while inside a group chat. The value is persisted via the
-  /// hidden group state checkpoint (no DB schema change).
-  /// This affects only the current group. Pass empty [prompt] to clear.
-  /// The provided prompt takes precedence over the character's normal
-  /// `systemPrompt` when this character speaks in the group.
-  void setSystemPromptForGroupCharacter(CharacterCard c, String prompt) {
-    if (_activeGroup == null) return;
-    final id = _getCharacterIdFromCard(c);
-    final trimmed = prompt.trim();
-
-    if (trimmed.isEmpty) {
-      _groupCharacterSystemPrompts.remove(id);
-    } else {
-      _groupCharacterSystemPrompts[id] = trimmed;
-    }
-
-    // (old checkpoint call removed in v30)
-    _saveChat();
-    notifyListeners();
-  }
 
   Map<String, int> get lastPromptBudget => _lastPromptBudget;
   String get lastAssembledPrompt => _lastAssembledPrompt;
@@ -4625,57 +4498,6 @@ class ChatService extends ChangeNotifier {
 
     await _saveChat();
     notifyListeners();
-  }
-
-  // Import chat from SillyTavern JSON format
-  Future<void> importFromSillyTavern(String jsonData) async {
-    if (_activeCharacter == null) throw Exception('No active character');
-
-    try {
-      final Map<String, dynamic> data = jsonDecode(jsonData);
-      final List<dynamic> messages = data['messages'] ?? [];
-
-      debugPrint(
-        '[ChatService] 🟡 importFromSillyTavern: clearing messages for import',
-      );
-      _messages.clear();
-
-      for (final msg in messages) {
-        final String name = msg['name'] ?? '';
-        final bool isUser = msg['is_user'] ?? false;
-        final String text = msg['mes'] ?? '';
-
-        _messages.add(ChatMessage(text: text, sender: name, isUser: isUser));
-      }
-
-      // Create new session for imported chat
-      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-      await _saveChat();
-      notifyListeners();
-    } catch (e) {
-      throw Exception('Failed to parse SillyTavern JSON: $e');
-    }
-  }
-
-  // Export current chat to SillyTavern JSON format
-  String? exportToSillyTavern() {
-    if (_messages.isEmpty) return null;
-
-    final List<Map<String, dynamic>> messages = _messages.map((msg) {
-      return {
-        'name': msg.sender,
-        'is_user': msg.isUser,
-        'mes': msg.text,
-        'send_date': DateTime.now().millisecondsSinceEpoch,
-      };
-    }).toList();
-
-    final Map<String, dynamic> export = {
-      'chat_metadata': {'note_prompt': '', 'note_interval': 0},
-      'messages': messages,
-    };
-
-    return jsonEncode(export);
   }
 
   Future<void> startNewChat() async {
@@ -9170,213 +8992,15 @@ class ChatService extends ChangeNotifier {
   final Map<String, String> _evolvedPersonalities = {};
   final Map<String, String> _evolvedScenarios = {};
   int _characterEvolutionCount = 0;
+
+  /// Kept as an instance getter (not moved to the evolution part) because test
+  /// fakes (`FakeChatService implements ChatService`) override it — extension
+  /// getters are statically dispatched and cannot be overridden via `implements`.
   int get characterEvolutionCount => _characterEvolutionCount;
-
-  /// Public getter: raw evolved personality delta for the active character (null if none).
-  /// This bypasses the enabled flag and [Character Growth] layering (returns the stored growth text only).
-  /// In group mode, returns null — use getEvolvedPersonalityFor(card) instead.
-  /// Injection paths use the _getEffectivePersonality thin (delegates to leaf for full base + layered block when enabled).
-  /// Legacy/compat name retained for public surface (see god coord note in step 14 plan).
-  String? get getEffectivePersonality {
-    if (_activeCharacter == null) return null;
-    final charId = _getCharacterIdFromCard(_activeCharacter!);
-    final evolved = _evolvedPersonalities[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Public getter: raw evolved scenario delta for the active character (null if none).
-  /// This bypasses the enabled flag and [Current Situation] layering.
-  /// In group mode, returns null — use getEvolvedScenarioFor(card) instead.
-  /// See note on getEffectivePersonality (raw vs layered via thins/leaf).
-  String? get getEffectiveScenario {
-    if (_activeCharacter == null) return null;
-    final charId = _getCharacterIdFromCard(_activeCharacter!);
-    final evolved = _evolvedScenarios[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Get evolved personality for a specific character (works in both 1:1 and group mode).
-  String? getEvolvedPersonalityFor(CharacterCard card) {
-    final charId = _getCharacterIdFromCard(card);
-    final evolved = _evolvedPersonalities[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Get evolved scenario for a specific character (works in both 1:1 and group mode).
-  String? getEvolvedScenarioFor(CharacterCard card) {
-    final charId = _getCharacterIdFromCard(card);
-    final evolved = _evolvedScenarios[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Get evolution count for a specific character.
-  int getEvolutionCountFor(CharacterCard card) {
-    final charId = _getCharacterIdFromCard(card);
-    return _groupEvolutionCounts[charId] ?? 0;
-  }
 
   /// Per-character evolution counts (for group mode).
   final Map<String, int> _groupEvolutionCounts = {};
 
-  /// Load evolved fields for all characters in the active group from the
-  /// session's JSON map columns (group_evolved_personalities/scenarios).
-  Future<void> _loadGroupEvolvedFields() async {
-    if (_activeGroup == null || _currentSessionId == null) return;
-    try {
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session == null) return;
-      final personalities = _tryParseJsonMap(session.groupEvolvedPersonalities);
-      final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-      for (final ch in _groupCharacters) {
-        final charId = _getCharacterIdFromCard(ch);
-        _evolvedPersonalities[charId] = personalities[charId] ?? '';
-        _evolvedScenarios[charId] = scenarios[charId] ?? '';
-        _groupEvolutionCounts[charId] = 0;
-      }
-    } catch (e) {
-      debugPrint('[Evolution] Failed to load group evolved fields: $e');
-    }
-  }
-
-  /// Whether evolution extraction is currently running.
-  bool get isEvolvingCharacter => _isEvolvingCharacter;
-
-  /// Current status message during evolution.
-  String get evolutionStatus => _evolutionStatus;
-
-  /// Error message from the last evolution attempt (empty if no error).
-  String get evolutionError => _evolutionError;
-
-  // Duplicate old triggerEvolutionNow body excised (thin delegate to leaf is earlier near late final; deletion part of task).
-
-  // Old _triggerCharacterEvolution + _extractCharacterEvolution bodies excised
-  // (full logic now in evolution_service leaf step 14; god thins call leaf;
-  // target selection / LLM / parse / persist now in leaf via cbs; deletion part of task).
-  // (The god thin _triggerCharacterEvolution and triggerEvolutionNow are defined
-  // earlier near the late final.)
-
-  /// Reset evolved fields back to original for a character.
-  /// In 1:1 mode, targets the active character. In group mode, pass an explicit target.
-  Future<void> resetCharacterEvolution({CharacterCard? target}) async {
-    final card = target ?? _activeCharacter;
-    if (_currentSessionId == null) return;
-    final charId = card != null ? _getCharacterIdFromCard(card) : null;
-
-    if (_activeGroup != null && charId != null) {
-      // Group mode: remove this char's key from both JSON map columns
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session != null) {
-        final personalities = _tryParseJsonMap(
-          session.groupEvolvedPersonalities,
-        );
-        final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-        personalities.remove(charId);
-        scenarios.remove(charId);
-        await _db.patchSession(
-          SessionsCompanion(
-            id: drift.Value(_currentSessionId!),
-            groupEvolvedPersonalities: drift.Value(jsonEncode(personalities)),
-            groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
-          ),
-        );
-      }
-    } else {
-      // 1:1 mode: clear plain columns
-      await _db.patchSession(
-        SessionsCompanion(
-          id: drift.Value(_currentSessionId!),
-          evolvedPersonality: const drift.Value(''),
-          evolvedScenario: const drift.Value(''),
-          evolutionCount: const drift.Value(0),
-        ),
-      );
-    }
-
-    if (charId != null) {
-      _evolvedPersonalities.remove(charId);
-      _evolvedScenarios.remove(charId);
-      _groupEvolutionCounts.remove(charId);
-    }
-    if (_activeCharacter != null &&
-        (charId == null ||
-            _getCharacterIdFromCard(_activeCharacter!) == charId)) {
-      _characterEvolutionCount = 0;
-    }
-    notifyListeners();
-    debugPrint(
-      '[Evolution] Reset to original for ${card?.name ?? "active character"}',
-    );
-  }
-
-  /// Update the evolved personality text manually (user edits).
-  /// In group mode, pass an explicit target character.
-  Future<void> updateEvolvedPersonality(
-    String text, {
-    CharacterCard? target,
-  }) async {
-    if (_currentSessionId == null) return;
-    final card = target ?? _activeCharacter;
-    final charId = card != null ? _getCharacterIdFromCard(card) : null;
-
-    if (_activeGroup != null && charId != null) {
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session != null) {
-        final personalities = _tryParseJsonMap(
-          session.groupEvolvedPersonalities,
-        );
-        personalities[charId] = text;
-        await _db.patchSession(
-          SessionsCompanion(
-            id: drift.Value(_currentSessionId!),
-            groupEvolvedPersonalities: drift.Value(jsonEncode(personalities)),
-          ),
-        );
-      }
-    } else {
-      await _db.patchSession(
-        SessionsCompanion(
-          id: drift.Value(_currentSessionId!),
-          evolvedPersonality: drift.Value(text),
-        ),
-      );
-    }
-    if (charId != null) _evolvedPersonalities[charId] = text;
-    notifyListeners();
-  }
-
-  /// Update the evolved scenario text manually (user edits).
-  /// In group mode, pass an explicit target character.
-  Future<void> updateEvolvedScenario(
-    String text, {
-    CharacterCard? target,
-  }) async {
-    if (_currentSessionId == null) return;
-    final card = target ?? _activeCharacter;
-    final charId = card != null ? _getCharacterIdFromCard(card) : null;
-
-    if (_activeGroup != null && charId != null) {
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session != null) {
-        final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-        scenarios[charId] = text;
-        await _db.patchSession(
-          SessionsCompanion(
-            id: drift.Value(_currentSessionId!),
-            groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
-          ),
-        );
-      }
-    } else {
-      await _db.patchSession(
-        SessionsCompanion(
-          id: drift.Value(_currentSessionId!),
-          evolvedScenario: drift.Value(text),
-        ),
-      );
-    }
-    if (charId != null) _evolvedScenarios[charId] = text;
-    notifyListeners();
-  }
 
   /// Get the list of character IDs to search for RAG memory retrieval.
   /// Reads the current character's `memorySources` from the DB and includes
