@@ -9403,15 +9403,53 @@ class ChatService extends ChangeNotifier {
       }
 
       if (_storageService.realismSettings.realismOneShotEval) {
+        debugPrint(
+          '[Realism:Unified] One-shot eval for ${speaker.name} ($charId)',
+        );
         await _evaluateOneShotCall(onChunk: handleChunk);
       } else {
+        // Run the four evals AND the batched verifier pass — identical to the
+        // (former) centralized 1:1 path, so EVERY speaker (host or group member)
+        // gets the same double-checked realism. This is the parity unification.
+        debugPrint(
+          '[Realism:Unified] 4-call eval + verifier for ${speaker.name} ($charId)',
+        );
+        _realismEvals.beginCollectForBatchedVerification();
         await _fireStaggeredRealismEvals(handleChunk);
+        await _realismEvals.finalizeBatchedRealismVerifications();
+
+        final collected = _realismEvals.getCollectedForBatch();
+        if (collected.isNotEmpty) {
+          debugPrint(
+            '[Realism:Unified] Verifying ${collected.length} eval(s) for '
+            '${speaker.name}',
+          );
+          final items = collected
+              .map(
+                (p) => (
+                  evalKind: p['kind'] as String,
+                  rawOutput: p['raw'] as String,
+                  sceneResponse: p['scene'] as String,
+                  preState: null,
+                  activeChar: _activeCharacter,
+                  activeGroup: _activeGroup,
+                  recentMessages: _messages,
+                  promptText: p['prompt'] as String?,
+                  injections: (p['injections'] as Map?)?.cast<String, String>(),
+                  strictnessOverride: null,
+                  maxPassesOverride: null,
+                ),
+              )
+              .toList();
+          final batchRes = await _realismVerifier.verifyBatch(items);
+          await _realismEvals.applyBatchResults(batchRes);
+        }
       }
 
       // Handle cancellation after the eval calls
       if (_realismEvalCancelled) {
         debugPrint(
-          '[Realism:Group] Evaluation cancelled during/after LLM calls for ${speaker.name}',
+          '[Realism:Unified] Evaluation cancelled during/after LLM calls for ${speaker.name}',
         );
         _realismEvalCancelled = false;
         return;
