@@ -84,11 +84,18 @@ extension ChatServiceRealismDance on ChatService {
 
       // Now load the post-decay state into scalars for the remainder of the speaker eval + prompt injection.
       _loadGroupRealismIntoScalars(charId);
-    } else {
-      // Load this speaker's persisted group realism state into the scalar fields
-      // that the eval methods will read and mutate.
+    } else if (_activeGroup != null) {
+      // Group speaker (observer mode or needs-off): load this speaker's persisted
+      // group realism state into the scalar fields the eval will read and mutate.
       _loadGroupRealismIntoScalars(charId);
     }
+    // 1:1 host: the scalar fields ALREADY hold this character's loaded + post-decay
+    // state (restored by loadSession, decayed in sendMessage). The _groupRealism map
+    // is a group-only store whose writes are gated on `_activeGroup != null`, so
+    // loading from it here would overwrite the host's real state with empty defaults
+    // (bond 0, trust default, fresh needs) — this was the "loading a 1:1 chat nukes
+    // realism" regression. The eval mutates the scalars in place; _saveChat persists
+    // them as it always has for 1:1.
 
     // Phase 2: Ensure hidden inter-character relationship tracking is seeded
     // for all other group members (neutral 0). This happens on the speaker's
@@ -202,7 +209,12 @@ extension ChatServiceRealismDance on ChatService {
 
       // Harvest the now-updated scalar fields back into this speaker's
       // _groupRealism entry so prompt injection and UI see fresh values.
-      _saveScalarsIntoGroupRealism(charId);
+      // Group-only: the 1:1 host's scalars are the canonical store (persisted by
+      // _saveChat below); the group-map writes no-op for the host anyway, and
+      // reloading from the map is what nuked the host's state (see the load note above).
+      if (_activeGroup != null) {
+        _saveScalarsIntoGroupRealism(charId);
+      }
 
       // Synthesize metadata for timeline / chips (best-effort, same as 1:1 path)
       _pendingRealismMetadata ??= {};

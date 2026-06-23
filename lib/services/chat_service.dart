@@ -3092,22 +3092,20 @@ class ChatService extends ChangeNotifier {
 
       // Single-path bridge: realism evaluation now runs inside _generateResponse
       // for EVERY speaker (1:1 host or group member) via
-      // _evaluateRealismForUpcomingSpeaker. For the 1:1 host, mirror the
-      // just-decayed working registers into the cast store so that path's load
-      // reads the correct post-decay state instead of a stale entry. (Group
-      // speakers persist their own state inside that eval.)
-      if (_activeGroup == null) {
-        debugPrint(
-          '[Realism:Unified] 1:1 host — syncing post-decay realism into the cast store',
-        );
-        _saveScalarsIntoGroupRealism(_getCharacterId());
+      // _evaluateRealismForUpcomingSpeaker.
+      //
+      // No cast-store mirror for the 1:1 host: its scalar fields are already the
+      // canonical realism store (loaded by loadSession, decayed just above), and the
+      // per-character _groupRealism map is group-only — its writes no-op when
+      // _activeGroup == null. Mirroring was a no-op, and the eval path deliberately
+      // does NOT reload the host from that empty map (doing so reset
+      // bond/trust/emotion/needs to defaults). See _evaluateRealismForUpcomingSpeaker.
+      if (_activeGroup == null && _activeCharacter != null) {
         // Run the SINGLE eval path for the host now — on a fresh user turn only.
         // (Regen/continue call _generateResponse directly, bypassing this, so the
         // host is not re-evaluated; cancellation is caught by the check below,
         // before generation — preserving the cancel-aborts-generation escape.)
-        if (_activeCharacter != null) {
-          await _evaluateRealismForUpcomingSpeaker(_activeCharacter!);
-        }
+        await _evaluateRealismForUpcomingSpeaker(_activeCharacter!);
       }
     }
 
