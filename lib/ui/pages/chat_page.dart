@@ -51,7 +51,6 @@ import 'package:front_porch_ai/ui/dialogs/scene_guest_picker_dialog.dart';
 // Old ImageGenDialog removed in Stage 3 (full from-scratch Image Studio).
 // Studio launched below; see lib/ui/image_studio/ and _showImageGenDialog.
 import 'package:front_porch_ai/ui/dialogs/kobold_log_dialog.dart';
-import 'package:front_porch_ai/ui/pages/fork_to_group_page.dart';
 // Stage 3 Image Studio (replaces old image_gen_dialog completely)
 import 'package:front_porch_ai/ui/image_studio/image_studio.dart';
 
@@ -299,6 +298,24 @@ class _ChatPageState extends State<ChatPage> {
     chat.dismissGuestPicker();
     if (selected != null) {
       await chat.joinSceneGuest(selected);
+    }
+  }
+
+  /// Replacement for the removed Fork-to-Group wizard: pick a library character
+  /// and bring them in as a FULL participant via the unified `joinFull` path,
+  /// converting the current 1:1 into a group in place (with an organic entrance).
+  /// Same picker as `/join`; only the join tier differs.
+  Future<void> _showConvertToGroupPicker(ChatService chat) async {
+    final selected = await showDialog<CharacterCard>(
+      context: context,
+      builder: (_) => SceneGuestPickerDialog(
+        characters: chat.joinableGuestCharacters,
+        initialFilter: '',
+        resolveImage: _resolveCharImage,
+      ),
+    );
+    if (selected != null) {
+      await chat.joinFull(selected);
     }
   }
 
@@ -2421,11 +2438,7 @@ class _ChatPageState extends State<ChatPage> {
                               ContextViewerDialog(chatService: chatService),
                         );
                       } else if (value == 'fork_group') {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ForkToGroupPage(),
-                          ),
-                        );
+                        _showConvertToGroupPicker(chatService);
                       } else if (value == 'kobold_log') {
                         showDialog(
                           context: context,
@@ -2519,7 +2532,7 @@ class _ChatPageState extends State<ChatPage> {
                                 color: Colors.purpleAccent,
                               ),
                               SizedBox(width: 12),
-                              Text('Fork to Group Chat'),
+                              Text('Add Character (Group)…'),
                             ],
                           ),
                         ),
