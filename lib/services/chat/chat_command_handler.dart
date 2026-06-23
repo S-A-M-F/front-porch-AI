@@ -76,6 +76,9 @@ class ChatCommandHandler {
     required List<CharacterCard> Function() getGroupJoinableCharacters,
     required Future<bool> Function(CharacterCard member) removeGroupMember,
     required Future<void> Function(CharacterCard member) speakGroupMember,
+    required bool Function() isGroupTurnOrderRandom,
+    required Future<void> Function(bool random, List<CharacterCard>? customOrder)
+    setGroupTurnOrder,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -95,7 +98,9 @@ class ChatCommandHandler {
        _getGroupMembers = getGroupMembers,
        _getGroupJoinableCharacters = getGroupJoinableCharacters,
        _removeGroupMember = removeGroupMember,
-       _speakGroupMember = speakGroupMember;
+       _speakGroupMember = speakGroupMember,
+       _isGroupTurnOrderRandom = isGroupTurnOrderRandom,
+       _setGroupTurnOrder = setGroupTurnOrder;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -117,6 +122,9 @@ class ChatCommandHandler {
   final List<CharacterCard> Function() _getGroupJoinableCharacters;
   final Future<bool> Function(CharacterCard member) _removeGroupMember;
   final Future<void> Function(CharacterCard member) _speakGroupMember;
+  final bool Function() _isGroupTurnOrderRandom;
+  final Future<void> Function(bool random, List<CharacterCard>? customOrder)
+  _setGroupTurnOrder;
 
   /// The user-facing slash-command reference (single source of truth for the
   /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
@@ -146,6 +154,11 @@ class ChatCommandHandler {
       'exit',
       '/exit [name]',
       'A guest leaves (narrated); in a group, removes that full member by name',
+    ),
+    SlashCommandInfo(
+      'turnorder',
+      '/turnorder [random | <name>, …]',
+      'Set how a group takes turns: round-robin, random, or an explicit order',
     ),
     SlashCommandInfo(
       'scan',
@@ -220,6 +233,11 @@ class ChatCommandHandler {
 
       case 'exit':
         await _handleExit(args);
+        return true;
+
+      case 'turnorder':
+      case 'turn-order':
+        await _handleTurnOrder(args);
         return true;
 
       default:
@@ -572,5 +590,91 @@ class ChatCommandHandler {
     if (partial.length == 1) return partial.first;
     _onSystemMessage('⚠ No group member named "$args" is here.');
     return null;
+  }
+
+  // ── Group: /turnorder [random | roundrobin | <name>, <name>, …] ─────────
+  // Adjust how a group takes turns on the fly. No args reports the current mode
+  // + rotation. `random`/`roundrobin` switch mode (persisted). A name list sets
+  // an explicit round-robin sequence for the session (any members left unnamed
+  // are appended so nobody drops out of the rotation).
+  Future<void> _handleTurnOrder(String args) async {
+    final members = _getGroupMembers();
+    if (members.isEmpty) {
+      _onSystemMessage('⚠ Turn order only applies inside a group chat.');
+      return;
+    }
+    final order = members.map((m) => m.name).join(' → ');
+    final spec = args.trim();
+
+    if (spec.isEmpty) {
+      final mode = _isGroupTurnOrderRandom() ? 'random' : 'round-robin';
+      _onSystemMessage(
+        'Turn order: $mode. Current rotation: $order.\n'
+        'Change it with /turnorder random, /turnorder roundrobin, or '
+        '/turnorder <name>, <name>, … for an explicit order.',
+      );
+      return;
+    }
+
+    final lower = spec.toLowerCase();
+    if (lower == 'random' || lower == 'rand' || lower == 'shuffle') {
+      await _setGroupTurnOrder(true, null);
+      _onSystemMessage('🔀 Turn order set to random.');
+      return;
+    }
+    if (lower == 'roundrobin' ||
+        lower == 'round-robin' ||
+        lower == 'rr' ||
+        lower == 'fixed' ||
+        lower == 'sequential') {
+      await _setGroupTurnOrder(false, null);
+      _onSystemMessage('🔁 Turn order set to round-robin: $order.');
+      return;
+    }
+
+    // Explicit order: comma-separated names (fallback to whitespace) → members.
+    final raw = spec.contains(',')
+        ? spec.split(',')
+        : spec.split(RegExp(r'\s+'));
+    final wanted = raw.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    final ordered = <CharacterCard>[];
+    final used = <String>{};
+    for (final w in wanted) {
+      final lw = w.toLowerCase();
+      CharacterCard? match;
+      for (final m in members) {
+        if (m.name.toLowerCase() == lw && !used.contains(m.name)) {
+          match = m;
+          break;
+        }
+      }
+      if (match == null) {
+        for (final m in members) {
+          if (m.name.toLowerCase().contains(lw) && !used.contains(m.name)) {
+            match = m;
+            break;
+          }
+        }
+      }
+      if (match == null) {
+        _onSystemMessage(
+          '⚠ No group member matches "$w". Members: '
+          '${members.map((m) => m.name).join(', ')}.',
+        );
+        return;
+      }
+      ordered.add(match);
+      used.add(match.name);
+    }
+    // Keep anyone not named (in their existing order) so nobody drops out.
+    for (final m in members) {
+      if (!used.contains(m.name)) ordered.add(m);
+    }
+    await _setGroupTurnOrder(false, ordered);
+    _onSystemMessage(
+      '🔁 Turn order set to: ${ordered.map((m) => m.name).join(' → ')} '
+      '(this session).',
+    );
   }
 }

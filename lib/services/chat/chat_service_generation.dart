@@ -842,7 +842,10 @@ extension ChatServiceGeneration on ChatService {
             ? null
             : Map<String, dynamic>.from(_pendingRealismMetadata!);
         debugPrint(
-          '[Realism:Metadata] Attaching to new message: bond_delta=${initialMetadata?['bond_delta']}, keys=${initialMetadata?.keys.toList()}',
+          '[Realism:Metadata] PRE-GEN attach (needs_deltas + any post-gen '
+          'deltas are added AFTER this): '
+          'bond_delta=${initialMetadata?['bond_delta']}, '
+          'keys=${initialMetadata?.keys.toList()}',
         );
         _messages.add(
           ChatMessage(

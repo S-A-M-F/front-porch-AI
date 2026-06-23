@@ -73,6 +73,32 @@ extension ChatServiceGroupSettings on ChatService {
     notifyListeners();
   }
 
+  /// Whether the active group currently uses RANDOM turn order (vs round-robin).
+  bool get isGroupTurnOrderRandom =>
+      _activeGroup?.turnOrder == TurnOrder.random;
+
+  /// Set the active group's turn order on the fly (the `/turnorder` macro).
+  /// [random] true → a random member answers each turn; false → round-robin.
+  /// When [customOrder] is supplied (round-robin only) the live roster is
+  /// reordered to that exact sequence so the rotation follows it. The MODE is
+  /// persisted on the group; a custom ORDER is session-scoped (the roster reloads
+  /// in member-insertion order on next open — there is no per-member sort column).
+  Future<void> setGroupTurnOrder(
+    bool random,
+    List<CharacterCard>? customOrder,
+  ) async {
+    final group = _activeGroup;
+    if (group == null) return;
+    group.turnOrder = random ? TurnOrder.random : TurnOrder.roundRobin;
+    if (!random && customOrder != null && customOrder.isNotEmpty) {
+      _groupManager?.refreshCharacters(customOrder);
+    }
+    _groupManager?.resetTurnState(); // fresh pointer so the order starts at #1
+    await _groupChatRepository?.save(group);
+    await _saveChat();
+    notifyListeners();
+  }
+
   /// Returns the Author's Note text (if any) stored specifically for this
   /// character within the current *group* chat. Uses the stable char ID.
   /// Returns '' if not in group mode or no per-character note has been set.

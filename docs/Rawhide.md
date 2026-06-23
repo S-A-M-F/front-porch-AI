@@ -4,6 +4,12 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🔀 **`/turnorder` — control who speaks when in a group** — tired of characters answering in a random order? In any group chat, type **`/turnorder roundrobin`** for a predictable cycle, **`/turnorder random`** to shuffle, or set an exact sequence with **`/turnorder Mara, Kai, Rin`** (anyone you leave out is added to the end, so nobody drops out of the rotation). `/turnorder` on its own shows the current mode and order. No more spamming `/speak` to wrangle the order.
+
+- 🔥 **NSFW Enhancement (arousal) now works in group chats** — the arousal/lust toggle used to only exist in 1:1 chats, so in a group there was literally no way to turn it on and arousal never tracked. It now appears in the group sidebar, and flipping it correctly applies to **every** member (not just one), so lust starts moving for the whole cast.
+
+- 🕯️ **Scene time no longer resets when you turn a 1:1 into a group** — converting a solo chat to a group (or collapsing back) used to snap a fixed scene time like "evening, Day 1" back to "morning, Day 1". Now the time of day and day count carry across the conversion intact, even with passage-of-time turned off.
+
 - 💾 **Smarter automatic backups** — your database is now backed up every 30 minutes and kept on a two-tier rolling schedule: the most recent snapshots *plus* one backup per day for the last 7 days. So whether you need to undo something from this afternoon or roll back to yesterday's data, there's a restore point waiting — and old ones are pruned automatically so they never pile up. Manage and restore them on the Backups screen.
 
 - ⚠️ **Cloud Sync is deprecated** — Cloud Sync has proven unreliable across devices (it could even bring deleted characters back to life), so it's now marked deprecated and **will be removed in a future release**. It still runs for now, but the supported way forward is the improved local backups above for safekeeping, and **Card export / import** to move characters or groups between devices. A clear notice now appears on the Cloud Sync screen.

@@ -617,6 +617,9 @@ class ChatService extends ChangeNotifier {
         _groupManager?.setNextSpeaker(member);
         await _generateResponse(GenerationMode.normal);
       },
+      isGroupTurnOrderRandom: () => isGroupTurnOrderRandom,
+      setGroupTurnOrder: (random, customOrder) =>
+          setGroupTurnOrder(random, customOrder),
     );
   }
 
@@ -3233,14 +3236,31 @@ class ChatService extends ChangeNotifier {
           final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
             preVec,
           );
+          debugPrint(
+            '[Realism:Needs] Group chip compute: ${needsDeltas.length} '
+            'non-zero need delta(s) vs pre-turn vector for '
+            '${_messages.last.sender}'
+            '${needsDeltas.isEmpty ? " — nothing to show" : ""}',
+          );
           if (needsDeltas.isNotEmpty) {
             _messages.last.activeMetadata ??= {};
             _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
             await _saveChat();
             notifyListeners();
           }
+        } else {
+          debugPrint(
+            '[Realism:Needs] Group chip SKIPPED — no pre-turn needs vector '
+            'found for ${_messages.last.sender} (no chips this turn)',
+          );
         }
       }
+      // Final snapshot of what actually landed on the message (after ALL post-gen
+      // attachment) — unlike the PRE-GEN log, this reflects needs/bond/etc. chips.
+      debugPrint(
+        '[Realism:Metadata] FINAL keys on ${_messages.last.sender}: '
+        '${_messages.last.activeMetadata?.keys.toList()}',
+      );
     }
 
     // ── Scene Guests: auto chime-in ─────────────────────────────────────────
@@ -4019,6 +4039,18 @@ class ChatService extends ChangeNotifier {
 
   Future<void> setNsfwCooldownEnabled(bool enabled) async {
     _nsfwService.setNsfwCooldownEnabled(enabled);
+    // In a group the flag is PER-CHARACTER (each speaker's eval reloads it via
+    // loadNsfwScalarsForSpeaker), so the chat-wide toggle must be written into
+    // EVERY member's _groupRealism entry — otherwise members keep their stale
+    // (off) per-char flag and arousal is never evaluated for them. (1:1 just uses
+    // the scalar above; this loop is a no-op there.)
+    if (_activeGroup != null) {
+      for (final c in _groupCharacters) {
+        final id = _getCharacterIdFromCard(c);
+        (_groupRealism[id] ??= <String, dynamic>{})['nsfwCooldownEnabled'] =
+            enabled;
+      }
+    }
     await _saveChat();
     notifyListeners();
   }

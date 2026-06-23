@@ -40,6 +40,8 @@ void main() {
     late List<CharacterCard> groupJoinable;
     late List<CharacterCard> removedMembers;
     late List<CharacterCard> spokeMembers;
+    late bool turnOrderRandom;
+    late List<(bool, List<CharacterCard>?)> turnOrderCalls;
     bool castScanFound = false;
 
     ChatCommandHandler build({bool activeSet = true}) {
@@ -73,6 +75,10 @@ void main() {
           return true;
         },
         speakGroupMember: (m) async => spokeMembers.add(m),
+        isGroupTurnOrderRandom: () => turnOrderRandom,
+        setGroupTurnOrder: (random, order) async {
+          turnOrderCalls.add((random, order));
+        },
       );
     }
 
@@ -97,6 +103,8 @@ void main() {
       groupJoinable = [];
       removedMembers = [];
       spokeMembers = [];
+      turnOrderRandom = false;
+      turnOrderCalls = [];
       castScanFound = false;
     });
 
@@ -293,6 +301,55 @@ void main() {
       expect(await h.handle('/speak Ar'), true);
       expect(spokeMembers, isEmpty);
       expect(systemMessages.single, contains('matches multiple members'));
+    });
+
+    test('/turnorder random sets random mode', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/turnorder random'), true);
+      expect(turnOrderCalls.single.$1, true);
+      expect(turnOrderCalls.single.$2, isNull);
+    });
+
+    test('/turnorder roundrobin sets round-robin mode', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/turnorder roundrobin'), true);
+      expect(turnOrderCalls.single.$1, false);
+      expect(turnOrderCalls.single.$2, isNull);
+    });
+
+    test('/turnorder <names> sets an explicit order (unnamed appended)', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn'), _guest('Cleo')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/turnorder Bryn, Aria'), true);
+      final call = turnOrderCalls.single;
+      expect(call.$1, false);
+      expect(call.$2!.map((c) => c.name).toList(), ['Bryn', 'Aria', 'Cleo']);
+    });
+
+    test('/turnorder <unknown name> errors and sets nothing', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      final h = build(activeSet: false);
+      expect(await h.handle('/turnorder Zed'), true);
+      expect(turnOrderCalls, isEmpty);
+      expect(systemMessages.single, contains('No group member matches'));
+    });
+
+    test('/turnorder (no args) reports current mode, sets nothing', () async {
+      groupMembers = [_guest('Aria'), _guest('Bryn')];
+      turnOrderRandom = true;
+      final h = build(activeSet: false);
+      expect(await h.handle('/turnorder'), true);
+      expect(turnOrderCalls, isEmpty);
+      expect(systemMessages.single, contains('random'));
+    });
+
+    test('/turnorder outside a group is rejected', () async {
+      final h = build(); // 1:1, no group members
+      expect(await h.handle('/turnorder random'), true);
+      expect(turnOrderCalls, isEmpty);
+      expect(systemMessages.single, contains('only applies inside a group'));
     });
 
     test('/exit cannot remove the only remaining group member', () async {

@@ -3343,6 +3343,13 @@ class _ChatPageState extends State<ChatPage> {
                   Consumer<ChatService>(
                     builder: (context, chat, _) => SceneTimeSection(chat: chat),
                   ),
+                  // NSFW Enhancement (arousal) — chat-wide toggle. Previously only
+                  // in the 1:1 RealismSection, so groups had no way to enable it;
+                  // the ChatService setter propagates the flag to every member.
+                  Consumer<ChatService>(
+                    builder: (context, chat, _) =>
+                        NsfwEnhancementsSection(chat: chat),
+                  ),
                   const SizedBox(height: 8),
                   GroupLorebookSection(chatService: chatService),
                   const SizedBox(height: 8),

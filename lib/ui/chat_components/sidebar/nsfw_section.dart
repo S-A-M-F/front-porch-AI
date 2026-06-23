@@ -107,7 +107,10 @@ class NsfwEnhancementsSectionState extends State<NsfwEnhancementsSection> {
                     onChanged: widget.chat.isGenerating
                         ? null
                         : (val) {
-                            widget.chat.nsfwService.setNsfwCooldownEnabled(val);
+                            // Route through ChatService (not the raw service) so
+                            // a group toggle propagates the flag to every member's
+                            // per-character store, not just the global scalar.
+                            widget.chat.setNsfwCooldownEnabled(val);
                             if (val) setState(() => _expanded = true);
                           },
                   ),
