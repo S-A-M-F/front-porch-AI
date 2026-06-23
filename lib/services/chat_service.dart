@@ -82,6 +82,11 @@ import 'package:front_porch_ai/services/chat/evolution_service.dart';
 import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:drift/drift.dart' as drift;
 
+// Cohesive method groups extracted into part files to keep this file shrinking
+// toward the 500-line cap (see CLAUDE.md). Parts share this library's imports and
+// private members; behaviour is unchanged.
+part 'chat/chat_service_group_read.dart';
+
 // Internal flag to signal a cancellation request for realism evaluation.
 // This is a file-scope flag to avoid needing to thread state through the
 // entire class in this patch, and is reset once the interruption is surfaced
@@ -2280,143 +2285,6 @@ class ChatService extends ChangeNotifier {
   bool get _shouldTrackInterCharacterRelationships {
     if (_activeGroup == null) return false;
     return _groupCharacters.length <= 4;
-  }
-
-  /// Returns the current emotion label (e.g. "joy", "sadness", "affection") for
-  /// the given character when in a realism-enabled group chat. Returns null otherwise.
-  String? getEmotionForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['emotion'] as String?;
-    return (raw != null && raw.isNotEmpty) ? raw : null;
-  }
-
-  /// Returns a snapshot of all realism data for a specific character in the
-  /// current group (when `isGroupRealismActive` is true). Includes keys like:
-  /// 'emotion', 'emotionIntensity', 'affection', 'trust', 'needs', 'fixation',
-  /// and (when group size ≤ 4) the hidden 'relationships' map toward other members.
-  /// This is primarily for debugging/advanced use; the UI never exposes inter-char data.
-  /// Returns null if not in an active realism group or no data for that char.
-  Map<String, dynamic>? getRealismStateForGroupCharacter(
-    CharacterCard character,
-  ) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final data = _groupRealism[id];
-    return (data != null && data.isNotEmpty) ? Map.unmodifiable(data) : null;
-  }
-
-  // ── Convenient per-character realism accessors for the UI ───────────────
-
-  /// Returns the full needs vector for the given group character.
-  /// Empty map if not in group realism mode or no data.
-  /// Only official needs keys are returned (legacy bad keys such as 'arousal'/'libido'
-  /// from older group data are silently filtered).
-  Map<String, int> getNeedsForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return const {};
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['needs'];
-    final result = <String, int>{};
-    for (final k in NeedsSimulation.needKeys) {
-      final v = (raw is Map) ? raw[k] : null;
-      if (v is num) {
-        result[k] = v.toInt();
-      } else {
-        // Fill any missing official needs so the UI always shows the complete set.
-        // This handles legacy/incomplete group data after previous cleanups.
-        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
-      }
-    }
-    return result;
-  }
-
-  int getAffectionForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return 0;
-    final id = _getCharacterIdFromCard(character);
-    return (_groupRealism[id]?['affection'] as num?)?.toInt() ?? 0;
-  }
-
-  int getTrustForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return 0;
-    final id = _getCharacterIdFromCard(character);
-    return (_groupRealism[id]?['trust'] as num?)?.toInt() ?? 0;
-  }
-
-  String? getFixationForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['fixation'] as String?;
-    return (raw != null && raw.isNotEmpty) ? raw : null;
-  }
-
-  int getArousalForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return 0;
-    final id = _getCharacterIdFromCard(character);
-    return (_groupRealism[id]?['arousal'] as num?)?.toInt() ?? 0;
-  }
-
-  String? getEmotionIntensityForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['emotionIntensity'] as String?;
-    return (raw != null && raw.isNotEmpty) ? raw : null;
-  }
-
-  /// Returns the remaining lifespan (in turns) for the current fixation of the
-  /// given group character, if any. Returns null if not in active group realism
-  /// or no fixation data.
-  int? getFixationLifespanForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['fixationLifespan'] as num?;
-    return raw?.toInt();
-  }
-
-  /// Returns the top N most urgent needs (lowest value first) for the character,
-  /// as a list of (needName, value) pairs.
-  List<(String, int)> getTopUrgentNeedsForGroupCharacter(
-    CharacterCard character, {
-    int count = 2,
-  }) {
-    final needs = getNeedsForGroupCharacter(character);
-    if (needs.isEmpty) return const [];
-
-    final sorted = needs.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value)); // lowest = most urgent
-
-    return sorted.take(count).map((e) => (e.key, e.value)).toList();
-  }
-
-  // ── Hidden inter-character relationship helpers (Phase 0 foundation) ─────
-  // These track how group members feel about *each other* (invisible to UI).
-  // All visible bars/UI continue to reflect only feelings toward the user.
-  // Full inter-char tracking is hard-capped at groups of 4 or fewer (enforced at usage sites).
-
-  /// Returns the map of hidden inter-character relationship scores for the given
-  /// group character (otherCharId → score in -300..+300 range, same scale as bond).
-  /// Empty map if not in group realism mode or no data yet.
-  /// These values are strictly internal and are never exposed in any user-facing UI.
-  ///
-  /// Backward-compat: If an old checkpoint is missing the 'relationships' key for
-  /// a character, we naturally return empty (no migration needed).
-  // (inter-char relationship shims excised in final cleanup; use relationshipService directly)
-
-  /// Clears the per-character realism state (emotion, bond/affection, trust,
-  /// arousal, fixation, needs vector, and any hidden inter-character relationships)
-  /// for the specified character in the current group chat session.
-  /// Persists the change via the hidden checkpoint.
-  /// Safe to call even if no prior state existed for the character.
-  void resetRealismForGroupCharacter(CharacterCard character) {
-    if (_activeGroup == null) return;
-    final id = _getCharacterIdFromCard(character);
-    if (_groupRealism.containsKey(id)) {
-      _groupRealism.remove(
-        id,
-      ); // also clears hidden 'relationships' toward other group members
-      // (old checkpoint call removed in v30)
-      debugPrint('[GroupRealism] Reset per-character state for $id');
-      notifyListeners();
-    }
   }
 
   double get tokensPerSecond {
