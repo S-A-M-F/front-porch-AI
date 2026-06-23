@@ -264,7 +264,12 @@ class ChatCommandHandler {
 
     final (full: full, name: wanted) = _parseJoinFlags(args);
 
-    final candidates = _getJoinableCharacters();
+    // Lite can only pull in characters not already present. Full (convert to a
+    // group) can ALSO target a character who is currently a lite guest —
+    // promoting them — so its candidate pool includes present guests.
+    final candidates = full
+        ? <CharacterCard>[..._getJoinableCharacters(), ..._getSceneGuestCards()]
+        : _getJoinableCharacters();
     if (candidates.isEmpty) {
       _onSystemMessage(
         '⚠ No other characters are available to join this chat.',

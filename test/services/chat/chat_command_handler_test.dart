@@ -281,6 +281,29 @@ void main() {
       expect(systemMessages.single, contains('full name'));
     });
 
+    test('/join --full can target a PRESENT guest (promotion)', () async {
+      // The guest is present (not in the joinable list), yet --full resolves it
+      // because full's candidate pool includes present guests.
+      guests = [_guest('Mara')];
+      joinable = [_guest('Pax')];
+      final h = build();
+      expect(await h.handle('/join --full Mara'), true);
+      expect(joinedFull.single.name, 'Mara');
+      expect(joined, isEmpty);
+    });
+
+    test('/join (lite) cannot target a present guest', () async {
+      // Lite's pool excludes present guests, so the same name finds no match
+      // and falls back to the picker rather than re-adding a present guest.
+      guests = [_guest('Mara')];
+      joinable = [_guest('Pax')];
+      final h = build();
+      await h.handle('/join Mara');
+      expect(joined, isEmpty);
+      expect(joinedFull, isEmpty);
+      expect(pickerRequests.single, 'Mara');
+    });
+
     test('/scan outside a 1:1 chat is rejected before scanning', () async {
       final h = build(activeSet: false);
       expect(await h.handle('/scan'), true);

@@ -354,19 +354,37 @@ class ChatService extends ChangeNotifier {
       }
       return;
     }
-    // Convert the 1:1 into a group AND have the arriving character make an
-    // organic entrance (creative = LLM-written from the chat so far + their
-    // card), mirroring the lite /join flow — they don't just pop in silently.
-    final group = await forkToGroupChat(
-      [card],
-      repo,
-      entrances: {
-        _getCharacterIdFromCard(card): (
-          text: 'enter the scene naturally, reacting to what is happening',
-          creative: true,
-        ),
-      },
+
+    // 1:1 → group conversion. Bring EVERYONE currently in the scene along: the
+    // host (added by forkToGroupChat) plus every present lite guest — lite NPCs
+    // can't exist in a group, so they're promoted to full members rather than
+    // dropped. A character who is already a present guest just gets promoted
+    // (no fresh entrance); a brand-new arrival makes an organic, LLM-written
+    // entrance from the chat so far + their card (mirroring the lite /join flow).
+    final present = List<CharacterCard>.from(_sceneGuestCards);
+    final cardId = _getCharacterIdFromCard(card);
+    final isPresentGuest = present.any(
+      (g) => _getCharacterIdFromCard(g) == cardId,
     );
+
+    final additional = <CharacterCard>[
+      if (!isPresentGuest) card,
+      ...present,
+    ];
+    final entrances = isPresentGuest
+        ? const <String, ({String text, bool creative})>{}
+        : {
+            cardId: (
+              text: 'enter the scene naturally, reacting to what is happening',
+              creative: true,
+            ),
+          };
+
+    // The present guests are becoming full members — drop their lite state so
+    // they aren't represented twice once we switch into group mode.
+    _sceneGuestIds.clear();
+
+    final group = await forkToGroupChat(additional, repo, entrances: entrances);
     if (group == null) {
       _setGuestStatus(
         '⚠ Could not convert this chat into a group.',
