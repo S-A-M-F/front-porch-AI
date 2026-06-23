@@ -454,10 +454,11 @@ extension ChatServiceCast on ChatService {
       }
     }
 
-    // Objectives -> COPY the host's 1:1 objectives onto the host member, re-keyed
-    // to its instance id + the new group session. (The original 1:1 session keeps
-    // its own copy as the revert snapshot.)
+    // COPY the host's 1:1 objectives + RAG memory onto the new group so nothing
+    // is lost on conversion (COPY, not move — the original 1:1 stays the revert
+    // snapshot; collapse re-keys these in place instead).
     if (hostSessionId != null && _currentSessionId != null) {
+      // Objectives -> the host MEMBER instance id + new group session.
       final origObjs = await _db.getObjectivesForCharacter(
         originalCharId,
         chatId: hostSessionId,
@@ -476,6 +477,19 @@ extension ChatServiceCast on ChatService {
             injectionDepth: drift.Value(o.injectionDepth),
           ),
         );
+      }
+      // RAG memory -> the GROUP's shared pool (keyed 'group_<id>' via
+      // _getCharacterId, not per-member) so the cast can recall pre-conversion
+      // events that scrolled out of context.
+      try {
+        await _db.copyEmbeddingsForSession(
+          originalCharId,
+          hostSessionId,
+          toCharacterId: _getCharacterId(),
+          toSessionId: _currentSessionId!,
+        );
+      } catch (e) {
+        debugPrint('[Cast] host RAG carry-on-fork (non-fatal): $e');
       }
     }
 

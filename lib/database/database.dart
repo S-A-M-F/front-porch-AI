@@ -2435,6 +2435,46 @@ class AppDatabase extends _$AppDatabase {
     return n;
   }
 
+  /// COPY a character's embeddings for one session under a NEW character id +
+  /// session id, leaving the originals untouched (fresh row ids are assigned).
+  /// Used on 1:1->group fork (`/join`): the host's prior RAG memory is duplicated
+  /// into the group's shared `group_<id>` memory pool on the new group session, so
+  /// the converted cast can recall pre-conversion events that scrolled out of
+  /// context — while the preserved 1:1 keeps its own copy (the revert snapshot).
+  /// COPY, not move, exactly like the objectives carry-on-fork; the inverse
+  /// (group->1:1 collapse) re-keys in place via [reassignEmbeddings]. Returns the
+  /// number of rows copied.
+  Future<int> copyEmbeddingsForSession(
+    String fromCharacterId,
+    String fromSessionId, {
+    required String toCharacterId,
+    required String toSessionId,
+  }) async {
+    final rows = await (select(messageEmbeddings)
+          ..where((e) => e.characterId.equals(fromCharacterId))
+          ..where((e) => e.sessionId.equals(fromSessionId)))
+        .get();
+    if (rows.isEmpty) return 0;
+    final copies = rows
+        .map(
+          (r) => MessageEmbeddingsCompanion(
+            sessionId: Value(toSessionId),
+            characterId: Value(toCharacterId),
+            positionStart: Value(r.positionStart),
+            positionEnd: Value(r.positionEnd),
+            content: Value(r.content),
+            embedding: Value(r.embedding),
+            dimensions: Value(r.dimensions),
+            memoryType: Value(r.memoryType),
+            metadata: Value(r.metadata),
+          ),
+        )
+        .toList();
+    await insertEmbeddings(copies); // assigns fresh ids + batches
+    await bumpSyncVersion();
+    return copies.length;
+  }
+
   Future<int> deleteObjectivesForCharacter(String characterId) => (delete(
     objectives,
   )..where((o) => o.characterId.equals(characterId))).go();

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-23 (feat: RAG memory now carries 1:1 -> group on /join — recall of pre-conversion events)
+- **Files changed**:
+  - lib/database/database.dart — new `copyEmbeddingsForSession(fromCharacterId, fromSessionId, {toCharacterId, toSessionId})`: COPIES a character's RAG embeddings for one session under a new character id + session id (fresh row ids via insertEmbeddings), leaving the originals untouched. COPY — not the collapse direction's in-place `reassignEmbeddings` re-key — because the source 1:1 is preserved as the revert snapshot and must keep its own memory. No schema/build_runner change (query method, not a table change).
+  - lib/services/chat/chat_service_cast.dart — `_carryHostStateIntoForkedGroup` now also copies the host's 1:1 semantic memory into the GROUP's shared pool: from (originalCharId, hostSessionId) to (`_getCharacterId()` = 'group_<id>', the new group session). Folded into the existing objectives-copy guard (no new guard); comments trimmed to keep the file at 499 lines (<500 cap).
+- **Reason**: converting a 1:1 to a group with /join copied the messages + summary but NOT the RAG embedding index, which is keyed by character id ('group_<id>' for groups, library id for 1:1). So the group character could not semantically recall pre-conversion events that had scrolled out of the context window. Now it can. (The reverse — group->1:1 collapse — already carried memory via `reassignEmbeddings`; independently verified lossless in the same review.)
+- **Verification**: flutter analyze clean; chat_service_cast.dart 499 lines; full chat/model test suites pass. Adversarially reviewed (rag-fork + rag-collapse dimensions): COPY semantics, source/target keys, and collapse losslessness all confirmed; zero defects.
+- **Commit hash**: (uncommitted)
+
+
 ## 2026-06-23 (feat: Group Cards carry each member's true library origin so re-imports reconnect — Phase 4)
 - **Files changed**:
   - lib/ui/pages/home_page.dart — group-card EXPORT now writes a per-member `_origin_library_stable_id` = `m.originStableId` (the source library character's stableGroupId) into raw_member_data, DISTINCT from the existing `_original_stable_id` (the export INSTANCE id used only for realism relationship remap). IMPORT now stamps `group_members.memberState` via `GroupMember.encodeProvenance(originStableId: ...)` instead of the old hardcoded `const Value('{}')`, so a re-imported member is reconnectable by MemberOriginResolver (exact stableGroupId on the same machine, name fallback cross-machine). The read is tolerant (`is String`, not a hard cast) so a malformed/foreign non-string value degrades to origin-unknown '{}' rather than dropping the whole member. The machine-local `originLibraryDbId` is deliberately NOT exported (zero read sites; meaningless on another device).
