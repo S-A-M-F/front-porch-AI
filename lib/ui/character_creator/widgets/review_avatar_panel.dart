@@ -21,7 +21,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/image_gen_service.dart';
-import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state_engine.dart';
 import 'package:front_porch_ai/ui/dialogs/image_crop_dialog.dart';
@@ -48,9 +47,6 @@ class ReviewAvatarPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final card = state.generatedCard!;
     final hasAvatar = state.generatedAvatar != null;
-    final isKobold =
-        Provider.of<LLMProvider>(context, listen: false).activeBackend ==
-        BackendType.kobold;
 
     return SizedBox(
       width: 280,
@@ -73,9 +69,7 @@ class ReviewAvatarPanel extends StatelessWidget {
                     )
                   : null,
             ),
-            child: hasAvatar
-                ? null
-                : Center(child: _placeholder(context, isKobold)),
+            child: hasAvatar ? null : Center(child: _placeholder(context)),
           ),
           const SizedBox(height: 12),
           if (hasAvatar) _avatarActions(context),
@@ -135,7 +129,7 @@ class ReviewAvatarPanel extends StatelessWidget {
     );
   }
 
-  Widget _placeholder(BuildContext context, bool isKobold) {
+  Widget _placeholder(BuildContext context) {
     if (state.isGeneratingAvatar) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -150,39 +144,6 @@ class ReviewAvatarPanel extends StatelessWidget {
             ),
           ),
         ],
-      );
-    }
-    if (isKobold) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.content_copy,
-              size: 32,
-              color: AppColors.textTertiary(context),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Avatar generation unavailable with KoboldCpp',
-              style: TextStyle(
-                color: AppColors.textTertiary(context),
-                fontSize: 12,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Copy the image prompt below to generate locally',
-              style: TextStyle(
-                color: AppColors.textTertiary(context),
-                fontSize: 11,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       );
     }
     return Column(
