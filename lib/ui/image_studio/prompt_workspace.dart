@@ -26,7 +26,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 /// The heart of pre-gen control (per Stage 3 spec).
 /// Editable main prompt (prefilled from builder), pills/sections for distilled
 /// source transparency + quick tweaks, negative editor for *this* gen.
-class PromptWorkspace extends StatelessWidget {
+class PromptWorkspace extends StatefulWidget {
   final String prompt;
   final String negative;
   final ImageGenContext ctx;
@@ -51,6 +51,53 @@ class PromptWorkspace extends StatelessWidget {
     required this.onNegativeChanged,
     required this.onCraftLlm,
   });
+
+  @override
+  State<PromptWorkspace> createState() => _PromptWorkspaceState();
+}
+
+class _PromptWorkspaceState extends State<PromptWorkspace> {
+  // Persistent controllers — owned by State, created once. Recreating them per
+  // build (the old pattern) reset the caret to offset 0 on every keystroke, so
+  // each character landed at the start and the prompt came out reversed.
+  late final TextEditingController _promptController;
+  late final TextEditingController _negativeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _promptController = TextEditingController(text: widget.prompt);
+    _negativeController = TextEditingController(text: widget.negative);
+  }
+
+  @override
+  void didUpdateWidget(PromptWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Push parent changes into the controllers ONLY when they differ from what
+    // the field already holds — i.e. an external rewrite (Craft / Refresh with
+    // LLM), not the user's own typing (where widget.prompt already mirrors the
+    // controller). Assigning .text unconditionally would collapse the caret to
+    // offset 0 again; here we set the caret to the end after an external swap.
+    if (widget.prompt != _promptController.text) {
+      _promptController.value = TextEditingValue(
+        text: widget.prompt,
+        selection: TextSelection.collapsed(offset: widget.prompt.length),
+      );
+    }
+    if (widget.negative != _negativeController.text) {
+      _negativeController.value = TextEditingValue(
+        text: widget.negative,
+        selection: TextSelection.collapsed(offset: widget.negative.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    _negativeController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,11 +129,11 @@ class PromptWorkspace extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              if (llmAvailable)
+              if (widget.llmAvailable)
                 Flexible(
                   fit: FlexFit.loose,
                   child: TextButton.icon(
-                    onPressed: isBusy ? null : onCraftLlm,
+                    onPressed: widget.isBusy ? null : widget.onCraftLlm,
                     icon: const Icon(Icons.auto_fix_high, size: 16),
                     label: const Text('Craft / Refresh with LLM'),
                     style: TextButton.styleFrom(
@@ -106,16 +153,13 @@ class PromptWorkspace extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // Main editable prompt field (first-class control).
-          // Use fresh controller seeded from prop (recreation is the current pattern); the
-          // forced end-selection is intentionally omitted to stop cursor-jump fights on parent
-          // rebuilds (e.g. after Craft/Refresh sets new distilled text, or live style re-apply).
-          // User can tap to place caret; craft + external updates still surface the new text
-          // value on the next workspace mount (AnimatedSwitcher + setState).
+          // Main editable prompt field (first-class control). Uses the
+          // persistent State-owned controller; Craft/Refresh updates flow in
+          // via didUpdateWidget (caret moved to end), and typing is preserved.
           TextField(
-            controller: TextEditingController(text: prompt),
-            onChanged: onPromptChanged,
-            enabled: !isBusy,
+            controller: _promptController,
+            onChanged: widget.onPromptChanged,
+            enabled: !widget.isBusy,
             maxLines: 5,
             minLines: 3,
             style: TextStyle(
@@ -168,9 +212,9 @@ class PromptWorkspace extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           TextField(
-            controller: TextEditingController(text: negative),
-            onChanged: onNegativeChanged,
-            enabled: !isBusy,
+            controller: _negativeController,
+            onChanged: widget.onNegativeChanged,
+            enabled: !widget.isBusy,
             maxLines: 2,
             minLines: 1,
             style: TextStyle(
@@ -236,6 +280,7 @@ class PromptWorkspace extends StatelessWidget {
   }
 
   Widget _buildSourcePills(BuildContext context) {
+    final ctx = widget.ctx;
     final pills = <Widget>[];
     if (ctx.characterDescription != null &&
         ctx.characterDescription!.trim().isNotEmpty) {
