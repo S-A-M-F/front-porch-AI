@@ -1827,3 +1827,10 @@ Part of the full-app UI regression golden suite (plan Phase 4). `MessageBubble` 
 - Scope: deliberately minimal. The prompt-shape unification and band-aid removals from the Rawhide refactor are NOT included (they need the missing leaf files); the existing EOS band-aids on main are harmless no-ops (the chat helper ignores banEosToken/trimStop). pseudo-remote on main keeps its own chat copy (not collapsed). Those cleanups ride the normal release cycle.
 - Verification: flutter analyze clean on the changed files (1 pre-existing unrelated warning in chat_service.dart:8005 left as-is); full flutter test = 1246/1246 pass.
 - Commit: (this commit)
+
+## 2026-06-23 — Creator: allow avatar generation on the KoboldCpp LLM backend (dead image-source gating)
+- Files: lib/ui/character_creator/widgets/review_avatar_panel.dart (removed the isKobold gating + the now-unused llm_provider import), lib/ui/character_creator/creator_state_engine.dart (Review-step auto-start gated on imageService.isConfigured instead of activeBackend != kobold; stale doc comment fixed).
+- Reason: User reported the Review step blocked "Generate Avatar" when the chat model was KoboldCpp ("Avatar generation unavailable with KoboldCpp"). Dead code left over from when KoboldCpp was briefly treated as the image-generation source. Avatars actually use the Image Studio image backend (Draw Things / A1111 / remote API), independent of the LLM backend — so the gating was wrong (a KoboldCpp user with Draw Things configured couldn't generate an avatar).
+- Fix: panel always shows the "Generate Avatar" button; Review-step auto-start gated on imageService.isConfigured (the real image backend). generateAvatar already fails gracefully if no image backend is set up. The Setup-step KoboldCpp backend-selection chip is unrelated and untouched.
+- Verification: flutter analyze clean; full flutter test 1246/1246 (goldens unaffected).
+- Commit: (this batch)
