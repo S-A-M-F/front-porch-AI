@@ -108,10 +108,10 @@ extension ChatServiceGeneration on ChatService {
       } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
         systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
-        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
-        systemPrompt = isApi
-            ? ChatService.defaultApiSystemPrompt
-            : ChatService.defaultKoboldSystemPrompt;
+        // Every backend now speaks the OpenAI chat protocol (local KoboldCpp
+        // via its /v1/chat/completions door), so the server applies the model's
+        // instruct template — use the chat-style default system prompt.
+        systemPrompt = ChatService.defaultApiSystemPrompt;
       }
 
       // Path B: When in a group, always attempt to layer the per-character group override
@@ -625,48 +625,29 @@ extension ChatServiceGeneration on ChatService {
 
       // Realism injection was already computed above for budget
 
-      // For chat APIs (OpenRouter, LM Studio), separate the system prompt
-      // so it can be sent as a proper 'system' role message.
-      final isRemoteApi = _llmProvider != null && !_llmProvider!.isLocal;
-      final chatSystemPrompt = isRemoteApi
-          ? "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
-                "Scenario: $scenario\n$mesExampleBlock"
-          : null;
+      // Every backend now speaks the OpenAI chat protocol (local KoboldCpp via
+      // its /v1/chat/completions door), so always send the system content as a
+      // proper 'system' role message and the transcript as the 'user' message —
+      // the server applies the model's instruct template server-side.
+      final chatSystemPrompt =
+          "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
+          "Scenario: $scenario\n$mesExampleBlock";
 
-      final prompt = isRemoteApi
-          ? "<START>\n"
-                "$summaryBlock"
-                "$memoriesBlock"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$objectiveBlock"
-                "$realismBlock"
-                "$needsCatastropheBlock"
-                "$suffix"
-                "$chanceTimeBlock"
-          : "$systemPrompt\n"
-                "$loreContent"
-                "$personaBlock\n"
-                "$userPersonaBlock"
-                "Scenario: $scenario\n"
-                "$mesExampleBlock"
-                "<START>\n"
-                "$summaryBlock"
-                "$memoriesBlock"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$objectiveBlock"
-                "$realismBlock"
-                "$needsCatastropheBlock"
-                "$suffix"
-                "$chanceTimeBlock";
+      final prompt =
+          "<START>\n"
+          "$summaryBlock"
+          "$memoriesBlock"
+          "$history"
+          "$postHistoryBlock"
+          "$authorNoteBlock"
+          "$objectiveBlock"
+          "$realismBlock"
+          "$needsCatastropheBlock"
+          "$suffix"
+          "$chanceTimeBlock";
 
       // Track prompt budget for context viewer (always show full prompt)
-      _lastAssembledPrompt = chatSystemPrompt != null
-          ? '$chatSystemPrompt\n$prompt'
-          : prompt;
+      _lastAssembledPrompt = '$chatSystemPrompt\n$prompt';
       _lastPromptBudget = {
         'System Prompt': (systemPrompt.length / 4).ceil(),
         'Lorebook': (loreContent.length / 4).ceil(),

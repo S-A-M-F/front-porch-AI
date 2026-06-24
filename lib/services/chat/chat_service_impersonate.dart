@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-
 part of '../chat_service.dart';
 
 /// User impersonation — generate a message in the user's voice. Extracted verbatim (zero behaviour change) to shrink the god file.
@@ -60,10 +59,9 @@ extension ChatServiceImpersonate on ChatService {
       } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
         systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
-        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
-        systemPrompt = isApi
-            ? ChatService.defaultApiSystemPrompt
-            : ChatService.defaultKoboldSystemPrompt;
+        // All backends speak the OpenAI chat protocol now (KoboldCpp via its
+        // /v1/chat/completions door), so use the chat-style default prompt.
+        systemPrompt = ChatService.defaultApiSystemPrompt;
       }
 
       if (_activeGroup != null) {
@@ -298,33 +296,20 @@ extension ChatServiceImpersonate on ChatService {
             : '${lastMsg.sender}: ${lastMsg.text}';
       }
 
-      // For chat APIs (OpenRouter, LM Studio), separate the system prompt
-      // so it can be sent as a proper 'system' role message.
-      final isRemoteApi = _llmProvider != null && !_llmProvider!.isLocal;
-      final chatSystemPrompt = isRemoteApi
-          ? "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
-                "Scenario: $scenario\n$mesExampleBlock"
-          : null;
+      // Every backend now speaks the OpenAI chat protocol (local KoboldCpp via
+      // its /v1/chat/completions door), so always send the system content as a
+      // proper 'system' role message and the transcript as the 'user' message.
+      final chatSystemPrompt =
+          "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
+          "Scenario: $scenario\n$mesExampleBlock";
 
-      final prompt = isRemoteApi
-          ? "<START>\n"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$impersonateInstruction"
-                "$suffix"
-          : "$systemPrompt\n"
-                "$loreContent"
-                "$personaBlock\n"
-                "$userPersonaBlock"
-                "Scenario: $scenario\n"
-                "$mesExampleBlock"
-                "<START>\n"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$impersonateInstruction"
-                "$suffix";
+      final prompt =
+          "<START>\n"
+          "$history"
+          "$postHistoryBlock"
+          "$authorNoteBlock"
+          "$impersonateInstruction"
+          "$suffix";
 
       // Stop sequences: character names only (not user — we ARE the user)
       final g = _sessionGenSettings;

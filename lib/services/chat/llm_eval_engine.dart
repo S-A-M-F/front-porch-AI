@@ -276,9 +276,6 @@ class LlmEvalEngine {
       if (!llm.isReady) return null;
     }
 
-    // Local Kobold evals always ban EOS (thinking prefill otherwise returns len=0;
-    // koboldThinkingModel flag may be unset since the UI toggle was removed).
-    final localThinking = effectiveIsLocal && getKoboldThinkingModel();
     final params = GenerationParams(
       prompt: prompt,
       maxLength: 4000,
@@ -288,8 +285,6 @@ class LlmEvalEngine {
       xtcProbability: 0.0,
       reasoningEnabled: false,
       stopSequences: const [],
-      banEosToken: effectiveIsLocal,
-      trimStop: effectiveIsLocal ? !localThinking : true,
     );
 
     if (effectiveIsLocal) {
@@ -462,7 +457,7 @@ class LlmEvalEngine {
           'Examples of valid correction output:\n'
           '{"hunger_delta": 8, "energy_delta": 0, "hygiene_delta": -2, "fun_delta": 5, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 1, "reason": "ate snack per critique", "is_climax": false}\n'
           '{"hunger_delta": 0, "energy_delta": 0, "hygiene_delta": 0, "fun_delta": 0, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 0, "reason": "no notable need impact", "is_climax": false}\n\n'
-              'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
+          'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
           '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
           '"intensity": 1-10, '
           '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
@@ -490,7 +485,7 @@ class LlmEvalEngine {
               '  • A thorough wash, shower, or bath → hygiene +50 to +90\n'
               '  • Deep, fulfilling connection, comfort, or play → social / fun / comfort +20 to +50\n'
               'Partial or interrupted versions get proportionally smaller deltas. Reserve small numbers (±1 to ±8) for INCIDENTAL effects, never for a complete relief or restoration. (These are 1x baselines — scale by the strength factor above.)\n\n'
-          'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
+              'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
               '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
               '"intensity": 1-10, '
               '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '

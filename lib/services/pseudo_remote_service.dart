@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:front_porch_ai/services/kobold_binary_version.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/openai_chat_stream.dart';
 import 'package:path/path.dart' as path;
 
 class PseudoRemoteService extends LLMService {
@@ -138,101 +139,15 @@ class PseudoRemoteService extends LLMService {
     if (!isReady) {
       throw Exception('PseudoRemote backend not ready.');
     }
-
-    final uri = Uri.parse('$_baseUrl/v1/chat/completions');
-
-    final messages = <Map<String, String>>[];
-    if (params.systemPrompt != null && params.systemPrompt!.isNotEmpty) {
-      messages.add({'role': 'system', 'content': params.systemPrompt!});
-    }
-    messages.add({'role': 'user', 'content': params.prompt});
-
-    final payload = <String, dynamic>{
-      'model': 'koboldcpp',
-      'stream': true,
-      'max_tokens': params.maxLength,
-      'temperature': params.temperature,
-      'top_p': params.topP,
-      'frequency_penalty': params.repeatPenalty > 1.0
-          ? (params.repeatPenalty - 1.0).clamp(0.0, 2.0)
-          : 0.0,
-      'messages': messages,
-    };
-
-    if (params.reasoningEnabled || params.reasoningMaxTokens != null) {
-      final reasoning = <String, dynamic>{
-        'enabled': params.reasoningEnabled,
-      };
-      if (params.reasoningEnabled) {
-        reasoning['effort'] = params.reasoningEffort;
-      }
-      if (params.reasoningMaxTokens != null) {
-        reasoning['max_tokens'] = params.reasoningMaxTokens;
-      }
-      if (!params.reasoningEnabled) {
-        reasoning['exclude'] = true;
-      }
-      payload['reasoning'] = reasoning;
-    }
-
-    if (params.stopSequences != null && params.stopSequences!.isNotEmpty) {
-      payload['stop'] = params.stopSequences!.take(4).toList();
-    }
-
-    final request = http.Request('POST', uri);
-    request.headers['Content-Type'] = 'application/json';
-    request.body = jsonEncode(payload);
-
-    final client = http.Client();
-    _activeClient = client;
-
-    final completer = Completer<void>();
-
-    try {
-      final response = await client
-          .send(request)
-          .timeout(const Duration(seconds: 120));
-
-      if (response.statusCode != 200) {
-        final body = await response.stream.bytesToString();
-        String errorMsg = 'HTTP ${response.statusCode}';
-        try {
-          final errJson = jsonDecode(body);
-          errorMsg = errJson['error']?['message'] ?? errorMsg;
-        } catch (_) {}
-        throw Exception('API error: $errorMsg');
-      }
-
-      String buffer = '';
-      await for (final chunk in response.stream.transform(utf8.decoder)) {
-        buffer += chunk;
-        while (buffer.contains('\n')) {
-          final idx = buffer.indexOf('\n');
-          final line = buffer.substring(0, idx).trim();
-          buffer = buffer.substring(idx + 1);
-          if (line.isEmpty) continue;
-          if (line == 'data: [DONE]' || line == 'data:[DONE]') return;
-          if (!line.startsWith('data:')) continue;
-          final data = line.startsWith('data: ')
-              ? line.substring(6)
-              : line.substring(5);
-          try {
-            final json = jsonDecode(data);
-            final choice = json['choices']?[0];
-            final delta = choice?['delta'];
-            if (delta == null) continue;
-            final content = delta['content'];
-            if (content != null && content is String && content.isNotEmpty) {
-              yield content;
-            }
-          } catch (_) {}
-        }
-      }
-    } finally {
-      _activeClient = null;
-      client.close();
-      if (!completer.isCompleted) completer.complete();
-    }
+    // Shared OpenAI chat transport (same one the managed KoboldCpp backend now
+    // uses). `_baseUrl` is the KoboldCpp root; the helper appends
+    // `/v1/chat/completions`.
+    yield* streamOpenAiChat(
+      _baseUrl,
+      params,
+      registerClient: (client) => _activeClient = client,
+      onDone: () => _activeClient = null,
+    );
   }
 
   @override

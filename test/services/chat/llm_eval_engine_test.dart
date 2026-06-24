@@ -367,7 +367,7 @@ void main() {
     );
 
     test(
-      'local thinking model sets banEosToken on fireLLMEval params',
+      'fireLLMEval no longer sets the EOS band-aid (chat template applied)',
       () async {
         List<GenerationParams> captured = [];
         final e = LlmEvalEngine(
@@ -398,8 +398,11 @@ void main() {
           relationshipService: createTestLlmEvalEngine().relationshipService,
         );
         await e.fireLLMEval('p');
-        expect(captured.single.banEosToken, true);
-        expect(captured.single.trimStop, false); // localThinking=true
+        // The raw-endpoint EOS band-aid is gone — local Kobold now generates
+        // through the templated /v1/chat/completions door, so evals use the
+        // GenerationParams defaults regardless of local/thinking state.
+        expect(captured.single.banEosToken, false);
+        expect(captured.single.trimStop, true);
       },
     );
 

@@ -27,7 +27,6 @@ import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/services/expression_classifier.dart';
-import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/utils/emotion_labels.dart';
@@ -388,11 +387,6 @@ class ExpressionService {
         repeatPenalty: 1.15,
         reasoningEnabled: false,
         stopSequences: isThinkingModel ? [] : ['}\n', '}'],
-        // Native KoboldCpp emits an immediate EOS on instruct prompts (no
-        // template), so ban EOS for any local backend too — not just thinking
-        // models. The '}' stop above bounds the short JSON object.
-        banEosToken: isThinkingModel || llmService is KoboldService,
-        trimStop: !isThinkingModel,
       );
 
       final StringBuffer sb = StringBuffer();

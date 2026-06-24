@@ -21,10 +21,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/http.dart' show ClientException;
 import 'package:front_porch_ai/services/kobold_binary_version.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/openai_chat_stream.dart';
 import 'package:path/path.dart' as path;
 
 class KoboldService extends ChangeNotifier
@@ -397,206 +397,34 @@ class KoboldService extends ChangeNotifier
     }
   }
 
-  Stream<String> _generateStreamInternal(
-    String prompt, {
-    int maxLength = 80,
-    int minLength = 0,
-    double temp = 0.7,
-    double repPenalty = 1.1,
-    double topP = 0.9,
-    double minP = 0.0,
-    int repPenTokens = 64,
-    double? dynatempRange,
-    double xtcThreshold = 0.1,
-    double xtcProbability = 0.5,
-    List<String>? stopSequences,
-    List<String>? bannedPhrases,
-    String? grammar,
-    bool banEosToken = false,
-    bool trimStop = true,
-  }) async* {
-    final uri = Uri.parse('$_baseUrl/api/extra/generate/stream');
-    final Map<String, dynamic> payload = {
-      'prompt': prompt,
-      'max_length': maxLength,
-      'min_length': minLength,
-      'temperature': temp,
-      'rep_pen': repPenalty,
-      'top_p': topP,
-      'min_p': minP,
-      'rep_pen_range': repPenTokens,
-      'singleline': false,
-      'trim_stop': trimStop,
-      'stream': true,
-      if (banEosToken) 'ban_eos_token': true,
-    };
-
-    if (dynatempRange != null && dynatempRange > 0) {
-      payload['dynatemp_range'] = dynatempRange;
-    }
-
-    if (xtcThreshold > 0 && xtcProbability > 0) {
-      payload['xtc_threshold'] = xtcThreshold;
-      payload['xtc_probability'] = xtcProbability;
-    }
-
-    if (stopSequences != null && stopSequences.isNotEmpty) {
-      payload['stop_sequence'] = stopSequences;
-    }
-
-    // Anti-slop phrase banning (KoboldCpp-specific)
-    if (bannedPhrases != null && bannedPhrases.isNotEmpty) {
-      payload['banned_tokens'] = bannedPhrases;
-    }
-
-    // GBNF grammar-constrained output (KoboldCpp-specific, local non-thinking models only)
-    if (grammar != null && grammar.isNotEmpty) {
-      payload['grammar'] = grammar;
-    }
-
-    final request = http.Request('POST', uri);
-    request.headers['Content-Type'] = 'application/json';
-    request.body = jsonEncode(payload);
-
-    final estimatedTokens = (prompt.length / 4).ceil();
-    debugPrint(
-      '[KoboldCpp] Streaming request: prompt=${prompt.length} chars (~$estimatedTokens tokens), max_length=$maxLength, stop_sequences=${stopSequences?.length ?? 0}',
-    );
-
-    final client = http.Client();
-    _activeClient = client;
-
-    // Track this request's lifecycle so waitForIdle() can await completion
-    // without aborting. The completer resolves when the stream fully closes
-    // (success or error).
-    final _completer = Completer<void>();
-    _pendingRequest = _completer.future;
-
+  /// LLMService interface implementation.
+  ///
+  /// Routes generation through KoboldCpp's OpenAI-compatible
+  /// `/v1/chat/completions` endpoint (via [streamOpenAiChat]) instead of the
+  /// legacy raw `/api/extra/generate/stream`. The chat endpoint applies the
+  /// loaded model's instruct template server-side, so instruct GGUFs follow
+  /// instructions and stop naturally via EOS — the raw endpoint did neither
+  /// (immediate empty responses or runaway repetition on un-templated prompts).
+  /// This is the same transport the `.kcpps` pseudo-remote backend has always
+  /// used against the same server. KoboldCpp ignores the model name.
+  ///
+  /// `_activeClient` is registered for [abortGeneration]; `_pendingRequest`
+  /// (a completer future) is tracked so [waitForIdle] still unblocks on close.
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {
+    final completer = Completer<void>();
+    _pendingRequest = completer.future;
     try {
-      // Thinking models (especially large ones like 24B+) can take several
-      // minutes during the prefill phase before the first token is generated.
-      // 60 s was too aggressive — raise to 5 minutes so long-context eval
-      // calls don't time out before the model even starts streaming.
-      final response = await client
-          .send(request)
-          .timeout(const Duration(minutes: 5));
-
-      if (response.statusCode != 200) {
-        if (response.statusCode == 405) {
-          throw Exception(
-            'STREAMING_NOT_SUPPORTED: The server returned HTTP 405. Streaming may not be supported by this backend.',
-          );
-        }
-        throw Exception('HTTP ${response.statusCode}');
-      }
-
-      try {
-        int _sseDataEvents = 0;
-        bool _inThinkPhase = false; // Track thinking model state
-        await for (final line
-            in response.stream
-                .transform(utf8.decoder)
-                .transform(const LineSplitter())) {
-          if (line.startsWith('data: ')) {
-            _sseDataEvents++;
-            final data = line.substring(6);
-            try {
-              final json = jsonDecode(data);
-              final rawToken = (json['token'] as String?) ?? '';
-              final thinkToken = (json['thinking_token'] as String?) ?? '';
-              final textToken = (json['text'] as String?) ?? '';
-
-              // Log first few events and any unexpected patterns for debugging
-              if (_sseDataEvents <= 3 ||
-                  (rawToken.isEmpty &&
-                      thinkToken.isEmpty &&
-                      textToken.isEmpty)) {
-                debugPrint(
-                  '[KoboldCpp:SSE] Event #$_sseDataEvents — '
-                  'token=${rawToken.length}ch, '
-                  'thinking_token=${thinkToken.length}ch, '
-                  'text=${textToken.length}ch',
-                );
-              }
-
-              // KoboldCPP thinking models send reasoning in 'thinking_token'
-              // while 'token' is "" during the think phase. We emit synthetic
-              // <think>/<think> tags at boundaries but skip the actual content.
-              if (thinkToken.isNotEmpty &&
-                  rawToken.isEmpty &&
-                  textToken.isEmpty) {
-                if (!_inThinkPhase) {
-                  _inThinkPhase = true;
-                  yield '<think>';
-                }
-                continue;
-              }
-
-              // Real output token — prefer 'token', fall back to 'text'
-              final token = rawToken.isNotEmpty ? rawToken : textToken;
-              if (token.isNotEmpty) {
-                if (_inThinkPhase) {
-                  _inThinkPhase = false;
-                  yield '</think>';
-                }
-                yield token;
-              }
-            } catch (e) {
-              // Skip malformed SSE events (e.g. data: [DONE])
-            }
-          }
-        }
-        debugPrint(
-          '[KoboldCpp:SSE] Stream closed — data_events=$_sseDataEvents',
-        );
-      } on ClientException catch (e) {
-        // The HTTP client was closed mid-stream. This happens in two cases:
-        //   1. User hit Stop → abortGeneration() called client.close() intentionally.
-        //   2. The KoboldCPP process crashed/restarted and dropped the socket.
-        // In both cases we want a clean exit, not a raw ClientException in chat.
-        // Re-throw only if the client is still alive (i.e. we didn't close it ourselves),
-        // which indicates an unexpected network error rather than a user-initiated abort.
-        if (_activeClient != null) {
-          // Client still set means abortGeneration() hasn't run — genuine error.
-          rethrow;
-        }
-        debugPrint(
-          '[KoboldCpp] Stream ended by client close (abort or process exit): $e',
-        );
-        // Fall through — generator returns normally.
-      }
+      yield* streamOpenAiChat(
+        _baseUrl,
+        params,
+        registerClient: (client) => _activeClient = client,
+        onDone: () => _activeClient = null,
+      );
     } finally {
-      _activeClient = null;
-      client.close();
-      // Signal that this request is fully complete so waitForIdle() unblocks.
-      if (!_completer.isCompleted) {
-        _completer.complete();
-      }
+      if (!completer.isCompleted) completer.complete();
       _pendingRequest = null;
     }
-  }
-
-  /// LLMService interface implementation — delegates to the existing method.
-  @override
-  Stream<String> generateStream(GenerationParams params) {
-    return _generateStreamInternal(
-      params.prompt,
-      maxLength: params.maxLength,
-      minLength: params.minLength,
-      temp: params.temperature,
-      repPenalty: params.repeatPenalty,
-      topP: params.topP,
-      minP: params.minP,
-      repPenTokens: params.repPenTokens,
-      dynatempRange: params.dynatempRange,
-      xtcThreshold: params.xtcThreshold,
-      xtcProbability: params.xtcProbability,
-      stopSequences: params.stopSequences,
-      bannedPhrases: params.bannedPhrases,
-      grammar: params.grammar,
-      banEosToken: params.banEosToken,
-      trimStop: params.trimStop,
-    );
   }
 
   @override
@@ -647,131 +475,6 @@ class KoboldService extends ChangeNotifier
   /// Fire-and-forget server-side abort (used by abortGeneration).
   void _postAbort() {
     ensureServerIdle().catchError((_) {});
-  }
-
-  Future<String> generate(
-    String prompt, {
-    int maxLength = 80,
-    int minLength = 0,
-    double temp = 0.7,
-    double repPenalty = 1.1,
-    double topP = 0.9,
-    double minP = 0.0,
-    int repPenTokens = 64,
-    double? dynatempRange,
-    double xtcThreshold = 0.1,
-    double xtcProbability = 0.5,
-    List<String>? stopSequences,
-    List<String>? bannedPhrases,
-  }) async {
-    if (!_isRunning && !Platform.environment.containsKey('FLUTTER_TEST')) {
-      _addLog(
-        'Warning: internal backend not running, trying to connect anyway...',
-      );
-    }
-
-    int retryCount = 0;
-    while (retryCount < 5) {
-      final client = http.Client();
-      try {
-        final uri = Uri.parse('$_baseUrl/api/v1/generate');
-
-        final Map<String, dynamic> payload = {
-          'prompt': prompt,
-          'max_length': maxLength,
-          'min_length': minLength,
-          'temperature': temp,
-          'rep_pen': repPenalty,
-          'top_p': topP,
-          'min_p': minP,
-          'rep_pen_range': repPenTokens,
-          'singleline': false,
-          'trim_stop': true,
-        };
-
-        if (dynatempRange != null && dynatempRange > 0) {
-          payload['dynatemp_range'] = dynatempRange;
-        }
-
-        if (xtcThreshold > 0 && xtcProbability > 0) {
-          payload['xtc_threshold'] = xtcThreshold;
-          payload['xtc_probability'] = xtcProbability;
-        }
-
-        if (stopSequences != null && stopSequences.isNotEmpty) {
-          payload['stop_sequence'] = stopSequences;
-        }
-
-        // Anti-slop phrase banning (KoboldCpp-specific)
-        if (bannedPhrases != null && bannedPhrases.isNotEmpty) {
-          payload['banned_tokens'] = bannedPhrases;
-        }
-
-        final body = jsonEncode(payload);
-
-        final response = await client
-            .post(
-              uri,
-              headers: {'Content-Type': 'application/json'},
-              body: body,
-            )
-            .timeout(const Duration(seconds: 60));
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          final text = data['results'][0]['text'] as String;
-          return text;
-        } else {
-          if (response.statusCode == 503) {
-            _addLog('Server returned 503 (Busy/Loading), retrying...');
-            await Future.delayed(const Duration(seconds: 2));
-            throw const SocketException('Service Unavailable');
-          }
-          if (response.statusCode == 405) {
-            // 405 won't succeed on retry — break immediately
-            throw Exception(
-              'The server returned HTTP 405 (Method Not Allowed). Check that your API URL is correct and the backend supports this endpoint.',
-            );
-          }
-          if (response.statusCode == 408) {
-            throw Exception(
-              'Request timed out (HTTP 408). The model may be too slow for the configured timeout.',
-            );
-          }
-          if (response.statusCode == 422) {
-            throw Exception(
-              'Invalid request (HTTP 422). The prompt may be too long for the model\'s context window.',
-            );
-          }
-          if (response.statusCode >= 500) {
-            _addLog('Server error ${response.statusCode}, retrying...');
-            await Future.delayed(const Duration(seconds: 2));
-            throw Exception('Server error (HTTP ${response.statusCode})');
-          }
-          throw Exception('API error: HTTP ${response.statusCode}');
-        }
-      } catch (e) {
-        if (!isProcessAlive && _isRunning) {
-          _addLog('Backend process crashed during generation! (Likely OOM)');
-          throw Exception(
-            'Backend process crashed. This usually happens when the GPU runs out of VRAM.',
-          );
-        }
-
-        retryCount++;
-
-        if (retryCount >= 5) {
-          _addLog('Generation error after 5 attempts: $e');
-          rethrow;
-        }
-
-        _addLog('Connection failed ($e), retrying in 2s...');
-        await Future.delayed(const Duration(seconds: 2));
-      } finally {
-        client.close();
-      }
-    }
-    throw Exception('Failed to generate after retries');
   }
 
   // ── Readiness probe ───────────────────────────────────────────────────
