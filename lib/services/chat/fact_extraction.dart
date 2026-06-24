@@ -38,7 +38,7 @@ import 'package:front_porch_ai/services/llm_service.dart';
 /// full fact extraction in step 13"). The _isExtractingFacts flag (transient guard)
 /// is god-owned (like _isSummaryGenerating); leaf clears it via cb in finally +
 /// !ready/error paths. LLM stream for extract (custom 1024/0.2/1.15, early break on
-/// ']' after strip, isThinking from local+storage, ban/trim for local thinking) +
+/// ']' after strip, isThinking from local+storage, ban EOS for all local + trim for local thinking) +
 /// consolidate via fireLLMEval (2000? no, uses engine fire path) + strip + ```json
 /// codeblock + RegExp \[.*\] dotAll + jsonDecode + _isValidFact quality gate (length
 /// 8-200 + 13+ garbage RP/meta/JSON/third-person/rel/scene/emotion patterns + reject
@@ -328,7 +328,12 @@ class FactExtraction {
         temperature: 0.2,
         repeatPenalty: 1.15,
         stopSequences: isThinkingModel ? [] : [']\n', ']'],
-        banEosToken: isThinkingModel && getIsLocal(),
+        // Ban EOS for ALL local backends, not just thinking models: native
+        // KoboldCpp's raw endpoint applies no instruct template, so an instruct
+        // GGUF emits an immediate EOS (len=0) on this prompt. The ']' stop above
+        // bounds the array cleanly. (Was thinking-only, which left non-thinking
+        // local models silently returning empty.)
+        banEosToken: getIsLocal(),
         trimStop: !(isThinkingModel && getIsLocal()),
       );
 
