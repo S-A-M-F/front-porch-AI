@@ -141,6 +141,9 @@ class Sessions extends Table {
       integer().withDefault(const Constant(0))(); // 0 to 10 scale
   IntColumn get cooldownTurnsRemaining =>
       integer().withDefault(const Constant(0))(); // 0 = no cooldown
+  IntColumn get cooldownTurnsTotal => integer().withDefault(
+    const Constant(0),
+  )(); // refractory length at climax — persists the cooldown progress denominator
 
   // Realism Engine v3.0 Behavioral Mechanics
   IntColumn get trustLevel =>
@@ -713,6 +716,7 @@ class AppDatabase extends _$AppDatabase {
         'passage_of_time_enabled INTEGER NOT NULL DEFAULT 1',
         'nsfw_cooldown_enabled INTEGER NOT NULL DEFAULT 0',
         'cooldown_turns_remaining INTEGER NOT NULL DEFAULT 0',
+        'cooldown_turns_total INTEGER NOT NULL DEFAULT 0',
       ],
       'group_members': [
         // Per current GroupMembers Dart definition + created_at (to match the repair-path CREATE TABLE).
@@ -2157,6 +2161,16 @@ class AppDatabase extends _$AppDatabase {
     return count;
   }
 
+  /// Delete a single group member row by its instance id (the UUID primary key).
+  /// Used when one character is removed from a group (not full-group teardown).
+  Future<int> deleteGroupMember(String memberId) async {
+    final count = await (delete(
+      groupMembers,
+    )..where((m) => m.id.equals(memberId))).go();
+    await bumpSyncVersion();
+    return count;
+  }
+
   // ── Folder Queries ──────────────────────────────────────────────────
 
   Future<List<Folder>> getAllFolders() =>
@@ -2387,6 +2401,79 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> deleteObjective(String id) =>
       (delete(objectives)..where((o) => o.id.equals(id))).go();
+
+  /// Re-key objectives from one character id to another within a session (used
+  /// when a chat collapses group->1:1: the survivor's objectives move from its
+  /// group member instance id to the origin library id, preserving the rows).
+  Future<int> reassignObjectives(
+    String fromCharacterId,
+    String toCharacterId, {
+    required String chatId,
+  }) async {
+    final n = await (update(objectives)
+          ..where((o) => o.characterId.equals(fromCharacterId))
+          ..where((o) => o.chatId.equals(chatId)))
+        .write(ObjectivesCompanion(characterId: Value(toCharacterId)));
+    await bumpSyncVersion();
+    return n;
+  }
+
+  /// Re-key message embeddings from one character id to another within a session
+  /// (used on group->1:1 collapse so the group-era semantic memory, stored under
+  /// the `group_id` RAG key, moves to the origin library id and stays
+  /// retrievable in 1:1).
+  Future<int> reassignEmbeddings(
+    String fromCharacterId,
+    String toCharacterId, {
+    required String chatId,
+  }) async {
+    final n = await (update(messageEmbeddings)
+          ..where((e) => e.characterId.equals(fromCharacterId))
+          ..where((e) => e.sessionId.equals(chatId)))
+        .write(MessageEmbeddingsCompanion(characterId: Value(toCharacterId)));
+    await bumpSyncVersion();
+    return n;
+  }
+
+  /// COPY a character's embeddings for one session under a NEW character id +
+  /// session id, leaving the originals untouched (fresh row ids are assigned).
+  /// Used on 1:1->group fork (`/join`): the host's prior RAG memory is duplicated
+  /// into the group's shared `group_<id>` memory pool on the new group session, so
+  /// the converted cast can recall pre-conversion events that scrolled out of
+  /// context — while the preserved 1:1 keeps its own copy (the revert snapshot).
+  /// COPY, not move, exactly like the objectives carry-on-fork; the inverse
+  /// (group->1:1 collapse) re-keys in place via [reassignEmbeddings]. Returns the
+  /// number of rows copied.
+  Future<int> copyEmbeddingsForSession(
+    String fromCharacterId,
+    String fromSessionId, {
+    required String toCharacterId,
+    required String toSessionId,
+  }) async {
+    final rows = await (select(messageEmbeddings)
+          ..where((e) => e.characterId.equals(fromCharacterId))
+          ..where((e) => e.sessionId.equals(fromSessionId)))
+        .get();
+    if (rows.isEmpty) return 0;
+    final copies = rows
+        .map(
+          (r) => MessageEmbeddingsCompanion(
+            sessionId: Value(toSessionId),
+            characterId: Value(toCharacterId),
+            positionStart: Value(r.positionStart),
+            positionEnd: Value(r.positionEnd),
+            content: Value(r.content),
+            embedding: Value(r.embedding),
+            dimensions: Value(r.dimensions),
+            memoryType: Value(r.memoryType),
+            metadata: Value(r.metadata),
+          ),
+        )
+        .toList();
+    await insertEmbeddings(copies); // assigns fresh ids + batches
+    await bumpSyncVersion();
+    return copies.length;
+  }
 
   Future<int> deleteObjectivesForCharacter(String characterId) => (delete(
     objectives,

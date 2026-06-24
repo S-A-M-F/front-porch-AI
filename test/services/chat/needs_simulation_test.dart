@@ -116,6 +116,36 @@ void main() {
       expect(sim.vector['bladder'], 42);
     });
 
+    test(
+      'needs vector round-trips losslessly through the per-char store '
+      '(host-collapse safety net — completes the A2 lossless proof)',
+      () {
+        // A full, distinctive vector covering every official need.
+        final vec = {
+          'hunger': 12,
+          'bladder': 88,
+          'energy': 34,
+          'social': 71,
+          'fun': 5,
+          'hygiene': 49,
+          'comfort': 96,
+        };
+        sim.restoreFromSnapshot({'vector': vec});
+        for (final k in NeedsSimulation.needKeys) {
+          expect(sim.vector[k], vec[k], reason: 'direct restore: $k');
+        }
+
+        // Mirror the load/save "dance": persist into the per-char group map,
+        // wipe the working register, then restore from the map.
+        groupNeeds['host'] = Map<String, int>.from(sim.vector);
+        sim.initializeFresh(); // wipe to defaults
+        sim.restoreFromSnapshot({'vector': groupNeeds['host']!});
+        for (final k in NeedsSimulation.needKeys) {
+          expect(sim.vector[k], vec[k], reason: 'after store round-trip: $k');
+        }
+      },
+    );
+
     test('applySceneImpact applies deltas + reason', () {
       sim.initializeFresh();
       final pre = Map<String, int>.from(sim.vector);

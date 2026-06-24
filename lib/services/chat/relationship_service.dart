@@ -579,17 +579,19 @@ class RelationshipService {
     setGroupLongTermScore(charId, _longTermScore);
     setGroupTrustLevel(charId, _trustLevel);
 
-    if (_activeFixation.isNotEmpty && _fixationLifespan > 0) {
-      setGroupFixation(charId, _activeFixation);
-      setGroupFixationLifespan(charId, _fixationLifespan);
-    }
+    // Persist fixation/spatial UNCONDITIONALLY (including clears) so the
+    // per-character store is a faithful snapshot of the working registers.
+    // Previously these were guarded behind non-empty checks, which meant a
+    // cleared fixation/spatial never propagated through save/load — fine while
+    // only group members used this path (fixation re-set each turn), but it would
+    // silently break fixation-clearing once the always-loaded 1:1 host is unified
+    // onto the same store. See relationship_service_test round-trip coverage.
+    setGroupFixation(charId, _activeFixation);
+    setGroupFixationLifespan(charId, _fixationLifespan);
+    setGroupSpatialStance(charId, _spatialStance);
 
     setGroupRelationshipTier(charId, _relationshipTier);
     setGroupLongTermTier(charId, _longTermTier);
-
-    if (_spatialStance.isNotEmpty) {
-      setGroupSpatialStance(charId, _spatialStance);
-    }
   }
 
   // ── Deltas, growth, decay, fixation (verbatim) ─────────────────────────────

@@ -312,6 +312,7 @@ If you ever add Group Card read/write support to Character Card Forge, you must:
 2. Parse the envelope above.
 3. When writing groups, prefer the new top-level `character_system_prompts` (optional, additive in v1.0). For full backward compatibility with older cards, also read from the legacy location inside `realism_state.characterSystemPrompts` / `character_system_prompts` and promote it.
 4. When writing groups/sessions, populate the two v30 realism columns (or at minimum the `realism_state` inside the exported Group Card) if you want realism state to survive export → import → split.
+5. *(Optional, additive in v1.0 — no version bump.)* For each member in `raw_member_data`, you may set `_origin_library_stable_id` to the source library character's `stableGroupId` (avatar basename without extension, or sanitized name). This lets an importer reconnect the member to a local library character. It is **separate** from `_original_stable_id` (the export instance id used only for realism remapping); Front Porch stamps it into the private `group_members.memberState` on import and resolves it via `MemberOriginResolver`. Never emit `originLibraryDbId` — it is a machine-local DB id and meaningless on another device.
 
 The columns and the `realism_state` key inside Group Cards were added precisely so that group-evolved state is no longer trapped in hidden chat messages. The `character_system_prompts` field follows the same portability goals.
 

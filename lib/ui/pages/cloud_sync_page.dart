@@ -84,7 +84,8 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                           ),
                         ),
                         Text(
-                          'Manage cloud sync, backups, and data recovery',
+                          'Automatic local backups & data recovery '
+                          '(Cloud Sync is deprecated)',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.grey,
                           ),
@@ -93,7 +94,9 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
+                _buildDeprecationBanner(theme),
+                const SizedBox(height: 24),
                 _buildCloudSyncSection(context, storageService, theme),
                 const SizedBox(height: 24),
                 _buildBackupSection(context, theme),
@@ -114,6 +117,57 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
           fontWeight: FontWeight.bold,
           letterSpacing: 0.3,
         ),
+      ),
+    );
+  }
+
+  /// Prominent notice that Cloud Sync is deprecated and slated for removal.
+  /// Cloud Sync stays functional for now, but it is unreliable across devices
+  /// (it can resurrect deleted data), so we steer users to local Backups (below)
+  /// and Card export/import as the supported way to move data between devices.
+  Widget _buildDeprecationBanner(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.orange.shade700,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cloud Sync is deprecated',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Cloud Sync is no longer supported and will be removed in a '
+                  'future release. It can behave unreliably across devices '
+                  '(including occasionally bringing deleted characters back). '
+                  'Your data is protected by the automatic local Backups below — '
+                  'rely on those, and move characters or groups between devices '
+                  'with Card export / import instead.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1038,8 +1092,11 @@ class _CloudSyncPageState extends State<CloudSyncPage> {
         _buildSectionHeader('Database Backups'),
         const SizedBox(height: 8),
         Text(
-          'Backups are created automatically before each cloud sync. '
-          'Up to ${BackupService.maxBackups} recent backups are kept.',
+          'Backups are created automatically every 30 minutes (and before each '
+          'cloud sync). The newest ${BackupService.maxBackups} are always kept, '
+          'plus one per day for the last ${BackupService.dailyRetentionDays} days '
+          '— fine-grained recent history and a rolling week of daily restore '
+          'points.',
           style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
         ),
         const SizedBox(height: 12),

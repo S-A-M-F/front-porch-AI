@@ -66,10 +66,19 @@ class ChatCommandHandler {
     required Future<void> Function(CharacterCard guest) exitGuest,
     required List<CharacterCard> Function() getJoinableCharacters,
     required Future<void> Function(CharacterCard guest) joinGuest,
-    required void Function(String initialFilter) requestGuestPicker,
+    required Future<void> Function(CharacterCard character) joinFull,
+    required Future<void> Function() promoteScene,
+    required void Function(String initialFilter, bool full) requestGuestPicker,
     required Future<bool> Function() runCastScan,
     required Future<void> Function(CharacterCard guest) speakGuest,
     required void Function(CharacterCard guest) armExitUndo,
+    required List<CharacterCard> Function() getGroupMembers,
+    required List<CharacterCard> Function() getGroupJoinableCharacters,
+    required Future<bool> Function(CharacterCard member) removeGroupMember,
+    required Future<void> Function(CharacterCard member) speakGroupMember,
+    required bool Function() isGroupTurnOrderRandom,
+    required Future<void> Function(bool random, List<CharacterCard>? customOrder)
+    setGroupTurnOrder,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -80,10 +89,18 @@ class ChatCommandHandler {
        _exitGuest = exitGuest,
        _getJoinableCharacters = getJoinableCharacters,
        _joinGuest = joinGuest,
+       _joinFull = joinFull,
+       _promoteScene = promoteScene,
        _requestGuestPicker = requestGuestPicker,
        _runCastScan = runCastScan,
        _speakGuest = speakGuest,
-       _armExitUndo = armExitUndo;
+       _armExitUndo = armExitUndo,
+       _getGroupMembers = getGroupMembers,
+       _getGroupJoinableCharacters = getGroupJoinableCharacters,
+       _removeGroupMember = removeGroupMember,
+       _speakGroupMember = speakGroupMember,
+       _isGroupTurnOrderRandom = isGroupTurnOrderRandom,
+       _setGroupTurnOrder = setGroupTurnOrder;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -95,10 +112,19 @@ class ChatCommandHandler {
   final Future<void> Function(CharacterCard guest) _exitGuest;
   final List<CharacterCard> Function() _getJoinableCharacters;
   final Future<void> Function(CharacterCard guest) _joinGuest;
-  final void Function(String initialFilter) _requestGuestPicker;
+  final Future<void> Function(CharacterCard character) _joinFull;
+  final Future<void> Function() _promoteScene;
+  final void Function(String initialFilter, bool full) _requestGuestPicker;
   final Future<bool> Function() _runCastScan;
   final Future<void> Function(CharacterCard guest) _speakGuest;
   final void Function(CharacterCard guest) _armExitUndo;
+  final List<CharacterCard> Function() _getGroupMembers;
+  final List<CharacterCard> Function() _getGroupJoinableCharacters;
+  final Future<bool> Function(CharacterCard member) _removeGroupMember;
+  final Future<void> Function(CharacterCard member) _speakGroupMember;
+  final bool Function() _isGroupTurnOrderRandom;
+  final Future<void> Function(bool random, List<CharacterCard>? customOrder)
+  _setGroupTurnOrder;
 
   /// The user-facing slash-command reference (single source of truth for the
   /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
@@ -111,18 +137,28 @@ class ChatCommandHandler {
     ),
     SlashCommandInfo(
       'join',
-      '/join [name]',
-      'Bring one of your existing characters in as a guest',
+      '/join [--full] [name]',
+      'Bring a character in — --full makes a full member; in a group, always full',
+    ),
+    SlashCommandInfo(
+      'promote',
+      '/promote',
+      'Turn the present scene into a full group (everyone becomes a full member)',
     ),
     SlashCommandInfo(
       'speak',
       '/speak [name]',
-      'Make a guest who is present take a turn right now',
+      'Make someone present take a turn now — a guest, or a group member by name',
     ),
     SlashCommandInfo(
       'exit',
       '/exit [name]',
-      'Have a guest leave the scene (narrated by your character)',
+      'A guest leaves (narrated); in a group, removes that full member by name',
+    ),
+    SlashCommandInfo(
+      'turnorder',
+      '/turnorder [random | <name>, …]',
+      'Set how a group takes turns: round-robin, random, or an explicit order',
     ),
     SlashCommandInfo(
       'scan',
@@ -169,6 +205,12 @@ class ChatCommandHandler {
         await _handleJoin(args);
         return true;
 
+      case 'promote':
+        // Turn the whole present scene (host + every present lite guest) into a
+        // real group where everyone is a full, realism-bearing member.
+        await _promoteScene();
+        return true;
+
       case 'speak':
       case 'turn':
         await _handleSpeak(args);
@@ -191,6 +233,11 @@ class ChatCommandHandler {
 
       case 'exit':
         await _handleExit(args);
+        return true;
+
+      case 'turnorder':
+      case 'turn-order':
+        await _handleTurnOrder(args);
         return true;
 
       default:
@@ -235,23 +282,47 @@ class ChatCommandHandler {
     await _createGuest(name, concept);
   }
 
-  // ── Scene Guest: /join [name] ───────────────────────────────────────────
-  // Brings an EXISTING library character into the 1:1 scene as a Scene Guest —
-  // no new card is minted; it reuses the SAME parity-safe enter path as
-  // `/create` (the joined character generates a contextual entrance from the
-  // chat history + its own card, and carries no Realism/Needs while a guest).
-  //   • `/join`            → open the character picker (browse the full list).
-  //   • `/join <name>`     → join an unambiguous match outright; otherwise open
-  //                          the picker pre-filtered to the typed text.
+  // ── Join an existing character: /join [--full|--lite] [name] ────────────
+  // Brings an EXISTING library character into the scene. Two tiers:
+  //   • lite (default)  → a Scene Guest: no new card minted, reuses the same
+  //                       parity-safe enter path as `/create`, carries no
+  //                       Realism/Needs. Lite only exists inside a 1:1.
+  //   • --full          → a full participant: converts the 1:1 into a group
+  //                       (host + the named character) in place — no wizard, no
+  //                       screen switch. The character speaks on its own turns
+  //                       with full Realism/Needs. This is the macro path that
+  //                       replaces the old Fork-to-Group wizard.
+  // Resolution:
+  //   • `/join`               → open the picker (lite browse of the full list).
+  //   • `/join <name>`        → lite-join an unambiguous match; else open the
+  //                             picker pre-filtered to the typed text.
+  //   • `/join --full <name>` → full-join (convert) an unambiguous match; a
+  //                             full request requires a clear name (no picker).
   // The candidate list (injected) already excludes the host and anyone already
   // present, so this leaf only resolves the user's intent against it.
   Future<void> _handleJoin(String args) async {
-    if (!_activeCharacterIsSet()) {
-      _onSystemMessage('⚠ Scene Guests can only be added inside a 1:1 chat.');
+    final inGroup = _getGroupMembers().isNotEmpty;
+    if (!inGroup && !_activeCharacterIsSet()) {
+      _onSystemMessage('⚠ Open a chat first to add a character.');
       return;
     }
 
-    final candidates = _getJoinableCharacters();
+    final (full: requestedFull, name: wanted) = _parseJoinFlags(args);
+    // A group has no "lite" tier — everyone is a full member — so a plain `/join`
+    // (or even `/join --lite`) silently becomes a full join inside a group.
+    final full = inGroup ? true : requestedFull;
+
+    // Candidate pool. In a group: library characters not already members. In a
+    // 1:1: joinable guests; a full (convert) join can also target a present lite
+    // guest (promoting them), so its pool includes the present scene guests.
+    final candidates = inGroup
+        ? _getGroupJoinableCharacters()
+        : (full
+              ? <CharacterCard>[
+                  ..._getJoinableCharacters(),
+                  ..._getSceneGuestCards(),
+                ]
+              : _getJoinableCharacters());
     if (candidates.isEmpty) {
       _onSystemMessage(
         '⚠ No other characters are available to join this chat.',
@@ -259,31 +330,66 @@ class ChatCommandHandler {
       return;
     }
 
-    final wanted = args.trim();
     if (wanted.isEmpty) {
-      _requestGuestPicker(''); // browse the full list
+      // No name -> open the picker to browse the list. The `full` flag tells the
+      // UI whether picking does a full join (group member / convert) or a lite
+      // Scene Guest join, so /join --full (and /join in a group) get a picker too.
+      _requestGuestPicker('', full);
       return;
     }
 
-    // Exact (case-insensitive) name match wins outright.
+    // Resolve the name: exact (case-insensitive) match wins, else a single
+    // substring match.
     final lower = wanted.toLowerCase();
+    CharacterCard? match;
     for (final c in candidates) {
       if (c.name.toLowerCase() == lower) {
-        await _joinGuest(c);
+        match = c;
+        break;
+      }
+    }
+    if (match == null) {
+      final partial = candidates
+          .where((c) => c.name.toLowerCase().contains(lower))
+          .toList();
+      if (partial.length == 1) {
+        match = partial.first;
+      } else {
+        // 0 or 2+ matches -> open the picker pre-filtered to what was typed
+        // (for both full and lite — no more "use the full name" dead end).
+        _requestGuestPicker(wanted, full);
         return;
       }
     }
 
-    // Otherwise a single substring match joins directly; 0 or 2+ matches fall
-    // back to the picker pre-filtered to what was typed.
-    final partial = candidates
-        .where((c) => c.name.toLowerCase().contains(lower))
-        .toList();
-    if (partial.length == 1) {
-      await _joinGuest(partial.first);
-      return;
+    if (full) {
+      await _joinFull(match);
+    } else {
+      await _joinGuest(match);
     }
-    _requestGuestPicker(wanted);
+  }
+
+  /// Parse an optional `--full` / `--lite` (or `-full` / `-lite`) flag out of
+  /// the `/join` arguments, returning whether a full join was requested and the
+  /// remaining name text. Lite is the default. The flag may appear anywhere in
+  /// the arguments (e.g. `--full Mara` or `Mara --full`).
+  ({bool full, String name}) _parseJoinFlags(String args) {
+    var full = false;
+    final kept = <String>[];
+    for (final token in args.split(RegExp(r'\s+'))) {
+      if (token.isEmpty) continue;
+      switch (token.toLowerCase()) {
+        case '--full':
+        case '-full':
+          full = true;
+        case '--lite':
+        case '-lite':
+          full = false;
+        default:
+          kept.add(token);
+      }
+    }
+    return (full: full, name: kept.join(' ').trim());
   }
 
   // ── Scene Guest: /speak [name] (alias /turn) ────────────────────────────
@@ -292,6 +398,20 @@ class ChatCommandHandler {
   // unrecognized name surfaces the list of valid guests instead of doing
   // nothing.
   Future<void> _handleSpeak(String args) async {
+    // Full group: /speak <name> forces that member to take their turn now (Scene
+    // Guests are 1:1-only, so a non-empty group roster means we're in a group).
+    final members = _getGroupMembers();
+    if (members.isNotEmpty) {
+      final target = _resolveGroupMember(
+        args,
+        members,
+        command: 'speak',
+        emptyVerb: 'speak',
+      );
+      if (target != null) await _speakGroupMember(target);
+      return;
+    }
+
     if (!_activeCharacterIsSet()) {
       _onSystemMessage('⚠ Scene Guests only exist inside a 1:1 chat.');
       return;
@@ -350,6 +470,15 @@ class ChatCommandHandler {
   // the one-shot directive + removes the guest; we then trigger a primary
   // generation). The character stays in the library (still "known").
   Future<void> _handleExit(String args) async {
+    // Full group: /exit <name> removes that member outright (Scene Guests are
+    // 1:1-only, so a non-empty group roster means we're in a full group). When
+    // the removal leaves one member the group auto-collapses back to a 1:1.
+    final members = _getGroupMembers();
+    if (members.isNotEmpty) {
+      await _handleGroupMemberExit(args, members);
+      return;
+    }
+
     final guests = _getSceneGuestCards();
     if (guests.isEmpty) {
       _onSystemMessage('⚠ There are no scene guests to exit.');
@@ -398,5 +527,175 @@ class ChatCommandHandler {
     // Offer a brief UNDO — the departure message can be deleted and the guest
     // restored with full context (their evolution/memory are not wiped by exit).
     _armExitUndo(target);
+  }
+
+  // ── Full group member: /exit <name> ─────────────────────────────────────
+  // Removes a full member from the active group via the real removal path
+  // (deletes their copy + state; auto-collapses to a 1:1 when one remains).
+  // Unlike a Lite NPC exit, this is a structural removal, not a narrated
+  // goodbye, so it needs an unambiguous name.
+  Future<void> _handleGroupMemberExit(
+    String args,
+    List<CharacterCard> members,
+  ) async {
+    if (members.length <= 1) {
+      _onSystemMessage('⚠ Can’t remove the only remaining character.');
+      return;
+    }
+    final target = _resolveGroupMember(
+      args,
+      members,
+      command: 'exit',
+      emptyVerb: 'leave',
+    );
+    if (target == null) return;
+    // removeGroupMember handles the real delete + auto-collapse (and surfaces its
+    // own banner on the collapse/dead-end paths).
+    final ok = await _removeGroupMember(target);
+    if (!ok) {
+      _onSystemMessage('⚠ Couldn’t remove ${target.name} from the group.');
+    }
+  }
+
+  /// Resolve a group member by name from `/exit` and `/speak` args — exact match,
+  /// then unique case-insensitive substring. Emits the right inline error (and
+  /// returns null) for empty / ambiguous / unknown input. [command] names the
+  /// slash command and [emptyVerb] the action, so the empty-args prompt reads
+  /// naturally (`Who should leave? Use /exit <name>` vs the `/speak` wording).
+  CharacterCard? _resolveGroupMember(
+    String args,
+    List<CharacterCard> members, {
+    required String command,
+    required String emptyVerb,
+  }) {
+    final names = members.map((m) => m.name).join(', ');
+    final wanted = args.trim().toLowerCase();
+    if (wanted.isEmpty) {
+      _onSystemMessage('⚠ Who should $emptyVerb? Use /$command <name> — $names.');
+      return null;
+    }
+    for (final m in members) {
+      if (m.name.toLowerCase() == wanted) return m;
+    }
+    final partial = members
+        .where((m) => m.name.toLowerCase().contains(wanted))
+        .toList();
+    if (partial.length > 1) {
+      _onSystemMessage(
+        '⚠ "$args" matches multiple members '
+        '(${partial.map((m) => m.name).join(', ')}). Use the full name.',
+      );
+      return null;
+    }
+    if (partial.length == 1) return partial.first;
+    _onSystemMessage('⚠ No group member named "$args" is here.');
+    return null;
+  }
+
+  // ── Group: /turnorder [random | roundrobin | <name>, <name>, …] ─────────
+  // Adjust how a group takes turns on the fly. No args reports the current mode
+  // + rotation. `random`/`roundrobin` switch mode (persisted). A name list sets
+  // an explicit round-robin sequence for the session (any members left unnamed
+  // are appended so nobody drops out of the rotation).
+  Future<void> _handleTurnOrder(String args) async {
+    final members = _getGroupMembers();
+    if (members.isEmpty) {
+      _onSystemMessage('⚠ Turn order only applies inside a group chat.');
+      return;
+    }
+    final order = members.map((m) => m.name).join(' → ');
+    final spec = args.trim();
+
+    if (spec.isEmpty) {
+      final mode = _isGroupTurnOrderRandom() ? 'random' : 'round-robin';
+      _onSystemMessage(
+        'Turn order: $mode. Current rotation: $order.\n'
+        'Change it with /turnorder random, /turnorder roundrobin, or '
+        '/turnorder <name>, you, <name>, … for an explicit order '
+        '(include "you" to mark your own slot).',
+      );
+      return;
+    }
+
+    final lower = spec.toLowerCase();
+    if (lower == 'random' || lower == 'rand' || lower == 'shuffle') {
+      await _setGroupTurnOrder(true, null);
+      _onSystemMessage('🔀 Turn order set to random.');
+      return;
+    }
+    if (lower == 'roundrobin' ||
+        lower == 'round-robin' ||
+        lower == 'rr' ||
+        lower == 'fixed' ||
+        lower == 'sequential') {
+      await _setGroupTurnOrder(false, null);
+      _onSystemMessage('🔁 Turn order set to round-robin: $order.');
+      return;
+    }
+
+    // Explicit order: comma-separated names (fallback to whitespace) → members.
+    final raw = spec.contains(',')
+        ? spec.split(',')
+        : spec.split(RegExp(r'\s+'));
+    final wanted = raw.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    final ordered = <CharacterCard>[]; // the AI character rotation
+    final displayOrder = <String>[]; // includes a 'you' marker for the message
+    final used = <String>{};
+    bool userPlaced = false;
+    for (final w in wanted) {
+      // A 'you' / {{user}} / me / user token marks YOUR slot. In a group you
+      // already speak between characters every turn, so the user isn't part of
+      // the AI rotation — accept the token (don't error on it) and just show
+      // where you sit in the order.
+      final token = w.replaceAll(RegExp(r'[{}]'), '').trim().toLowerCase();
+      if (token == 'you' || token == 'user' || token == 'me') {
+        userPlaced = true;
+        displayOrder.add('you');
+        continue;
+      }
+      final lw = w.toLowerCase();
+      CharacterCard? match;
+      for (final m in members) {
+        if (m.name.toLowerCase() == lw && !used.contains(m.name)) {
+          match = m;
+          break;
+        }
+      }
+      if (match == null) {
+        for (final m in members) {
+          if (m.name.toLowerCase().contains(lw) && !used.contains(m.name)) {
+            match = m;
+            break;
+          }
+        }
+      }
+      if (match == null) {
+        _onSystemMessage(
+          '⚠ No group member matches "$w". Members: '
+          '${members.map((m) => m.name).join(', ')} (use "you" for your own slot).',
+        );
+        return;
+      }
+      ordered.add(match);
+      displayOrder.add(match.name);
+      used.add(match.name);
+    }
+    if (ordered.isEmpty) {
+      _onSystemMessage('⚠ Name at least one character for the turn order.');
+      return;
+    }
+    // Keep anyone not named (in their existing order) so nobody drops out.
+    for (final m in members) {
+      if (!used.contains(m.name)) {
+        ordered.add(m);
+        displayOrder.add(m.name);
+      }
+    }
+    await _setGroupTurnOrder(false, ordered);
+    _onSystemMessage(
+      '🔁 Turn order set to: ${displayOrder.join(' → ')} (this session).'
+      '${userPlaced ? ' You take your turn by typing.' : ''}',
+    );
   }
 }

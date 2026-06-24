@@ -161,7 +161,7 @@ Every character message supports **multiple swipes** — independent alternative
 - Perfect for "what if" exploration.
 - Lets you keep the best version while experimenting.
 - Works beautifully with the Realism Engine — each swipe can produce different bond/trust/emotion updates.
-- Swipes are persisted across app restarts and cloud sync.
+- Swipes are persisted across app restarts (and captured in your automatic backups).
 
 **Tip**: Combine swipes with Director Mode for rich "what if" storytelling sessions.
 
@@ -335,7 +335,7 @@ Organize large libraries with a hierarchical folder system:
 - **Back** button / breadcrumb clicks navigate up the tree.
 - Folders have names and can be color-coded in future updates (currently named organization).
 
-Folders are stored in the local database and sync via Cloud Sync.
+Folders are stored in the local database (and travel with your automatic local backups).
 
 ### Tags & Search
 
@@ -457,38 +457,33 @@ Group chats let multiple characters converse together in one session — with fu
    - Assign per-character **TTS voices** for the session
 5. Confirm — the group appears in your Home grid (distinguished by stacked avatars) and opens directly into chat.
 
-You can also convert an existing single-character chat into a group later via Chat Settings.
+### Turning a 1:1 into a Group — and back (one chat, a changing cast)
 
-### Forking a 1:1 Chat into a Group (with custom entrances)
+A 1:1 and a group are the same chat with a different number of characters, so you
+move between them **in place** — your history, memory, and each character's
+Realism/Needs state come along, in **both** directions. The controls are slash
+macros you type in the chat box:
 
-From a single-character chat, the chat menu's **Fork to Group Chat** opens a
-short step-by-step wizard:
+- **`/join --full`** — converts the current solo chat into a group right where you
+  are. The new arrival makes an organic entrance in their own voice and the
+  conversation simply continues with a cast of two — no separate copy is created.
+- **`/join <name>`** — bring another full character into an existing group (they
+  get an entrance too). **`/promote`** turns a lightweight scene guest into a full
+  member.
+- **`/exit <name>`** — write a character out of the scene. They get a goodbye, and
+  a one-tap **Undo** appears in case you change your mind before the next message.
+- **`/turnorder ...`** — set who speaks when: `roundrobin`, `random`, or an
+  explicit order such as `/turnorder Mara, {{user}}, Kai` (you can place **your
+  own** turn in the rotation). `/turnorder` on its own shows the current order.
+- **`/speak <name>`** — make a specific character take a turn right now, regardless
+  of whose turn it is.
 
-1. **Characters** — pick who joins. Drag to reorder; the order is the order they
-   enter the scene.
-2. **Setup** — group name, optional scenario, and turn order.
-3. **Entrance (one step per added character)** — *optional* per character.
-   Decide how each newcomer arrives:
-   - **Opening line** — your text is used as the character's entrance exactly as
-     written (no AI generation).
-   - **Direction** — the AI writes the entrance in the character's own voice,
-     guided by your text (the direction never appears as a message).
-   - **Leave it blank** — the character is simply inserted into the turn order
-     with no special entrance.
-4. **Review** — confirm the roster, settings, and who gets an entrance, then
-   **Fork to Group**.
+When a group drops back to a single character it collapses into a **clean 1:1 with
+the original library character** (no leftover copies), and that character keeps
+everything that happened in the group — memory, bond/trust, needs, and evolution.
 
-Each character with an entrance takes a one-off turn to make it, in the order
-you arranged them. The group's rotation order becomes: the original
-participant(s), then the arrivals **with** an entrance (in the order added),
-then the arrivals **without** an entrance at the end. In **Round Robin**, once
-all the entrances are done, the **next turn goes to whoever falls right after
-the last entrant** in that order — i.e. the first silent arrival, or wrapping
-back to the original if there were none. In **Random** mode the next speaker is
-random as usual.
-
-> The web UI's fork is single-step (no per-character entrances) for now; the
-> stepped wizard is in the desktop app.
+> The old **Fork to Group Chat** wizard is **deprecated** in favor of
+> `/join --full`. The macro converts in place rather than forking a separate copy.
 
 ### Turn Order
 
@@ -526,7 +521,7 @@ Open the group chat and expand the sidebar or use the **Chat Settings** dialog (
 
 **Tip**: Combine Group Chats + Director Mode + custom backgrounds + TTS Auto-Play for incredibly immersive "ambient theater" experiences. You only need to drop in occasional director notes to steer the story.
 
-Group chats fully support swipes, editing, memory/RAG, image generation, and cloud sync.
+Group chats fully support swipes, editing, memory/RAG, image generation, and per-character voices.
 
 ![Group chat creation and interface placeholder](screenshots/group_chat.png)
 
@@ -917,6 +912,8 @@ Generation progress, queue, and history are shown in the download queue panel an
 ---
 
 ## Cloud Sync
+
+> ⚠️ **Deprecated — no longer supported, will be removed in a future release.** Cloud Sync has proven unreliable across devices (it can occasionally bring deleted characters back). Don't rely on it. Instead, use the **automatic local Backups** (every 30 minutes, with a rolling week of daily restore points) for safekeeping, and **Card export / import** to move characters or groups between devices. Cloud Sync still runs for now, but no further fixes or features are planned.
 
 Your characters, chats, lorebooks, worlds, and settings can be kept in sync across multiple devices using the built-in **Cloud Sync** service (accessible from the sidebar or Settings). Supported providers: Google Drive and WebDAV (Nextcloud, ownCloud, Synology, etc.).
 

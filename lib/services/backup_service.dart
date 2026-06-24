@@ -22,16 +22,26 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/database/database.dart';
 
-/// Creates timestamped backups of the SQLite database.
-/// Auto-backup runs every 10 minutes and is always on.
-/// Keeps the most recent [maxBackups] copies and prunes older ones.
+/// Creates timestamped backups of the SQLite database (now the primary safety
+/// net, since cloud sync is deprecated). Auto-backup runs every 30 minutes and
+/// is always on. Retention is two-tier rolling (see [pruneBackups]):
+///   • Recent: always keep the newest [maxBackups] snapshots (~5h at this cadence).
+///   • Daily:  also keep the most-recent snapshot of each of the last
+///     [dailyRetentionDays] calendar days, so a backup survives a full rolling
+///     week even after the recent window has scrolled past it.
 class BackupService {
+  /// Recent rolling tier: the newest this-many snapshots are always kept.
   static const int maxBackups = 10;
-  static const Duration _autoBackupInterval = Duration(minutes: 10);
+
+  /// Daily tier: additionally keep ONE backup per calendar day for the last
+  /// this-many days (a rolling week of dailies on top of the recent snapshots).
+  static const int dailyRetentionDays = 7;
+
+  static const Duration _autoBackupInterval = Duration(minutes: 30);
   static const String _backupDir = 'backups';
   static Timer? _autoBackupTimer;
 
-  /// Start the automatic backup timer (every 10 minutes).
+  /// Start the automatic backup timer (every 30 minutes).
   /// Safe to call multiple times — will not create duplicate timers.
   static void startAutoBackup() {
     if (_autoBackupTimer != null) return;
@@ -144,19 +154,69 @@ class BackupService {
     debugPrint('[Backup] Restored backup from: $backupPath');
   }
 
-  /// Delete backups older than the most recent [maxBackups].
+  /// Two-tier rolling retention. A backup is kept if it satisfies EITHER rule:
+  ///   • Recent: it is among the newest [maxBackups] snapshots.
+  ///   • Daily:  it is the most-recent snapshot of one of the last
+  ///     [dailyRetentionDays] calendar days (today counts as day 0).
+  /// Everything else is deleted. This gives fine-grained recent history plus a
+  /// rolling week of daily restore points without unbounded growth. The pure
+  /// policy lives in [backupsToKeep] (filesystem-free, unit-tested); this method
+  /// just supplies the file data and deletes the complement.
   static Future<void> pruneBackups() async {
-    final backups = await listBackups();
+    final backups = await listBackups(); // newest first (by mtime)
     if (backups.length <= maxBackups) return;
 
-    for (var i = maxBackups; i < backups.length; i++) {
+    final entries = [
+      for (final f in backups) (path: f.path, modified: f.statSync().modified),
+    ];
+    final keep = backupsToKeep(entries, DateTime.now());
+
+    for (final f in backups) {
+      if (keep.contains(f.path)) continue;
       try {
-        await backups[i].delete();
-        debugPrint('[Backup] Pruned old backup: ${backups[i].path}');
+        await f.delete();
+        debugPrint('[Backup] Pruned old backup: ${f.path}');
       } catch (e) {
         debugPrint('[Backup] Failed to prune: $e');
       }
     }
+  }
+
+  /// Pure retention policy (no filesystem) — exposed for testing. Given backups
+  /// as (path, modified) ordered NEWEST-FIRST and the current time [now], returns
+  /// the set of paths to KEEP under the recent + daily rules described on
+  /// [pruneBackups]. Order matters: the first entry seen for a day is treated as
+  /// that day's most-recent snapshot.
+  @visibleForTesting
+  static Set<String> backupsToKeep(
+    List<({String path, DateTime modified})> backupsNewestFirst,
+    DateTime now,
+  ) {
+    final keep = <String>{};
+
+    // Recent tier — the newest maxBackups snapshots.
+    for (var i = 0;
+        i < backupsNewestFirst.length && i < maxBackups;
+        i++) {
+      keep.add(backupsNewestFirst[i].path);
+    }
+
+    // Daily tier — one per calendar day for the last dailyRetentionDays days.
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final seenDays = <String>{};
+    for (final b in backupsNewestFirst) {
+      final mod = b.modified;
+      final day = DateTime(mod.year, mod.month, mod.day);
+      final ageDays = todayMidnight.difference(day).inDays;
+      if (ageDays < 0 || ageDays >= dailyRetentionDays) {
+        continue; // future-dated (clock skew) or older than the rolling week
+      }
+      if (seenDays.add('${day.year}-${day.month}-${day.day}')) {
+        keep.add(b.path); // most-recent backup of this day
+      }
+    }
+
+    return keep;
   }
 
   /// Delete ALL backups. Used during major schema upgrades (e.g. 0.9.0

@@ -6317,7 +6317,7 @@
                         <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:8px">
                             <span style="font-size:14px;color:#fff;flex:1">${esc(m.name)}</span>
                             <button class="btn btn-sm" style="font-size:11px;padding:2px 8px;cursor:pointer;color:rgba(139,92,246,0.9);border:1px solid rgba(139,92,246,0.3);background:none" data-setnext="${esc(m.name)}" title="Set as next speaker">▶ Next</button>
-                            ${currentGroupMembers.length > 2
+                            ${currentGroupMembers.length > 1
                                 ? `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;cursor:pointer;color:#EF4444;border:1px solid rgba(239,68,68,0.3);background:none" data-remove="${esc(m.charId)}" title="Remove from group">✕</button>`
                                 : ''}
                         </div>
@@ -6354,7 +6354,7 @@
                         await renderModal();
                         pollChatState();
                     } else {
-                        _showToast('Cannot remove (min 2 required)', '#EF4444');
+                        _showToast('Couldn’t remove character', '#EF4444');
                     }
                 });
             });

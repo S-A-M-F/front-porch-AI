@@ -213,12 +213,17 @@ class TimeService {
     }
   }
 
-  // For _restoreRealismStateFromMessage (and similar state replay).
+  // For _restoreRealismStateFromMessage + 1:1<->group conversion carry.
   void restoreTimeFromRealismState(Map<String, dynamic> state) {
-    if (_passageOfTimeEnabled) {
-      _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
-      _dayCount = state['dayCount'] as int? ?? _dayCount;
-    }
+    // Restore the scene time REGARDLESS of passage-of-time. A fixed time-of-day
+    // (e.g. "evening, Day 1") is meaningful even with auto-advance OFF, and must
+    // survive 1:1<->group conversion + per-speaker state replay. The old
+    // `if (_passageOfTimeEnabled)` gate — combined with the carry restoring time
+    // BEFORE the passage flag is re-applied — reset a fixed time to the morning/
+    // Day 1 default on conversion. (Auto-advance is a separate behavior; not
+    // restoring here never advances time, it only kept the stale default.)
+    _timeOfDay = state['timeOfDay'] as String? ?? _timeOfDay;
+    _dayCount = state['dayCount'] as int? ?? _dayCount;
     _startDayOfWeek = state['startDayOfWeek'] as int? ?? _startDayOfWeek;
   }
 

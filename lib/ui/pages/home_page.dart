@@ -2575,7 +2575,26 @@ class _HomePageState extends State<HomePage> {
                     )
                   : null,
             ),
-            memberState: const Value('{}'),
+            // Provenance — Group Card portable origin (cast-unification work): if
+            // the card carried the member's TRUE library origin
+            // (`_origin_library_stable_id` = the source character's stableGroupId,
+            // written by our export), stamp it so this re-imported member is
+            // reconnectable by MemberOriginResolver. Legacy/foreign cards without
+            // the key stay origin-unknown ('{}') (encodeProvenance yields '{}' for
+            // null) and fall back to name-match resolution. We intentionally do NOT
+            // stamp from `_original_stable_id` (the realism-remap instance id, NOT a
+            // library origin) and do NOT carry originLibraryDbId (machine-local).
+            // Tolerant read: a non-string value on a malformed card degrades to
+            // origin-unknown rather than aborting the whole member import (matches
+            // the .toString()/is-String coercion used for every other foreign field
+            // in this loop).
+            memberState: Value(
+              GroupMember.encodeProvenance(
+                originStableId: raw['_origin_library_stable_id'] is String
+                    ? (raw['_origin_library_stable_id'] as String).trim()
+                    : null,
+              ),
+            ),
           ),
         );
 
@@ -2947,6 +2966,20 @@ class _HomePageState extends State<HomePage> {
 
       if (stableIdForRemap != null && stableIdForRemap.isNotEmpty) {
         raw['_original_stable_id'] = stableIdForRemap;
+      }
+
+      // Group Card portable origin (cast-unification work): carry the member's
+      // TRUE library origin (portable) so a re-import can reconnect it to the
+      // source library character. DISTINCT from
+      // `_original_stable_id` above, which is the export INSTANCE id used only for
+      // realism relationship remap. `m.originStableId` is the origin library
+      // character's stableGroupId (image-basename derived, cross-machine portable);
+      // null for legacy/origin-unknown members — omit the key entirely then. The
+      // machine-local `originLibraryDbId` is deliberately NOT exported (unused +
+      // meaningless on another device).
+      final originLibStableId = m.originStableId;
+      if (originLibStableId != null && originLibStableId.isNotEmpty) {
+        raw['_origin_library_stable_id'] = originLibStableId;
       }
 
       rawMembersWithAvatars.add(raw);

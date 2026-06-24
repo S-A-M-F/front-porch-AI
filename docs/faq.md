@@ -291,13 +291,13 @@ If you really need to "reset" an ongoing chat's Realism state without starting o
 
 Front Porch AI has robust automatic backup built in:
 
-- **Auto-backup** runs every **10 minutes** (always enabled) and keeps the most recent **10** timestamped copies (pruning happens automatically). Backups live in `KoboldManager/backups/` next to the `front_porch.db`.
+- **Auto-backup** runs every **30 minutes** (always enabled) on a two-tier rolling schedule: it keeps the **10 most recent** timestamped copies **plus one backup per day for the last 7 days**, so you have both fine-grained recent history and a rolling week of daily restore points. Pruning happens automatically. Backups live in `KoboldManager/backups/` next to the `front_porch.db`.
 - The WAL (write-ahead log) is checkpointed before every backup so the .db file is self-contained.
 - You can manually trigger a backup at any time via the button in **Settings → Cloud Sync & Backup** (or the web server API).
 - Cloud sync (Google Drive / WebDAV) does **not** automatically create an extra backup before each operation in the current implementation — create one manually beforehand if you want a safety snapshot.
 - Restoring is as simple as selecting a backup in the corruption recovery overlay (on launch after integrity failure) or via the in-app restore dialog. The app closes the live DB, copies the backup over, removes stale WAL/SHM files, and reopens.
 
-**Cloud Sync** (Google Drive or WebDAV/Nextcloud) gives you an off-device copy. You can also simply copy the entire `FrontPorchAI` (or `FrontPorchAI-Beta`) folder.
+For an **off-device copy**, simply copy the entire `FrontPorchAI` (or `FrontPorchAI-Beta`) folder, or use **Card export / import** to move individual characters and groups between machines. (**Cloud Sync** is **deprecated** and will be removed in a future release — it's unreliable across devices, so don't depend on it.)
 
 Restoring is as simple as replacing the `.db` file or using the in-app restore dialog.
 

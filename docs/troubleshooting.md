@@ -88,7 +88,7 @@ If the app still fails to start, delete the entire data directory (`~/Documents/
 2. **Database corruption** (most frequent cause):
    - On launch the app runs `db.integrityCheck()` (`PRAGMA quick_check`).
    - If it fails, a red "Database Corruption" overlay appears with a list of timestamped `.db` backups.
-   - Click any backup row to restore. Backups are created automatically before cloud sync and on clean shutdown (`DbReunificationService.createBackups`).
+   - Click any backup row to restore. Backups are created automatically on a rolling 30-minute schedule (plus one daily restore point for the last 7 days) and on clean shutdown.
    - Manual location: `<data>/characters/` (and sometimes root) — look for `*.db.bak*` files.
 
 3. **GPU driver / KoboldCPP startup crash**:
@@ -521,6 +521,8 @@ After a successful restore you may still need to re-index RAG (`Settings → Mem
 Images are never deleted automatically when you delete a character (soft-delete first for 30 days), giving you a safety window.
 
 ### Cloud sync failing
+
+> ⚠️ **Cloud Sync is deprecated and will be removed in a future release.** It is unreliable across devices (a known issue can resurrect deleted characters when the deletion isn't propagated). Rather than troubleshoot it, prefer the **automatic local Backups** (every 30 min, with daily restore points kept for a week) and **Card export / import** for moving data between devices. The notes below are retained only for existing setups.
 
 **CloudSyncService + provider-specific logic (`GoogleDriveProvider`, `DatabaseMergeService`):**
 

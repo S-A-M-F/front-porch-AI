@@ -835,7 +835,14 @@ class _CreateGroupChatPageState extends State<CreateGroupChatPage> {
                 ? jsonEncode(source.rawExtensions!)
                 : null,
           ),
-          memberState: const Value('{}'),
+          // Provenance: stamp the source library character so this member can
+          // later be traced back / collapsed to a 1:1 with the original.
+          memberState: Value(
+            GroupMember.encodeProvenance(
+              originStableId: source.stableGroupId,
+              originLibraryDbId: source.dbId,
+            ),
+          ),
         ),
       );
     }

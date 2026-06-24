@@ -65,6 +65,37 @@ void main() {
       },
     );
 
+    test(
+      'all nsfw scalars round-trip losslessly through the per-char map '
+      '(arousal + cooldown enabled/remaining/total) — host-collapse safety net',
+      () {
+        final svc = createTestNsfw();
+        svc.loadNsfwScalars(
+          arousalLevel: 73,
+          nsfwCooldownEnabled: true,
+          cooldownTurnsRemaining: 4,
+          cooldownTurnsTotal: 9,
+        );
+        svc.saveNsfwScalarsToGroup('spk');
+
+        // Wipe the working registers (as if another speaker had been loaded).
+        svc.loadNsfwScalars(
+          arousalLevel: 0,
+          nsfwCooldownEnabled: false,
+          cooldownTurnsRemaining: 0,
+          cooldownTurnsTotal: 0,
+        );
+        expect(svc.arousalLevel, 0);
+
+        // Restore from the per-char map.
+        svc.loadNsfwScalarsForSpeaker('spk');
+        expect(svc.arousalLevel, 73);
+        expect(svc.nsfwCooldownEnabled, true);
+        expect(svc.cooldownTurnsRemaining, 4);
+        expect(svc.cooldownTurnsTotal, 9);
+      },
+    );
+
     test('arousalTierName matches relationship-adapted names for tiers', () {
       final svc = createTestNsfw();
       svc.setArousalLevel(100);

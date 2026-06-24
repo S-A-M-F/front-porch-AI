@@ -328,6 +328,14 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   @override
   List<String> get suggestedActions => const [];
 
+  // Scene-guest "regenerate the buried host" affordance. These unit goldens never
+  // set up a host buried under Lite-NPC replies, so null = MessageBubble shows no
+  // buried-host regen button (matching the pre-scene-guest render). Without this
+  // stub the real getter call hits noSuchMethod and throws at build time, which
+  // is what was making the MessageBubble goldens fail on CI.
+  @override
+  int? get regenerableHostBelowGuestsIndex => null;
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       super.noSuchMethod(invocation);

@@ -32,6 +32,10 @@ If you use it, a star would mean a lot to the developer.
 
 These are the user-facing changes and improvements that have landed on the Rawhide branch since it diverged from `main`. Many originated on the dedicated refactor workstream and were promoted here; others are targeted fixes and polish.
 
+- 🎭 **One chat, a cast that changes** — 1:1 and group chats are now the same thing: a 1:1 is a cast of one, a group is the same chat with more characters. Turn a solo chat into a group **in place** with `/join --full` (no more fork-and-duplicate), bring a character in or out with `/join` / `/exit` (goodbye narration + one-tap **undo**), force a turn with `/speak`, and set the speaking order — including your own slot — with `/turnorder`. Collapsing back to one character returns a clean 1:1 with the **original** library character (no orphan copies). Realism, needs, RAG memory, evolution, objectives, author notes, and expressions all carry across the conversion **both ways**. This round also fixes a batch of group bugs: needs-delta chips now show under *every* speaker's message (not just the first), each character reacts to **their own** needs/relationship instead of a castmate's, members inherit their **expression images** in groups, the shared scenario no longer drifts per character, and Character Evolution cadence is configurable per character.
+
+- 💾 **Cloud Sync deprecated → smarter local backups** — Cloud Sync (Google Drive / WebDAV) is now **deprecated** (still present, with an in-app notice) because it could occasionally resurrect deleted data across devices. The replacement is a stronger local backup system: **two-tier rolling backups** — frequent 30-minute snapshots *plus* one per day for the last 7 days — so whether you need to undo something from this afternoon or roll back to yesterday, there's a restore point waiting, with old ones pruned automatically. Manage and restore on the Backups screen.
+
 - 🏗️ **God File Modularization (Stages 1–7 complete)** — The largest god files (`chat_service.dart`, `storage_service.dart`, key UI pages like settings/character creator/chat, and supporting services) have been decomposed into focused, single-responsibility, testable modules. Full behavioral parity for 1:1 chats, group chats, Realism Engine (bond/trust/emotion/arousal/fixation), Needs simulation, objectives, character evolution, fact extraction, summaries, prompt injection, RAG, creators, and everything else. The entire test suite is now reliably green with a strong new baseline (+1126 tests). This is a major internal restructuring that makes future features and fixes faster and safer — you should see no functional differences, just a more solid app.
 
 - 🎯 **Autonomous character objectives now reliably generate subtasks** — When the Realism Engine proposes a personal goal for a character ("proposed_objective"), the system now consistently auto-generates 3 concrete sequential tasks the character can pursue. This was previously unreliable (especially under group impersonation and per-speaker evaluation paths). User-created objectives (typed in the UI) correctly do *not* auto-generate tasks; you remain in full control and can still press Generate Tasks manually when you want them.
@@ -80,7 +84,6 @@ If you're evaluating local AI tools, here's an honest breakdown. Every project o
 | **Character Expressions** | ✅ ONNX + LLM, live avatar swap | ⚙️ Extension required | ❌ | ❌ |
 | **RAG memory (local)** | ✅ ONNX embeddings, no cloud | ⚙️ Extension required | ❌ | ❌ |
 | **Novel / story generator** | ✅ Porch Stories pipeline | ❌ | ❌ | ❌ |
-| **Cloud sync** | ✅ Google Drive / WebDAV | ❌ | ❌ | ❌ |
 | **Character card compatibility** | ✅ V2 spec + Backyard .byaf import | ✅ V2 spec | ❌ | .byaf only |
 | **Group chat** | ✅ | ✅ | ❌ | ❌ |
 | **Extension / plugin ecosystem** | ❌ | ⭐ Very large | Moderate | ❌ |
@@ -128,8 +131,10 @@ If you're evaluating local AI tools, here's an honest breakdown. Every project o
 
 ### 👥 Group Chat & Director Mode
 - **Multi-character conversations** — 2+ characters interacting with each other and with you
-- **Director Mode** — manually choose who speaks next
-- **Fork any 1:1 chat** into a group, preserving full message history
+- **One chat, a changing cast** — turn a solo chat into a group **in place** with `/join --full`, add/remove characters live with `/join` and `/exit` (goodbye + undo), and collapse back to a clean 1:1 with the **original** character — no forking or orphan copies
+- **Macros** — `/turnorder` (set who speaks when, including your own slot), `/speak` (force a character to take a turn now), `/promote` (promote a scene guest to a full member)
+- **Director Mode** — let characters chat autonomously, or manually choose who speaks next
+- **Per-character everything** — realism, needs, expression images, author notes, and evolution are tracked per member and carried losslessly when converting between 1:1 and group
 
 ### 🗣️ Text-to-Speech
 - **Four engines**: Kokoro (local, 50+ voices, 9 languages), ElevenLabs (cloud, expressive), OpenAI (cloud, premium), Piper (lightweight fallback)
@@ -147,10 +152,10 @@ If you're evaluating local AI tools, here's an honest breakdown. Every project o
 - 5-stage autonomous pipeline: concept → outline → draft → edit → publish
 - Skeuomorphic page-flip reader with audiobook TTS read-along
 
-### ☁️ Cloud Sync
+### ☁️ Cloud Sync *(deprecated)*
+> **Deprecated:** Cloud Sync is being phased out — under some conditions it could resurrect data you'd deleted on another device. Use **local Backups** instead (two-tier rolling: 30-minute snapshots + one per day for 7 days, with one-click restore). The sync code remains for now, behind an in-app notice.
 - Sync your entire database and character PNGs via **Google Drive** or **Nextcloud/WebDAV**
 - Row-level merge engine with UUID primary keys — no ID collisions across devices
-- Automatic backups before every sync, one-click restore
 - **Privacy-first**: syncs only to accounts you own, no data touches our servers
 
 ### 🎭 Character Expressions

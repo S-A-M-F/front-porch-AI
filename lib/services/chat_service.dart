@@ -39,9 +39,11 @@ import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
+import 'package:front_porch_ai/models/chat_participant.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/models/avatar_image.dart';
 import 'package:front_porch_ai/models/group_member.dart';
+import 'package:front_porch_ai/services/chat/member_origin_resolver.dart';
 import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/needs_impact.dart';
@@ -80,6 +82,31 @@ import 'package:front_porch_ai/services/chat/fact_extraction.dart';
 import 'package:front_porch_ai/services/chat/evolution_service.dart';
 import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:drift/drift.dart' as drift;
+
+// Cohesive method groups extracted into part files to keep this file shrinking
+// toward the 500-line cap (see CLAUDE.md). Parts share this library's imports and
+// private members; behaviour is unchanged.
+part 'chat/chat_service_group_read.dart';
+part 'chat/chat_service_group_settings.dart';
+part 'chat/chat_service_evolution.dart';
+part 'chat/chat_service_sillytavern.dart';
+part 'chat/chat_service_group_realism_helpers.dart';
+part 'chat/chat_service_history.dart';
+part 'chat/chat_service_group_membership.dart';
+part 'chat/chat_service_reprocess.dart';
+part 'chat/chat_service_chat_entry.dart';
+part 'chat/chat_service_group_entry.dart';
+part 'chat/chat_service_session_state.dart';
+part 'chat/chat_service_session_load.dart';
+part 'chat/chat_service_realism_evals.dart';
+part 'chat/chat_service_actions.dart';
+part 'chat/chat_service_objectives.dart';
+part 'chat/chat_service_realism_dance.dart';
+part 'chat/chat_service_speaker_objectives.dart';
+part 'chat/chat_service_impersonate.dart';
+part 'chat/chat_service_session_manage.dart';
+part 'chat/chat_service_generation.dart';
+part 'chat/chat_service_cast.dart';
 
 // Internal flag to signal a cancellation request for realism evaluation.
 // This is a file-scope flag to avoid needing to thread state through the
@@ -139,6 +166,13 @@ class ChatService extends ChangeNotifier {
       _activeObjectives.where((o) => o.isPrimary).firstOrNull;
   List<Objective> get secondaryObjectives =>
       _activeObjectives.where((o) => !o.isPrimary).toList();
+
+  /// Whether a completion check is currently running.
+  ///
+  /// Kept in the class body (not the objectives extension) because
+  /// [FakeChatService] overrides it in golden tests — extension members are
+  /// statically dispatched and cannot be overridden.
+  bool get isCheckingCompletion => _isCheckingCompletion;
 
   List<Map<String, dynamic>> tasksForObjective(Objective obj) {
     try {
@@ -211,6 +245,12 @@ class ChatService extends ChangeNotifier {
   /// Initial filter for a pending `/join` picker, or null when none is pending.
   String? get pendingGuestPickerFilter => _pendingGuestPickerFilter;
 
+  bool _pendingGuestPickerFull = false;
+
+  /// Whether the pending picker should add the picked character as a FULL member
+  /// (group member / 1:1->group convert) vs a lite Scene Guest.
+  bool get pendingGuestPickerFull => _pendingGuestPickerFull;
+
   /// Transient Scene Guest create/join status line (null when idle).
   String? get guestActivityStatus => _guestActivityStatus;
 
@@ -238,6 +278,13 @@ class ChatService extends ChangeNotifier {
   ChatMessage? _exitUndoMessage;
   String? _exitUndoOfferName;
 
+  /// Set when a FULL group member's `/exit` is awaiting commit. They have said
+  /// goodbye and left the live roster, but their DB row/realism/evolution/quests/
+  /// memory are untouched and the real removal (plus any collapse to a 1:1) is
+  /// deferred until the user continues — so [undoLastExit] can restore them
+  /// losslessly. Committed in `sendMessage` via [_commitPendingMemberExit].
+  CharacterCard? _pendingMemberExit;
+
   /// Name to show in the UNDO SnackBar (null = nothing to offer).
   String? get exitUndoOfferName => _exitUndoOfferName;
 
@@ -264,12 +311,37 @@ class ChatService extends ChangeNotifier {
     _exitUndoGuest = null;
     _exitUndoMessage = null;
     _exitUndoOfferName = null;
+    // A pending full-member exit that is cleared WITHOUT committing (context
+    // switch / new chat) is simply cancelled: the member's row was never deleted,
+    // so they stay. The sendMessage commit path runs _commitPendingMemberExit
+    // before this, so a real "continue" still finalizes the removal.
+    _pendingMemberExit = null;
   }
 
   /// Undo the last `/exit`: delete the departure message (which reverts the host
   /// realism it applied, via [deleteMessage]'s rollback) and restore the guest
   /// to the scene with their full context (evolution + memory were never wiped).
   Future<void> undoLastExit() async {
+    // Full group member (deferred-deletion): the member's DB row, realism,
+    // evolution, quests and memory were never touched — restoring is just a
+    // roster reload plus deleting their goodbye turn (which reverts the realism
+    // that turn applied). The destructive removal never ran, so there is nothing
+    // to un-collapse.
+    final pendingMember = _pendingMemberExit;
+    if (pendingMember != null) {
+      final departure = _exitUndoMessage;
+      _pendingMemberExit = null;
+      _clearExitUndo();
+      if (departure != null) {
+        final idx = _messages.indexOf(departure);
+        if (idx >= 0) deleteMessage(idx); // removes + reverts realism + saves
+      }
+      await _reloadGroupRoster();
+      _setGuestStatus('${pendingMember.name} is back in the chat.');
+      notifyListeners();
+      return;
+    }
+
     final guest = _exitUndoGuest;
     final departure = _exitUndoMessage;
     if (guest == null) return;
@@ -308,14 +380,184 @@ class ChatService extends ChangeNotifier {
     }).toList();
   }
 
+  /// Library characters eligible to `/join` an active GROUP as a full member:
+  /// every loaded character except those already in the cast (excluded by name —
+  /// addCharacterToGroup's stable-identity D5 guard is the real backstop). Empty
+  /// outside a group. Drives `/join` resolution in group chats.
+  List<CharacterCard> get joinableGroupCharacters {
+    final repo = _characterRepository;
+    if (repo == null || _activeGroup == null) return const [];
+    final memberNames = _groupCharacters
+        .map((c) => c.name.trim().toLowerCase())
+        .toSet();
+    return repo.characters
+        .where((c) => !memberNames.contains(c.name.trim().toLowerCase()))
+        .toList();
+  }
+
   /// Bring an existing library [card] into the scene as a Scene Guest (the
   /// picker's selection handler; same parity-safe enter path as `/create`).
   Future<void> joinSceneGuest(CharacterCard card) =>
       _addGuestWithStatus(displayName: card.name, existing: card);
 
+  /// Bring an existing library [card] in as a FULL participant (realism-bearing).
+  ///
+  /// In a 1:1 this converts the chat into a group *in place* (host + [card]) by
+  /// reusing [forkToGroupChat]; in an existing group it adds the member via
+  /// [addCharacterToGroup]. This is the macro path (`/join --full`) that replaces
+  /// the separate Fork-to-Group wizard — same underlying machinery, no screen
+  /// switch. Requires the group repository (wired from main.dart).
+  Future<void> joinFull(CharacterCard card) async {
+    final repo = _groupChatRepository;
+    if (repo == null) {
+      _setGuestStatus('⚠ Group support is unavailable right now.', isError: true);
+      return;
+    }
+    if (_isGenerating) {
+      _setGuestStatus(
+        '⚠ Wait for the current reply to finish first.',
+        isError: true,
+      );
+      return;
+    }
+    if (_activeGroup != null) {
+      final ok = await addCharacterToGroup(card, repo);
+      if (!ok) {
+        // addCharacterToGroup already surfaced a specific reason (e.g. the D5
+        // "already in this chat" banner); don't clobber it with a generic one.
+        return;
+      }
+      // Members are copied under fresh UUIDs, so resolve the live member by name
+      // before having them make their organic entrance.
+      final resolved = groupCharacters.firstWhere(
+        (c) => c.name == card.name,
+        orElse: () => card,
+      );
+      await _generateMemberEntrance(
+        resolved,
+        'enter the scene naturally, reacting to what is happening',
+      );
+      return;
+    }
+
+    // 1:1 → group conversion. Bring EVERYONE currently in the scene along: the
+    // host (added by forkToGroupChat) plus every present lite guest — lite NPCs
+    // can't exist in a group, so they're promoted to full members rather than
+    // dropped. A character who is already a present guest just gets promoted
+    // (no fresh entrance); a brand-new arrival makes an organic, LLM-written
+    // entrance from the chat so far + their card (mirroring the lite /join flow).
+    final present = List<CharacterCard>.from(_sceneGuestCards);
+    final cardId = _getCharacterIdFromCard(card);
+    final isPresentGuest = present.any(
+      (g) => _getCharacterIdFromCard(g) == cardId,
+    );
+
+    final additional = <CharacterCard>[
+      if (!isPresentGuest) card,
+      ...present,
+    ];
+    final entrances = isPresentGuest
+        ? const <String, ({String text, bool creative})>{}
+        : {
+            cardId: (
+              text: 'enter the scene naturally, reacting to what is happening',
+              creative: true,
+            ),
+          };
+
+    await _convertOneToOneToGroup(additional, entrances, repo);
+  }
+
+  /// Promote the entire present scene — the host plus every present lite guest —
+  /// into a full group, with no new arrival. This is the bare `/join --full`
+  /// (and any "make this a group" affordance): it turns a 1:1 that has picked up
+  /// lite NPCs into a real group where everyone is a full, realism-bearing member.
+  Future<void> promoteSceneToFull() async {
+    final repo = _groupChatRepository;
+    if (repo == null) {
+      _setGuestStatus('⚠ Group support is unavailable right now.', isError: true);
+      return;
+    }
+    if (_isGenerating) {
+      _setGuestStatus(
+        '⚠ Wait for the current reply to finish first.',
+        isError: true,
+      );
+      return;
+    }
+    if (_activeGroup != null) return; // already a group
+    final present = List<CharacterCard>.from(_sceneGuestCards);
+    if (present.isEmpty) {
+      _setGuestStatus(
+        '⚠ No guests to promote — bring one in with /join --full <name>.',
+        isError: true,
+      );
+      return;
+    }
+    // No fresh entrance: everyone is already in the scene, they just become full.
+    await _convertOneToOneToGroup(
+      present,
+      const <String, ({String text, bool creative})>{},
+      repo,
+    );
+  }
+
+  /// Shared 1:1→group conversion core used by [joinFull] and
+  /// [promoteSceneToFull]. Drops present guests' lite state (they become full
+  /// members) and forks the current chat into a group with [additional] members
+  /// and any creative [entrances], surfacing a failure banner if it can't.
+  Future<void> _convertOneToOneToGroup(
+    List<CharacterCard> additional,
+    Map<String, ({String text, bool creative})> entrances,
+    GroupChatRepository repo,
+  ) async {
+    // The present guests are becoming full members — drop their lite state so
+    // they aren't represented twice once we switch into group mode.
+    _sceneGuestIds.clear();
+
+    final group = await forkToGroupChat(additional, repo, entrances: entrances);
+    if (group == null) {
+      _setGuestStatus(
+        '⚠ Could not convert this chat into a group.',
+        isError: true,
+      );
+    }
+  }
+
+  /// Have [resolved] (a current group member) make an organic, LLM-written
+  /// entrance: force them to speak next under a hidden stage-direction so they
+  /// write their own entrance from the chat so far + their card. Shared by the
+  /// 1:1→group conversion (via forkToGroupChat) and live `/join --full` / sidebar
+  /// adds. Returns true on success. [intent] is sanitized so it cannot break out
+  /// of the bracketed directive injection.
+  Future<bool> _generateMemberEntrance(
+    CharacterCard resolved,
+    String intent,
+  ) async {
+    final safeText = intent
+        .replaceAll(']', ')')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    _groupManager?.setNextSpeaker(resolved);
+    _entranceDirective =
+        'Stage direction (hidden — do NOT quote, repeat, or copy this '
+        'text into the reply): ${resolved.name} enters the scene now, '
+        'following this intent — "$safeText". Write ${resolved.name}\'s '
+        'entrance fresh, in their own voice and words.';
+    try {
+      await _generateResponse(GenerationMode.normal);
+      return true;
+    } catch (e) {
+      debugPrint('[Join:Entrance] ${resolved.name} failed: $e');
+      _entranceDirective = null; // don't leak into a later turn
+      return false;
+    }
+  }
+
   /// Clear a pending picker request (user cancelled or finished picking).
   void dismissGuestPicker() {
     _pendingGuestPickerFilter = null;
+    _pendingGuestPickerFull = false;
     notifyListeners();
   }
 
@@ -347,13 +589,37 @@ class ChatService extends ChangeNotifier {
       },
       getJoinableCharacters: () => joinableGuestCharacters,
       joinGuest: joinSceneGuest,
-      requestGuestPicker: (filter) {
+      joinFull: joinFull,
+      promoteScene: promoteSceneToFull,
+      requestGuestPicker: (filter, full) {
         _pendingGuestPickerFilter = filter;
+        _pendingGuestPickerFull = full;
         notifyListeners();
       },
       runCastScan: runCastDetectionNow,
       speakGuest: speakGuestNow,
       armExitUndo: armSceneGuestExitUndo,
+      getGroupMembers: () =>
+          _activeGroup != null ? _groupCharacters : const <CharacterCard>[],
+      getGroupJoinableCharacters: () => joinableGroupCharacters,
+      removeGroupMember: (member) async {
+        final repo = _groupChatRepository;
+        if (repo == null) return false;
+        // Narrate the member's goodbye + arm a deferred-deletion UNDO; the real
+        // removal commits when the user continues (mirrors the Lite-NPC exit).
+        return exitGroupMember(member, repo);
+      },
+      speakGroupMember: (member) async {
+        // /speak <name> in a full group: force that member to take their turn now
+        // (jump the rotation), mirroring the Lite-NPC /speak. Same setNextSpeaker
+        // + generate path the goodbye narration uses, minus the removal/directive.
+        if (_activeGroup == null || _isGenerating) return;
+        _groupManager?.setNextSpeaker(member);
+        await _generateResponse(GenerationMode.normal);
+      },
+      isGroupTurnOrderRandom: () => isGroupTurnOrderRandom,
+      setGroupTurnOrder: (random, customOrder) =>
+          setGroupTurnOrder(random, customOrder),
     );
   }
 
@@ -977,6 +1243,15 @@ class ChatService extends ChangeNotifier {
   /// Per-character realism / needs / state for group chats.
   /// Keyed by stable charId. Populated from the hidden checkpoint.
   Map<String, Map<String, dynamic>> _groupRealism = {};
+
+  /// The group member id (`_getCharacterIdFromCard`) whose realism state is being
+  /// processed for the turn currently generating. Set the moment the speaker is
+  /// picked in `_generateResponse` and cleared in its `finally`, so every realism
+  /// consumer (prompt injection, decay, post-gen) keys on the character actually
+  /// speaking — `nextCharacter` points at the *upcoming* speaker and is null for
+  /// random turn order, so it cannot be that signal. Null outside a turn (the
+  /// pre-pick window keeps its prior nextCharacter-based behaviour).
+  String? _turnSpeakerIdForRealism;
 
   /// Per-character Author's Notes for group chats (independent of group-level _authorNote).
   /// Keyed by stable charId (from _getCharacterIdFromCard). Populated from the
@@ -1982,21 +2257,22 @@ class ChatService extends ChangeNotifier {
       }
       if (_currentSessionId != null) {
         if (_activeGroup != null) {
+          // GROUP: only the PERSONALITY evolves per-character. The scenario is the
+          // ONE shared scene — evolving it per-character drifts the story (each
+          // member ends up in a slightly different scenario), so it is left to the
+          // group's single shared scenario and not written per-character here.
           final session = await _db.getSessionById(_currentSessionId!);
           if (session != null) {
             final personalities = _tryParseJsonMap(
               session.groupEvolvedPersonalities,
             );
-            final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
             personalities[charId] = pers;
-            scenarios[charId] = scen;
             await _db.patchSession(
               SessionsCompanion(
                 id: drift.Value(_currentSessionId!),
                 groupEvolvedPersonalities: drift.Value(
                   jsonEncode(personalities),
                 ),
-                groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
               ),
             );
           }
@@ -2012,7 +2288,12 @@ class ChatService extends ChangeNotifier {
         }
       }
       _evolvedPersonalities[charId] = pers;
-      _evolvedScenarios[charId] = scen;
+      // In a group the scenario is shared (not per-character) — see the persist
+      // branch above; don't stamp a per-character evolved scenario that would
+      // drift the story. 1:1 keeps its evolved scenario.
+      if (_activeGroup == null) {
+        _evolvedScenarios[charId] = scen;
+      }
       _groupEvolutionCounts[charId] = count;
       if (_activeCharacter != null &&
           _getCharacterIdFromCard(_activeCharacter!) == charId) {
@@ -2044,7 +2325,7 @@ class ChatService extends ChangeNotifier {
   // core sendMessage pre/post + _generateResponse (pick/eval dance/impersonation/
   // build* stayed / post-gen finalization) ; _buildChatHistoryWithBudget ;
   // _loadLastSession / _saveChat / _doSaveChat ; _pickNextGroupCharacter ;
-  // _evaluateRealismForUpcomingGroupSpeaker ; _waitForTtsThenContinue + drain
+  // _evaluateRealismForUpcomingSpeaker ; _waitForTtsThenContinue + drain
   // buffer / _flush / _startDrainTimer ; _applyMoodDecay ; _maybeEmbedMessages ;
   // _runPostGenNeedsChecks thin + periodic thins; all reset keep-sync + "now complete" (see CLAUDE.md); 0 new god priv _ (count=15); thins + coord only. Buffer removal + simple authority complete.
   // (3 vestigial phrases cleaned: 2 briefing + 1 per-thin at _getNsfwCooldownInjection:7742) + thin consistency as part of
@@ -2159,6 +2440,12 @@ class ChatService extends ChangeNotifier {
       '- Use *asterisks* for actions and narration: *She leaned against the doorframe, arms crossed.*\n'
       '- Internal thoughts can be written in italics or described through narration.';
 
+  /// Inter-call delay used when staggering the multi-call realism evaluations.
+  /// Kept in the class body (not the realism-evals extension) because the
+  /// periodic-eval coordinator in this file references it directly; extension
+  /// statics aren't visible unqualified to the host type.
+  static const _kEvalDispatchStagger = Duration(milliseconds: 50);
+
   CharacterCard? get activeCharacter => _activeCharacter;
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   bool get isGenerating => _isGenerating;
@@ -2191,52 +2478,26 @@ class ChatService extends ChangeNotifier {
   /// Fully delegated to GroupTurnManager (supports forced override + both turn orders + Director Mode).
   CharacterCard? get nextCharacter => _groupManager?.nextSpeaker;
 
-  // ── Group RAG / Memory Settings (stored in checkpoint) ───────────────────
-  bool get groupRagEnabled => _groupRagEnabled;
-
-  int get groupRetrievalCount => _groupRetrievalCount;
-
-  double get groupMemoryBudgetPercent => _groupMemoryBudgetPercent;
-
-  double getCharacterRAGPriority(String charId) {
-    return _groupCharacterRAGPriorities[charId] ?? 1.0;
-  }
-
-  Map<String, double> get currentGroupRAGPriorities =>
-      Map.unmodifiable(_groupCharacterRAGPriorities);
-
-  void setGroupRAGEnabled(bool value) {
-    if (_activeGroup == null) return;
-    _groupRagEnabled = value;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void setGroupRetrievalCount(int value) {
-    if (_activeGroup == null) return;
-    _groupRetrievalCount = value;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void setGroupMemoryBudgetPercent(double value) {
-    if (_activeGroup == null) return;
-    _groupMemoryBudgetPercent = value;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void setCharacterRAGPriority(String charId, double priority) {
-    if (_activeGroup == null) return;
-    _groupCharacterRAGPriorities[charId] = priority;
-    // (old checkpoint call removed in v30)
-    notifyListeners();
-  }
-
-  void clearCharacterRAGPriority(String charId) {
-    _groupCharacterRAGPriorities.remove(charId);
-    // (old checkpoint call removed in v30)
-    notifyListeners();
+  /// The unified ordered cast of speakers for the active chat, regardless of
+  /// mode. This is the single roster the UI reads instead of branching on
+  /// `isGroupMode` between `activeCharacter`, `groupCharacters`, and
+  /// `sceneGuestCards`:
+  ///   - Group chat → each group member, in turn order (no distinct host).
+  ///   - 1:1 / NPC chat → the host (`cast[0]`, realism-bearing) followed by any
+  ///     present Scene Guests (lite NPCs, realism off).
+  /// Empty only when no chat is loaded.
+  List<ChatParticipant> get cast {
+    if (isGroupMode) {
+      return [
+        for (final c in groupCharacters)
+          ChatParticipant(card: c, isHost: false),
+      ];
+    }
+    final host = _activeCharacter;
+    return [
+      if (host != null) ChatParticipant(card: host, isHost: true),
+      for (final g in _sceneGuestCards) ChatParticipant(card: g, isHost: false),
+    ];
   }
 
   /// True only for regular (non-Director) group chats where the Realism Engine
@@ -2257,143 +2518,6 @@ class ChatService extends ChangeNotifier {
   bool get _shouldTrackInterCharacterRelationships {
     if (_activeGroup == null) return false;
     return _groupCharacters.length <= 4;
-  }
-
-  /// Returns the current emotion label (e.g. "joy", "sadness", "affection") for
-  /// the given character when in a realism-enabled group chat. Returns null otherwise.
-  String? getEmotionForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['emotion'] as String?;
-    return (raw != null && raw.isNotEmpty) ? raw : null;
-  }
-
-  /// Returns a snapshot of all realism data for a specific character in the
-  /// current group (when `isGroupRealismActive` is true). Includes keys like:
-  /// 'emotion', 'emotionIntensity', 'affection', 'trust', 'needs', 'fixation',
-  /// and (when group size ≤ 4) the hidden 'relationships' map toward other members.
-  /// This is primarily for debugging/advanced use; the UI never exposes inter-char data.
-  /// Returns null if not in an active realism group or no data for that char.
-  Map<String, dynamic>? getRealismStateForGroupCharacter(
-    CharacterCard character,
-  ) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final data = _groupRealism[id];
-    return (data != null && data.isNotEmpty) ? Map.unmodifiable(data) : null;
-  }
-
-  // ── Convenient per-character realism accessors for the UI ───────────────
-
-  /// Returns the full needs vector for the given group character.
-  /// Empty map if not in group realism mode or no data.
-  /// Only official needs keys are returned (legacy bad keys such as 'arousal'/'libido'
-  /// from older group data are silently filtered).
-  Map<String, int> getNeedsForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return const {};
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['needs'];
-    final result = <String, int>{};
-    for (final k in NeedsSimulation.needKeys) {
-      final v = (raw is Map) ? raw[k] : null;
-      if (v is num) {
-        result[k] = v.toInt();
-      } else {
-        // Fill any missing official needs so the UI always shows the complete set.
-        // This handles legacy/incomplete group data after previous cleanups.
-        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
-      }
-    }
-    return result;
-  }
-
-  int getAffectionForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return 0;
-    final id = _getCharacterIdFromCard(character);
-    return (_groupRealism[id]?['affection'] as num?)?.toInt() ?? 0;
-  }
-
-  int getTrustForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return 0;
-    final id = _getCharacterIdFromCard(character);
-    return (_groupRealism[id]?['trust'] as num?)?.toInt() ?? 0;
-  }
-
-  String? getFixationForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['fixation'] as String?;
-    return (raw != null && raw.isNotEmpty) ? raw : null;
-  }
-
-  int getArousalForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return 0;
-    final id = _getCharacterIdFromCard(character);
-    return (_groupRealism[id]?['arousal'] as num?)?.toInt() ?? 0;
-  }
-
-  String? getEmotionIntensityForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['emotionIntensity'] as String?;
-    return (raw != null && raw.isNotEmpty) ? raw : null;
-  }
-
-  /// Returns the remaining lifespan (in turns) for the current fixation of the
-  /// given group character, if any. Returns null if not in active group realism
-  /// or no fixation data.
-  int? getFixationLifespanForGroupCharacter(CharacterCard character) {
-    if (!isGroupRealismActive) return null;
-    final id = _getCharacterIdFromCard(character);
-    final raw = _groupRealism[id]?['fixationLifespan'] as num?;
-    return raw?.toInt();
-  }
-
-  /// Returns the top N most urgent needs (lowest value first) for the character,
-  /// as a list of (needName, value) pairs.
-  List<(String, int)> getTopUrgentNeedsForGroupCharacter(
-    CharacterCard character, {
-    int count = 2,
-  }) {
-    final needs = getNeedsForGroupCharacter(character);
-    if (needs.isEmpty) return const [];
-
-    final sorted = needs.entries.toList()
-      ..sort((a, b) => a.value.compareTo(b.value)); // lowest = most urgent
-
-    return sorted.take(count).map((e) => (e.key, e.value)).toList();
-  }
-
-  // ── Hidden inter-character relationship helpers (Phase 0 foundation) ─────
-  // These track how group members feel about *each other* (invisible to UI).
-  // All visible bars/UI continue to reflect only feelings toward the user.
-  // Full inter-char tracking is hard-capped at groups of 4 or fewer (enforced at usage sites).
-
-  /// Returns the map of hidden inter-character relationship scores for the given
-  /// group character (otherCharId → score in -300..+300 range, same scale as bond).
-  /// Empty map if not in group realism mode or no data yet.
-  /// These values are strictly internal and are never exposed in any user-facing UI.
-  ///
-  /// Backward-compat: If an old checkpoint is missing the 'relationships' key for
-  /// a character, we naturally return empty (no migration needed).
-  // (inter-char relationship shims excised in final cleanup; use relationshipService directly)
-
-  /// Clears the per-character realism state (emotion, bond/affection, trust,
-  /// arousal, fixation, needs vector, and any hidden inter-character relationships)
-  /// for the specified character in the current group chat session.
-  /// Persists the change via the hidden checkpoint.
-  /// Safe to call even if no prior state existed for the character.
-  void resetRealismForGroupCharacter(CharacterCard character) {
-    if (_activeGroup == null) return;
-    final id = _getCharacterIdFromCard(character);
-    if (_groupRealism.containsKey(id)) {
-      _groupRealism.remove(
-        id,
-      ); // also clears hidden 'relationships' toward other group members
-      // (old checkpoint call removed in v30)
-      debugPrint('[GroupRealism] Reset per-character state for $id');
-      notifyListeners();
-    }
   }
 
   double get tokensPerSecond {
@@ -2431,88 +2555,6 @@ class ChatService extends ChangeNotifier {
 
   String get authorNote => _authorNote;
   int get authorNoteStrength => _authorNoteStrength;
-
-  /// Returns the Author's Note text (if any) stored specifically for this
-  /// character within the current *group* chat. Uses the stable char ID.
-  /// Returns '' if not in group mode or no per-character note has been set.
-  /// (The group's authorNoteStrength is used for formatting during injection.)
-  String getAuthorNoteForGroupCharacter(CharacterCard c) {
-    if (_activeGroup == null) return '';
-    final id = _getCharacterIdFromCard(c);
-    return _groupAuthorNotes[id] ?? '';
-  }
-
-  /// Returns the strength (1-10) for this character's Author's Note.
-  /// Falls back to the group's current authorNoteStrength if no per-character
-  /// strength has been explicitly set.
-  int getAuthorNoteStrengthForGroupCharacter(CharacterCard c) {
-    if (_activeGroup == null) return _authorNoteStrength;
-    final id = _getCharacterIdFromCard(c);
-    return _groupAuthorNoteStrengths[id] ?? _authorNoteStrength;
-  }
-
-  /// Sets or clears a per-character Author's Note for the given card while in
-  /// a group chat. The value is persisted via the hidden group state checkpoint.
-  /// [strength] is accepted for forward compatibility (per-note strength) but
-  /// currently all per-char notes use the group's authorNoteStrength for
-  /// prompt formatting. Pass empty [note] to clear.
-  void setAuthorNoteForGroupCharacter(
-    CharacterCard c,
-    String note, {
-    int? strength,
-  }) {
-    if (_activeGroup == null) return;
-    final id = _getCharacterIdFromCard(c);
-    final trimmed = note.trim();
-
-    if (trimmed.isEmpty) {
-      _groupAuthorNotes.remove(id);
-      _groupAuthorNoteStrengths.remove(id);
-    } else {
-      _groupAuthorNotes[id] = trimmed;
-      // Store per-character strength if provided, otherwise fall back to group default
-      final effectiveStrength = strength ?? _authorNoteStrength;
-      _groupAuthorNoteStrengths[id] = effectiveStrength;
-    }
-
-    // (old checkpoint call removed in v30)
-    _saveChat();
-    notifyListeners();
-  }
-
-  /// Returns the system prompt (if any) stored specifically for this character
-  /// *within the current group chat*. This is completely separate from the
-  /// character's normal `systemPrompt` on their card (used in 1:1 chats).
-  /// Returns '' if not in a group or no per-character group prompt has been set.
-  /// When non-empty, this value wins over the character's normal systemPrompt
-  /// for prompt construction inside this group.
-  String getSystemPromptForGroupCharacter(CharacterCard c) {
-    if (_activeGroup == null) return '';
-    final id = _getCharacterIdFromCard(c);
-    return _groupCharacterSystemPrompts[id] ?? '';
-  }
-
-  /// Sets or clears a per-character system prompt override for the given
-  /// character while inside a group chat. The value is persisted via the
-  /// hidden group state checkpoint (no DB schema change).
-  /// This affects only the current group. Pass empty [prompt] to clear.
-  /// The provided prompt takes precedence over the character's normal
-  /// `systemPrompt` when this character speaks in the group.
-  void setSystemPromptForGroupCharacter(CharacterCard c, String prompt) {
-    if (_activeGroup == null) return;
-    final id = _getCharacterIdFromCard(c);
-    final trimmed = prompt.trim();
-
-    if (trimmed.isEmpty) {
-      _groupCharacterSystemPrompts.remove(id);
-    } else {
-      _groupCharacterSystemPrompts[id] = trimmed;
-    }
-
-    // (old checkpoint call removed in v30)
-    _saveChat();
-    notifyListeners();
-  }
 
   Map<String, int> get lastPromptBudget => _lastPromptBudget;
   String get lastAssembledPrompt => _lastAssembledPrompt;
@@ -2734,9 +2776,7 @@ class ChatService extends ChangeNotifier {
     final persona = _userPersonaService.persona;
     final personaText = persona.persona.trim();
     final allFacts = persona.learnedFacts;
-
-    // Nothing to inject
-    if (personaText.isEmpty && allFacts.isEmpty) return '';
+    final safeUserName = userName.replaceAll(RegExp(r'[\n\r"]'), ' ').trim();
 
     // Select relevant facts using embeddings if available
     List<String> facts;
@@ -2756,11 +2796,18 @@ class ChatService extends ChangeNotifier {
     }
 
     final buf = StringBuffer();
-    final safeUserName = userName.replaceAll(RegExp(r'[\n\r"]'), ' ').trim();
-    final safePersonaText = personaText
-        .replaceAll(RegExp(r'[\n\r"]'), ' ')
-        .trim();
-    buf.writeln("$safeUserName's Persona: $safePersonaText");
+    // ALWAYS establish the user's identity by NAME — even with no persona text.
+    // Otherwise the model only sees "$userName:" history labels and invents a
+    // generic descriptor ("the boy"/"the girl") for the human. (Previously this
+    // returned '' entirely when the persona had no description.)
+    if (personaText.isNotEmpty) {
+      final safePersonaText = personaText
+          .replaceAll(RegExp(r'[\n\r"]'), ' ')
+          .trim();
+      buf.writeln("$safeUserName's Persona: $safePersonaText");
+    } else {
+      buf.writeln('$safeUserName is the human you are talking with.');
+    }
 
     if (facts.isNotEmpty) {
       buf.writeln(
@@ -2772,6 +2819,12 @@ class ChatService extends ChangeNotifier {
         buf.writeln('- $safeFact');
       }
     }
+    // The model HAS the name above — nudge it to actually use it instead of
+    // reaching for a generic epithet for the human.
+    buf.writeln(
+      'Always refer to $safeUserName by name; never substitute a generic '
+      'descriptor like "the boy", "the girl", or "the user".',
+    );
     buf.writeln();
     return buf.toString();
   }
@@ -2828,895 +2881,6 @@ class ChatService extends ChangeNotifier {
     });
   }
 
-  Future<void> setActiveCharacter(CharacterCard? character) async {
-    // Cancel any in-flight generation before switching context
-    await _cancelAndWaitForGeneration();
-    _generationEpoch++;
-
-    // If same character is already active and has messages, just refresh
-    // the character reference (in case fields were edited) but skip the
-    // expensive full re-initialization (message clearing, session reload).
-    if (_activeCharacter?.name == character?.name &&
-        _activeCharacter?.dbId == character?.dbId &&
-        _messages.isNotEmpty) {
-      _activeCharacter = character;
-      notifyListeners();
-      return;
-    }
-
-    // Clear group mode when switching to 1:1 AND reset author note for new session context
-    _authorNote = '';
-    _authorNoteStrength = 4;
-    _groupManager?.leaveGroup();
-    _groupManager = null;
-    _groupRealism = {};
-    _groupAuthorNotes = {};
-    _groupAuthorNoteStrengths = {};
-    _groupCharacterSystemPrompts = {};
-    _groupRagEnabled = true;
-    _groupRetrievalCount = 8;
-    _groupMemoryBudgetPercent = 10.0;
-    _groupCharacterRAGPriorities = {};
-
-    // Reset Scene Guests for the new 1:1 context (repopulated by _loadLastSession
-    // if the loaded session persisted any). _pendingGuestDeparture is one-shot.
-    _clearSceneGuestEvolution(); // Phase 3: keep guest-evolution reset in sync.
-    _sceneGuestIds.clear();
-    _sceneGuestCards.clear();
-    _pendingGuestDeparture = null;
-    _pendingGuestPickerFilter = null;
-    _resetGuestActivityState();
-    // Phase 2 cast detection: reset the scan cadence + pending/debounce state
-    // for the new 1:1 context (kept in sync with the Scene Guest clears).
-    _userMessagesSinceLastCastScan = 0;
-    _pendingGuestDetection = null;
-    _offeredOrIgnoredGuestNames.clear();
-
-    _activeCharacter = character;
-
-    // Auto-start local backend (Kobold or Pseudo-Remote) when entering a chat
-    // so the user never has to manually start it just to talk.
-    _llmProvider?.ensureManagedBackendIsRunning();
-
-    // If extensions are missing (e.g., app was restarted after DB load that
-    // didn't carry over PNG extensions), reload the PNG to get V2.5 card data.
-    if (_activeCharacter != null &&
-        _activeCharacter!.frontPorchExtensions == null &&
-        _activeCharacter!.imagePath != null) {
-      try {
-        final v2Service = V2CardService();
-        final reloaded = await v2Service.readCard(_activeCharacter!.imagePath!);
-        if (reloaded != null && reloaded.frontPorchExtensions != null) {
-          _activeCharacter!.frontPorchExtensions =
-              reloaded.frontPorchExtensions;
-          _activeCharacter!.rawExtensions = reloaded.rawExtensions;
-          debugPrint(
-            '[ChatService] Reloaded frontPorchExtensions from PNG for ${_activeCharacter!.name}',
-          );
-        }
-      } catch (e) {
-        debugPrint('[ChatService] Failed to reload PNG extensions: $e');
-      }
-    }
-
-    // Note: evolved personality/scenario are now loaded inside _loadLastSession()
-    // (which runs below) so they are scoped to the session, not the character.
-    debugPrint(
-      '[ChatService] 🟡 setActiveCharacter: clearing messages '
-      '(had ${_messages.length}) for ${character?.name}, loading session...',
-    );
-    _messages.clear();
-    _currentSessionId = null;
-    _summary = '';
-    _summaryLastIndex = 0;
-    _summaryPaused =
-        false; // explicit secondary zero for _summaryPaused (symmetric to _isSummaryGenerating; incomplete zeroing... now complete (see CLAUDE.md); see keep-sync + summary_service)
-    _isSummaryGenerating =
-        false; // explicit secondary zero on setActiveCharacter (incomplete zeroing of secondary config on ... now complete; see keep-sync + summary_service)
-    // Clear fork/branch state so it doesn't leak from previous character
-    // into a fresh character's first session (see startNewChat for details).
-    _parentSessionId = null;
-    _forkIndex = null;
-    _isLoadingSession = true;
-    notifyListeners();
-
-    if (_activeCharacter != null) {
-      // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
-      // without god privates; constants skipped, non-const zeroed for char + attached worlds).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing... now complete (see CLAUDE.md)) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
-      _lorebookScanner.resetLorebookTriggerState();
-
-      // Reset realism state to prevent bleeding from previous character.
-      // Keep the reset sites (startNewChat 1:1+group now with explicit lorebook reset in both branches, load*Session paths incl. empty for groups, setActiveGroup, setActiveCharacter, delete flows, ext-seed, fork/insert)
-      // in sync when moving more state in later Stage 3 steps. See needs_simulation.dart for the
-      // current owner of vector + buffers (and _needsSimEnabled/_enjoysLowHygiene control fields).
-      // Relationship + Expression + Time + Nsfw + LorebookScanner via service reset helpers (expression: manual/caches/onnx/lastAvatar/random;
-      // time: clock/day/passage/turns/anchor + narrative weekday; nsfw: cooldown/arousal/tier; lorebook: triggers/depth on entries).
-      // All secondary time/nsfw/lorebook config zeroed on fresh group/0-session paths.
-      final prevArousal = _nsfwService.arousalLevel;
-      final prevFixation = _relationshipService.activeFixation;
-      final prevFixationLife = _relationshipService.fixationLifespan;
-      _needsSimEnabled = false;
-      _enjoysLowHygiene = false;
-      _needsSimulation.clearVector();
-      _needsSimulation.resetBuffers();
-      _realismEnabled = false;
-      _characterEmotion = '';
-      _emotionIntensity = '';
-      // Time reset via extracted service (keeps multiple reset blocks in sync).
-      // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing... now complete (see CLAUDE.md)) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
-      _timeService.resetForFreshChat();
-      // Chaos reset via extracted service (keeps multiple reset blocks in sync).
-      // See chaos_mode_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing... now complete (see CLAUDE.md)) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
-      _chaosModeService.resetForFreshChat();
-      // Nsfw reset via extracted service (keeps multiple reset blocks in sync).
-      // See nsfw_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing... now complete (see CLAUDE.md)) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + summary_service (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
-      _nsfwService.resetForFreshChat();
-      // Lorebook already reset above via _lorebookScanner (keeps blocks in sync; see cross-ref comment at top of this reset).
-      _relationshipService.resetForFreshChat();
-      _expressionService.resetForFreshChat();
-      _moodDecayCounter = 0;
-      _greetingEvalPending = false;
-      _isProcessingGreeting = false;
-      _pendingRealismMetadata = null;
-      _activeObjectives = [];
-      _messagesSinceLastCheck = 0;
-      _isCheckingCompletion =
-          false; // secondary objective flag zero on setActiveCharacter main path (incomplete zeroing hygiene; keep reset blocks)
-      _userMessagesSinceLastPeriodicEval = 0;
-      _isExtractingFacts =
-          false; // secondary fact flag + counter zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); fact_extraction)
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      _evolutionError =
-          ''; // explicit evo flag/status/error zero on setActiveCharacter main path (incomplete zeroing... now complete (see CLAUDE.md); evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + full keep-sync lists + " ; no extra zero code, live read; now complete for this secondary config too)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"; evolution cadence is driven by _characterEvolutionCount vs evolutionInterval (no side-counter to zero here)
-      debugPrint(
-        '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
-      );
-
-      // Try to load last session
-      await _loadLastSession();
-
-      // If no session loaded, start fresh
-      if (_messages.isEmpty) {
-        // Seed Realism Engine state from V2.5 card extensions (new conversations only)
-        if (_activeCharacter!.frontPorchExtensions != null) {
-          final ext = _activeCharacter!.frontPorchExtensions!;
-          _realismEnabled = ext.realismEnabled;
-          // Card-seed bypass (rec 1 from PR #47): use seedFromCardV2OrExt (plain .clamp only,
-          // no _migrate*) because V2.5 cards + creator UI author shortTermBond/longTermBond on the
-          // *current* ±300 scale (see models/character_card.dart:31-32 + FrontPorchExtensions).
-          // Legacy *2 migration must stay *only* on _loadLastSession loadScalars + migrate* wrappers
-          // + applyLegacyShortTermMigrationIfNeeded paths (and the public migrate surface).
-          // This was the root cause of bond-doubling (e.g. authored 55 -> 110) on every fresh 1:1
-          // card import / 0-session setActive / startNew. 1:1 only; group per-speaker paths were
-          // never affected (used loadRelationshipScalarsForSpeaker etc). See relationship_service.dart
-          // seedFromCardV2OrExt + god keep-sync comments (full list) + cross-ref setActiveCharacter:1572.
-          _relationshipService.seedFromCardV2OrExt(
-            shortTermBond: ext.shortTermBond,
-            longTermBond: ext.longTermBond,
-            trustLevel: ext.trustLevel,
-          );
-          // Time seed via extracted service (keeps reset/seed blocks in sync with startNewChat etc).
-          // Global ceiling applied before passing (see time_service.seed doc).
-          _timeService.seedFromV2OrExt(
-            dayCount: ext.dayCount.clamp(1, 9999),
-            timeOfDay: ext.timeOfDay,
-            passageOfTimeEnabled:
-                ext.passageOfTimeEnabled &&
-                _storageService.realismSettings.passageOfTimeDefault,
-          );
-          _characterEmotion = ext.characterEmotion;
-          _emotionIntensity = ext.emotionIntensity;
-          _nsfwService.seedFromV2OrExt(
-            nsfwCooldownEnabled: ext.nsfwCooldownEnabled,
-          );
-          _chaosModeService.seedFromGroupOrExt(ext.chaosModeEnabled, false);
-          _needsSimEnabled = ext.needsSimEnabled;
-          _enjoysLowHygiene = ext.enjoysLowHygiene;
-          if (_needsSimEnabled) {
-            // Brand new conversation for this character (no prior session loaded):
-            // seed from card baselines (falls back to needDefaults when the card has no baselines).
-            _needsSimulation.initializeFreshWithDefaults({
-              'hunger': ext.needsBaselineHunger,
-              'bladder': ext.needsBaselineBladder,
-              'energy': ext.needsBaselineEnergy,
-              'social': ext.needsBaselineSocial,
-              'fun': ext.needsBaselineFun,
-              'hygiene': ext.needsBaselineHygiene,
-              'comfort': ext.needsBaselineComfort,
-            });
-          } else {
-            _needsSimulation.clearVector();
-          }
-          // Tiers maintained by service after seedFromCardV2OrExt (or V2OrExt for other leaves).
-          debugPrint(
-            '[ChatService] V2.5 extensions seeded: realism=$_realismEnabled, '
-            'bond=${_relationshipService.affectionScore}, trust=${_relationshipService.trustLevel}, day=${_timeService.dayCount}, time=${_timeService.timeOfDay}',
-          );
-
-          // Seed initial quest/task as a primary objective
-          if (ext.currentTask.isNotEmpty) {
-            // Defer so the session ID is ready before the DB write
-            Future.microtask(() async {
-              await setObjective(ext.currentTask, isPrimary: true);
-              debugPrint(
-                '[ChatService] V2.5 seeded initial task: ${ext.currentTask}',
-              );
-            });
-          }
-        }
-
-        if (_activeCharacter!.firstMessage.isNotEmpty) {
-          _messages.add(
-            ChatMessage(
-              text: _buildFirstMessage(_activeCharacter!),
-              sender: _activeCharacter!.name,
-              isUser: false,
-            ),
-          );
-          // Scan first message for lore (thin delegation to extracted scanner).
-          _lorebookScanner.scanLorebook(_messages.last.text);
-        }
-        // Note: for the direct 0-session setActiveCharacter path (fresh import via home grid <=1 session),
-        // _greetingEvalPending is left false here. The post-greeting baseline eval is scheduled only
-        // in startNewChat (for explicit New Chat flows). Fresh-import cards rely on the retro path
-        // in setRealismEnabled (or manual enable after first messages) when _hasRealismBaseline==false.
-        // This matches pre-existing behavior for the import entry point; the critical bleed fix
-        // ensures the baseline check is now correctly false for no-ext cards.
-        // Save the initial message session
-        _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-        await _saveChat();
-        _activeObjectives = [];
-        _messagesSinceLastCheck = 0;
-        _isCheckingCompletion =
-            false; // zero secondary in empty session subpath of setActiveCharacter (per incomplete zeroing fix)
-        _isSummaryGenerating =
-            false; // secondary zero in empty subpath of setActiveCharacter (incomplete zeroing... now complete (see CLAUDE.md))
-        _userMessagesSinceLastPeriodicEval = 0;
-        _isExtractingFacts =
-            false; // secondary fact flag + counter zero in empty subpath of setActiveCharacter (incomplete zeroing ... now complete; fact_extraction)
-        _isEvolvingCharacter = false;
-        _evolutionStatus = '';
-        _evolutionError =
-            ''; // explicit evo flag/status/error zero in empty subpath of setActiveCharacter (incomplete zeroing... now complete (see CLAUDE.md); evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572 + " ) + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"
-      }
-      // Load active objectives for this session (must be after _loadLastSession
-      // so _currentSessionId is set)
-      await _loadActiveObjectives(); // Awaited (was fire-and-forget); root fix for post-dispose notify races in tests + rapid switches. Central _disposed + notifyListeners override (rec 2) now protects residual unawaited/microtask paths + any other notify-after-async in god/services (see _disposed decl, overrides at end of class, and cleaned per-site guard in _loadActiveObjectives).
-    }
-    _isLoadingSession = false;
-    notifyListeners();
-  }
-
-  /// Enter group chat mode with the given GroupChat definition.
-  Future<void> setActiveGroup(
-    GroupChat group, {
-    GroupChatRepository? groupRepo,
-  }) async {
-    // Cancel any in-flight generation before switching context AND reset author note for new session context
-    await _cancelAndWaitForGeneration();
-    _generationEpoch++;
-
-    // Reset author notes and summary when starting fresh chat/group (will be overridden if loading existing session)
-    _authorNote = '';
-    _authorNoteStrength = 4;
-    _summary = '';
-    _summaryLastIndex = 0;
-    _summaryPaused =
-        false; // explicit secondary zero for _summaryPaused (symmetric; incomplete zeroing... now complete (see CLAUDE.md); see keep-sync + summary_service)
-    _isSummaryGenerating =
-        false; // explicit secondary zero on setActiveGroup (incomplete zeroing ... now complete; keep-sync lists + summary_service + " ; authority for needs deltas thin path)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"
-    _groupRealism = {};
-    _groupDecayRates = {};
-    _groupAuthorNotes = {};
-    _groupAuthorNoteStrengths = {};
-    _groupCharacterSystemPrompts = {};
-    _groupRagEnabled = true;
-    _groupRetrievalCount = 8;
-    _groupMemoryBudgetPercent = 10.0;
-    _groupCharacterRAGPriorities = {};
-
-    // Scene Guests are 1:1-only — clear them when entering a group.
-    _clearSceneGuestEvolution(); // Phase 3: keep guest-evolution reset in sync.
-    _sceneGuestIds.clear();
-    _sceneGuestCards.clear();
-    _pendingGuestDeparture = null;
-    _pendingGuestPickerFilter = null;
-    _resetGuestActivityState();
-    // Phase 2 cast detection: reset the scan cadence + pending/debounce state
-    // for the new 1:1 context (kept in sync with the Scene Guest clears).
-    _userMessagesSinceLastCastScan = 0;
-    _pendingGuestDetection = null;
-    _offeredOrIgnoredGuestNames.clear();
-
-    // Path B: Load per-character group system prompts from the clean model field
-    _groupCharacterSystemPrompts = Map<String, String>.from(
-      group.characterSystemPrompts,
-    );
-
-    if (_characterRepository == null) return;
-
-    // Clear 1:1 mode
-    _activeCharacter = null;
-    // Defensive: zero key 1:1 scalars so rapid 1:1↔group toggles cannot observe
-    // stale values in the brief window before group per-speaker loads take over.
-    // (Full reset happens on return to any 1:1 via setActiveCharacter.)
-    _characterEmotion = '';
-    // Relationship scalars/fixation (affection/trust/tiers/fixation/spatial/pending) via extracted service.
-    // Expression manual/caches via service. Time (clock/day/passage/anchor/turns) via service.
-    // Nsfw (arousal/cooldown) via service.
-    // Lorebook triggers via scanner (for group fresh/0-session hygiene; parallels time/nsfw defensive zeros).
-    // Reset hygiene (see CLAUDE.md "keep reset blocks in sync" + "incomplete zeroing of secondary config on group/0-session/new-chat now complete" at *all* ~15+ sites + both startNew explicit; authority live ext no scalar; buffer removal complete; leaves stateless/prompt-only no reset calls; void_=15).
-    // (cross-ref setActiveCharacter)
-    _relationshipService.resetForFreshChat();
-    _expressionService.resetForFreshChat();
-    _timeService.resetForFreshChat();
-    _nsfwService.resetForFreshChat();
-    _lorebookScanner.resetLorebookTriggerState();
-
-    // Auto-start local backend when entering a group chat
-    _llmProvider?.ensureManagedBackendIsRunning();
-
-    debugPrint(
-      '[ChatService] 🟡 setActiveGroup: clearing messages '
-      '(had ${_messages.length}) for group ${group.name}',
-    );
-    _messages.clear();
-    _currentSessionId = null;
-    // Clear fork/branch state so it doesn't leak across group switches
-    // (see startNewChat and setActiveCharacter for rationale).
-    _parentSessionId = null;
-    _forkIndex = null;
-    _isLoadingSession = true;
-    notifyListeners();
-
-    // Resolve characters from decoupled private members (GroupMembers table + private avatars dir).
-    // Prefer passed repo, then wired one, then direct DB query as ultimate fallback
-    // (ensures members appear in chat even if DI wiring or caller is incomplete).
-    List<GroupMember> memberRows = const [];
-    try {
-      final effectiveGroupRepo = groupRepo ?? _groupChatRepository;
-      if (effectiveGroupRepo != null) {
-        memberRows = await effectiveGroupRepo.getMembersForGroup(group.id);
-      } else {
-        final db = await AppDatabase.instance();
-        final rows = await db.getGroupMembers(group.id);
-        memberRows = rows.map(GroupMember.fromRow).toList();
-      }
-    } catch (e) {
-      debugPrint(
-        '[ChatService] Failed to load group members for ${group.id}: $e',
-      );
-      memberRows = const [];
-    }
-
-    final resolved = <CharacterCard>[];
-    for (final m in memberRows) {
-      if (m.avatarFilename != null) {
-        final p = path.join(
-          _storageService.groupsDir.path,
-          group.id,
-          'avatars',
-          m.avatarFilename!,
-        );
-        // Include the member even if the avatar file is missing (defensive for groups created
-        // from sources that had no avatar, or partial copy failures). The UI already degrades
-        // gracefully to a colored letter/initial when the image can't be loaded.
-        if (await File(p).exists()) {
-          resolved.add(m.toCharacterCard(resolvedImagePath: p));
-        } else {
-          // Still include them so the count and sidebar are correct; they just won't have a face.
-          debugPrint(
-            '[ChatService] Group member ${m.name} has no avatar file at $p — including without image',
-          );
-          resolved.add(m.toCharacterCard(resolvedImagePath: p));
-        }
-      } else {
-        // No avatar filename at all — still include so the user sees the member.
-        resolved.add(m.toCharacterCard(resolvedImagePath: ''));
-      }
-    }
-
-    // Hand off to the turn manager (single source of truth for group turn state)
-    _groupManager ??= GroupTurnManager();
-    _groupManager!.enterGroup(
-      group,
-      resolved,
-      startInDirectorMode: group.directorMode,
-    );
-
-    // Seed group definition defaults for Chaos (can be overridden by per-session values loaded below).
-    // This makes the chaosModeEnabled / chaosNsfwEnabled on the GroupChat model actually functional.
-    _chaosModeService.seedFromGroupOrExt(
-      group.chaosModeEnabled,
-      group.chaosNsfwEnabled,
-    );
-
-    // v30: For newly created group sessions (no prior state), seed from the group's default realism data.
-    // (The actual load of any prior session state happens in _loadLastSession below.)
-    if (_messages.isEmpty && _activeGroup != null) {
-      _loadGroupRealismStateFromSession(null);
-
-      // Promote the group definition's realism/needs intent on first entry.
-      // The creator (and Group Card import) express "realism on" by writing non-empty
-      // defaultMemberRealismState. Without this promotion, the master flag stays false
-      // (its Dart initializer), the first session is saved with realism off, and both
-      // isGroupRealismActive and all per-char getters return nothing.
-      if (_groupRealism.isNotEmpty) {
-        _realismEnabled = true;
-        // Infer needs from whether the seeded per-char states actually contain needs data.
-        // (Creator omits the 'needs' sub-map entirely when the user disabled Needs in the wizard.)
-        _needsSimEnabled = _groupRealism.values.any((state) {
-          final n = state['needs'];
-          return n is Map && n.isNotEmpty;
-        });
-        if (_needsSimEnabled) {
-          // Seed from group definition's per-char needs baselines (falls back to 80 when absent).
-          final defaults = <String, int>{
-            'hunger': 80,
-            'bladder': 80,
-            'energy': 80,
-            'social': 80,
-            'fun': 80,
-            'hygiene': 80,
-            'comfort': 80,
-          };
-          _needsSimulation.initializeFreshWithDefaults(defaults);
-        }
-        debugPrint(
-          '[GroupRealism] Promoted definition realism/needs on fresh group entry '
-          '(realism=$_realismEnabled, needs=$_needsSimEnabled, chars=${_groupRealism.length})',
-        );
-      }
-    }
-
-    // Seed objectives that came from an imported Group Card (one-time)
-    await _seedImportedMemberObjectivesIfPresent();
-
-    // Lorebook trigger reset via extracted service (group path; see setActiveCharacter for the 1:1 counterpart + keep-sync cross-refs).
-    // See "keep reset blocks in sync" comments (now explicitly lists needs/chaos/... + leaves (see CLAUDE.md for full; incomplete zeroing now complete) alongside prior services; incomplete zeroing now complete).
-    // (cross-ref setActiveCharacter:1572)
-    _lorebookScanner.resetLorebookTriggerState();
-
-    // Zero secondary objective config on group fresh entry (before loadLast + _loadObjectivesForCurrentSpeaker); see decl + keep reset + incomplete zeroing now complete.
-    _activeObjectives = [];
-    _messagesSinceLastCheck = 0;
-    _isCheckingCompletion = false;
-    _summaryPaused =
-        false; // explicit secondary zero for _summaryPaused (symmetric; group fresh entry zero)
-    _isSummaryGenerating =
-        false; // secondary flag zero for summary_service (stateless/prompt-only; see incomplete zeroing ... now complete + keep-sync lists)
-    _userMessagesSinceLastPeriodicEval = 0;
-    _isExtractingFacts =
-        false; // secondary fact flag + counter zero on group fresh entry (incomplete zeroing ... now complete; fact_extraction)
-    _isEvolvingCharacter = false;
-    _evolutionStatus = '';
-    _evolutionError =
-        ''; // explicit evo flag/status/error zero on group fresh entry (incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed); cross-ref setActiveCharacter:1572)
-
-    // Try to load last session for this group
-    await _loadLastSession();
-
-    // Load the objectives for whoever is the initial next speaker (or first char)
-    if (_activeGroup != null) {
-      await _loadObjectivesForCurrentSpeaker();
-    }
-
-    // Seed objectives that came from an imported Group Card (one-time), in case it wasn't caught above
-    await _seedImportedMemberObjectivesIfPresent();
-
-    // If no session, create a greeting
-    if (_messages.isEmpty && _groupCharacters.isNotEmpty) {
-      String greetingText;
-      String greetingSender;
-      String? greetingCharId;
-
-      if (group.firstMessage.isNotEmpty) {
-        // Use custom group first message — attribute to "Narrator" or group name
-        greetingText = _macroResolver.resolve(
-          group.firstMessage,
-          MacroContext(userName: _userPersonaService.persona.name),
-          section: 'greeting',
-        );
-        greetingSender = group.name;
-        greetingCharId = null;
-      } else {
-        // Fall back to first character's greeting
-        final first = _groupCharacters.first;
-        greetingText = first.firstMessage.isNotEmpty
-            ? _buildFirstMessage(first)
-            : '';
-        greetingSender = first.name;
-        greetingCharId = _getCharacterIdFromCard(first);
-      }
-
-      if (greetingText.isNotEmpty) {
-        _messages.add(
-          ChatMessage(
-            text: greetingText,
-            sender: greetingSender,
-            isUser: false,
-            characterId: greetingCharId,
-          ),
-        );
-        // Thin delegation to scanner (group greeting scan).
-        _lorebookScanner.scanLorebook(_messages.last.text);
-      }
-      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-      await _saveChat();
-    }
-
-    // Load evolved fields for all group characters
-    _loadGroupEvolvedFields();
-
-    _isLoadingSession = false;
-    notifyListeners();
-  }
-
-  /// Fork the current 1:1 chat into a new group chat, copying all messages.
-  /// The original 1:1 session remains untouched.
-  Future<GroupChat?> forkToGroupChat(
-    List<CharacterCard> additionalCharacters,
-    GroupChatRepository groupRepo, {
-    String? groupName,
-    String? scenario,
-    TurnOrder turnOrder = TurnOrder.roundRobin,
-    Map<String, ({String text, bool creative})> entrances = const {},
-  }) async {
-    if (_isGenerating) return null;
-    if (_activeCharacter == null || _characterRepository == null) return null;
-    if (_messages.isEmpty) return null;
-    // 1:1 → group only. Forking from an existing group would rebuild a group
-    // from just the active speaker (dropping the other members), so refuse it —
-    // use "Add Character to Group" for an existing group instead.
-    if (_activeGroup != null) return null;
-
-    final originalCharId = _getCharacterIdFromCard(_activeCharacter!);
-
-    // Build a default group name
-    final name = groupName?.isNotEmpty == true
-        ? groupName!
-        : [
-            _activeCharacter!.name,
-            ...additionalCharacters.map((c) => c.name),
-          ].join(' & ');
-
-    // Create the group
-    final group = GroupChat(
-      id: 'group_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      // characterIds removed (decoupled). Members handled via group_members + private storage.
-      turnOrder: turnOrder,
-      scenario: scenario ?? '',
-      // v31 columns — new groups start with clean defaults.
-      // baselineRealismState remains '{}' until the caller (or UI) seeds explicit values.
-      baselineRealismState: '{}',
-    );
-    await groupRepo.save(group);
-
-    // Rotation order rule for the new group: original participant(s) first,
-    // then arrivals WITH an entrance (in the order added), then arrivals
-    // WITHOUT an entrance at the end. Member insertion order *is* the
-    // round-robin order (the members table has no explicit sort column), so we
-    // insert in exactly that order.
-    bool hasEntrance(CharacterCard c) =>
-        (entrances[_getCharacterIdFromCard(c)]?.text.trim().isNotEmpty) ??
-        false;
-    final entranceArrivals = additionalCharacters.where(hasEntrance).toList();
-    final silentArrivals = additionalCharacters
-        .where((c) => !hasEntrance(c))
-        .toList();
-    final orderedArrivals = [...entranceArrivals, ...silentArrivals];
-
-    // Decoupled model: ensure members exist for the original 1:1 character
-    // and every additional character. Without this, the group loads empty
-    // (setActiveGroup / GroupTurnManager will have no one to speak).
-    // Ported from the fix originally contributed in PR #44 by @MisterLotto.
-    await _createGroupMember(group.id, _activeCharacter!);
-    for (final c in orderedArrivals) {
-      await _createGroupMember(group.id, c);
-    }
-
-    // Create a new session for the group and copy all messages
-    final newSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-    final copiedMessages = <MessagesCompanion>[];
-    for (int i = 0; i < _messages.length; i++) {
-      final m = _messages[i];
-      // Back-fill characterId on AI messages (null in 1:1 mode)
-      String? charId = m.characterId;
-      if (!m.isUser && charId == null) {
-        charId = originalCharId;
-      }
-      copiedMessages.add(
-        MessagesCompanion(
-          sessionId: drift.Value(newSessionId),
-          position: drift.Value(i),
-          sender: drift.Value(m.sender),
-          isUser: drift.Value(m.isUser),
-          characterId: drift.Value(charId),
-          swipes: drift.Value(jsonEncode(m.swipes)),
-          swipeIndex: drift.Value(m.swipeIndex),
-          swipeDurations: drift.Value(jsonEncode(m.swipeDurations)),
-        ),
-      );
-    }
-
-    // Insert the new session
-    await _db.upsertSession(
-      SessionsCompanion.insert(
-        id: newSessionId,
-        groupId: drift.Value(group.id),
-        name: drift.Value(_sessionName),
-        description: drift.Value(_sessionDescription),
-        authorNote: drift.Value(_authorNote),
-        authorNoteDepth: drift.Value(_authorNoteStrength),
-        summary: drift.Value(_summary.isEmpty ? null : _summary),
-        summaryLastIndex: drift.Value(
-          _summaryLastIndex > 0 ? _summaryLastIndex : null,
-        ),
-        parentSession: drift.Value(_currentSessionId),
-        forkIndex: drift.Value(_messages.length - 1),
-        trustLevel: drift.Value(_relationshipService.trustLevel),
-        activeFixation: drift.Value(_relationshipService.activeFixation),
-        fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
-        spatialStance: drift.Value(_relationshipService.spatialStance),
-        startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
-        createdAt: drift.Value(DateTime.now()),
-        updatedAt: drift.Value(DateTime.now()),
-      ),
-    );
-    if (copiedMessages.isNotEmpty) {
-      await _db.insertMessages(copiedMessages);
-    }
-
-    debugPrint(
-      '[ChatService] \u{1F500} Forked 1:1 chat to group "${group.name}" '
-      '(${_messages.length} messages copied)',
-    );
-
-    // Switch to the new group (this loads the session we just created)
-    await setActiveGroup(group, groupRepo: groupRepo);
-
-    // Run any custom entrances WITHOUT blocking the caller, so the wizard can
-    // navigate to the group immediately and the entrance messages stream into
-    // the now-visible chat instead of waiting behind a spinner. Entrants cut in
-    // one-by-one in the order they were added.
-    if (entranceArrivals.isNotEmpty) {
-      _entrancesInFlight = true; // block user turns until the sequence finishes
-      unawaited(() async {
-        try {
-          for (final addCard in entranceArrivals) {
-            final entry = entrances[_getCharacterIdFromCard(addCard)]!;
-            final text = entry.text.trim();
-
-            // Members are copied under fresh UUIDs on fork, so resolve by name
-            // (stable) and use the resolved member's id — else the entrance
-            // attributes to the wrong member.
-            final resolved = _groupCharacters.firstWhere(
-              (c) => c.name == addCard.name,
-              orElse: () => addCard,
-            );
-            final resolvedId = _getCharacterIdFromCard(resolved);
-
-            if (entry.creative) {
-              // Direction: hidden one-shot directive; force this char to speak.
-              // Sanitize so the user's text can't break out of the [bracketed]
-              // author-note injection or split it across lines.
-              final safeText = text
-                  .replaceAll(']', ')')
-                  .replaceAll(RegExp(r'\s+'), ' ')
-                  .trim();
-              _groupManager?.setNextSpeaker(resolved);
-              _entranceDirective =
-                  'Stage direction (hidden — do NOT quote, repeat, or copy this '
-                  'text into the reply): ${resolved.name} enters the scene now, '
-                  'following this intent — "$safeText". Write ${resolved.name}\'s '
-                  'entrance fresh, in their own voice and words.';
-              try {
-                await _generateResponse(GenerationMode.normal);
-              } catch (e) {
-                // Surface the failure so the user isn't left wondering why the
-                // group loaded with no entrance.
-                debugPrint('[Fork:Entrance] ${resolved.name} failed: $e');
-                _entranceDirective = null; // don't leak into a later turn
-                _messages.add(
-                  ChatMessage(
-                    text:
-                        '⚠ ${resolved.name}\'s entrance could not be generated.',
-                    sender: 'System',
-                    isUser: false,
-                  ),
-                );
-                await _saveChat();
-                notifyListeners();
-              }
-            } else {
-              // Opening line: the entrance IS the user's text, verbatim — it
-              // becomes the character's message as-is, no LLM generation.
-              _messages.add(
-                ChatMessage(
-                  text: text,
-                  sender: resolved.name,
-                  isUser: false,
-                  characterId: resolvedId,
-                ),
-              );
-              await _saveChat();
-              notifyListeners();
-            }
-          }
-        } catch (e) {
-          debugPrint('[Fork:Entrance] sequence failed: $e');
-        } finally {
-          // The entrances are one-off cut-ins. In round-robin the next turn goes
-          // to whoever falls right after the LAST entrant in the rotation order
-          // (originals, then entrance arrivals, then silent arrivals) — i.e. the
-          // first silent arrival, or wrapping back to the original if there are
-          // none. advanceAfterRegeneration parks the pointer at last-entrant + 1.
-          // Done in `finally` so a generation hiccup can't leave the rotation
-          // stuck on the entrant. Random needs no fix-up.
-          final lastEntrantName = entranceArrivals.last.name;
-          if (turnOrder == TurnOrder.roundRobin &&
-              _groupCharacters.any((c) => c.name == lastEntrantName)) {
-            final lastEntrant = _groupCharacters.firstWhere(
-              (c) => c.name == lastEntrantName,
-            );
-            _groupManager?.advanceAfterRegeneration(lastEntrant);
-          }
-          _entrancesInFlight = false; // user turns allowed again
-          // The turn pointer changed after generation finished. GroupTurnManager
-          // notifies its own listeners, but the chat UI watches ChatService, so
-          // we must propagate here — otherwise the next-speaker indicator keeps
-          // showing the (stale) entrant even though the pointer is correct.
-          notifyListeners();
-        }
-      }());
-    }
-
-    return group;
-  }
-
-  /// Create a group member (decoupled model): copy the character's avatar into
-  /// the group's private storage and insert a group_members row.
-  /// Shared by [addCharacterToGroup] (live add) and [forkToGroupChat] (initial
-  /// membership when forking a 1:1 chat into a group).
-  ///
-  /// This is the core of the fix originally contributed in PR #44 by @MisterLotto.
-  Future<void> _createGroupMember(
-    String groupId,
-    CharacterCard character,
-  ) async {
-    final mid = const Uuid().v4();
-    final avDir = Directory(
-      path.join(_storageService.groupsDir.path, groupId, 'avatars'),
-    );
-    await avDir.create(recursive: true);
-
-    await _characterRepository!.duplicateCharacter(
-      character,
-      targetDirOverride: avDir.path,
-      forcedBasename: mid,
-      skipLibraryInsert: true,
-    );
-
-    final db = await AppDatabase.instance();
-    await db.insertGroupMember(
-      GroupMembersCompanion(
-        id: drift.Value(mid),
-        groupId: drift.Value(groupId),
-        name: drift.Value(character.name),
-        description: drift.Value(character.description),
-        personality: drift.Value(character.personality),
-        scenario: drift.Value(character.scenario),
-        firstMessage: drift.Value(character.firstMessage),
-        mesExample: drift.Value(character.mesExample),
-        systemPrompt: drift.Value(character.systemPrompt),
-        postHistoryInstructions: drift.Value(character.postHistoryInstructions),
-        alternateGreetings: drift.Value(
-          jsonEncode(character.alternateGreetings),
-        ),
-        tags: drift.Value(jsonEncode(character.tags)),
-        avatarFilename: drift.Value('$mid.png'),
-        ttsVoice: drift.Value(character.ttsVoice),
-        lorebook: drift.Value(
-          character.lorebook != null
-              ? jsonEncode(character.lorebook!.toJson())
-              : null,
-        ),
-        worldNames: drift.Value(jsonEncode(character.worldNames)),
-        frontPorchExtensions: drift.Value(
-          character.frontPorchExtensions != null
-              ? jsonEncode(character.frontPorchExtensions!.toJson())
-              : null,
-        ),
-        rawExtensions: drift.Value(
-          character.rawExtensions != null
-              ? jsonEncode(character.rawExtensions!)
-              : null,
-        ),
-        memberState: drift.Value('{}'),
-      ),
-    );
-  }
-
-  /// Add a character to the currently active group chat.
-  Future<bool> addCharacterToGroup(
-    CharacterCard character,
-    GroupChatRepository groupRepo,
-  ) async {
-    if (_activeGroup == null || _characterRepository == null) return false;
-    if (_isGenerating) return false;
-
-    // Decoupled model: copy the character's avatar into the group's private
-    // storage and insert a group_members row. Shared with forkToGroupChat
-    // via _createGroupMember (ported from the fix originally contributed in
-    // PR #44 by @MisterLotto).
-    await _createGroupMember(_activeGroup!.id, character);
-
-    await groupRepo.save(_activeGroup!);
-
-    // Re-resolve from private members (decoupled).
-    final resolved = <CharacterCard>[];
-    final memberRows = await groupRepo.getMembersForGroup(_activeGroup!.id);
-    for (final m in memberRows) {
-      if (m.avatarFilename != null) {
-        final p = path.join(
-          _storageService.groupsDir.path,
-          _activeGroup!.id,
-          'avatars',
-          m.avatarFilename!,
-        );
-        if (await File(p).exists()) {
-          resolved.add(m.toCharacterCard(resolvedImagePath: p));
-        }
-      }
-    }
-    _groupManager?.refreshCharacters(resolved);
-
-    debugPrint(
-      '[ChatService] \u{2795} Added ${character.name} to group ${_activeGroup!.name}',
-    );
-    notifyListeners();
-    return true;
-  }
-
-  /// Remove a character from the currently active group chat.
-  /// Returns false if the group would have fewer than 2 characters.
-  Future<bool> removeCharacterFromGroup(
-    CharacterCard character,
-    GroupChatRepository groupRepo,
-  ) async {
-    if (_activeGroup == null || _characterRepository == null) return false;
-    if (_isGenerating) return false;
-    // Minimum member count now based on loaded group members (decoupled).
-    // (enforcement wired via member list length in calling paths)
-
-    // remove ID path removed (decoupled). Real remove deletes the GroupMember row + avatar file.
-    final charId = _getCharacterIdFromCard(character);
-    // (old removeCharacterId deleted)
-    await groupRepo.save(_activeGroup!);
-
-    // Drop any per-char state for the removed member (realism + author notes + per-char system prompts + rag priority)
-    _groupRealism.remove(charId);
-    _groupAuthorNotes.remove(charId);
-    _groupAuthorNoteStrengths.remove(charId);
-    _groupCharacterSystemPrompts.remove(charId);
-    _groupCharacterRAGPriorities.remove(charId);
-    if (_activeGroup != null) {
-      // (old checkpoint call removed in v30)
-    }
-
-    // Re-resolve after remove — old IDs path removed (decoupled).
-    final resolved = <CharacterCard>[]; // from group members
-    _groupManager?.refreshCharacters(resolved);
-
-    debugPrint(
-      '[ChatService] \u{2796} Removed ${character.name} from group ${_activeGroup!.name}',
-    );
-    notifyListeners();
-    return true;
-  }
 
   /// Returns a stable ID string for a character card.
   /// Delegates to the canonical stable ID for group contexts.
@@ -3749,1436 +2913,6 @@ class ChatService extends ChangeNotifier {
       }
     } catch (_) {}
     return {};
-  }
-
-  // v30: Load per-character group realism/needs state.
-  // Priority:
-  // 1. Live state from the current session's group_realism_state column (if present and non-empty).
-  // 2. Default state from the group's default_member_realism_state (important for Group Card imports and new sessions).
-  //
-  // Pass null for `session` to force-load from group defaults only (used for brand-new group chats).
-  /// Restore Scene Guest (Lite NPC) dbIds for a 1:1 session from the reused
-  /// group realism column, then resolve their cards. Tolerant of missing,
-  /// empty, '{}', legacy group state, or malformed JSON (clears guests).
-  void _loadSceneGuestsFromSession(Session? session) {
-    _clearSceneGuestEvolution();
-    _sceneGuestIds.clear();
-    _sceneGuestCards.clear();
-    final stateJson = session?.groupRealismState;
-    if (stateJson == null || stateJson.isEmpty || stateJson == '{}') return;
-    try {
-      final decoded = jsonDecode(stateJson);
-      if (decoded is Map && decoded['sceneGuests'] is List) {
-        for (final id in decoded['sceneGuests'] as List) {
-          final s = id?.toString();
-          if (s != null && s.isNotEmpty) _sceneGuestIds.add(s);
-        }
-      }
-      // Phase 3: restore per-guest evolution (participation count + evolved
-      // text) into the shared evolved maps so it applies on the guest's turns.
-      if (decoded is Map && decoded['guestEvolution'] is Map) {
-        final ge = Map<String, dynamic>.from(decoded['guestEvolution'] as Map);
-        ge.forEach((charId, v) {
-          if (v is! Map) return;
-          final m = Map<String, dynamic>.from(v);
-          _guestEvolutionCounts[charId] = (m['count'] as num?)?.toInt() ?? 0;
-          final pers = (m['personality'] as String?) ?? '';
-          final scen = (m['scenario'] as String?) ?? '';
-          if (pers.isNotEmpty) _evolvedPersonalities[charId] = pers;
-          if (scen.isNotEmpty) _evolvedScenarios[charId] = scen;
-        });
-      }
-    } catch (e) {
-      debugPrint('[SceneGuest] Failed to parse sceneGuests from session: $e');
-      return;
-    }
-    if (_sceneGuestIds.isNotEmpty) {
-      // Fire-and-forget resolve; UI updates via notifyListeners inside.
-      _resolveSceneGuestCards();
-    }
-  }
-
-  void _loadGroupRealismStateFromSession(Session? session) {
-    if (_activeGroup == null) return;
-
-    String? stateJson = session?.groupRealismState;
-
-    // Fall back to group definition defaults (crucial for imported Group Cards and split-to-solo)
-    if (stateJson == null || stateJson.isEmpty || stateJson == '{}') {
-      stateJson = _activeGroup!.defaultMemberRealismState;
-    }
-
-    _groupRealism = {};
-    _groupDecayRates = {};
-    _groupAuthorNotes = {};
-    _groupAuthorNoteStrengths = {};
-    _groupCharacterSystemPrompts = {};
-    _groupCharacterRAGPriorities = {};
-
-    if (stateJson.isNotEmpty && stateJson != '{}') {
-      try {
-        final decoded = jsonDecode(stateJson);
-        if (decoded is Map) {
-          final map = Map<String, dynamic>.from(decoded);
-
-          // Main per-character realism data (needs, emotion, bond, trust, fixation, relationships, arousal, etc.)
-          final perChar =
-              map['perChar'] ??
-              map; // support both wrapped and direct formats during transition
-          if (perChar is Map) {
-            _groupRealism = perChar.map(
-              (k, v) =>
-                  MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
-            );
-          }
-
-          // Global group decay rates
-          final globalDecay = map['globalDecayRates'];
-          if (globalDecay is Map) {
-            _groupDecayRates = globalDecay.map(
-              (k, v) => MapEntry(k.toString(), (v as num).toInt()),
-            );
-          }
-
-          // Per-char author notes (scoped to this group)
-          final notes = map['authorNotes'];
-          if (notes is Map) {
-            _groupAuthorNotes = notes.map(
-              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
-            );
-          }
-
-          final strengths = map['authorNoteStrengths'];
-          if (strengths is Map) {
-            _groupAuthorNoteStrengths = strengths.map(
-              (k, v) => MapEntry(
-                k.toString(),
-                (v as num?)?.toInt() ?? _authorNoteStrength,
-              ),
-            );
-          }
-
-          final sysPrompts = map['characterSystemPrompts'];
-          if (sysPrompts is Map) {
-            _groupCharacterSystemPrompts = sysPrompts.map(
-              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
-            );
-          }
-
-          // RAG settings (now also in the column)
-          if (map.containsKey('ragEnabled')) {
-            _groupRagEnabled = map['ragEnabled'] as bool? ?? true;
-          }
-          if (map.containsKey('retrievalCount')) {
-            _groupRetrievalCount =
-                (map['retrievalCount'] as num?)?.toInt() ?? 8;
-          }
-          if (map.containsKey('memoryBudgetPercent')) {
-            _groupMemoryBudgetPercent =
-                (map['memoryBudgetPercent'] as num?)?.toDouble() ?? 10.0;
-          }
-
-          final ragPrios = map['characterRAGPriorities'];
-          if (ragPrios is Map) {
-            _groupCharacterRAGPriorities = ragPrios.map(
-              (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
-            );
-          }
-
-          // Per-char objectives for group mode (each member has independent tasks)
-          _groupObjectives.clear();
-          final objMap = map['objectives'];
-          if (objMap is Map) {
-            objMap.forEach((charId, list) {
-              if (list is List) {
-                _groupObjectives[charId.toString()] = [];
-              }
-            });
-          }
-
-          // One-time seeding of objectives from an imported Group Card is handled
-          // asynchronously after this state load completes (see callers of this method).
-
-          debugPrint(
-            '[GroupState v30] Loaded realism state for ${_groupRealism.length} characters '
-            '(session + group defaults) for group ${_activeGroup!.name}',
-          );
-        }
-      } catch (e) {
-        debugPrint(
-          '[GroupState v30] Failed to parse group realism state JSON: $e',
-        );
-        _groupRealism = {};
-      }
-    }
-  }
-
-  Future<void> _saveChat() async {
-    _saveChain = _saveChain.then((_) => _doSaveChat());
-    await _saveChain;
-  }
-
-  Future<void> _doSaveChat() async {
-    if ((_activeCharacter == null && _activeGroup == null) ||
-        _currentSessionId == null) {
-      return;
-    }
-
-    // ── Safety guard: never overwrite existing session data with empty messages.
-    // This prevents data loss if _messages is momentarily empty due to a rebuild
-    // race, nav glitch, or any other transient state issue.
-    if (_messages.isEmpty) {
-      debugPrint(
-        '[ChatService] ⚠ _saveChat called with empty messages for '
-        'session $_currentSessionId — skipping to protect existing data.',
-      );
-      return;
-    }
-
-    // v30: For group chats, serialize current per-character realism state into the
-    // new group_realism_state column (clean replacement for hidden checkpoint).
-    String groupRealismJson = '{}';
-    if (_activeGroup != null) {
-      // Include per-char objectives so each group member carries independent tasks.
-      final perCharObjectives = <String, List<Map<String, dynamic>>>{};
-      _groupObjectives.forEach((charId, list) {
-        perCharObjectives[charId] = list
-            .map(
-              (o) => {
-                'id': o.id,
-                'objective': o.objective,
-                'isPrimary': o.isPrimary,
-                'active': o.active,
-                // tasks and other fields are stored in the objectives table; we keep lightweight here
-              },
-            )
-            .toList();
-      });
-
-      groupRealismJson = jsonEncode({
-        'globalDecayRates': _groupDecayRates,
-        'perChar': _groupRealism,
-        'authorNotes': _groupAuthorNotes,
-        'authorNoteStrengths': _groupAuthorNoteStrengths,
-        'characterSystemPrompts': _groupCharacterSystemPrompts,
-        'ragEnabled': _groupRagEnabled,
-        'retrievalCount': _groupRetrievalCount,
-        'memoryBudgetPercent': _groupMemoryBudgetPercent,
-        'characterRAGPriorities': _groupCharacterRAGPriorities,
-        'objectives': perCharObjectives,
-        'savedAt': DateTime.now().toIso8601String(),
-      });
-    } else if (_activeGroup == null && _sceneGuestIds.isNotEmpty) {
-      // 1:1 with Scene Guests (Lite NPCs): reuse the (otherwise '{}') group
-      // realism column to persist the guest dbIds. No schema change needed.
-      // Phase 3: co-locate per-guest Character Evolution (participation count +
-      // evolved personality/scenario), keyed by the guest's stable charId.
-      final guestEvolution = <String, Map<String, dynamic>>{};
-      for (final guest in _sceneGuestCards) {
-        final charId = _getCharacterIdFromCard(guest);
-        final count = _guestEvolutionCounts[charId] ?? 0;
-        final pers = _evolvedPersonalities[charId] ?? '';
-        final scen = _evolvedScenarios[charId] ?? '';
-        if (count == 0 && pers.isEmpty && scen.isEmpty) continue;
-        guestEvolution[charId] = {
-          'count': count,
-          'personality': pers,
-          'scenario': scen,
-        };
-      }
-      groupRealismJson = jsonEncode({
-        'sceneGuests': _sceneGuestIds,
-        if (guestEvolution.isNotEmpty) 'guestEvolution': guestEvolution,
-      });
-    }
-
-    // Snapshot messages at the start so async gaps can't see a mutated list.
-    final snapshot = List<ChatMessage>.from(_messages);
-
-    // Look up character DB id if in 1:1 mode
-    String? characterDbId;
-    String? groupDbId;
-    if (_activeGroup != null) {
-      groupDbId = _activeGroup!.id;
-    } else if (_activeCharacter?.dbId != null) {
-      characterDbId = _activeCharacter!.dbId;
-    }
-
-    // Upsert session (INSERT OR REPLACE to avoid UNIQUE constraint errors)
-    final timestamp = int.tryParse(_currentSessionId!) ?? 0;
-    final createdAt = timestamp > 0
-        ? DateTime.fromMillisecondsSinceEpoch(timestamp)
-        : DateTime.now();
-    await _db.upsertSession(
-      SessionsCompanion.insert(
-        id: _currentSessionId!,
-        characterId: drift.Value(characterDbId),
-        groupId: drift.Value(groupDbId),
-        name: drift.Value(_sessionName),
-        description: drift.Value(_sessionDescription),
-        userPersonaId: drift.Value(_userPersonaService.persona.id),
-        authorNote: drift.Value(_authorNote),
-        authorNoteDepth: drift.Value(_authorNoteStrength),
-        summary: drift.Value(_summary.isEmpty ? null : _summary),
-        summaryLastIndex: drift.Value(
-          _summaryLastIndex > 0 ? _summaryLastIndex : null,
-        ),
-        parentSession: drift.Value(_parentSessionId),
-        forkIndex: drift.Value(_forkIndex),
-        affectionScore: drift.Value(_relationshipService.affectionScore),
-        relationshipTier: drift.Value(_relationshipService.relationshipTier),
-        longTermScore: drift.Value(_relationshipService.longTermScore),
-        longTermTier: drift.Value(_relationshipService.longTermTier),
-        turnsSinceLongTermCheck: drift.Value(
-          _relationshipService.turnsSinceLongTermCheck,
-        ),
-        shortTermDeltasSummary: drift.Value(
-          _relationshipService.shortTermDeltasSummary,
-        ),
-        realismEnabled: drift.Value(_realismEnabled),
-        moodDecayCounter: drift.Value(_moodDecayCounter),
-        characterEmotion: drift.Value(_characterEmotion),
-        emotionIntensity: drift.Value(_emotionIntensity),
-        timeOfDay: drift.Value(_timeService.timeOfDay),
-        dayCount: drift.Value(_timeService.dayCount),
-        startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
-        passageOfTimeEnabled: drift.Value(_timeService.passageOfTimeEnabled),
-        nsfwCooldownEnabled: drift.Value(_nsfwService.nsfwCooldownEnabled),
-        needsSimEnabled: drift.Value(_needsSimEnabled),
-        needsVector: drift.Value(
-          _needsSimEnabled ? jsonEncode(_needsSimulation.vector) : null,
-        ),
-        groupRealismState: drift.Value(groupRealismJson),
-        arousalLevel: drift.Value(_nsfwService.arousalLevel),
-        cooldownTurnsRemaining: drift.Value(
-          _nsfwService.cooldownTurnsRemaining,
-        ),
-        trustLevel: drift.Value(_relationshipService.trustLevel),
-        activeFixation: drift.Value(_relationshipService.activeFixation),
-        fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
-        spatialStance: drift.Value(_relationshipService.spatialStance),
-        chaosModeEnabled: drift.Value(_chaosModeService.chaosModeEnabled),
-        chaosPressure: drift.Value(_chaosModeService.chaosPressure),
-        trustRepairPending: drift.Value(
-          _relationshipService.pendingTrustRepair,
-        ),
-        createdAt: drift.Value(createdAt),
-        updatedAt: drift.Value(DateTime.now()),
-      ),
-    );
-
-    // Per-session generation overrides (v22) — saved via raw SQL so this
-    // works even before build_runner regenerates database.g.dart.
-    await _db.customUpdate(
-      'UPDATE sessions SET generation_settings = ? WHERE id = ?',
-      variables: [
-        drift.Variable(_sessionGenSettings.toJsonString()),
-        drift.Variable(_currentSessionId!),
-      ],
-      updates: {_db.sessions},
-    );
-
-    // Replace all messages for this session using the snapshot.
-    // Use a transaction for the delete+insert to keep the replace atomic even
-    // if other writers (cloud sync, external tools) touch the DB concurrently.
-    await _db.transaction(() async {
-      await _db.deleteMessagesForSession(_currentSessionId!);
-      final messageBatch = <MessagesCompanion>[];
-      for (int i = 0; i < snapshot.length; i++) {
-        final m = snapshot[i];
-        messageBatch.add(
-          MessagesCompanion(
-            sessionId: drift.Value(_currentSessionId!),
-            position: drift.Value(i),
-            sender: drift.Value(m.sender),
-            isUser: drift.Value(m.isUser),
-            characterId: drift.Value(m.characterId),
-            swipes: drift.Value(jsonEncode(m.swipes)),
-            swipeIndex: drift.Value(m.swipeIndex),
-            swipeDurations: drift.Value(jsonEncode(m.swipeDurations)),
-            metadata: drift.Value(
-              m.metadata != null ? jsonEncode(m.metadata) : null,
-            ),
-            swipeMetadata: drift.Value(
-              m.swipeMetadata.any((e) => e != null)
-                  ? jsonEncode(m.swipeMetadata)
-                  : null,
-            ),
-          ),
-        );
-      }
-      if (messageBatch.isNotEmpty) {
-        await _db.insertMessages(messageBatch);
-      }
-    });
-  }
-
-  Future<void> _loadLastSession() async {
-    if (_activeCharacter == null && _activeGroup == null) return;
-
-    // Get sessions from DB
-    List<Session> sessions;
-    if (_activeGroup != null) {
-      sessions = await _db.getSessionsForGroup(_activeGroup!.id);
-    } else if (_activeCharacter?.dbId != null) {
-      sessions = await _db.getSessionsForCharacter(_activeCharacter!.dbId!);
-    } else {
-      return;
-    }
-
-    if (sessions.isEmpty) {
-      debugPrint('[ChatService] _loadLastSession: No previous sessions found');
-      // Ensure no stale fork/parent state remains from a prior character/group.
-      _parentSessionId = null;
-      _forkIndex = null;
-      // Expression runtime (manual/caches) reset on no-prior-session to prevent bleed (new for step4, matches fork/parent hygiene).
-      _expressionService.resetForFreshChat();
-      // Time (secondary config: passage, weekday anchors, turns, day/time scalars) reset for fresh 0-session/new-group paths.
-      // Prevents bleed of advanced time from prior 1:1 into fresh groups (cross-check vs needs bugfix reset hygiene).
-      // Nsfw (cooldown/arousal) reset for same (incomplete zeroing of nsfw on 0-session/new-group was a prior hygiene issue).
-      // Lorebook triggers/depth reset for same (incomplete zeroing of lore on 0-session/new-group was a prior hygiene pattern to avoid).
-      // See "keep reset blocks in sync" (setActiveGroup, startNewChat 1:1+group (now explicit in both), load* , setActive* all must hit this; now includes needs/chaos/... + leaves (see CLAUDE.md for full; incomplete zeroing now complete) + " ; now complete in all group/0-session/new-chat hygiene)" ; incomplete zeroing now complete).
-      // (cross-ref setActiveCharacter:1572)
-      _timeService.resetForFreshChat();
-      _nsfwService.resetForFreshChat();
-      _lorebookScanner.resetLorebookTriggerState();
-      _activeObjectives = [];
-      _messagesSinceLastCheck = 0;
-      _isCheckingCompletion =
-          false; // zero in _loadLast empty early return (0-session path hygiene)
-      _summaryPaused =
-          false; // explicit secondary zero for _summaryPaused (symmetric; _loadLast empty early return 0-session)
-      _isSummaryGenerating =
-          false; // secondary zero in _loadLast empty (0-session for summary flag)
-      _userMessagesSinceLastPeriodicEval = 0;
-      _isExtractingFacts =
-          false; // secondary fact flag + counter zero in _loadLast empty early return (0-session path hygiene; fact_extraction)
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      _evolutionError =
-          ''; // explicit evo flag/status/error zero in _loadLast empty early return (0-session path hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
-      return;
-    }
-
-    // Sessions are already sorted descending by createdAt
-    final lastSession = sessions.first;
-    _currentSessionId = lastSession.id;
-    _authorNote = lastSession.authorNote;
-    _authorNoteStrength = lastSession.authorNoteDepth;
-    _summary = lastSession.summary ?? '';
-    _summaryLastIndex = lastSession.summaryLastIndex ?? 0;
-    _sessionName = lastSession.name;
-    _sessionDescription = lastSession.description;
-    _parentSessionId = lastSession.parentSession;
-    _forkIndex = lastSession.forkIndex;
-    // Relationship scalars + migration/tier calc now via service (keeps load parity).
-    // Migration: scale old scores (±150) to new range (±300). (Card-seed bypass: fresh V2.5
-    // ext seeds use seedFromCardV2OrExt plain clamp in setActiveCharacter/startNew 1:1 paths;
-    // this migrate path is *only* for legacy persisted sessions. See card-seed notes at the two
-    // ext-seed sites + relationship_service + full keep-sync lists + setActiveCharacter:1572.)
-    _relationshipService.loadScalars(
-      affectionScore: _relationshipService.migrateShortTermScore(
-        lastSession.affectionScore,
-      ),
-      longTermScore: _relationshipService.migrateLongTermScore(
-        lastSession.longTermScore,
-      ),
-      trustLevel: lastSession.trustLevel,
-      activeFixation: lastSession.activeFixation,
-      fixationLifespan: lastSession.fixationLifespan,
-      spatialStance: lastSession.spatialStance,
-      trustRepairPending: lastSession.trustRepairPending,
-      turnsSinceLongTermCheck: lastSession.turnsSinceLongTermCheck,
-      shortTermDeltasSummary: lastSession.shortTermDeltasSummary,
-    );
-    // Apply legacy migration (if needed) after load. (Card-seed bypass note: this *10 + migrate
-    // path is exclusively for legacy persisted sessions from pre-±300 era; fresh card seeds use
-    // the plain seedFromCardV2OrExt at the two 1:1 ext sites above. Expanded per "related load/reset
-    // sites" requirement + keep-sync full list + setActiveCharacter:1572 + both startNew.)
-    _relationshipService.applyLegacyShortTermMigrationIfNeeded();
-    _realismEnabled = lastSession.realismEnabled;
-    _moodDecayCounter = lastSession.moodDecayCounter;
-    _characterEmotion = lastSession.characterEmotion;
-    _emotionIntensity = lastSession.emotionIntensity;
-    // Time load via extracted service (resolve + scalars; keeps load blocks in sync).
-    _timeService.loadTimeScalars(
-      timeOfDay: lastSession.timeOfDay,
-      dayCount: lastSession.dayCount,
-      startDayOfWeek: lastSession.startDayOfWeek,
-      passageOfTimeEnabled:
-          lastSession.passageOfTimeEnabled &&
-          _storageService.realismSettings.passageOfTimeDefault,
-    );
-    _nsfwService.loadNsfwScalars(
-      nsfwCooldownEnabled: lastSession.nsfwCooldownEnabled,
-      arousalLevel: lastSession.arousalLevel,
-      cooldownTurnsRemaining: lastSession.cooldownTurnsRemaining,
-    );
-    _needsSimEnabled = lastSession.needsSimEnabled;
-    if (_needsSimEnabled) {
-      _needsSimulation.initializeFresh();
-      final nv = lastSession.needsVector;
-      _needsSimulation.restoreFromSnapshot({
-        'vector': (nv is String && nv.isNotEmpty)
-            ? (jsonDecode(nv) as Map).cast<String, int>()
-            : <String, int>{},
-      });
-    } else {
-      _needsSimulation.clearVector();
-    }
-
-    // Re-sync from the character's current setting so that toggling
-    // "Enjoys low hygiene" on the character affects existing chats on next load.
-    _enjoysLowHygiene =
-        _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
-
-    _needsSimulation.resetBuffers();
-    // trust/fixation/spatial/pending/affection/tiers already loaded via _relationshipService.loadScalars above.
-    debugPrint(
-      '[ChatService] _loadLastSession: Loaded session with arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
-    );
-    _chaosModeService.loadScalars(
-      modeEnabled: lastSession.chaosModeEnabled,
-      pressure: lastSession.chaosPressure,
-    );
-
-    // Realism Engine 2.0 Compatibility Migration (delegated to service). (Card-seed bypass:
-    // this legacy path for old persisted data; fresh 1:1 card ext seeds use seedFromCardV2OrExt
-    // (plain) at setActive/startNew 1:1 sites. See expanded keep-sync + setActiveCharacter:1572.)
-    _relationshipService.applyLegacyShortTermMigrationIfNeeded();
-    if (_relationshipService.affectionScore != lastSession.affectionScore ||
-        _relationshipService.relationshipTier != lastSession.relationshipTier) {
-      debugPrint(
-        '[Realism] Legacy session migrated to REv2 scales (loadLast).',
-      );
-    }
-
-    // v30: Load live per-character group realism/needs (bond/trust/emotion/fixation/arousal/relationships/needs)
-    // from the session column (or fall back to group defaults). Must happen for group entry paths
-    // so that _groupRealism is populated before any eval, prompt injection, or UI read.
-    if (_activeGroup != null) {
-      _loadGroupRealismStateFromSession(lastSession);
-    } else {
-      // 1:1 session: the group realism column ('{}' for plain sessions) may
-      // carry persisted Scene Guest (Lite NPC) dbIds. Tolerant of legacy/empty.
-      _loadSceneGuestsFromSession(lastSession);
-    }
-
-    // Load per-session evolution (1:1 mode only — group is handled by _loadGroupEvolvedFields)
-    if (_activeCharacter != null) {
-      final charId = _getCharacterIdFromCard(_activeCharacter!);
-      _evolvedPersonalities[charId] = lastSession.evolvedPersonality;
-      _evolvedScenarios[charId] = lastSession.evolvedScenario;
-      _characterEvolutionCount = lastSession.evolutionCount;
-      _groupEvolutionCounts[charId] = lastSession.evolutionCount;
-    }
-
-    // Load messages
-    // Zero secondary objective flags in loaded path of _loadLast (before callers do _loadActiveObjectives / _loadObjectivesForCurrentSpeaker); incomplete zeroing hygiene.
-    _activeObjectives = [];
-    _messagesSinceLastCheck = 0;
-    _isCheckingCompletion = false;
-    _summaryPaused =
-        false; // explicit secondary zero for _summaryPaused (symmetric; _loadLast empty/loaded hygiene)
-    _isSummaryGenerating =
-        false; // secondary flag zero for summary_service (stateless/prompt-only; incomplete zeroing ... now complete)
-    _userMessagesSinceLastPeriodicEval = 0;
-    _isExtractingFacts =
-        false; // secondary fact flag + counter zero in _loadLast loaded path (incomplete zeroing ... now complete; fact_extraction)
-    _isEvolvingCharacter = false;
-    _evolutionStatus = '';
-    _evolutionError =
-        ''; // explicit evo flag/status/error zero in _loadLast loaded path (incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
-    try {
-      final dbMessages = await _db.getMessagesForSession(_currentSessionId!);
-      debugPrint(
-        '[ChatService] 🟢 _loadLastSession: loading ${dbMessages.length} '
-        'messages for session $_currentSessionId',
-      );
-      _messages.clear();
-      for (final m in dbMessages) {
-        List<String> swipes;
-        try {
-          swipes = List<String>.from(jsonDecode(m.swipes));
-        } catch (_) {
-          swipes = [''];
-        }
-        List<int> swipeDurations;
-        try {
-          swipeDurations = List<int>.from(
-            (jsonDecode(m.swipeDurations) as List).map(
-              (e) => (e as num).toInt(),
-            ),
-          );
-        } catch (_) {
-          swipeDurations = [0];
-        }
-
-        final safeSwipeIndex =
-            (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
-            ? m.swipeIndex
-            : 0;
-
-        _messages.add(
-          ChatMessage(
-            text: swipes.isNotEmpty ? swipes[safeSwipeIndex] : '',
-            sender: m.sender,
-            isUser: m.isUser,
-            characterId: m.characterId,
-            swipes: swipes,
-            swipeIndex: safeSwipeIndex,
-            swipeDurations: swipeDurations,
-            metadata: m.metadata != null
-                ? Map<String, dynamic>.from(jsonDecode(m.metadata!))
-                : null,
-            swipeMetadata: m.swipeMetadata != null
-                ? (jsonDecode(m.swipeMetadata!) as List<dynamic>)
-                      .map(
-                        (e) => e != null
-                            ? Map<String, dynamic>.from(e as Map)
-                            : null,
-                      )
-                      .toList()
-                : null,
-          ),
-        );
-      }
-
-      if (_messages.isNotEmpty) {
-        _lorebookScanner.scanLorebook(_messages.last.text);
-      }
-    } catch (e) {
-      print('Error loading chat session: $e');
-    }
-  }
-
-  /// Get sessions for a given character/group ID without setting it as active.
-  Future<List<Map<String, dynamic>>> getSessionsForId(String charId) async {
-    // Determine if this is a group or character
-    List<Session> dbSessions;
-    if (charId.startsWith('group_')) {
-      final groupId = charId.replaceFirst('group_', '');
-      dbSessions = await _db.getSessionsForGroup(groupId);
-    } else {
-      // Find character by imagePath basename
-      final allChars = await _db.getAllCharacters();
-      final match = allChars.where((c) {
-        if (c.imagePath == null) return false;
-        return path.basenameWithoutExtension(c.imagePath!) == charId;
-      }).firstOrNull;
-      if (match != null) {
-        dbSessions = await _db.getSessionsForCharacter(match.id);
-      } else {
-        dbSessions = [];
-      }
-    }
-
-    List<Map<String, dynamic>> sessions = [];
-    for (final s in dbSessions) {
-      final timestamp = int.tryParse(s.id) ?? 0;
-      final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-
-      // Get message count and preview
-      final msgs = await _db.getMessagesForSession(s.id);
-      String preview = 'New Conversation';
-      if (s.name != null && s.name!.isNotEmpty) {
-        preview = s.name!;
-      } else if (msgs.length > 1) {
-        // Use second message text as preview
-        try {
-          final swipes = List<String>.from(jsonDecode(msgs[1].swipes));
-          preview = swipes.isNotEmpty ? swipes[msgs[1].swipeIndex] : '';
-          if (preview.length > 50) preview = '${preview.substring(0, 50)}...';
-        } catch (_) {}
-      }
-
-      sessions.add({
-        'id': s.id,
-        'date': date,
-        'preview': preview,
-        'message_count': msgs.length,
-        'user_message_count': msgs.where((m) => m.isUser).length,
-        if (s.name != null) 'session_name': s.name,
-        if (s.description != null) 'session_description': s.description,
-        if (s.parentSession != null) 'parent_session': s.parentSession,
-        if (s.forkIndex != null) 'fork_index': s.forkIndex,
-      });
-    }
-
-    sessions.sort(
-      (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime),
-    );
-    return sessions;
-  }
-
-  Future<List<Map<String, dynamic>>> getSessions() async {
-    if (_activeCharacter == null && _activeGroup == null) return [];
-    final charId = _getCharacterId();
-    return getSessionsForId(charId);
-  }
-
-  Future<void> loadSession(String sessionId) async {
-    if (_activeCharacter == null && _activeGroup == null) return;
-
-    final session = await _db.getSessionById(sessionId);
-    if (session == null) return;
-
-    if (session.userPersonaId != null) {
-      await _userPersonaService.setActivePersona(session.userPersonaId!);
-    }
-
-    try {
-      final dbMessages = await _db.getMessagesForSession(sessionId);
-      debugPrint(
-        '[ChatService] 🟢 loadSession: loading ${dbMessages.length} '
-        'messages for session $sessionId',
-      );
-      _messages.clear();
-      for (final m in dbMessages) {
-        List<String> swipes;
-        try {
-          swipes = List<String>.from(jsonDecode(m.swipes));
-        } catch (_) {
-          swipes = [''];
-        }
-        List<int> swipeDurations;
-        try {
-          swipeDurations = List<int>.from(
-            (jsonDecode(m.swipeDurations) as List).map(
-              (e) => (e as num).toInt(),
-            ),
-          );
-        } catch (_) {
-          swipeDurations = [0];
-        }
-
-        final safeSwipeIndex =
-            (m.swipeIndex >= 0 && m.swipeIndex < swipes.length)
-            ? m.swipeIndex
-            : 0;
-
-        _messages.add(
-          ChatMessage(
-            text: swipes.isNotEmpty ? swipes[safeSwipeIndex] : '',
-            sender: m.sender,
-            isUser: m.isUser,
-            characterId: m.characterId,
-            swipes: swipes,
-            swipeIndex: safeSwipeIndex,
-            swipeDurations: swipeDurations,
-            metadata: m.metadata != null
-                ? Map<String, dynamic>.from(jsonDecode(m.metadata!))
-                : null,
-            swipeMetadata: m.swipeMetadata != null
-                ? (jsonDecode(m.swipeMetadata!) as List<dynamic>)
-                      .map(
-                        (e) => e != null
-                            ? Map<String, dynamic>.from(e as Map)
-                            : null,
-                      )
-                      .toList()
-                : null,
-          ),
-        );
-      }
-
-      // Post-load sanitization: force valid swipe indices and clamp absurdly long fixation text.
-      // This protects against any legacy corrupted rows or previous buggy saves, even if the
-      // individual message constructors already clamp.
-      for (final msg in _messages) {
-        if (msg.swipeIndex < 0 || msg.swipeIndex >= msg.swipes.length) {
-          msg.swipeIndex = 0;
-        }
-      }
-
-      // The fixation coming out of the LLM can sometimes be a full paragraph instead of a short topic.
-      // Truncate it to keep the UI and prompts sane.
-      _relationshipService.sanitizeFixationIfTooLong();
-
-      // ── Hydrate hidden group state checkpoint (DB-free: realism + per-char notes) ──
-      // The sentinel is stored as the last message for durability but must be
-      // stripped from the in-memory list so the UI and prompt builders never see it.
-      // (v30: _hydrateGroupRealismCheckpointIfPresent removed — state now loads from DB column)
-
-      _currentSessionId = sessionId;
-      // Scene Guests are per-session. Without this, switching to a different
-      // session via the history picker leaves the PREVIOUS session's guests
-      // (and their evolution/detection state) in place — they keep chiming in
-      // and get re-persisted into the loaded session's blob, contaminating it,
-      // while this session's own guests are never restored. Mirror the
-      // _loadLastSession 1:1 branch: full reset, then load this session's blob.
-      if (_activeGroup == null) {
-        _pendingGuestDeparture = null;
-        _pendingGuestPickerFilter = null;
-        _resetGuestActivityState();
-        _userMessagesSinceLastCastScan = 0;
-        _pendingGuestDetection = null;
-        _offeredOrIgnoredGuestNames.clear();
-        // (clears + restores _sceneGuestIds/_sceneGuestCards + guest evolution)
-        _loadSceneGuestsFromSession(session);
-      }
-      _authorNote = session.authorNote;
-      _authorNoteStrength = session.authorNoteDepth;
-      _summary = session.summary ?? '';
-      _summaryLastIndex = session.summaryLastIndex ?? 0;
-      _summaryPaused =
-          false; // explicit secondary zero for _summaryPaused on loadSession loaded path (incomplete zeroing ... now complete; see keep-sync + summary_service)
-      _isSummaryGenerating =
-          false; // secondary zero for flag on loadSession loaded (symmetric)
-      _userMessagesSinceLastPeriodicEval = 0;
-      _isExtractingFacts =
-          false; // secondary fact flag + counter zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; fact_extraction)
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      _evolutionError =
-          ''; // explicit evo flag/status/error zero on loadSession loaded (symmetric; incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
-      _sessionName = session.name;
-      _sessionDescription = session.description;
-      _parentSessionId = session.parentSession;
-      _forkIndex = session.forkIndex;
-      // Relationship load + tier calc + legacy migration via service.
-      _relationshipService.loadScalars(
-        affectionScore: session.affectionScore,
-        longTermScore: session.longTermScore,
-        trustLevel: session.trustLevel,
-        activeFixation: session.activeFixation,
-        fixationLifespan: session.fixationLifespan,
-        spatialStance: session.spatialStance,
-        trustRepairPending: session.trustRepairPending,
-        turnsSinceLongTermCheck: session.turnsSinceLongTermCheck,
-        shortTermDeltasSummary: session.shortTermDeltasSummary,
-      );
-      _relationshipService.applyLegacyShortTermMigrationIfNeeded();
-      // (Card-seed bypass: legacy *10 migration only; see the two ext-seed sites + prior load sites
-      // for full "card seeds authored on current ±300" + keep-sync lists + relationship leaf.)
-
-      // counters already via loadScalars on service.
-      _realismEnabled = session.realismEnabled;
-      _moodDecayCounter = session.moodDecayCounter;
-      _characterEmotion = session.characterEmotion;
-      _emotionIntensity = session.emotionIntensity;
-      // Time load via extracted service (resolve + scalars; keeps group load blocks in sync).
-      _timeService.loadTimeScalars(
-        timeOfDay: session.timeOfDay,
-        dayCount: session.dayCount,
-        startDayOfWeek: session.startDayOfWeek,
-        passageOfTimeEnabled:
-            session.passageOfTimeEnabled &&
-            _storageService.realismSettings.passageOfTimeDefault,
-      );
-      _nsfwService.loadNsfwScalars(
-        nsfwCooldownEnabled: session.nsfwCooldownEnabled,
-        arousalLevel: session.arousalLevel,
-        cooldownTurnsRemaining: session.cooldownTurnsRemaining,
-      );
-      _needsSimEnabled = session.needsSimEnabled;
-      if (_needsSimEnabled) {
-        _needsSimulation.initializeFresh();
-        final nv = session.needsVector;
-        _needsSimulation.restoreFromSnapshot({
-          'vector': (nv is String && nv.isNotEmpty)
-              ? (jsonDecode(nv) as Map).cast<String, int>()
-              : <String, int>{},
-        });
-      } else {
-        _needsSimulation.clearVector();
-      }
-
-      // Re-sync from the character's current setting so toggling
-      // "Enjoys low hygiene" affects existing chats on load.
-      _enjoysLowHygiene =
-          _activeCharacter?.frontPorchExtensions?.enjoysLowHygiene ?? false;
-
-      _needsSimulation.resetBuffers();
-      // trust/fixation etc already via _relationshipService.loadScalars above.
-
-      // Load per-session evolution (1:1 mode only — group handled by _loadGroupEvolvedFields)
-      if (_activeCharacter != null) {
-        final charId = _getCharacterIdFromCard(_activeCharacter!);
-        _evolvedPersonalities[charId] = session.evolvedPersonality;
-        _evolvedScenarios[charId] = session.evolvedScenario;
-        _characterEvolutionCount = session.evolutionCount;
-        _groupEvolutionCounts[charId] = session.evolutionCount;
-      }
-
-      // Per-session generation parameter overrides (v22) — loaded via raw SQL
-      // so this works even before build_runner regenerates database.g.dart.
-      try {
-        final genRows = await _db
-            .customSelect(
-              'SELECT generation_settings FROM sessions WHERE id = ?',
-              variables: [drift.Variable(sessionId)],
-            )
-            .get();
-        final genJson = genRows.isNotEmpty
-            ? genRows.first.read<String?>('generation_settings')
-            : null;
-        _sessionGenSettings = ChatGenerationSettings.fromJsonString(genJson);
-      } catch (_) {
-        _sessionGenSettings = ChatGenerationSettings();
-      }
-
-      if (_messages.isNotEmpty) {
-        _lorebookScanner.scanLorebook(_messages.last.text);
-      }
-      notifyListeners();
-    } catch (e) {
-      print('Error loading session $sessionId: $e');
-    }
-  }
-
-  /// Rename a session.
-  Future<void> renameSession(String sessionId, String name) async {
-    final session = await _db.getSessionById(sessionId);
-    if (session == null) return;
-
-    await _db.updateSession(
-      SessionsCompanion(
-        id: drift.Value(sessionId),
-        name: drift.Value(name.isEmpty ? null : name),
-        updatedAt: drift.Value(DateTime.now()),
-      ),
-    );
-
-    // Update in-memory if this is the current session
-    if (sessionId == _currentSessionId) {
-      _sessionName = name.isEmpty ? null : name;
-      notifyListeners();
-    }
-  }
-
-  /// Update the description of a session.
-  Future<void> updateSessionDescription(
-    String sessionId,
-    String description,
-  ) async {
-    final session = await _db.getSessionById(sessionId);
-    if (session == null) return;
-
-    await _db.updateSession(
-      SessionsCompanion(
-        id: drift.Value(sessionId),
-        description: drift.Value(description.isEmpty ? null : description),
-        updatedAt: drift.Value(DateTime.now()),
-      ),
-    );
-
-    // Update in-memory if this is the current session
-    if (sessionId == _currentSessionId) {
-      _sessionDescription = description.isEmpty ? null : description;
-      notifyListeners();
-    }
-  }
-
-  /// Create a new session by forking from message at [messageIndex].
-  /// Copies messages 0..messageIndex into a new session and switches to it.
-  Future<void> forkFromMessage(int messageIndex) async {
-    if ((_activeCharacter == null && _activeGroup == null) ||
-        _currentSessionId == null) {
-      return;
-    }
-    if (messageIndex < 0 || messageIndex >= _messages.length) return;
-
-    final oldSessionId = _currentSessionId!;
-    final forkedMessages = _messages
-        .sublist(0, messageIndex + 1)
-        .map(
-          (m) => ChatMessage(
-            text: m.text,
-            sender: m.sender,
-            isUser: m.isUser,
-            characterId: m.characterId,
-            swipes: List.from(m.swipes),
-            swipeIndex: (m.swipeIndex >= 0 && m.swipeIndex < m.swipes.length)
-                ? m.swipeIndex
-                : 0,
-            swipeDurations: List.from(m.swipeDurations),
-            metadata: m.metadata != null
-                ? Map<String, dynamic>.from(m.metadata!)
-                : null,
-            swipeMetadata: m.swipeMetadata
-                .map((e) => e != null ? Map<String, dynamic>.from(e) : null)
-                .toList(),
-          ),
-        )
-        .toList();
-
-    debugPrint(
-      '[ChatService] 🟡 forkSession: clearing messages for fork at index $messageIndex',
-    );
-    _messages.clear();
-    _messages.addAll(forkedMessages);
-    _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-    _parentSessionId = oldSessionId;
-    _forkIndex = messageIndex;
-    _sessionGenSettings = _sessionGenSettings
-        .copy(); // inherit parent's overrides
-    _summary = '';
-    _summaryLastIndex = 0;
-    _summaryPaused =
-        false; // explicit secondary zero for _summaryPaused (symmetric to generating; fork hygiene + incomplete zeroing now complete)
-    _isSummaryGenerating =
-        false; // zero secondary flag on fork (new branch hygiene, matches summary scalar reset)
-    _userMessagesSinceLastPeriodicEval = 0;
-    _isExtractingFacts =
-        false; // secondary fact flag + counter zero on fork (new branch hygiene + incomplete zeroing now complete; fact_extraction)
-    _isEvolvingCharacter = false;
-    _evolutionStatus = '';
-    _evolutionError =
-        ''; // explicit evo flag/status/error zero on fork (new branch hygiene + incomplete zeroing now complete; evolution_service (stateless or prompt-only; no reset calls needed))
-
-    // Time-Travel Restoration
-    if (_messages.isNotEmpty) {
-      _restoreRealismStateFromMessage(_messages.last);
-    }
-
-    await _saveChat();
-    notifyListeners();
-  }
-
-  // Import chat from SillyTavern JSON format
-  Future<void> importFromSillyTavern(String jsonData) async {
-    if (_activeCharacter == null) throw Exception('No active character');
-
-    try {
-      final Map<String, dynamic> data = jsonDecode(jsonData);
-      final List<dynamic> messages = data['messages'] ?? [];
-
-      debugPrint(
-        '[ChatService] 🟡 importFromSillyTavern: clearing messages for import',
-      );
-      _messages.clear();
-
-      for (final msg in messages) {
-        final String name = msg['name'] ?? '';
-        final bool isUser = msg['is_user'] ?? false;
-        final String text = msg['mes'] ?? '';
-
-        _messages.add(ChatMessage(text: text, sender: name, isUser: isUser));
-      }
-
-      // Create new session for imported chat
-      _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-      await _saveChat();
-      notifyListeners();
-    } catch (e) {
-      throw Exception('Failed to parse SillyTavern JSON: $e');
-    }
-  }
-
-  // Export current chat to SillyTavern JSON format
-  String? exportToSillyTavern() {
-    if (_messages.isEmpty) return null;
-
-    final List<Map<String, dynamic>> messages = _messages.map((msg) {
-      return {
-        'name': msg.sender,
-        'is_user': msg.isUser,
-        'mes': msg.text,
-        'send_date': DateTime.now().millisecondsSinceEpoch,
-      };
-    }).toList();
-
-    final Map<String, dynamic> export = {
-      'chat_metadata': {'note_prompt': '', 'note_interval': 0},
-      'messages': messages,
-    };
-
-    return jsonEncode(export);
-  }
-
-  Future<void> startNewChat() async {
-    if (_activeCharacter == null && _activeGroup == null) return;
-
-    debugPrint(
-      '[startNewChat] START: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
-    );
-
-    // Refresh _activeCharacter from the repository so we pick up any edits
-    // made in the character editor (personality, description, etc.)
-    if (_activeCharacter != null && _characterRepository != null) {
-      final freshChar = _characterRepository!.characters
-          .cast<CharacterCard?>()
-          .firstWhere(
-            (c) => c!.dbId == _activeCharacter!.dbId,
-            orElse: () => null,
-          );
-      if (freshChar != null) {
-        // Preserve any runtime-loaded extensions if the repository instance lacks them
-        final existingExt = _activeCharacter!.frontPorchExtensions;
-        final existingRaw = _activeCharacter!.rawExtensions;
-
-        _activeCharacter = freshChar;
-
-        if (existingExt != null &&
-            _activeCharacter!.frontPorchExtensions == null) {
-          _activeCharacter!.frontPorchExtensions = existingExt;
-          _activeCharacter!.rawExtensions = existingRaw;
-          debugPrint(
-            '[startNewChat] Preserved existing extensions during character refresh',
-          );
-        } else if (existingExt == null &&
-            _activeCharacter!.frontPorchExtensions == null) {
-          debugPrint(
-            '[startNewChat] DEBUG: existingExt was null AND freshChar had null extensions.',
-          );
-        }
-      } else {
-        debugPrint(
-          '[startNewChat] DEBUG: freshChar was null (repository lookup failed).',
-        );
-      }
-    }
-
-    // Fallback: If extensions are STILL missing, forcefully reload from PNG.
-    // This catches edge cases where repository/memory loses sync with the file.
-    if (_activeCharacter != null &&
-        _activeCharacter!.frontPorchExtensions == null) {
-      debugPrint(
-        '[startNewChat] DEBUG: Extensions are missing. Attempting PNG fallback.',
-      );
-      if (_activeCharacter!.imagePath != null) {
-        debugPrint(
-          '[startNewChat] DEBUG: Image path exists: ${_activeCharacter!.imagePath}',
-        );
-        try {
-          final v2Service = V2CardService();
-          final reloaded = await v2Service.readCard(
-            _activeCharacter!.imagePath!,
-          );
-          if (reloaded == null) {
-            debugPrint(
-              '[startNewChat] DEBUG: readCard returned null. Failed to parse PNG.',
-            );
-          } else if (reloaded.frontPorchExtensions != null) {
-            _activeCharacter!.frontPorchExtensions =
-                reloaded.frontPorchExtensions;
-            _activeCharacter!.rawExtensions = reloaded.rawExtensions;
-            debugPrint(
-              '[startNewChat] Force-reloaded frontPorchExtensions from PNG',
-            );
-          } else {
-            debugPrint(
-              '[startNewChat] DEBUG: readCard succeeded, BUT reloaded.frontPorchExtensions was NULL! Meaning the PNG file does NOT contain the front_porch extension data.',
-            );
-          }
-        } catch (e) {
-          debugPrint('[startNewChat] Force-reload failed with exception: $e');
-        }
-      } else {
-        debugPrint('[startNewChat] DEBUG: Cannot fallback. imagePath is null.');
-      }
-    }
-
-    debugPrint(
-      '[ChatService] 🟡 startNewChat: clearing messages (had ${_messages.length})',
-    );
-    _messages.clear();
-    _greetingIndex = 0;
-    // A fresh chat starts with no Scene Guests (they don't carry across sessions).
-    _clearSceneGuestEvolution(); // Phase 3: keep guest-evolution reset in sync.
-    _sceneGuestIds.clear();
-    _sceneGuestCards.clear();
-    _pendingGuestDeparture = null;
-    _pendingGuestPickerFilter = null;
-    _resetGuestActivityState();
-    // Phase 2 cast detection: reset the scan cadence + pending/debounce state
-    // for the new 1:1 context (kept in sync with the Scene Guest clears).
-    _userMessagesSinceLastCastScan = 0;
-    _pendingGuestDetection = null;
-    _offeredOrIgnoredGuestNames.clear();
-    _summary = '';
-    _summaryLastIndex = 0;
-    _summaryPaused =
-        false; // explicit secondary zero for _summaryPaused (symmetric; startNew 1:1/ext-seed branch + incomplete zeroing ... now complete)
-    _isSummaryGenerating =
-        false; // explicit in startNewChat 1:1/ext-seed branch (both startNew explicit + incomplete zeroing... now complete (see CLAUDE.md); summary_service) + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete in both branches)"
-
-    // Explicitly clear any prior branching/fork metadata. A "New Chat" is
-    // never a branch/fork from a previous session. This prevents stale
-    // _parentSessionId / _forkIndex (from a previous branched chat or
-    // different character) from being written into the brand-new session
-    // record via _saveChat(), which was causing new chats to incorrectly
-    // show "Branched at message #NNNN" in history lists even for characters
-    // with no prior chats.
-    _parentSessionId = null;
-    _forkIndex = null;
-
-    // Mark this as a new chat to prevent memory retrieval
-    _isNewChat = true;
-    debugPrint('[startNewChat] Marked as new chat - memories will be filtered');
-
-    // Save the current session (preserves objectives for this session)
-    if (_currentSessionId != null) {
-      await _saveChat();
-    }
-
-    // Clear objectives for fresh session start
-    _activeObjectives = [];
-    _messagesSinceLastCheck = 0;
-    _isCheckingCompletion =
-        false; // see decl + keep reset blocks (incomplete zeroing... now complete (see CLAUDE.md); explicit in both startNew branches)
-    _userMessagesSinceLastPeriodicEval = 0;
-    _isExtractingFacts =
-        false; // explicit secondary fact flag + counter zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; fact_extraction)
-    _isEvolvingCharacter = false;
-    _evolutionStatus = '';
-    _evolutionError =
-        ''; // explicit evo flag/status/error zero in startNew 1:1/ext-seed branch (both startNew explicit + incomplete zeroing ... now complete; evolution_service (stateless or prompt-only; no reset calls needed))
-
-    // Create new session ID for the new chat
-    _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-
-    // Clear memory sources to prevent old memories from being retrieved
-    // Cross-character memory can still be re-selected by user after new chat starts
-    if (_activeCharacter?.dbId != null) {
-      try {
-        await _db.updateCharacter(
-          CharactersCompanion(
-            id: drift.Value(_activeCharacter!.dbId!),
-            memorySources: drift.Value('[]'),
-          ),
-        );
-        debugPrint('[startNewChat] Cleared memory sources from DB');
-      } catch (e) {
-        debugPrint('[startNewChat] Failed to clear memory sources: $e');
-      }
-    }
-
-    // Seed Realism Engine state from V2.5 card extensions for 1:1 mode only,
-    // ensuring realism settings persist across chat sessions (group mode handled elsewhere)
-    if (_activeCharacter != null && _activeGroup == null) {
-      final extSeed =
-          _activeCharacter!.frontPorchExtensions ?? FrontPorchExtensions();
-
-      _realismEnabled = extSeed.realismEnabled;
-      // Card-seed bypass (rec 1 from PR #47; keeps startNewChat parity with setActive ext seed):
-      // use seedFromCardV2OrExt (plain .clamp only, no _migrate*) because V2.5 cards + creator
-      // author on current ±300 scale. (The old "Migration + seed" comment + call was the source
-      // of the doubling regression on fresh 1:1 New Chat.) Migration stays exclusively on legacy
-      // persisted session paths (_loadLastSession + loadScalars(migrate*) + applyLegacy... at 3 sites).
-      // 1:1 vs group parity: group seeding paths untouched (resetForFresh + per-speaker load/save scalars).
-      // See relationship_service.dart (seedFromCardV2OrExt + public migrate docs) + expanded
-      // "keep reset blocks in sync" + "incomplete zeroing... now complete (see CLAUDE.md)"
-      // (see CLAUDE.md full list + incomplete zeroing hygiene; buffer removal complete)
-      _relationshipService.seedFromCardV2OrExt(
-        shortTermBond: extSeed.shortTermBond,
-        longTermBond: extSeed.longTermBond,
-        trustLevel: extSeed.trustLevel,
-      );
-      _expressionService.resetForFreshChat();
-      // Lorebook trigger reset via extracted service (keeps the keep-sync reset sites correct
-      // without god privates; now includes startNewChat 1:1 ext-seed path to prevent bleed of prior
-      // isTriggered/remainingDepth into fresh New Chat for 1:1; constants skipped. See setActiveCharacter:1572
-      // + "incomplete zeroing of secondary realism configuration fields" briefing pattern (cross-ref step6 nsfw).
-      // See lorebook_scanner.dart and "keep reset blocks" comments (now lists needs/chaos/... + leaves (see CLAUDE.md for full; incomplete zeroing now complete) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc; card-seed bypass hygiene added here too)
-      _lorebookScanner.resetLorebookTriggerState();
-      // Time seed via extracted service (keeps startNewChat / setActive / ext-seed blocks in sync).
-      _timeService.seedFromV2OrExt(
-        dayCount: extSeed.dayCount.clamp(1, 9999),
-        timeOfDay: extSeed.timeOfDay,
-        passageOfTimeEnabled:
-            extSeed.passageOfTimeEnabled &&
-            _storageService.realismSettings.passageOfTimeDefault,
-      );
-      _characterEmotion = extSeed.characterEmotion;
-      _emotionIntensity = extSeed.emotionIntensity;
-      _nsfwService.seedFromV2OrExt(
-        nsfwCooldownEnabled: extSeed.nsfwCooldownEnabled,
-      );
-      _chaosModeService.seedFromGroupOrExt(extSeed.chaosModeEnabled, false);
-      _needsSimEnabled = extSeed.needsSimEnabled;
-      _enjoysLowHygiene = extSeed.enjoysLowHygiene;
-      if (_needsSimEnabled) {
-        // Fresh chat / new session: seed from card baselines (falls back to
-        // needDefaults when the card has no baselines).
-        _needsSimulation.initializeFreshWithDefaults({
-          'hunger': extSeed.needsBaselineHunger,
-          'bladder': extSeed.needsBaselineBladder,
-          'energy': extSeed.needsBaselineEnergy,
-          'social': extSeed.needsBaselineSocial,
-          'fun': extSeed.needsBaselineFun,
-          'hygiene': extSeed.needsBaselineHygiene,
-          'comfort': extSeed.needsBaselineComfort,
-        });
-      } else {
-        _needsSimulation.clearVector();
-      }
-      _needsSimulation.resetBuffers();
-      // needs_impact_evaluator is stateless/prompt-only (no reset calls needed on it;
-      // see full list in "keep reset blocks in sync" comments + cross-ref setActiveCharacter:1572 + fact_extraction (stateless or prompt-only; no reset calls needed) + evolution_service (stateless or prompt-only; no reset calls needed) + realism_verification (stateless or prompt-only; no reset calls needed) + " ; read live from ext on active/group speaker; incomplete zeroing... now complete (see CLAUDE.md) (no extra scalar)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)".
-
-      // pending covered by relationship service reset in the ext-seed or non-ext paths below.
-      // Always reset per-chat runtime realism fields (arousal/fixation/cooldowns) for a fresh
-      // session started via explicit New Chat. ... (See also: matching full reset in setActiveCharacter
-      // and the cross-sync comment there; load*Session, deleteSession→startNewChat, setActiveGroup defensive zero.
-      // Needs vector/buffers reset via _needsSimulation also kept in sync across sites.)
-      // Time secondary fields (passage/anchor/turns/day/time) zeroed via _timeService.resetForFreshChat in non-ext path + _load empty + setActiveGroup.
-      // Nsfw runtime (arousal/cooldown) zeroed via service for fresh (see resetRuntime + resetForFreshChat).
-      // Declarative initial bond/trust/emotion/day etc are already seeded above from the card's
-      // FrontPorchExtensions (or defaults). The old hasFrontPorchExtensions preserve here
-      // was the source of fixation bleed on "New Chat" for cards that had any FP ext object.
-      // Expression (manual/caches/onnx/lastAvatar) reset via service for no-bleed (new for step 4).
-      // Lorebook (non-const isTriggered/remainingDepth) reset via scanner in both ext-seed (1:1) and non-ext (group/0-session) paths of startNewChat (added for hygiene to match briefing "every keep-sync" + setActiveCharacter etc; prevents bleed into greetings/scans).
-      debugPrint(
-        '[startNewChat] Resetting runtime arousal/fixation + transients for fresh chat (was: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan})',
-      );
-      _nsfwService.resetRuntimeArousalAndCooldown();
-      debugPrint(
-        '[startNewChat] After reset: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
-      );
-
-      // Recalculate tiers from seeded scores (only needed for realism-enabled chars)
-      if (_realismEnabled) {
-        // Tiers are maintained inside service after seed; no direct _calculate here.
-      }
-
-      // Seed initial quest/task as a primary objective
-      if (extSeed.currentTask.isNotEmpty) {
-        // Defer so the session ID is ready before the DB write
-        Future.microtask(() async {
-          await setObjective(extSeed.currentTask, isPrimary: true);
-          debugPrint(
-            '[ChatService] V2.5 seeded initial task: ${extSeed.currentTask}',
-          );
-        });
-      }
-    } else {
-      // Group mode or no active character: reset to defaults but preserve existing extensions-based values
-      // (pending covered by service.resetForFreshChat below)
-
-      if (_activeGroup == null && _messages.isNotEmpty) {
-        // Will be populated later with greeting in non-group modes
-        // Preserve realism state for proper post-greeting eval (don't reset here)
-      } else {
-        // Relationship + Expression + Time + Nsfw reset via service helpers (keeps reset blocks in sync with setActiveCharacter:1572 etc / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing... now complete (see CLAUDE.md)" + full list in "keep reset blocks" comments including + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing... now complete (see CLAUDE.md)) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
-        // Time now explicitly reset in group 0-session/empty paths + setActiveGroup defensive + _loadLast empty (cross-check needs bugfix hygiene).
-        _relationshipService.resetForFreshChat();
-        _expressionService.resetForFreshChat();
-        _timeService.resetForFreshChat();
-        _nsfwService.resetForFreshChat();
-        // Lorebook trigger reset via extracted service (keeps reset blocks in sync with setActiveCharacter:1572 / _loadLast empty / setActiveGroup / startNew ext-seed; see "incomplete zeroing of secondary ... on 0-session/new-character/group" + startNew 1:1+group now complete + full list in keep-sync comments incl llm_eval_engine). (cross-ref setActiveCharacter:1572 etc)
-        // See "keep reset blocks in sync" comments (setActiveGroup, startNewChat, load* , setActive* all must hit this; now includes needs/chaos/... + leaves (see CLAUDE.md for full; incomplete zeroing now complete) + " )" for group/0-session/new-chat hygiene; incomplete zeroing now complete).
-        // (cross-ref setActiveCharacter:1572)
-        _lorebookScanner.resetLorebookTriggerState();
-        // Don't touch dayCount/time etc directly — seeded from extensions or loaded session (or reset above for fresh no-ext path).
-        // Time reset helper kept in sync with other blocks.
-        // needs_impact_evaluator (stateless/prompt-only; no reset calls needed) covered in keep-sync lists.
-
-        // Explicit zero for secondary config flags in group/non-ext/0-session/new-chat path (keeps "incomplete zeroing... now complete (see CLAUDE.md)" true in *code* not just comments; matches ext-seed 1:1 + setActiveCharacter + setActiveGroup defensive; cross-ref setActiveCharacter:1572 + full list in keep-sync comments incl + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + " ; authority mode for needs; hygiene listed, no code zero line)") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)".
-        _needsSimEnabled = false;
-        _enjoysLowHygiene = false;
-        _needsSimulation.clearVector();
-        _needsSimulation.resetBuffers();
-        _activeObjectives = [];
-        _messagesSinceLastCheck = 0;
-        _isCheckingCompletion =
-            false; // explicit in non-ext/group/0-session else branch of startNew (both branches now; incomplete zeroing ... now complete)
-        _summaryPaused =
-            false; // explicit secondary zero for _summaryPaused (symmetric to generating; non-ext/group/0-session startNew path + now complete)
-        _isSummaryGenerating =
-            false; // explicit secondary zero in startNew non-ext/group/0-session path (both branches + now complete for summary flag too)
-        _userMessagesSinceLastPeriodicEval = 0;
-        _isExtractingFacts =
-            false; // explicit secondary fact flag + counter zero in startNew non-ext/group/0-session path (both branches + now complete for fact flag/counter; fact_extraction)
-        _isEvolvingCharacter = false;
-        _evolutionStatus = '';
-        _evolutionError =
-            ''; // explicit evo flag/status/error zero in startNew non-ext/group/0-session path (both branches + now complete for evo flag; evolution_service (stateless or prompt-only; no reset calls needed) + " )") + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)"
-      }
-    }
-
-    // Explicit flag + cadence counter zero for evolution (in addition to per-branch) to keep "incomplete zeroing... now complete (see CLAUDE.md)" + both startNew explicit; evolution_service (stateless or prompt-only; no reset calls needed) + " ; no god scalar zero needed -- live ext read; see also setActiveCharacter + group 0-session paths)" + "needsSimulation. (reason support kept for Director chips) ; cleared via sim initializeFresh/clearVector/resetBuffers on all paths; now complete)".
-    // Also zero the facts counter here for symmetric hygiene on the two periodic cadence counters.
-    _userMessagesSinceLastPeriodicEval = 0;
-    _isEvolvingCharacter = false;
-    _evolutionStatus = '';
-    _evolutionError = '';
-
-    // Clear the in-memory evolution cache so the new session starts with
-    // the original (unevolved) personality/scenario. The previous session's
-    // evolved data was still live in this map. (Flags zeroed explicitly in branches + here for hygiene; see preceding comment.)
-    _evolvedPersonalities.clear();
-    _evolvedScenarios.clear();
-    _groupEvolutionCounts.clear();
-    _characterEvolutionCount = 0;
-
-    if (_activeGroup != null && _groupCharacters.isNotEmpty) {
-      // Group mode: respect explicit group.firstMessage (custom group greeting set
-      // by creator or Group Card) when present. Only fall back to the first
-      // participating character's firstMessage when the group has no custom opening.
-      String greetingText;
-      String greetingSender;
-      String? greetingCharId;
-
-      if (_activeGroup!.firstMessage.isNotEmpty) {
-        greetingText = _macroResolver.resolve(
-          _activeGroup!.firstMessage,
-          MacroContext(userName: _userPersonaService.persona.name),
-          section: 'greeting',
-        );
-        greetingSender = _activeGroup!.name;
-        greetingCharId = null;
-      } else {
-        final first = _groupCharacters.first;
-        greetingText = first.firstMessage.isNotEmpty
-            ? _buildFirstMessage(first)
-            : '';
-        greetingSender = first.name;
-        greetingCharId = _getCharacterIdFromCard(first);
-      }
-
-      if (greetingText.isNotEmpty) {
-        _messages.add(
-          ChatMessage(
-            text: greetingText,
-            sender: greetingSender,
-            isUser: false,
-            characterId: greetingCharId,
-          ),
-        );
-        _lorebookScanner.scanLorebook(_messages.last.text);
-      }
-      _groupManager?.resetTurnState();
-    } else if (_activeCharacter != null) {
-      // 1:1 mode
-      if (_activeCharacter!.firstMessage.isNotEmpty) {
-        _messages.add(
-          ChatMessage(
-            text: _buildFirstMessage(_activeCharacter!),
-            sender: _activeCharacter!.name,
-            isUser: false,
-          ),
-        );
-        _lorebookScanner.scanLorebook(_messages.last.text);
-      }
-    }
-
-    _currentSessionId = DateTime.now().millisecondsSinceEpoch.toString();
-    debugPrint(
-      '[startNewChat] BEFORE SAVE: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
-    );
-    await _saveChat();
-    debugPrint(
-      '[startNewChat] AFTER SAVE: arousal=${_nsfwService.arousalLevel}, fixation=${_relationshipService.activeFixation}/${_relationshipService.fixationLifespan}',
-    );
-    notifyListeners();
-
-    // ── Post-Greeting Realism Baseline ──────────────────────────────────
-    // Always mark that a greeting was placed — even if Realism is currently off.
-    // If Realism is already on, fire immediately. Otherwise the flag will be
-    // consumed the moment the user enables Realism.
-    // Skip if character already has pre-seeded V2.5 extensions — those baseline
-    // values are intentional and should not be overwritten by auto-eval.
-    // (See also: setActiveCharacter 0-session path comment for why direct imports rely on retro path.)
-    if (_activeGroup == null &&
-        _messages.isNotEmpty &&
-        _activeCharacter!.frontPorchExtensions == null) {
-      _greetingEvalPending = true;
-      if (_realismEnabled) {
-        _runPostGreetingEval();
-      }
-    }
   }
 
   /// Evaluates emotion + relationship baseline from the greeting message only.
@@ -5366,7 +3100,10 @@ class ChatService extends ChangeNotifier {
       return;
     }
 
-    // Sending a real message ends the /exit undo window.
+    // Sending a real message ends the /exit undo window. A pending full-member
+    // exit commits now (real removal + any collapse to a 1:1) so this turn runs
+    // in the settled cast; lite-guest undo state is just cleared.
+    await _commitPendingMemberExit();
     _clearExitUndo();
 
     final senderName = _userPersonaService.persona.name;
@@ -5422,10 +3159,6 @@ class ChatService extends ChangeNotifier {
     // can use the same delta-revert mechanism the classic realism fields
     // (bond/trust/arousal) use.
     Map<String, int>? preTurnVector;
-    // For group chips, snapshot the *pre-decay* needs for the *upcoming* speaker (from map)
-    // before tickDecay runs. This lets the post-gen chip deltas include the turn's decay + scene
-    // effects (1:1 parity). The per-speaker pre-eval will see the post-decay value after load.
-    Map<String, int>? groupSpeakerPreDecayNeeds;
     if (_realismActiveThisMode) {
       if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
         preTurnVector = Map<String, int>.from(_needsSimulation.vector);
@@ -5433,172 +3166,35 @@ class ChatService extends ChangeNotifier {
         _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
       }
 
-      if (_activeGroup != null &&
-          _needsSimEnabled &&
-          isGroupRealismActive &&
-          !_observerMode) {
-        final upcoming = nextCharacter;
-        if (upcoming != null) {
-          final sid = _getCharacterIdFromCard(upcoming);
-          if (sid.isNotEmpty) {
-            groupSpeakerPreDecayNeeds = _getGroupNeeds(sid);
-          }
-        }
-      }
-
       _applyMoodDecay();
       // Needs decay for 1:1 always here. For group non-observer, speaker-specific decay
       // (respecting the actual picked speaker for random turn order) is applied inside
-      // _evaluateRealismForUpcomingGroupSpeaker after _pickNextGroupCharacter has run.
+      // _evaluateRealismForUpcomingSpeaker after _pickNextGroupCharacter has run.
       if (_activeGroup == null || _observerMode || !_needsSimEnabled) {
         _needsSimulation.tickDecay();
       } else {
-        // Group non-obs + needs on: defer to per-speaker path (see _evaluateRealismForUpcomingGroupSpeaker).
+        // Group non-obs + needs on: decay is applied per-speaker inside the
+        // single eval path (_evaluateRealismForUpcomingSpeaker).
       }
       _nsfwService.decrementCooldownIfActive();
-      _isEvaluatingRealism = true;
-      _realismEvalStreamText = '';
-      notifyListeners();
 
-      void handleChunk(String chunk) {
-        _realismEvalStreamText += chunk;
-        // Debounce: coalesce rapid token arrivals into one rebuild per 150 ms
-        _evalChunkTimer?.cancel();
-        _evalChunkTimer = Timer(const Duration(milliseconds: 150), () {
-          try {
-            notifyListeners();
-          } catch (_) {
-            // Widget was deactivated — timer fired after navigation
-          }
-        });
+      // Single-path bridge: realism evaluation now runs inside _generateResponse
+      // for EVERY speaker (1:1 host or group member) via
+      // _evaluateRealismForUpcomingSpeaker.
+      //
+      // No cast-store mirror for the 1:1 host: its scalar fields are already the
+      // canonical realism store (loaded by loadSession, decayed just above), and the
+      // per-character _groupRealism map is group-only — its writes no-op when
+      // _activeGroup == null. Mirroring was a no-op, and the eval path deliberately
+      // does NOT reload the host from that empty map (doing so reset
+      // bond/trust/emotion/needs to defaults). See _evaluateRealismForUpcomingSpeaker.
+      if (_activeGroup == null && _activeCharacter != null) {
+        // Run the SINGLE eval path for the host now — on a fresh user turn only.
+        // (Regen/continue call _generateResponse directly, bypassing this, so the
+        // host is not re-evaluated; cancellation is caught by the check below,
+        // before generation — preserving the cancel-aborts-generation escape.)
+        await _evaluateRealismForUpcomingSpeaker(_activeCharacter!);
       }
-
-      // Group chats use per-speaker realism evaluation inside _generateResponse
-      // (right after speaker selection via _pickNextGroupCharacter). This is the
-      // core of Phase 1: the character about to reply gets their own LLM eval.
-      final bool skipCentralizedEvalForGroup =
-          _activeGroup != null && isGroupRealismActive && !_observerMode;
-
-      if (skipCentralizedEvalForGroup) {
-        debugPrint(
-          '[Realism:Group] Skipping centralized LLM eval block — per-speaker evaluation will run inside _generateResponse for the upcoming speaker',
-        );
-      } else if (_relationshipService.pendingTrustRepair) {
-        _relationshipService
-            .consumePendingTrustRepair(); // consume — resets for next drop
-        await _evaluateTrustRepairCall(text, onChunk: handleChunk);
-
-        if (!_realismEvalCancelled) {
-          // Wire the realism_state into pending for snapshot/timeline use.
-          // (Fulfillment verification is now post-response so it adds zero
-          // latency to the pre-response realism phase.)
-          _pendingRealismMetadata ??= {};
-          _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-          _pendingRealismMetadata!['realism_state'] = _captureRealismState(
-            preTurn: preTurnVector,
-          );
-          _saveChat();
-        }
-
-        // Check for cancellation after trust repair eval
-        if (_realismEvalCancelled) {
-          debugPrint(
-            '[Realism] Evaluation cancelled during trust repair, aborting',
-          );
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          _evalChunkTimer?.cancel();
-          _evalChunkTimer = null;
-          _isEvaluatingRealism = false;
-          notifyListeners();
-          return;
-        }
-      } else {
-        // Fire all evals concurrently.
-        if (_storageService.realismSettings.realismOneShotEval) {
-          await _evaluateOneShotCall(onChunk: handleChunk);
-        } else {
-          _realismEvals.beginCollectForBatchedVerification();
-          await Future.wait([
-            _evaluateRelationshipCall(
-              onChunk: handleChunk,
-            ), // step 10 thins (full in realism_evals)
-            Future.delayed(
-              _kEvalDispatchStagger,
-              () => _evaluateEmotionalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 2,
-              () => _evaluatePhysicalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 3,
-              () => _evaluateNarrativeCall(onChunk: handleChunk),
-            ),
-          ]);
-          await _realismEvals.finalizeBatchedRealismVerifications();
-
-          // One-shot director batch (user proposal): after the mains, use the collected from the leaf
-          // and the god's _realismVerifier to do the single batch verify pass on all 5 (or 4).
-          // This reduces verifier LLM calls from up to 5 to 1 when the per-char flag is on.
-          final collected = _realismEvals.getCollectedForBatch();
-          if (collected.isNotEmpty) {
-            final items = collected
-                .map(
-                  (p) => (
-                    evalKind: p['kind'] as String,
-                    rawOutput: p['raw'] as String,
-                    sceneResponse: p['scene'] as String,
-                    preState: null,
-                    activeChar: _activeCharacter,
-                    activeGroup: _activeGroup,
-                    recentMessages: _messages,
-                    promptText: p['prompt'] as String?,
-                    injections: (p['injections'] as Map?)
-                        ?.cast<String, String>(),
-                    strictnessOverride: null,
-                    maxPassesOverride: null,
-                  ),
-                )
-                .toList();
-            final batchRes = await _realismVerifier.verifyBatch(items);
-            await _realismEvals.applyBatchResults(batchRes);
-          }
-        }
-
-        // Check for cancellation after evals complete but before saving
-        if (_realismEvalCancelled) {
-          debugPrint(
-            '[Realism] Evaluation cancelled during/after evals, aborting',
-          );
-          _realismEvalCancelled =
-              false; // Reset the flag so future messages can proceed
-          _evalChunkTimer?.cancel();
-          _evalChunkTimer = null;
-          _isEvaluatingRealism = false;
-          notifyListeners();
-          return;
-        }
-
-        // Synthesize metadata after all evals complete
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-        _pendingRealismMetadata!['realism_state'] = _captureRealismState(
-          preTurn: preTurnVector,
-        );
-
-        debugPrint(
-          '[Realism:Metadata] Synthesized metadata before generation: bond_delta=${_pendingRealismMetadata?['bond_delta']}, trust_delta=${_pendingRealismMetadata?['trust_delta']}, keys=${_pendingRealismMetadata?.keys.toList()}',
-        );
-        _saveChat();
-      }
-
-      // Cancel any pending debounce notify before closing the overlay
-      _evalChunkTimer?.cancel();
-      _evalChunkTimer = null;
-      await Future.delayed(const Duration(milliseconds: 500));
-      _isEvaluatingRealism = false;
-      notifyListeners();
     }
 
     // If cancellation was requested during realism evaluation, abort generation
@@ -5615,73 +3211,63 @@ class ChatService extends ChangeNotifier {
     // Compute needs_deltas AFTER generation so the post-generation checks
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
-    if (_needsSimEnabled && _messages.isNotEmpty) {
-      if (_activeGroup == null) {
-        // 1:1 path: preTurnVector captured in this scope (pre-tick) is correct.
-        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-          preTurnVector ?? const <String, int>{},
-        );
-        if (needsDeltas.isNotEmpty) {
-          _messages.last.activeMetadata ??= {};
-          _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
-          await _saveChat();
-          notifyListeners();
-        }
-      } else {
-        // Group: use the pre-decay snapshot for this speaker (captured before tick using nextCharacter,
-        // or stashed from inside the per-speaker eval for random turn order) so chips reflect
-        // the full net turn effect (decay + scene deltas) for 1:1 parity.
-        // Fall back to a top-level 'needs_pre_turn_vector' on the message metadata (our stash),
-        // then to the vector embedded in the per-speaker realism_state snapshot.
-        Map<String, int> preVec = groupSpeakerPreDecayNeeds ?? const {};
-        if (preVec.isEmpty) {
-          preVec = _coerceNeedsVector(
-            _messages.last.activeMetadata?['needs_pre_turn_vector'],
-          );
-        }
-        if (preVec.isEmpty) {
-          preVec = _coerceNeedsVector(
-            ((_messages.last.activeMetadata?['realism_state']
-                as Map<String, dynamic>?)?['needs']?['vector']),
-          );
-        }
-        if (preVec.isNotEmpty) {
-          final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-            preVec,
-          );
-          if (needsDeltas.isNotEmpty) {
-            _messages.last.activeMetadata ??= {};
-            _messages.last.activeMetadata!['needs_deltas'] = needsDeltas;
-            await _saveChat();
-            notifyListeners();
-          }
-        }
-      }
-    }
+    // Per-message needs-delta chips are attached inside _generateResponse (via
+    // _attachNeedsDeltaChipToLastMessage) so EVERY speaker gets them — group
+    // auto-advance, /speak and chime-ins reach _generateResponse but never this
+    // sendMessage scope, which is why only the first responder used to show
+    // chips. preTurnVector is still stamped above as the message's baseline.
 
     // ── Scene Guests: auto chime-in ─────────────────────────────────────────
     // The primary 1:1 turn is now 100% finalized (response + chip/realism block
-    // above). In a 1:1 scene with guests present, let the director decide which
-    // guest(s) speak next (each via the parity-safe generateGuestTurn). Group
-    // chats never use scene guests. Guarded so it only runs for a normal,
-    // fully-finished primary user turn (not group, not mid-generation).
-    if (_activeGroup == null &&
-        _sceneGuestCards.isNotEmpty &&
-        !_isGenerating &&
-        !_entrancesInFlight) {
-      final primaryResponse = _messages.isNotEmpty && !_messages.last.isUser
-          ? _messages.last.displayText
-          : '';
-      final token = _currentSessionId;
-      await _ensureSceneGuestDirector().runChimeIns(
-        userText: text,
-        primaryResponse: primaryResponse,
-        // Each gate eval + guest turn is a slow LLM call; stop the loop if the
-        // user switches chats / the scene changes so guests can't speak into the
-        // wrong conversation.
-        isContextValid: () => !_sceneChanged(token) && _activeGroup == null,
-      );
+    // above). Let the director decide which guest(s) speak next. Shared with
+    // regenerateMainCharacter() so the re-chime gate is identical after a regen.
+    await _maybeRunSceneGuestChimeIns(userText: text);
+  }
+
+  /// Run the Scene Guest director's chime-in gate after a finalized primary/host
+  /// turn: it decides which present guest(s) (if any) speak next, each via the
+  /// parity-safe [generateGuestTurn]. Shared by the normal send path and the
+  /// "regenerate the main character beneath a guest reply" path so the re-chime
+  /// decision (mention / relevance) is byte-for-byte identical in both.
+  ///
+  /// No-op in group chats, mid-generation, during entrances, or with no guests
+  /// present. Each gate eval + guest turn is a slow LLM call, so it bails if the
+  /// user switches chats / the scene changes (so guests never speak into the
+  /// wrong conversation).
+  Future<void> _maybeRunSceneGuestChimeIns({required String userText}) async {
+    if (_activeGroup != null ||
+        _sceneGuestCards.isEmpty ||
+        _isGenerating ||
+        _entrancesInFlight) {
+      return;
     }
+    final primaryResponse = _messages.isNotEmpty && !_messages.last.isUser
+        ? _messages.last.displayText
+        : '';
+    final token = _currentSessionId;
+    await _ensureSceneGuestDirector().runChimeIns(
+      userText: userText,
+      primaryResponse: primaryResponse,
+      isContextValid: () => !_sceneChanged(token) && _activeGroup == null,
+    );
+  }
+
+  /// Index of the most recent host (main character) message that is buried only
+  /// under Scene Guest (Lite NPC) chime-in replies — i.e. the tail of the chat
+  /// is one or more guest messages sitting directly on top of it. Returns null
+  /// when the last message is already the host's (use the normal last-message
+  /// regen), when a user/System message breaks the guest tail, or outside a 1:1
+  /// scene. The UI uses this to offer "regenerate the main character" on a host
+  /// bubble that the last-message-only regen button can no longer reach.
+  int? get regenerableHostBelowGuestsIndex {
+    if (_activeGroup != null || _messages.isEmpty) return null;
+    if (!_isGuestAuthoredMessage(_messages.last)) return null;
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.isUser || m.sender == 'System') return null;
+      if (!_isGuestAuthoredMessage(m)) return i;
+    }
+    return null;
   }
 
   /// Set observer mode on/off.
@@ -5738,696 +3324,6 @@ class ChatService extends ChangeNotifier {
     await _generateResponse(GenerationMode.normal);
   }
 
-  Future<bool> manualReprocessNeeds(int index, String critique) async {
-    if (index < 0 || index >= _messages.length) return false;
-    if (_isGenerating) return false;
-
-    final msg = _messages[index];
-    if (msg.isUser || msg.sender == 'System') return false;
-
-    final meta = msg.activeMetadata;
-    if (meta == null || !meta.containsKey('realism_state')) return false;
-
-    final preState = meta['realism_state'];
-    if (preState is! Map || preState['needs'] == null) return false;
-
-    // A: entry guard (usable needs data) already passed; button in UI also checks now.
-
-    final oldNeedsDeltas = <String, int>{};
-    Map<String, dynamic>? originalNeedsDeltasForStash;
-    if (meta.containsKey('needs_deltas')) {
-      final oldMap = meta['needs_deltas'] as Map;
-      originalNeedsDeltasForStash = Map<String, dynamic>.from(oldMap);
-      for (final k in oldMap.keys) {
-        if (oldMap[k] is Map && oldMap[k]['delta'] is num) {
-          oldNeedsDeltas[k.toString()] = (oldMap[k]['delta'] as num).toInt();
-        }
-      }
-    }
-
-    // D: stash original deltas under pre_reprocess key (before any commit)
-    final hasPrior = originalNeedsDeltasForStash != null;
-
-    final bool isLast = index == _messages.length - 1;
-    final bool isGroupNonObs = _activeGroup != null && !_observerMode;
-    String? sid;
-    CharacterCard? targetSpeakerCard;
-    if (isGroupNonObs) {
-      if (_groupCharacters.isEmpty) return false;
-      targetSpeakerCard = _groupCharacters.firstWhere(
-        (c) => c.name == msg.sender,
-        orElse: () => _groupCharacters.first,
-      );
-      sid = _getCharacterIdFromCard(targetSpeakerCard);
-    }
-
-    // Snapshot the *active* live state *before* any historical/target prepare (for strict historical meta-only)
-    final Map<String, int> preOpLive;
-    String? preOpActiveSid;
-    CharacterCard? preActiveChar;
-    if (isGroupNonObs) {
-      preOpActiveSid = _getCurrentSpeakerIdForRealism();
-      preOpLive = Map<String, int>.from(_getGroupNeeds(preOpActiveSid));
-      preActiveChar = _activeCharacter;
-    } else {
-      preOpLive = Map<String, int>.from(_needsSimulation.vector);
-    }
-
-    // Snapshot for rollback (target's at click time; used for last + compute baseline)
-    final Map<String, int> livePreClick;
-    if (isGroupNonObs && sid != null && sid.isNotEmpty) {
-      livePreClick = Map<String, int>.from(_getGroupNeeds(sid));
-    } else {
-      livePreClick = Map<String, int>.from(_needsSimulation.vector);
-    }
-
-    // Group impersonation dance + load for prompt fidelity (personality/stance via getActiveCharacter in evaluate) + prepare scalar to msg pre.
-    // For !isLast we still dance (to get correct prompt for that speaker's critique) but will strictly rollback live after.
-    if (isGroupNonObs && sid != null && sid.isNotEmpty) {
-      if (targetSpeakerCard != null) {
-        _activeCharacter = targetSpeakerCard;
-      }
-      _loadGroupRealismIntoScalars(sid);
-    }
-    _needsSimulation.restoreFromSnapshot(preState['needs']);
-    final Map<String, int> restoredPreVector = Map<String, int>.from(
-      _needsSimulation.vector,
-    );
-
-    if (isLast) {
-      _isVerifyingRealism = true;
-      _verificationPass = 1;
-      _verificationMaxPasses = 1;
-      notifyListeners();
-    }
-
-    _pendingRealismMetadata = null;
-    _realismEvalCancelled = false;
-    final koboldForReprocess = _llmProvider?.koboldService;
-    if (koboldForReprocess != null) {
-      await koboldForReprocess.waitForIdle();
-    }
-
-    final bool reprocessOk = await _needsImpactEvaluator
-        .reprocessWithUserCritique(msg.displayText, oldNeedsDeltas, critique);
-
-    if (!reprocessOk) {
-      // A: non-destructive: rollback to pre-op active live (historical leaves current active untouched)
-      if (isGroupNonObs &&
-          preOpActiveSid != null &&
-          preOpActiveSid.isNotEmpty) {
-        _loadGroupRealismIntoScalars(preOpActiveSid);
-      } else if (isGroupNonObs && sid != null && sid.isNotEmpty) {
-        _setGroupNeeds(sid, livePreClick); // fallback
-      } else {
-        _needsSimulation.restoreFromSnapshot({'vector': preOpLive});
-      }
-      if (preActiveChar != null) {
-        _activeCharacter = preActiveChar;
-      }
-      if (isLast) {
-        _isVerifyingRealism = false;
-        _pendingRealismMetadata = null;
-        await _saveChat();
-        notifyListeners();
-      } else {
-        _pendingRealismMetadata = null;
-      }
-      return false;
-    }
-
-    // Success path: commit metadata always (for the target msg)
-    final updatedMeta = Map<String, dynamic>.from(meta);
-    final computed = _needsSimulation.computeNeedsDeltasWithReasons(
-      restoredPreVector,
-    );
-    updatedMeta['needs_deltas'] = computed;
-
-    // Keep realism_state['needs'] aligned with manual corrections so swipe
-    // navigation and regen do not resurrect a stale pre-reprocess vector.
-    if (_needsSimEnabled && updatedMeta['realism_state'] is Map) {
-      final postReprocessVector = isGroupNonObs && sid != null && sid.isNotEmpty
-          ? Map<String, int>.from(_getGroupNeeds(sid))
-          : Map<String, int>.from(_needsSimulation.vector);
-      final rs = Map<String, dynamic>.from(updatedMeta['realism_state'] as Map);
-      final needsSnap = <String, dynamic>{'vector': postReprocessVector};
-      if (computed.isNotEmpty) {
-        needsSnap['deltas'] = computed;
-      }
-      rs['needs'] = needsSnap;
-      updatedMeta['realism_state'] = rs;
-    }
-
-    if (hasPrior) {
-      updatedMeta['needs_deltas_pre_reprocess'] = originalNeedsDeltasForStash;
-    }
-    // D: record critique in verif meta (for history/tooltip)
-    final verifMeta =
-        (updatedMeta[RealismVerification.kMetaKey] as Map<String, dynamic>?) ??
-        <String, dynamic>{};
-    verifMeta['reprocess_critique'] = critique;
-    updatedMeta[RealismVerification.kMetaKey] = verifMeta;
-
-    if (_pendingRealismMetadata != null) {
-      for (final e in _pendingRealismMetadata!.entries) {
-        updatedMeta[e.key] = e.value;
-      }
-    }
-
-    msg.swipeMetadata[msg.swipeIndex] = updatedMeta;
-
-    if (isLast) {
-      // Persist live only for current last speaker
-      if (isGroupNonObs && sid != null && sid.isNotEmpty) {
-        _saveScalarsIntoGroupRealism(sid);
-      }
-      _isVerifyingRealism = false;
-      _pendingRealismMetadata = null;
-    } else {
-      // Historical: meta updated; strictly no live/group mutation left behind.
-      // Transient onSaveChat may fire from temp apply (critique path); scalars rolled back; _saveChat here is only for target msg metadata.
-      if (isGroupNonObs &&
-          preOpActiveSid != null &&
-          preOpActiveSid.isNotEmpty) {
-        _loadGroupRealismIntoScalars(preOpActiveSid);
-      } else if (!isGroupNonObs) {
-        _needsSimulation.restoreFromSnapshot({'vector': preOpLive});
-      }
-      if (preActiveChar != null) {
-        _activeCharacter = preActiveChar;
-      }
-      _pendingRealismMetadata = null;
-    }
-    await _saveChat();
-    notifyListeners();
-    return true;
-  }
-
-  /// Revert a prior manual reprocess on the given message.
-  /// Restores the stashed 'needs_deltas_pre_reprocess' into 'needs_deltas' (with reasons),
-  /// rewinds live scalars *only if last* (historical: metadata-only update, live scalars/group untouched).
-  /// Safe for 1:1 and group (speaker via msg.sender + dance on last).
-  /// Returns true on success.
-  Future<bool> revertNeedsReprocess(int index) async {
-    if (index < 0 || index >= _messages.length) return false;
-    if (_isGenerating) return false;
-    final msg = _messages[index];
-    final meta = msg.activeMetadata;
-    if (meta == null || !meta.containsKey('needs_deltas_pre_reprocess')) {
-      return false;
-    }
-    final preState = meta['realism_state'];
-    if (preState is! Map || preState['needs'] == null) return false;
-
-    final stashedDeltasMap = meta['needs_deltas_pre_reprocess'] as Map;
-    final oldDeltas = <String, int>{};
-    stashedDeltasMap.forEach((k, v) {
-      if (v is Map && v['delta'] is num) {
-        oldDeltas[k.toString()] = (v['delta'] as num).toInt();
-      }
-    });
-
-    final bool isLast = index == _messages.length - 1;
-    final bool isGroupNonObs = _activeGroup != null && !_observerMode;
-    String? sid;
-    CharacterCard? targetSpeakerCard;
-    if (isGroupNonObs) {
-      if (_groupCharacters.isEmpty) return false;
-      targetSpeakerCard = _groupCharacters.firstWhere(
-        (c) => c.name == msg.sender,
-        orElse: () => _groupCharacters.first,
-      );
-      sid = _getCharacterIdFromCard(targetSpeakerCard);
-    }
-
-    // Snapshot pre-op active for strict !isLast rollback (no live mutation)
-    CharacterCard? preActiveChar;
-    Map<String, int> preOpLive = {};
-    String? preOpSid;
-    if (isGroupNonObs) {
-      preOpSid = _getCurrentSpeakerIdForRealism();
-      preOpLive = Map<String, int>.from(_getGroupNeeds(preOpSid));
-      preActiveChar = _activeCharacter;
-    } else {
-      preOpLive = Map<String, int>.from(_needsSimulation.vector);
-    }
-
-    // Dance + prepare only if we will keep the effect (isLast); for historical we temp dance but rollback
-    if (isGroupNonObs && sid != null && sid.isNotEmpty) {
-      if (targetSpeakerCard != null) _activeCharacter = targetSpeakerCard;
-      _loadGroupRealismIntoScalars(sid);
-    }
-    _needsSimulation.restoreFromSnapshot(preState['needs'] as Map);
-
-    if (oldDeltas.isNotEmpty) {
-      String? reasonToRestore;
-      final values = (stashedDeltasMap as Map?)?.values ?? const [];
-      for (final v in values) {
-        if (v is Map &&
-            v['reason'] is String &&
-            (v['reason'] as String).isNotEmpty) {
-          reasonToRestore = v['reason'] as String;
-          break;
-        }
-      }
-      _needsSimulation.applySceneImpact(
-        NeedsImpact(deltas: oldDeltas, reason: reasonToRestore),
-      );
-    }
-
-    final updated = Map<String, dynamic>.from(meta);
-    updated['needs_deltas'] = stashedDeltasMap;
-    updated.remove('needs_deltas_pre_reprocess');
-    if (_needsSimEnabled && updated['realism_state'] is Map) {
-      final postRevertVector = isGroupNonObs && sid != null && sid.isNotEmpty
-          ? Map<String, int>.from(_getGroupNeeds(sid))
-          : Map<String, int>.from(_needsSimulation.vector);
-      final rs = Map<String, dynamic>.from(updated['realism_state'] as Map);
-      final needsSnap = <String, dynamic>{'vector': postRevertVector};
-      if (stashedDeltasMap.isNotEmpty) {
-        needsSnap['deltas'] = stashedDeltasMap;
-      }
-      rs['needs'] = needsSnap;
-      updated['realism_state'] = rs;
-    }
-    msg.swipeMetadata[msg.swipeIndex] = updated;
-
-    if (isLast) {
-      if (isGroupNonObs && sid != null && sid.isNotEmpty) {
-        _saveScalarsIntoGroupRealism(sid);
-      }
-    } else {
-      // Historical meta-only: rollback live + char, do not persist to group for this op
-      if (isGroupNonObs && preOpSid != null && preOpSid.isNotEmpty) {
-        _loadGroupRealismIntoScalars(preOpSid);
-      } else if (!isGroupNonObs) {
-        _needsSimulation.restoreFromSnapshot({'vector': preOpLive});
-      }
-      if (preActiveChar != null) _activeCharacter = preActiveChar;
-    }
-
-    await _saveChat();
-    notifyListeners();
-    return true;
-  }
-
-  Future<void> regenerateLastMessage() async {
-    if (_messages.isEmpty || _isGenerating || _guestBusy) return;
-
-    // Check if the last message is from the character
-    if (!_messages.last.isUser && _messages.last.sender != 'System') {
-      // Instead of removing the message, we generate a new swipe
-      // Temporarily remove the last message so the prompt doesn't include it
-      final lastMsg = _messages.removeLast();
-      // Is this a Scene Guest message? If so the whole regen must stay a
-      // parity-safe GUEST turn: skip every Realism/Needs revert + re-eval below
-      // and regenerate spoken as the guest (guestSpeaker), exactly like the
-      // normal guest turn path. A host message keeps the existing behaviour.
-      final regenGuest = _sceneGuestForMessage(lastMsg);
-      // If the message was authored by a guest who has since LEFT the scene (or
-      // had their card deleted), we can neither regenerate as them nor run the
-      // host realism block on their text (that would perturb the host's
-      // bond/trust/emotion/needs from guest-authored content). Refuse cleanly.
-      if (regenGuest == null && _isGuestAuthoredMessage(lastMsg)) {
-        _messages.add(lastMsg); // put it back untouched
-        notifyListeners();
-        _setGuestStatus(
-          'Can’t regenerate "${lastMsg.sender}" — they have left the scene.',
-          isError: true,
-        );
-        return;
-      }
-      // Snapshot the rejected swipe's metadata (e.g. manual needs reprocess) before
-      // we add a new swipe — regen must not clobber prior swipe timelines.
-      final rejectedSwipeIndex = lastMsg.swipeIndex;
-      Map<String, dynamic>? preservedRejectedMeta;
-      if (rejectedSwipeIndex >= 0) {
-        if (rejectedSwipeIndex < lastMsg.swipeMetadata.length &&
-            lastMsg.swipeMetadata[rejectedSwipeIndex] != null) {
-          preservedRejectedMeta = Map<String, dynamic>.from(
-            lastMsg.swipeMetadata[rejectedSwipeIndex]!,
-          );
-        } else if (lastMsg.activeMetadata != null) {
-          preservedRejectedMeta = Map<String, dynamic>.from(
-            lastMsg.activeMetadata!,
-          );
-        }
-      }
-      notifyListeners();
-
-      // In group mode, force the turn manager to the *original* speaker of the
-      // removed message before generation. This prevents regen from picking a
-      // different character (the core of the "speaker changed after regen" bug).
-      if (_activeGroup != null) {
-        final originalSpeaker = _groupCharacters.firstWhere(
-          (c) => c.name == lastMsg.sender,
-          orElse: () => _groupCharacters.first,
-        );
-        _groupManager?.setNextSpeaker(originalSpeaker);
-      }
-
-      // Revert realism state from the rejected swipe and re-evaluate
-      // (host turns only — guest messages carry no Realism/Needs state).
-      if (_realismEnabled && _activeGroup == null && regenGuest == null) {
-        // CRITICAL FIX: Find the baseline realism state from the previous accepted message.
-        // We want to use the final state of the LAST ACCEPTED character message as our baseline,
-        // not just blindly revert deltas and re-evaluate from scratch.
-        Map<String, dynamic>? previousMessageState;
-        if (_messages.length >= 2) {
-          // Look back through messages to find the last bot message before the one we're regenerating
-          for (int i = _messages.length - 1; i >= 0; i--) {
-            if (!_messages[i].isUser && _messages[i].sender != 'System') {
-              final meta = _messages[i].activeMetadata;
-              if (meta != null && meta.containsKey('realism_state')) {
-                previousMessageState =
-                    meta['realism_state'] as Map<String, dynamic>;
-                debugPrint(
-                  '[Realism:Regen] Found previous accepted message baseline state at message index $i',
-                );
-                break;
-              }
-            }
-          }
-        }
-
-        bool wasNudged = false;
-        if (lastMsg.activeMetadata != null &&
-            lastMsg.activeMetadata!['realism_state'] is Map) {
-          wasNudged =
-              lastMsg.activeMetadata!['realism_state']['time_nudged'] == true;
-        }
-
-        if (lastMsg.activeMetadata != null) {
-          final bondDelta = lastMsg.activeMetadata!['bond_delta'] as int? ?? 0;
-          final moodDelta = lastMsg.activeMetadata!['mood_delta'] as int? ?? 0;
-          final arousalDelta =
-              lastMsg.activeMetadata!['arousal_delta'] as int? ?? 0;
-          final trustDelta =
-              lastMsg.activeMetadata!['trust_delta'] as int? ?? 0;
-
-          if (bondDelta != 0) {
-            _relationshipService.applyScoreDelta(-bondDelta);
-          }
-          if (moodDelta != 0) {
-            _moodDecayCounter = 0;
-          }
-          if (trustDelta != 0) {
-            _relationshipService.setTrustLevelForRevert(
-              (_relationshipService.trustLevel - trustDelta).clamp(-100, 100),
-            );
-          }
-
-          // Revert climax state if this response triggered refractory cooldown.
-          // The climax checker stores the pre-climax arousal so we can restore it.
-          final climaxTriggered =
-              lastMsg.activeMetadata!['climax_triggered'] as bool? ?? false;
-          if (climaxTriggered && _nsfwService.nsfwCooldownEnabled) {
-            final preClimaxArousal =
-                lastMsg.activeMetadata!['pre_climax_arousal'] as int? ?? 0;
-            _nsfwService.setArousalLevel(preClimaxArousal);
-            _nsfwService.setCooldownTurnsRemaining(0);
-            _nsfwService.setCooldownTurnsTotal(0);
-            debugPrint(
-              '[Realism:Regen] Reverted climax state: arousal restored to $preClimaxArousal, cooldown cleared',
-            );
-          } else if (arousalDelta != 0 && _nsfwService.nsfwCooldownEnabled) {
-            // Normal arousal delta revert (no climax involved)
-            _nsfwService.setArousalLevel(
-              (_nsfwService.arousalLevel - arousalDelta).clamp(-100, 100),
-            );
-          }
-
-          // Needs pre-turn vector revert — mirrors the bond/trust/arousal delta
-          // system so regen can undo the decay + fulfillment that ran for this
-          // user turn, even when the previous message's realism_state snapshot
-          // lacks a 'needs' entry (e.g. needs was enabled mid-chat).
-          final preTurnNeeds =
-              lastMsg.activeMetadata!['needs_pre_turn_vector'] as Map?;
-          if (preTurnNeeds != null && _needsSimEnabled) {
-            _needsSimulation.restoreFromSnapshot({
-              'vector': Map<String, int>.from(preTurnNeeds),
-            });
-            debugPrint(
-              '[Realism:Regen] Restored needs vector from pre-turn snapshot on rejected message',
-            );
-          }
-        }
-
-        // CRITICAL FIX: Restore the baseline state from the previous accepted message.
-        // This ensures the new regenerated message is evaluated against the correct baseline,
-        // not from scratch which would produce wildly different realism values.
-        if (previousMessageState != null) {
-          _relationshipService.restoreFromMessageState(previousMessageState);
-          _moodDecayCounter =
-              previousMessageState['moodDecayCounter'] as int? ??
-              _moodDecayCounter;
-          _characterEmotion =
-              previousMessageState['characterEmotion'] as String? ??
-              _characterEmotion;
-          _emotionIntensity =
-              previousMessageState['emotionIntensity'] as String? ??
-              _emotionIntensity;
-
-          _timeService.restoreTimeForSwipeOrRegen(
-            previousMessageState,
-            wasNudged: wasNudged,
-          );
-
-          _nsfwService.restoreNsfwFromMessageState(previousMessageState);
-
-          // Needs simulation snapshot (clean port)
-          // Guard + no enabled override: prevents stale resurrection on regen after toggle-off.
-          if (previousMessageState.containsKey('needs') &&
-              previousMessageState['needs'] is Map &&
-              _needsSimEnabled) {
-            final needsData = previousMessageState['needs'] as Map;
-            if (needsData['vector'] is Map) {
-              final vector = Map<String, int>.from(needsData['vector'] as Map);
-              _needsSimulation.restoreFromSnapshot({'vector': vector});
-            }
-          }
-
-          debugPrint(
-            '[Realism:Regen] ✓ Restored baseline from previous accepted message: bond=${_relationshipService.affectionScore}, emotion=$_characterEmotion, trust=${_relationshipService.trustLevel}, arousal=${_nsfwService.arousalLevel}',
-          );
-        } else {
-          debugPrint(
-            '[Realism:Regen] ⚠ No previous message baseline found, continuing with current reverted state',
-          );
-        }
-        // Set UI streaming state
-        _isEvaluatingRealism = true;
-        _realismEvalStreamText = '';
-        notifyListeners();
-
-        void handleChunk(String chunk) {
-          _realismEvalStreamText += chunk;
-          // Debounce: coalesce rapid token arrivals into one rebuild per 150 ms
-          _evalChunkTimer?.cancel();
-          _evalChunkTimer = Timer(const Duration(milliseconds: 150), () {
-            try {
-              notifyListeners();
-            } catch (_) {
-              // Widget was deactivated — timer fired after navigation
-            }
-          });
-        }
-
-        // Apply decay and cooldown — mirrors the normal path (lines 3933-3937).
-        // This ensures _needsVector differs from the saved pre-turn vector
-        // so post-generation deltas are non-zero.
-        _applyMoodDecay();
-        _needsSimulation.tickDecay();
-        _nsfwService.decrementCooldownIfActive();
-
-        // Record the (restored) needs baseline as the pre-turn vector BEFORE
-        // generation so the post-generation checks can compute proper deltas.
-        if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
-          _pendingRealismMetadata ??= {};
-          _pendingRealismMetadata!['needs_pre_turn_vector'] =
-              Map<String, int>.from(_needsSimulation.vector);
-        }
-
-        if (_storageService.realismSettings.realismOneShotEval) {
-          await _evaluateOneShotCall(onChunk: handleChunk);
-        } else {
-          _realismEvals.beginCollectForBatchedVerification();
-          await Future.wait([
-            _evaluateRelationshipCall(
-              onChunk: handleChunk,
-            ), // step 10 thins (full in realism_evals)
-            Future.delayed(
-              _kEvalDispatchStagger,
-              () => _evaluateEmotionalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 2,
-              () => _evaluatePhysicalStateCall(onChunk: handleChunk),
-            ),
-            Future.delayed(
-              _kEvalDispatchStagger * 3,
-              () => _evaluateNarrativeCall(onChunk: handleChunk),
-            ),
-          ]);
-          await _realismEvals.finalizeBatchedRealismVerifications();
-
-          // Mirror of the primary send path: apply the one director batch (or the cheap
-          // accepted-originals path) so relationship/emotional/narrative deltas and side
-          // effects (bond/trust/arousal chips, fixation, autonomous objectives, emotion)
-          // are produced for swiped/regenerated assistant messages too.
-          final collected = _realismEvals.getCollectedForBatch();
-          if (collected.isNotEmpty) {
-            final items = collected
-                .map(
-                  (p) => (
-                    evalKind: p['kind'] as String,
-                    rawOutput: p['raw'] as String,
-                    sceneResponse: p['scene'] as String,
-                    preState: null,
-                    activeChar: _activeCharacter,
-                    activeGroup: _activeGroup,
-                    recentMessages: _messages,
-                    promptText: p['prompt'] as String?,
-                    injections: (p['injections'] as Map?)
-                        ?.cast<String, String>(),
-                    strictnessOverride: null,
-                    maxPassesOverride: null,
-                  ),
-                )
-                .toList();
-            final batchRes = await _realismVerifier.verifyBatch(items);
-            await _realismEvals.applyBatchResults(batchRes);
-          }
-        }
-
-        // Check for cancellation after evals complete
-        if (_realismEvalCancelled) {
-          debugPrint(
-            '[Realism] Evaluation cancelled during regenerate, aborting',
-          );
-          _realismEvalCancelled = false;
-          _evalChunkTimer?.cancel();
-          _evalChunkTimer = null;
-          _isEvaluatingRealism = false;
-          notifyListeners();
-          return;
-        }
-
-        // Cancel any pending debounce notify before closing the overlay
-        _evalChunkTimer?.cancel();
-        _evalChunkTimer = null;
-        _isEvaluatingRealism = false;
-        notifyListeners();
-      }
-
-      // In group mode the per-speaker realism eval (and its metadata / needs deltas)
-      // happens inside _generateResponse via _evaluateRealismForUpcomingGroupSpeaker
-      // for the correctly-forced speaker. Skip the 1:1 scalar synthesis here.
-      Map<String, int>? regenPreTurn;
-      Map<String, dynamic>? needsDeltas;
-      if (_activeGroup == null && regenGuest == null) {
-        // Save pre-turn vector BEFORE _generateResponse (which clears
-        // _pendingRealismMetadata).
-        regenPreTurn =
-            _pendingRealismMetadata?['needs_pre_turn_vector']
-                as Map<String, int>?;
-
-        // Synthesize metadata after all regen evals complete — mirrors the
-        // normal path (line 4020) so emotion_label and realism_state are in
-        // _pendingRealismMetadata before _generateResponse consumes it.
-        _pendingRealismMetadata ??= {};
-        _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-        _pendingRealismMetadata!['realism_state'] = _captureRealismState(
-          preTurn: regenPreTurn,
-        );
-
-        // If cancellation was requested during realism evaluation, abort generation
-        if (_realismEvalCancelled) {
-          _realismEvalCancelled = false;
-          notifyListeners();
-          return;
-        }
-      }
-
-      // Invalidate ONNX cache for the new response (delegated)
-      _expressionService.invalidateOnnxCacheForNewResponse();
-
-      // Generate into a new message — it will be appended by _generateResponse.
-      // For a guest message we pass guestSpeaker so the new swipe is spoken as
-      // the guest and the entire Realism/Needs post-gen block is skipped (the
-      // `guestSpeaker == null` guard). For a host message regenGuest is null and
-      // this is the unchanged host path: _generateResponse runs the post-gen
-      // needs checks (climax, sexual, daily, fulfillment) that modify the needs
-      // vector, so we compute needs_deltas AFTER generation below.
-      await _generateResponse(GenerationMode.normal, guestSpeaker: regenGuest);
-
-      // Compute needs_deltas AFTER generation so the post-generation checks
-      // are reflected. This mirrors the normal generation path (line ~4053).
-      // Apply directly to the message since _pendingRealismMetadata was consumed.
-      // (For groups, the per-speaker path inside generate already attached the
-      // correct per-character needs_deltas; we only compute scalar here for 1:1.)
-      if (_activeGroup == null &&
-          regenGuest == null &&
-          _needsSimEnabled &&
-          _needsSimulation.vector.isNotEmpty) {
-        needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-          regenPreTurn ?? const <String, int>{},
-        );
-      }
-
-      // After generation, merge the new response as a swipe on the original message
-      if (_messages.isNotEmpty &&
-          !_messages.last.isUser &&
-          _messages.last.sender != 'System') {
-        final newText = _messages.last.text;
-        final newMetadata = _messages.last.activeMetadata != null
-            ? Map<String, dynamic>.from(_messages.last.activeMetadata!)
-            : null;
-        _messages.removeLast();
-        lastMsg.swipes.add(newText);
-        while (lastMsg.swipeDurations.length < lastMsg.swipes.length) {
-          lastMsg.swipeDurations.add(0);
-        }
-        final newSwipeIndex = lastMsg.swipes.length - 1;
-        if (preservedRejectedMeta != null && rejectedSwipeIndex >= 0) {
-          while (lastMsg.swipeMetadata.length <= rejectedSwipeIndex) {
-            lastMsg.swipeMetadata.add(null);
-          }
-          lastMsg.swipeMetadata[rejectedSwipeIndex] = preservedRejectedMeta;
-        }
-        while (lastMsg.swipeMetadata.length <= newSwipeIndex) {
-          lastMsg.swipeMetadata.add(null);
-        }
-        lastMsg.swipeIndex = newSwipeIndex;
-        // New swipe metadata only — prior swipes (incl. manual reprocess) stay intact.
-        if (needsDeltas != null && needsDeltas.isNotEmpty) {
-          lastMsg.swipeMetadata[newSwipeIndex] = {
-            ...(newMetadata ?? {}),
-            'needs_deltas': needsDeltas,
-          };
-        } else if (newMetadata != null) {
-          lastMsg.swipeMetadata[newSwipeIndex] = newMetadata;
-        }
-        _messages.add(lastMsg);
-        // Host messages restore the active character's Realism/Needs from the
-        // accepted swipe; guest messages carry none, so leave host state intact.
-        if (regenGuest == null) _restoreRealismStateFromMessage(lastMsg);
-        await _saveChat();
-        notifyListeners();
-
-        // In group mode, advance the turn pointer past the regenerated speaker
-        // so the next natural generation continues the correct rotation instead
-        // of repeating the same character.
-        if (_activeGroup != null) {
-          final originalSpeaker = _groupCharacters.firstWhere(
-            (c) => c.name == lastMsg.sender,
-            orElse: () => _groupCharacters.first,
-          );
-          _groupManager?.advanceAfterRegeneration(originalSpeaker);
-        }
-      }
-    }
-  }
 
   /// Navigate swipes on a specific message. direction: -1 = left, +1 = right.
   /// If swiping right past the last swipe on the last bot message, regenerates.
@@ -6485,376 +3381,6 @@ class ChatService extends ChangeNotifier {
     }
   }
 
-  Future<void> impersonateUser({
-    String prefix = '',
-    required Function(String accumulated) onToken,
-  }) async {
-    if ((_activeCharacter == null && _activeGroup == null) ||
-        _isGenerating ||
-        _guestBusy) {
-      return;
-    }
-
-    _isGenerating = true;
-    _cancelRequested = false;
-    notifyListeners();
-
-    try {
-      final userName = _userPersonaService.persona.name;
-
-      // Determine the speaking character (needed for prompt construction)
-      CharacterCard speakingCharacter;
-      if (_activeGroup != null) {
-        speakingCharacter = _groupCharacters.first;
-      } else {
-        speakingCharacter = _activeCharacter!;
-      }
-
-      // Build prompt the same way _generateResponse does
-      // Path B clean hierarchy (same as the main generation path)
-      String systemPrompt;
-      if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _activeGroup!.systemPrompt;
-      } else if (_activeGroup != null) {
-        systemPrompt = _observerMode
-            ? observerModeSystemPrompt
-            : defaultGroupSystemPrompt;
-      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-        systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.generationSettings.systemPrompt;
-      } else {
-        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
-        systemPrompt = isApi
-            ? defaultApiSystemPrompt
-            : defaultKoboldSystemPrompt;
-      }
-
-      if (_activeGroup != null) {
-        final groupCharPrompt = getSystemPromptForGroupCharacter(
-          speakingCharacter,
-        ).trim();
-        if (groupCharPrompt.isNotEmpty) {
-          systemPrompt +=
-              '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
-        } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-          systemPrompt +=
-              '\n\n[Specific instructions for ${speakingCharacter.name}]\n${speakingCharacter.systemPrompt.trim()}';
-        }
-      }
-
-      // Lorebook (group + per-character, respecting inherit flag and group worlds)
-      String loreContent = '';
-      final activeLoreStrings = <String>{}; // Set for deduplication
-
-      final inherit = _activeGroup?.inheritCharacterLorebooks ?? true;
-
-      // Group-level lorebook (highest priority when present)
-      if (_activeGroup != null && _activeGroup!.groupLorebook.isNotEmpty) {
-        try {
-          final json = jsonDecode(_activeGroup!.groupLorebook);
-          final gl = Lorebook.fromJson(json as Map<String, dynamic>);
-          final active = gl.entries.where(
-            (e) => e.enabled && (e.isTriggered || e.constant),
-          );
-          activeLoreStrings.addAll(active.map((e) => e.content));
-        } catch (_) {}
-      }
-
-      // Group-level worlds (always included if attached to the group)
-      if (_activeGroup != null) {
-        for (final wid in _activeGroup!.worldIds) {
-          final world = _worldRepository.worlds
-              .where((w) => w.name == wid)
-              .firstOrNull;
-          if (world == null) continue;
-          final active = world.lorebook.entries.where(
-            (e) => e.enabled && (e.isTriggered || e.constant),
-          );
-          activeLoreStrings.addAll(active.map((e) => e.content));
-        }
-      }
-
-      // Per-character lore and their worlds (only if inherit is true or no group)
-      if (inherit || _activeGroup == null) {
-        final loreCharacters = _activeGroup != null
-            ? _groupCharacters
-            : (_activeCharacter != null
-                  ? [_activeCharacter!]
-                  : <CharacterCard>[]);
-        for (final ch in loreCharacters) {
-          if (ch.lorebook != null) {
-            final activeEntries = ch.lorebook!.entries.where(
-              (e) => e.enabled && (e.isTriggered || e.constant),
-            );
-            activeLoreStrings.addAll(activeEntries.map((e) => e.content));
-          }
-          for (final worldName in ch.worldNames) {
-            final world = _worldRepository.worlds
-                .where((w) => w.name == worldName)
-                .firstOrNull;
-            if (world == null) continue;
-            final activeWorldEntries = world.lorebook.entries.where(
-              (e) => e.enabled && (e.isTriggered || e.constant),
-            );
-            activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
-          }
-        }
-      }
-
-      if (activeLoreStrings.isNotEmpty) {
-        loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
-      }
-
-      // Persona & scenario
-      // Use evolved versions if character evolution is enabled and available
-      String personaBlock;
-      if (_activeGroup != null) {
-        final personas = _groupCharacters
-            .map(
-              (ch) =>
-                  "${ch.name}'s Persona: ${_macroResolver.resolve(
-                    _getEffectivePersonality(ch),
-                    MacroContext(userName: userName, characterName: ch.name),
-                    section: 'persona',
-                  )}",
-            )
-            .toList();
-        personaBlock = personas.join('\n');
-      } else {
-        personaBlock =
-            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(
-              _getEffectivePersonality(speakingCharacter),
-              MacroContext(userName: userName, characterName: speakingCharacter.name),
-              section: 'persona',
-            )}";
-      }
-
-      // User persona — inject user's self-description + learned facts
-      final userPersonaBlock = await _buildUserPersonaBlock(userName);
-
-      String rawScenario = '';
-      if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
-        rawScenario = _activeGroup!.scenario;
-      } else {
-        final scenarioChar = _activeGroup != null
-            ? _groupCharacters.first
-            : speakingCharacter;
-        rawScenario = _getEffectiveScenario(scenarioChar);
-      }
-      String scenario = rawScenario;
-
-      String history = _buildChatHistory();
-
-      // Suffix: user name + any partial text the user typed
-      String suffix = "\n$userName:";
-      if (prefix.isNotEmpty) {
-        suffix = "$suffix $prefix";
-      }
-
-      String mesExampleBlock = '';
-      if (_activeGroup != null) {
-        final examples = _groupCharacters
-            .where((ch) => ch.mesExample.isNotEmpty)
-            .map(
-              (ch) => _macroResolver.resolve(
-                ch.mesExample,
-                MacroContext(userName: userName, characterName: ch.name),
-                section: 'mesExample',
-              ),
-            )
-            .toList();
-        if (examples.isNotEmpty) {
-          mesExampleBlock = '${examples.join('\n')}\n';
-        }
-      } else if (speakingCharacter.mesExample.isNotEmpty) {
-        mesExampleBlock = '${speakingCharacter.mesExample}\n';
-      }
-
-      String postHistoryBlock = '';
-      if (_activeGroup == null &&
-          speakingCharacter.postHistoryInstructions.isNotEmpty) {
-        postHistoryBlock = '${speakingCharacter.postHistoryInstructions}\n';
-      }
-
-      String authorNoteBlock = '';
-      if (_authorNote.isNotEmpty) {
-        authorNoteBlock = _buildAuthorNoteBlock();
-      }
-
-      // ── Macro resolution pass ──
-      final macroCtx = MacroContext(
-        userName: userName,
-        characterName: speakingCharacter.name,
-        summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
-        chatId: _currentSessionId,
-        characterId: speakingCharacter.dbId,
-      );
-      systemPrompt = _macroResolver.resolve(
-        systemPrompt,
-        macroCtx,
-        section: 'systemPrompt',
-      );
-      if (loreContent.isNotEmpty) {
-        loreContent = _macroResolver.resolve(
-          loreContent,
-          macroCtx,
-          section: 'lore',
-        );
-      }
-      scenario = _macroResolver.resolve(
-        scenario,
-        macroCtx,
-        section: 'scenario',
-      );
-      if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
-        mesExampleBlock = _macroResolver.resolve(
-          mesExampleBlock,
-          macroCtx,
-          section: 'mesExample',
-        );
-      }
-      if (postHistoryBlock.isNotEmpty) {
-        postHistoryBlock = _macroResolver.resolve(
-          postHistoryBlock,
-          macroCtx,
-          section: 'postHistory',
-        );
-      }
-
-      // Impersonate instruction — comprehensive guidance for writing as the user
-      final impersonateInstruction =
-          '[System: You are now writing as $userName (the user), NOT as ${speakingCharacter.name} or any other character. '
-          'Compose $userName\'s next message in first person. '
-          'Match $userName\'s established voice, personality, and writing style from the conversation so far. '
-          'Write only $userName\'s words and actions — never narrate for ${speakingCharacter.name} or other characters. '
-          'Do not include meta-commentary, stage directions for others, or break the fourth wall. '
-          'Keep the response natural, and consistent with the scene.]\n';
-
-      // ── Context Shift: budget-aware history trimming ──
-      final fixedContent =
-          "$systemPrompt\n"
-          "$loreContent"
-          "$personaBlock\n"
-          "$userPersonaBlock"
-          "Scenario: $scenario\n"
-          "$mesExampleBlock"
-          "<START>\n"
-          "$postHistoryBlock"
-          "$authorNoteBlock"
-          "$impersonateInstruction"
-          "$suffix";
-      final fixedTokens = await _countTokens(fixedContent);
-      final contextBudget = _sessionGenSettings.resolveContextSize(
-        _storageService,
-      );
-      final generationReserve =
-          _sessionGenSettings.resolveMaxLength(_storageService) + 50;
-      final historyBudget = contextBudget - fixedTokens - generationReserve;
-
-      if (historyBudget > 0) {
-        final result = await _buildChatHistoryWithBudget(historyBudget);
-        history = result.history;
-      } else if (_messages.isNotEmpty) {
-        final lastMsg = _messages.last;
-        history = lastMsg.characterId == '__director__'
-            ? '[Director: ${lastMsg.text}]'
-            : '${lastMsg.sender}: ${lastMsg.text}';
-      }
-
-      // For chat APIs (OpenRouter, LM Studio), separate the system prompt
-      // so it can be sent as a proper 'system' role message.
-      final isRemoteApi = _llmProvider != null && !_llmProvider!.isLocal;
-      final chatSystemPrompt = isRemoteApi
-          ? "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
-                "Scenario: $scenario\n$mesExampleBlock"
-          : null;
-
-      final prompt = isRemoteApi
-          ? "<START>\n"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$impersonateInstruction"
-                "$suffix"
-          : "$systemPrompt\n"
-                "$loreContent"
-                "$personaBlock\n"
-                "$userPersonaBlock"
-                "Scenario: $scenario\n"
-                "$mesExampleBlock"
-                "<START>\n"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$impersonateInstruction"
-                "$suffix";
-
-      // Stop sequences: character names only (not user — we ARE the user)
-      final g = _sessionGenSettings;
-      final stopSequences = {
-        ...g.resolveStopSequences(_storageService).toSet(),
-      };
-      if (_activeGroup != null) {
-        for (final ch in _groupCharacters) {
-          stopSequences.add('\n${ch.name}:');
-        }
-      } else {
-        stopSequences.add('\n${_activeCharacter!.name}:');
-      }
-
-      final llmService =
-          testLlmServiceOverride ??
-          _llmProvider?.activeService ??
-          _koboldService;
-      final genParams = GenerationParams(
-        prompt: prompt,
-        systemPrompt: chatSystemPrompt,
-        maxLength: g.resolveMaxLength(_storageService),
-        minLength: g.resolveMinLength(_storageService),
-        minP: g.resolveMinP(_storageService),
-        temperature: g.resolveTemperature(_storageService),
-        repeatPenalty: g.resolveRepeatPenalty(_storageService),
-        repPenTokens: g.resolveRepeatPenaltyTokens(_storageService),
-        dynatempRange: g.resolveDynamicTempEnabled(_storageService)
-            ? g.resolveDynamicTempRange(_storageService)
-            : null,
-        xtcThreshold: g.resolveXtcThreshold(_storageService),
-        xtcProbability: g.resolveXtcProbability(_storageService),
-        stopSequences: stopSequences.toList(),
-        reasoningEnabled: false,
-        reasoningEffort: g.resolveReasoningEffort(_storageService),
-        bannedPhrases: g.resolveBannedPhrases(_storageService).isNotEmpty
-            ? g.resolveBannedPhrases(_storageService)
-            : null,
-      );
-
-      final stream = llmService.generateStream(genParams);
-      String accumulated = prefix;
-      bool inThinkBlock = false;
-
-      await for (final token in stream) {
-        if (_cancelRequested) break;
-        // Filter out <think>...</think> reasoning blocks entirely
-        if (token.contains('<think>')) {
-          inThinkBlock = true;
-          continue;
-        }
-        if (token.contains('</think>')) {
-          inThinkBlock = false;
-          continue;
-        }
-        if (inThinkBlock) continue;
-        accumulated += token;
-        onToken(accumulated);
-      }
-    } catch (e) {
-      print('Impersonate error: $e');
-    } finally {
-      _isGenerating = false;
-      notifyListeners();
-    }
-  }
 
   /// Trigger the next character to speak in group mode.
   Future<void> triggerNextCharacter() async {
@@ -6887,1562 +3413,10 @@ class ChatService extends ChangeNotifier {
     return _groupManager!.pickNextSpeaker();
   }
 
-  /// Returns the stable charId of the character whose realism state should be
-  /// read/written for the current turn. In group mode this is the speaker
-  /// we are about to generate for (or just generated for).
-  String _getCurrentSpeakerIdForRealism() {
-    if (_activeGroup == null || _groupCharacters.isEmpty) {
-      return _getCharacterId();
-    }
-    final next = nextCharacter;
-    if (next != null) {
-      return _getCharacterIdFromCard(next);
-    }
-    return _getCharacterIdFromCard(_groupCharacters.first);
-  }
-
-  // ── Per-character realism state helpers (group mode) ────────────────────
-  void _setGroupRealismValue(String charId, String key, dynamic value) {
-    if (_activeGroup == null) return;
-    _groupRealism.putIfAbsent(charId, () => <String, dynamic>{});
-    _groupRealism[charId]![key] = value;
-  }
-
-  int _getGroupInt(String charId, String key, {int defaultValue = 0}) =>
-      (_groupRealism[charId]?[key] as num?)?.toInt() ?? defaultValue;
-
-  String _getGroupString(
-    String charId,
-    String key, {
-    String defaultValue = '',
-  }) => (_groupRealism[charId]?[key] as String?) ?? defaultValue;
-
-  // Tolerant coercion for a needs vector that may arrive as JSON-decoded
-  // (num values), dynamic map from metadata/snapshots/pre_state, or proper
-  // Map<String,int>. Used for pre-turn vectors in chips, restores, and fallbacks.
-  Map<String, int> _coerceNeedsVector(dynamic src) {
-    if (src == null) return const {};
-    if (src is Map<String, int>) return Map<String, int>.from(src);
-    if (src is Map) {
-      final out = <String, int>{};
-      src.forEach((k, v) {
-        final key = k.toString();
-        if (v is num) {
-          out[key] = v.toInt();
-        } else if (v is int) {
-          out[key] = v;
-        }
-      });
-      return out;
-    }
-    return const {};
-  }
-
-  Map<String, int> _getGroupNeeds(String charId) {
-    final raw = _groupRealism[charId]?['needs'];
-    final result = <String, int>{};
-    for (final k in NeedsSimulation.needKeys) {
-      final v = (raw is Map) ? raw[k] : null;
-      if (v is num) {
-        result[k] = v.toInt();
-      } else {
-        result[k] = NeedsSimulation.needDefaults[k] ?? 80;
-      }
-    }
-    return result;
-  }
-
-  void _setGroupNeeds(String charId, Map<String, int> needs) {
-    _setGroupRealismValue(charId, 'needs', needs);
-  }
 
   // ensureInterCharacterRelationshipsSeeded / updateInterCharacterFeelingsFromRecentExchange
   // moved verbatim to RelationshipService (with callbacks for group/messages). Old bodies deleted.
 
-  Future<void> _generateResponse(
-    GenerationMode mode, {
-    CharacterCard? guestSpeaker,
-  }) async {
-    final epoch = ++_generationEpoch;
-    _isGenerating = true;
-    _generationProgress = 0.0;
-    _tokensGenerated = 0;
-    _maxTokens = _sessionGenSettings.resolveMaxLength(_storageService);
-    _generationStartTime = DateTime.now();
-    _isBuffering = true;
-    _generationPhase = GenerationPhase.preparing;
-    _prefillStartTime = null;
-    _lastPerfData = null;
-    _sentenceBuffer = '';
-    notifyListeners();
-
-    // Track original model for call mode swap/restore (needs to be outside try/catch)
-    String? _originalModelName;
-
-    try {
-      final userName = _userPersonaService.persona.name;
-
-      // Determine the speaking character first (needed for system prompt priority)
-      CharacterCard speakingCharacter;
-      if (guestSpeaker != null) {
-        // Scene Guest (Lite NPC) turn — stays in 1:1 (_activeGroup remains null),
-        // the guest speaks in its own bubble. Carries NO Realism/Needs work
-        // (see the guestSpeaker == null guards in the post-gen block below).
-        speakingCharacter = guestSpeaker;
-      } else if (_activeGroup != null) {
-        speakingCharacter =
-            (mode == GenerationMode.continue_ &&
-                _messages.isNotEmpty &&
-                !_messages.last.isUser)
-            ? _groupCharacters.firstWhere(
-                (c) => c.name == _messages.last.sender,
-                orElse: () => _pickNextGroupCharacter(),
-              )
-            : _pickNextGroupCharacter();
-      } else {
-        speakingCharacter = _activeCharacter!;
-      }
-
-      // Phase 1: Per-character realism evaluation for the upcoming speaker in groups.
-      // We evaluate the specific character who is about to reply, before building their prompt.
-      if (_activeGroup != null && isGroupRealismActive && !observerMode) {
-        await _evaluateRealismForUpcomingGroupSpeaker(speakingCharacter);
-      }
-
-      // ── System prompt selection (Path B clean hierarchy) ──
-      // 1. Group-level system prompt (if set) — base for the whole group.
-      // 2. Per-character group override (if set for the speaker in this group) — appended.
-      // 3. Character's normal card system prompt (fallback if no group override for them).
-      // 4. (Later) Per-character Author's Note is injected separately with its own strength.
-      String systemPrompt;
-
-      if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _activeGroup!.systemPrompt;
-      } else if (_activeGroup != null) {
-        systemPrompt = _observerMode
-            ? observerModeSystemPrompt
-            : defaultGroupSystemPrompt;
-      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-        systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.generationSettings.systemPrompt;
-      } else {
-        final isApi = _llmProvider != null && !_llmProvider!.isLocal;
-        systemPrompt = isApi
-            ? defaultApiSystemPrompt
-            : defaultKoboldSystemPrompt;
-      }
-
-      // Path B: When in a group, always attempt to layer the per-character group override
-      // (and card fallback) on top. A group prompt no longer completely hides per-char instructions.
-      if (_activeGroup != null) {
-        final groupCharPrompt = getSystemPromptForGroupCharacter(
-          speakingCharacter,
-        ).trim();
-        if (groupCharPrompt.isNotEmpty) {
-          systemPrompt +=
-              '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
-        } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-          // Fallback to the character's own card prompt only if no group-specific override
-          systemPrompt +=
-              '\n\n[Specific instructions for ${speakingCharacter.name}]\n${speakingCharacter.systemPrompt.trim()}';
-        }
-      }
-
-      // In call mode, inject voice-specific instructions for natural conversation
-      if (_callMode &&
-          _storageService.sttSettings.callSystemPrompt.isNotEmpty) {
-        systemPrompt +=
-            '\n\n[Voice Call Mode] ${_storageService.sttSettings.callSystemPrompt}';
-      }
-
-      // Build Lorebook content (group + per-character, respecting inherit + group worlds)
-      String loreContent = '';
-      final activeLoreStrings = <String>{}; // Set for deduplication
-
-      final inherit = _activeGroup?.inheritCharacterLorebooks ?? true;
-
-      // Group-level lorebook (highest priority)
-      if (_activeGroup != null && _activeGroup!.groupLorebook.isNotEmpty) {
-        try {
-          final json = jsonDecode(_activeGroup!.groupLorebook);
-          final gl = Lorebook.fromJson(json as Map<String, dynamic>);
-          final active = gl.entries.where(
-            (e) => e.enabled && (e.isTriggered || e.constant),
-          );
-          activeLoreStrings.addAll(active.map((e) => e.content));
-        } catch (_) {}
-      }
-
-      // Group-level attached worlds
-      if (_activeGroup != null) {
-        for (final wid in _activeGroup!.worldIds) {
-          final world = _worldRepository.worlds
-              .where((w) => w.name == wid)
-              .firstOrNull;
-          if (world == null) continue;
-          final active = world.lorebook.entries.where(
-            (e) => e.enabled && (e.isTriggered || e.constant),
-          );
-          activeLoreStrings.addAll(active.map((e) => e.content));
-        }
-      }
-
-      // Per-character (only if inheriting or no group)
-      if (inherit || _activeGroup == null) {
-        final loreCharacters = _activeGroup != null
-            ? _groupCharacters
-            : [_activeCharacter!];
-        for (final ch in loreCharacters) {
-          if (ch.lorebook != null) {
-            final activeEntries = ch.lorebook!.entries.where(
-              (e) => e.enabled && (e.isTriggered || e.constant),
-            );
-            activeLoreStrings.addAll(activeEntries.map((e) => e.content));
-          }
-          for (final worldName in ch.worldNames) {
-            final world = _worldRepository.worlds
-                .where((w) => w.name == worldName)
-                .firstOrNull;
-            if (world == null) continue;
-            final activeWorldEntries = world.lorebook.entries.where(
-              (e) => e.enabled && (e.isTriggered || e.constant),
-            );
-            activeLoreStrings.addAll(activeWorldEntries.map((e) => e.content));
-          }
-        }
-      }
-
-      if (activeLoreStrings.isNotEmpty) {
-        loreContent = "Context Info:\n${activeLoreStrings.join('\n')}\n";
-      }
-
-      // Build persona block(s)
-      String personaBlock;
-      if (_activeGroup != null) {
-        personaBlock = _groupCharacters
-            .map((ch) {
-              final persona = _macroResolver.resolve(
-                _getEffectivePersonality(ch),
-                MacroContext(userName: userName, characterName: ch.name),
-                section: 'persona',
-              );
-              return "${ch.name}'s Persona: $persona";
-            })
-            .join('\n');
-      } else {
-        personaBlock =
-            "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(
-              _getEffectivePersonality(speakingCharacter),
-              MacroContext(userName: userName, characterName: speakingCharacter.name),
-              section: 'persona',
-            )}";
-      }
-
-      // User persona — inject user's self-description + learned facts
-      final userPersonaBlock = await _buildUserPersonaBlock(userName);
-
-      // Scenario — use group scenario override if set, else first character
-      final String rawScenario;
-      if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
-        rawScenario = _activeGroup!.scenario;
-      } else {
-        final scenarioChar = _activeGroup != null
-            ? _groupCharacters.first
-            : speakingCharacter;
-        rawScenario = _getEffectiveScenario(scenarioChar);
-      }
-      String scenario = rawScenario;
-      // A Scene Guest drops into the HOST's ongoing scene — it has no scenario
-      // of its own. Blank it here (prompt-only; the shared library card is never
-      // mutated, so a /join'd full character keeps its real scenario for when it
-      // is the host). This also self-heals legacy guests minted with the host's
-      // scenario baked in (the "model thinks the guest IS the host" bug).
-      if (guestSpeaker != null) scenario = '';
-
-      String suffix = "";
-
-      if (mode == GenerationMode.normal) {
-        suffix = "\n${speakingCharacter.name}:";
-      } else if (mode == GenerationMode.impersonate) {
-        suffix = "\n$userName:";
-      } else if (mode == GenerationMode.continue_) {
-        // Suffix will be set after history is built — see below
-        suffix = "";
-      }
-
-      // Build example dialogues block
-      String mesExampleBlock = '';
-      if (_activeGroup != null) {
-        final examples = _groupCharacters
-            .where((ch) => ch.mesExample.isNotEmpty)
-            .map(
-              (ch) => _macroResolver.resolve(
-                ch.mesExample,
-                MacroContext(userName: userName, characterName: ch.name),
-                section: 'mesExample',
-              ),
-            )
-            .toList();
-        if (examples.isNotEmpty) {
-          mesExampleBlock = '${examples.join('\n')}\n';
-        }
-      } else if (speakingCharacter.mesExample.isNotEmpty) {
-        mesExampleBlock = '${speakingCharacter.mesExample}\n';
-      }
-
-      // Build post-history instructions block
-      String postHistoryBlock = '';
-      if (_activeGroup == null &&
-          speakingCharacter.postHistoryInstructions.isNotEmpty) {
-        postHistoryBlock = '${speakingCharacter.postHistoryInstructions}\n';
-      }
-
-      // Author's note — placed right before the character speaks for maximum influence
-      String authorNoteBlock = '';
-      if (_authorNote.isNotEmpty) {
-        authorNoteBlock = _buildAuthorNoteBlock();
-      }
-
-      // Per-character Author's Note (group mode only): if the current speaker has
-      // a personal note, inject it using the same strength-modulated style.
-      // Falls back gracefully (no-op) if absent. Appended after any group-level note.
-      if (_activeGroup != null) {
-        final charNote = getAuthorNoteForGroupCharacter(speakingCharacter);
-        if (charNote.isNotEmpty) {
-          // Use per-character strength if set, otherwise fall back to group default
-          final s = getAuthorNoteStrengthForGroupCharacter(speakingCharacter);
-          final name = speakingCharacter.name;
-          String perCharBlock;
-          if (s <= 3) {
-            perCharBlock =
-                "[Author's Note (gentle suggestion for $name): $charNote]\n";
-          } else if (s <= 7) {
-            perCharBlock = "[Author's Note (for $name): $charNote]\n";
-          } else {
-            perCharBlock =
-                "[Author's Note (IMPORTANT for $name — apply immediately): $charNote]\n";
-          }
-          authorNoteBlock += perCharBlock;
-        }
-      }
-
-      // One-shot entrance directive (forked-in character) — hidden, consumed
-      // here so it influences only this generation and never persists.
-      if (_entranceDirective != null) {
-        authorNoteBlock += '[${_entranceDirective!}]\n';
-        _entranceDirective = null;
-      }
-
-      // ── Scene Guests (Lite NPCs) prompt injection (1:1 only) ───────────
-      // Guests speak for themselves in their own bubbles, so the primary must
-      // not fully voice/narrate them. A guest turn instead gets a short line
-      // grounding it as a visitor in the host's scene.
-      if (_activeGroup == null) {
-        final hostName = _activeCharacter?.name ?? 'the main character';
-        if (guestSpeaker != null) {
-          // A guest turn reuses the host's full transcript, so the identity
-          // switch must be unmistakable or the model conflates the guest with
-          // the host (confirmed even on strong API models). State plainly that
-          // everything above belongs to the host/user and the reply is ONLY the
-          // guest, and forbid voicing anyone else.
-          authorNoteBlock +=
-              '[SCENE GUEST TURN. You are now ${guestSpeaker.name}, who is '
-              'present in this scene — you are NOT $hostName and NOT $userName. '
-              'Everything written above was said and done by $hostName and '
-              '$userName; ${guestSpeaker.name} is a separate person. Reply ONLY '
-              'as ${guestSpeaker.name}: their own dialogue, actions, and '
-              'thoughts, reacting to what just happened. Do NOT write, speak, or '
-              'narrate anything for $hostName or $userName.]\n';
-        } else if (_sceneGuestCards.isNotEmpty) {
-          // Host turn with guests present: hard ban on ventriloquising them, or
-          // the host writes the guests' lines too (the "generated both at once"
-          // bug). Acknowledging/reacting is allowed; speaking for them is not.
-          final names = _sceneGuestCards.map((g) => g.name).join(', ');
-          authorNoteBlock +=
-              '[Also present in the scene: $names. Each of them speaks ONLY on '
-              'their own turn. Do NOT write any dialogue, actions, or inner '
-              'thoughts for them — not a single line. Stay entirely as '
-              '$hostName; you may have $hostName notice or react to them, but '
-              'never put words or actions on them.]\n';
-        }
-        // One-shot guest departure (armed by /exit) — narrated by the primary
-        // on this turn only, then cleared so it never persists.
-        if (guestSpeaker == null && _pendingGuestDeparture != null) {
-          authorNoteBlock +=
-              '[${_pendingGuestDeparture!} leaves the scene; '
-              'write them exiting naturally.]\n';
-          _pendingGuestDeparture = null;
-        }
-      }
-
-      // Build summary block if available
-      String summaryBlock = '';
-      if (_summary.isNotEmpty) {
-        summaryBlock = '[Summary of events so far: $_summary]\n';
-      }
-
-      // ── Continue mode: remove the last message from history ──
-      // For continue mode, we exclude the last message from the chat history
-      // and place it as the prompt suffix so the LLM continues from it naturally.
-      // Wrapped in try-finally to guarantee restoration even on exception.
-      ChatMessage? _continuePoppedMessage;
-      if (mode == GenerationMode.continue_ && _messages.isNotEmpty) {
-        _continuePoppedMessage = _messages.removeLast();
-        final partial = _continuePoppedMessage.text;
-        // For Continue: feed straight existing messages as the prompt (per user request).
-        // The suffix is the raw text of the message being continued (no re-added "Sender: " label).
-        // This makes the continuation prompt contain the plain previous messages + the exact
-        // partial text to extend, so the model continues the string directly without beginning
-        // the output with "Rachel:" or the speaker name.
-        // CRITICAL RULE: Strictly forbid the model from writing *anything* for {{user}} (actions, dialogue, thoughts, "he said", "you feel", etc.).
-        // This is a cardinal sin in AI RP. Only extend the provided partial text from the current speaker's POV and voice.
-        suffix =
-            "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for {{user}} or from {{user}}'s point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require {{user}} content.]\n" +
-            partial;
-      }
-
-      // ── Macro resolution pass ──
-      final macroCtx = MacroContext(
-        userName: userName,
-        characterName: speakingCharacter.name,
-        summaryMaxWords: _storageService.memorySettings.summaryMaxWords,
-        chatId: _currentSessionId,
-        characterId: speakingCharacter.dbId,
-      );
-      systemPrompt = _macroResolver.resolve(
-        systemPrompt,
-        macroCtx,
-        section: 'systemPrompt',
-      );
-      if (loreContent.isNotEmpty) {
-        loreContent = _macroResolver.resolve(
-          loreContent,
-          macroCtx,
-          section: 'lore',
-        );
-      }
-      // personaBlock and group-mode examples are resolved per-character above
-      scenario = _macroResolver.resolve(
-        scenario,
-        macroCtx,
-        section: 'scenario',
-      );
-      if (_activeGroup == null && mesExampleBlock.isNotEmpty) {
-        mesExampleBlock = _macroResolver.resolve(
-          mesExampleBlock,
-          macroCtx,
-          section: 'mesExample',
-        );
-      }
-      if (postHistoryBlock.isNotEmpty) {
-        postHistoryBlock = _macroResolver.resolve(
-          postHistoryBlock,
-          macroCtx,
-          section: 'postHistory',
-        );
-      }
-
-      // Declare variables before try block so they're accessible after finally
-      String history = '';
-      String realismBlock = '';
-      String chanceTimeBlock = '';
-      String objectiveBlock = '';
-      String needsCatastropheBlock = '';
-      int droppedMessages = 0;
-
-      // Ensure the popped message is always restored, even if prompt assembly throws
-      try {
-        history = _buildChatHistory();
-
-        // ── Context Shift: budget-aware history trimming ──
-
-        // Realism / internal state block — now produced by a single dedicated composer
-        // (lib/services/chat/prompt_injection/realism_state_injection.dart).
-        // It groups *all* the live scalars (needs with x/100, bond/trust, emotion, time,
-        // arousal, spatial, etc.) under one clear, number-first header + collation guidance.
-        // This is the main place the model "sees" the current character state for consistency.
-        if (_realismActiveThisMode) {
-          realismBlock = _getRealismStateInjection();
-        }
-
-        // Chance Time injection — independent of realism mode
-        chanceTimeBlock = _getChanceTimeInjection();
-
-        // Objective injection — always injected regardless of realism mode
-        // Must sit in a fixed prompt section so it is NEVER trimmed by the budget system.
-        // (thin delegation to author_note_builder per step 8; state/CRUD in god)
-        objectiveBlock = _getObjectiveInjection();
-
-        // Mandatory Needs Catastrophe (Phase 2 stepping) — when a need hit 0 during
-        // the previous decay tick, we force the AI to roleplay the disaster right now.
-        if (_needsSimulation.pendingCatastrophe != null) {
-          needsCatastropheBlock =
-              '[MANDATORY CATASTROPHIC NEED EVENT — THIS HAS ALREADY OCCURRED THIS TURN:\n'
-              '${_needsSimulation.pendingCatastrophe}\n'
-              'You MUST narrate the immediate physical sensations, the visible evidence '
-              '(wet patch/puddle on clothes or floor, her collapsing or fainting, smell, '
-              'mortified/embarrassed expression, how {{user}} and anyone else present reacts), '
-              'and the emotional/social aftermath in the very first 1-2 paragraphs. '
-              'This is not optional, not a suggestion, and not something the character "might" do — '
-              'the event is canon and has just happened or is happening right now. '
-              'Do not fade to black, do not ask for permission, do not skip it.]\n';
-          // Consume it for this generation
-          _needsSimulation.consumePendingCatastrophe();
-        }
-
-        // Calculate token cost of all fixed sections to determine chat history budget
-        final fixedContent =
-            "$systemPrompt\n"
-            "$loreContent"
-            "$personaBlock\n"
-            "$userPersonaBlock"
-            "Scenario: $scenario\n"
-            "$mesExampleBlock"
-            "<START>\n"
-            "$summaryBlock"
-            "$postHistoryBlock"
-            "$authorNoteBlock"
-            "$objectiveBlock"
-            "$realismBlock"
-            "$needsCatastropheBlock"
-            "$suffix"
-            "$chanceTimeBlock";
-        final fixedTokens = await _countTokens(fixedContent);
-        final contextBudget = _sessionGenSettings.resolveContextSize(
-          _storageService,
-        );
-        final generationReserve =
-            _sessionGenSettings.resolveMaxLength(_storageService) +
-            50; // +50 safety margin
-        final historyBudget = contextBudget - fixedTokens - generationReserve;
-
-        if (historyBudget > 0) {
-          final result = await _buildChatHistoryWithBudget(historyBudget);
-          history = result.history;
-          droppedMessages = result.droppedCount;
-        }
-        // If budget is zero or negative, fixed sections already fill the context — use minimal history
-        if (historyBudget <= 0 && _messages.isNotEmpty) {
-          // Include at least the last message for continuity
-          final lastMsg = _messages.last;
-          history = lastMsg.characterId == '__director__'
-              ? '[Director: ${lastMsg.text}]'
-              : '${lastMsg.sender}: ${lastMsg.text}';
-          droppedMessages = _messages.length - 1;
-        }
-      } finally {
-        // ── Restore the popped continue message back into the list ──
-        if (_continuePoppedMessage != null) {
-          _messages.add(_continuePoppedMessage);
-        }
-      }
-
-      if (mode == GenerationMode.continue_) {
-        // Drop the needs/realism/relationship/chaos/objective/catastrophe state injections
-        // for Continue. Per user request: the continue prompt should be straight existing
-        // messages (the plain history transcript + the partial text to continue from).
-        // The runtime state blocks make the continuation feel injected and discordant.
-        realismBlock = '';
-        chanceTimeBlock = '';
-        objectiveBlock = '';
-        needsCatastropheBlock = '';
-        // Also skip RAG "earlier memories" for pure straight continuation.
-        droppedMessages = 0;
-      }
-
-      // ── RAG Memory Retrieval ──
-      // When messages are dropped from context, search for relevant past memories
-      // Skip retrieval for brand new chats to prevent old memories from interfering
-      String memoriesBlock = '';
-
-      final effectiveRagEnabled = _activeGroup != null
-          ? groupRagEnabled
-          : _storageService.memorySettings.ragEnabled;
-
-      if (_isNewChat) {
-        debugPrint(
-          '[RAG:Chat] Skipping memory retrieval - new chat in progress',
-        );
-      } else if (droppedMessages > 0 &&
-          _memoryService != null &&
-          effectiveRagEnabled) {
-        debugPrint(
-          '[RAG:Chat] ── Prompt assembly: $droppedMessages messages dropped, triggering retrieval ──',
-        );
-        try {
-          // Use last 3 messages as the query
-          final queryMessages = _messages.reversed
-              .take(3)
-              .map((m) => '${m.sender}: ${m.displayText}')
-              .join('\n');
-
-          // Scene Guests Phase 4: a guest turn retrieves the GUEST's own
-          // episodic memories (keyed on the guest id), not the host's. The
-          // injection format/budget below is shared — only the source id swaps.
-          final sourceIds = await _getMemorySourceIds(guest: guestSpeaker);
-          debugPrint('[RAG:Chat] Memory source IDs: $sourceIds');
-
-          final memories = await _memoryService!.retrieve(
-            queryText: queryMessages,
-            sourceCharacterIds: sourceIds,
-            currentSessionId: _currentSessionId ?? '',
-            inContextStart:
-                droppedMessages, // only search messages that are out of context
-            limit: groupRetrievalCount == 0 ? 9999 : groupRetrievalCount,
-            characterPriorities: currentGroupRAGPriorities,
-          );
-
-          if (memories.isNotEmpty) {
-            // Cap memory injection to the group's (or global) memory budget % of context.
-            // The summary carries the weight of context compression; RAG only
-            // supplements with specific details the summary missed. Too much
-            // RAG (2500+ tokens) overwhelms the model and causes it to
-            // reference stale events as if they're current ("going back in time").
-            final contextSize = _storageService.backendSettings.contextSize;
-            final budgetFraction = _activeGroup != null
-                ? (groupMemoryBudgetPercent / 100.0)
-                : 0.10;
-            final memoryBudget = (contextSize * budgetFraction).round();
-            final includedMemories = <String>[];
-            int usedTokens = 0;
-            for (final m in memories) {
-              final memTokens = (m.content.length / 4).ceil();
-              if (usedTokens + memTokens > memoryBudget &&
-                  includedMemories.isNotEmpty) {
-                debugPrint(
-                  '[RAG:Chat] ⚠ Trimmed ${memories.length - includedMemories.length} memories to fit budget ($memoryBudget tokens)',
-                );
-                break;
-              }
-              usedTokens += memTokens;
-              includedMemories.add('- ${m.content}');
-            }
-            if (includedMemories.isNotEmpty) {
-              memoriesBlock =
-                  '[Earlier in this conversation (already happened, do not revisit):\n${includedMemories.join('\n')}]\n';
-              debugPrint(
-                '[RAG:Chat] ✅ Injecting ${includedMemories.length}/${memories.length} memories (~$usedTokens tokens, budget: $memoryBudget)',
-              );
-            }
-          } else {
-            debugPrint('[RAG:Chat] No relevant memories found for this turn');
-          }
-        } catch (e) {
-          debugPrint('[RAG:Chat] ✗ RAG retrieval failed: $e');
-        }
-      } else if (droppedMessages > 0 &&
-          _storageService.memorySettings.ragEnabled) {
-        debugPrint(
-          '[RAG:Chat] ⚠ $droppedMessages messages dropped but RAG not operational (service=${_memoryService != null}, operational=${_memoryService?.isOperational ?? false})',
-        );
-      }
-
-      // Realism injection was already computed above for budget
-
-      // For chat APIs (OpenRouter, LM Studio), separate the system prompt
-      // so it can be sent as a proper 'system' role message.
-      final isRemoteApi = _llmProvider != null && !_llmProvider!.isLocal;
-      final chatSystemPrompt = isRemoteApi
-          ? "$systemPrompt\n$loreContent$personaBlock\n$userPersonaBlock"
-                "Scenario: $scenario\n$mesExampleBlock"
-          : null;
-
-      final prompt = isRemoteApi
-          ? "<START>\n"
-                "$summaryBlock"
-                "$memoriesBlock"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$objectiveBlock"
-                "$realismBlock"
-                "$needsCatastropheBlock"
-                "$suffix"
-                "$chanceTimeBlock"
-          : "$systemPrompt\n"
-                "$loreContent"
-                "$personaBlock\n"
-                "$userPersonaBlock"
-                "Scenario: $scenario\n"
-                "$mesExampleBlock"
-                "<START>\n"
-                "$summaryBlock"
-                "$memoriesBlock"
-                "$history"
-                "$postHistoryBlock"
-                "$authorNoteBlock"
-                "$objectiveBlock"
-                "$realismBlock"
-                "$needsCatastropheBlock"
-                "$suffix"
-                "$chanceTimeBlock";
-
-      // Track prompt budget for context viewer (always show full prompt)
-      _lastAssembledPrompt = chatSystemPrompt != null
-          ? '$chatSystemPrompt\n$prompt'
-          : prompt;
-      _lastPromptBudget = {
-        'System Prompt': (systemPrompt.length / 4).ceil(),
-        'Lorebook': (loreContent.length / 4).ceil(),
-        'Persona': (personaBlock.length / 4).ceil(),
-        'Scenario': ('Scenario: $scenario'.length / 4).ceil(),
-        'Examples': (mesExampleBlock.length / 4).ceil(),
-        'Summary': (summaryBlock.length / 4).ceil(),
-        'Retrieved Memories': (memoriesBlock.length / 4).ceil(),
-        'Chat History': (history.length / 4).ceil(),
-        'Post-History': (postHistoryBlock.length / 4).ceil(),
-        'Author\'s Note': (authorNoteBlock.length / 4).ceil(),
-        'Objectives': (objectiveBlock.length / 4).ceil(),
-        'Realism Mode': (realismBlock.length / 4).ceil(),
-        if (needsCatastropheBlock.isNotEmpty)
-          'Needs Catastrophe': (needsCatastropheBlock.length / 4).ceil(),
-        if (droppedMessages > 0) 'Dropped Messages': droppedMessages,
-      };
-      // Remove zero-value entries
-      _lastPromptBudget.removeWhere((_, v) => v == 0);
-
-      // Stop sequences: include character names, and user name (except when impersonating)
-      final g2 = _sessionGenSettings;
-      final stopSequences = {
-        ...g2.resolveStopSequences(_storageService).toSet(),
-      };
-
-      // In impersonate mode the model IS the user, so don't stop on user name
-      if (mode != GenerationMode.impersonate) {
-        stopSequences.add('\nUser:');
-        stopSequences.add('\n${_userPersonaService.persona.name}:');
-      }
-
-      // For Continue mode, do *not* stop on the current speaker's name.
-      // This lets the model produce long, natural extensions of the existing message
-      // in that character's voice without the name stop cutting it off mid-continuation.
-      // We still stop on other speakers or the user (to catch unwanted new turns).
-      String? continueSpeakerName;
-      if (mode == GenerationMode.continue_ &&
-          _messages.isNotEmpty &&
-          !_messages.last.isUser) {
-        continueSpeakerName = _messages.last.sender;
-      }
-
-      if (_activeGroup != null) {
-        for (final ch in _groupCharacters) {
-          if (continueSpeakerName != null && ch.name == continueSpeakerName) {
-            continue;
-          }
-          stopSequences.add('\n${ch.name}:');
-        }
-      } else {
-        final cur = _activeCharacter!.name;
-        if (continueSpeakerName == null || cur != continueSpeakerName) {
-          stopSequences.add('\n$cur:');
-        }
-      }
-      final stopList = stopSequences.toList();
-
-      // Get the active LLM service (local or remote)
-      final llmService =
-          testLlmServiceOverride ??
-          _llmProvider?.activeService ??
-          _koboldService;
-
-      // For call mode with a dedicated call model, temporarily swap the model
-      if (_callMode &&
-          _storageService.sttSettings.callModelName.isNotEmpty &&
-          _llmProvider != null &&
-          !_llmProvider!.isLocal) {
-        _originalModelName = _llmProvider!.openRouterService.modelName;
-        _llmProvider!.openRouterService.configure(
-          modelName: _storageService.sttSettings.callModelName,
-        );
-      }
-
-      final genParams = GenerationParams(
-        prompt: prompt,
-        systemPrompt: chatSystemPrompt,
-        maxLength: g2.resolveMaxLength(_storageService),
-        minLength: g2.resolveMinLength(_storageService),
-        minP: g2.resolveMinP(_storageService),
-        temperature: g2.resolveTemperature(_storageService),
-        repeatPenalty: g2.resolveRepeatPenalty(_storageService),
-        repPenTokens: g2.resolveRepeatPenaltyTokens(_storageService),
-        dynatempRange: g2.resolveDynamicTempEnabled(_storageService)
-            ? g2.resolveDynamicTempRange(_storageService)
-            : null,
-        xtcThreshold: g2.resolveXtcThreshold(_storageService),
-        xtcProbability: g2.resolveXtcProbability(_storageService),
-        stopSequences: stopList,
-        reasoningEnabled: (_callMode || mode == GenerationMode.continue_)
-            ? false
-            : g2.resolveReasoningEnabled(_storageService),
-        reasoningEffort: g2.resolveReasoningEffort(_storageService),
-        // Force zero thinking budget on Continue (and call mode) for providers like OpenRouter/Nano-GPT.
-        // This tells supported models (Kimi K2 Thinking, DeepSeek hybrid reasoning models, certain Qwen3 etc.)
-        // to spend 0 tokens on internal reasoning and answer directly, preventing the model from dumping
-        // its next analysis/think block into the visible character response.
-        reasoningMaxTokens: (_callMode || mode == GenerationMode.continue_)
-            ? 0
-            : null,
-        bannedPhrases: g2.resolveBannedPhrases(_storageService).isNotEmpty
-            ? g2.resolveBannedPhrases(_storageService)
-            : null,
-      );
-
-      // Get streaming response from whichever backend is active
-      final stream = llmService.generateStream(genParams);
-
-      // ── Phase: Prefilling ──
-      // The HTTP request is now in flight. For KoboldCPP, the model is
-      // processing the prompt (prefill/eval). No tokens arrive until
-      // prefill finishes. Poll /api/extra/perf for real-time status.
-      _generationPhase = GenerationPhase.prefilling;
-      _prefillStartTime = DateTime.now();
-      _prefillPromptTokens = (prompt.length / 4).ceil(); // Rough placeholder
-      notifyListeners();
-
-      // If using local KoboldCPP, poll /api/extra/perf during prefill
-      // to get real prompt processing metrics.
-      Timer? _perfPoller;
-      final isLocalBackend = _llmProvider == null || _llmProvider!.isLocal;
-      if (isLocalBackend) {
-        // Get REAL token count from the model's tokenizer (async, updates UI when done)
-        _koboldService.countTokens(prompt).then((realCount) {
-          if (_generationPhase == GenerationPhase.prefilling && realCount > 0) {
-            _prefillPromptTokens = realCount;
-            debugPrint(
-              '[Prefill] Actual token count from tokenizer: $realCount (was ~${(prompt.length / 4).ceil()} est)',
-            );
-            notifyListeners();
-          }
-        });
-
-        _perfPoller = Timer.periodic(const Duration(seconds: 2), (_) async {
-          if (_generationPhase != GenerationPhase.prefilling) {
-            _perfPoller?.cancel();
-            _perfPoller = null;
-            return;
-          }
-          final perf = await _koboldService.fetchPerf();
-          if (perf != null) {
-            _lastPerfData = perf;
-            notifyListeners();
-          }
-        });
-      }
-
-      String accumulatedResponse = "";
-      bool stopFound = false;
-      _tokenBuffer.clear();
-      _displayedTokenCount = 0;
-      _tokenTimestamps.clear();
-      bool streamDone = false;
-      DateTime? _thinkStartTime;
-      bool _thinkStarted = false;
-      bool _thinkEnded = false;
-
-      // Determine message identity
-      String originalText = '';
-      String targetSender;
-      bool isUserTarget;
-
-      if (mode == GenerationMode.continue_) {
-        originalText = _messages.last.text;
-        targetSender = _messages.last.sender;
-        isUserTarget = _messages.last.isUser;
-        // Merge metadata if continuing
-        if (_pendingRealismMetadata != null) {
-          _messages.last.activeMetadata ??= {};
-          _messages.last.activeMetadata!.addAll(_pendingRealismMetadata!);
-          _pendingRealismMetadata = null;
-        }
-      } else {
-        targetSender = mode == GenerationMode.normal
-            ? speakingCharacter.name
-            : _userPersonaService.persona.name;
-        isUserTarget = mode == GenerationMode.impersonate;
-        // A Scene Guest turn carries NO Realism/Needs, so its message must never
-        // inherit _pendingRealismMetadata — which still holds the HOST turn's
-        // verification result (the leftover "✓ Director accepted" chip), bond
-        // deltas, etc. Guests get clean (null) metadata.
-        final initialMetadata =
-            (guestSpeaker != null || _pendingRealismMetadata == null)
-            ? null
-            : Map<String, dynamic>.from(_pendingRealismMetadata!);
-        debugPrint(
-          '[Realism:Metadata] Attaching to new message: bond_delta=${initialMetadata?['bond_delta']}, keys=${initialMetadata?.keys.toList()}',
-        );
-        _messages.add(
-          ChatMessage(
-            text: "",
-            sender: targetSender,
-            isUser: isUserTarget,
-            characterId: mode == GenerationMode.normal
-                ? _getCharacterIdForCard(speakingCharacter)
-                : null,
-            metadata: initialMetadata,
-            swipeMetadata: initialMetadata != null ? [initialMetadata] : null,
-          ),
-        );
-        _pendingRealismMetadata = null;
-      }
-
-      // Helper to update the visible message from buffer
-      void _flushBufferToDisplay() {
-        if (epoch != _generationEpoch) return; // stale generation
-        if (_tokenBuffer.isEmpty && _displayedTokenCount == 0) return;
-        // Build displayed text from all tokens up to _displayedTokenCount
-        final displayTokens = _tokenBuffer.take(_displayedTokenCount).join();
-        String displayText;
-        if (mode == GenerationMode.continue_) {
-          displayText = originalText + displayTokens;
-        } else {
-          displayText = displayTokens.trimLeft();
-        }
-        // CRITICAL: Modify existing message in place to preserve thinkingStartTime and other metadata
-        _messages.last.text = displayText;
-        notifyListeners();
-      }
-
-      // Read display buffer settings — disable for remote APIs (they're fast enough)
-      final isRemoteBackend = _llmProvider != null && !_llmProvider!.isLocal;
-      final bufferEnabled = isRemoteBackend
-          ? false
-          : _storageService.uiSettings.displayBufferEnabled;
-      final targetTps = _storageService.uiSettings.targetDisplayTps;
-
-      // Drain timer: displays tokens at the user-configured constant rate
-      void _startDrainTimer() {
-        if (_drainTimer != null) return;
-        final interval = Duration(milliseconds: (1000.0 / targetTps).round());
-        _drainTimer = Timer.periodic(interval, (_) {
-          if (epoch != _generationEpoch) {
-            _drainTimer?.cancel();
-            _drainTimer = null;
-            return;
-          } // stale
-          if (_displayedTokenCount < _tokenBuffer.length) {
-            _displayedTokenCount++;
-            _flushBufferToDisplay();
-          } else if (streamDone) {
-            // Stream finished and buffer fully drained
-            _drainTimer?.cancel();
-            _drainTimer = null;
-          }
-          // If buffer is caught up but stream still running, timer ticks idly until more tokens arrive
-        });
-      }
-
-      // Consume the stream — tokens go into buffer (or display immediately)
-      await for (final token in stream) {
-        if (_cancelRequested) break;
-        accumulatedResponse += token;
-        _tokensGenerated++;
-        _tokenTimestamps.add(DateTime.now());
-
-        // ── Phase transition: first token marks end of prefill ──
-        if (_tokensGenerated == 1) {
-          _perfPoller?.cancel();
-          _perfPoller = null;
-          // Fetch final perf data so we know how long prefill really took
-          if (isLocalBackend) {
-            _koboldService.fetchPerf().then((perf) {
-              if (perf != null) {
-                _lastPerfData = perf;
-              }
-            });
-          }
-          _prefillStartTime = null;
-        }
-
-        // Broadcast token to external listeners (SSE bridge)
-        _tokenBroadcast.add(token);
-        _generationProgress = _maxTokens > 0
-            ? (_tokensGenerated / _maxTokens).clamp(0.0, 1.0)
-            : 0.0;
-
-        // Sentence streaming: accumulate tokens and emit complete sentences
-        _sentenceBuffer += token;
-
-        // Split strategy:
-        // 1. Always split at sentence boundaries: . ! ? followed by space, or \n
-        // 2. For long buffers (>80 chars / ~15 words), also split at clause
-        //    boundaries: ", " "; " " — " " - " to keep TTS chunks short (~1-3s)
-        bool emitted = true;
-        while (emitted) {
-          emitted = false;
-
-          // First try sentence boundaries
-          final sentenceEnd = RegExp(r'[.!?]\s|[.!?]$|\n');
-          if (sentenceEnd.hasMatch(_sentenceBuffer)) {
-            final match = sentenceEnd.firstMatch(_sentenceBuffer)!;
-            final sentence = _sentenceBuffer.substring(0, match.end).trim();
-            _sentenceBuffer = _sentenceBuffer.substring(match.end);
-            if (sentence.isNotEmpty) {
-              _sentenceBroadcast.add(sentence);
-              emitted = true;
-            }
-            continue;
-          }
-
-          // For long buffers, split at clause boundaries to keep TTS fast
-          if (_sentenceBuffer.length > 80) {
-            final clauseEnd = RegExp(r',\s|;\s|\s[—–-]\s');
-            if (clauseEnd.hasMatch(_sentenceBuffer)) {
-              // Find the LAST clause boundary to maximize chunk size
-              Match? lastMatch;
-              for (final m in clauseEnd.allMatches(_sentenceBuffer)) {
-                if (m.start > 30) lastMatch = m; // at least 30 chars per chunk
-              }
-              if (lastMatch != null) {
-                final chunk = _sentenceBuffer
-                    .substring(0, lastMatch.end)
-                    .trim();
-                _sentenceBuffer = _sentenceBuffer.substring(lastMatch.end);
-                if (chunk.isNotEmpty) {
-                  _sentenceBroadcast.add(chunk);
-                  emitted = true;
-                }
-              }
-            }
-          }
-        }
-
-        // Client-side safety trim check (mid-stream)
-        for (final stop in stopList) {
-          if (accumulatedResponse.contains(stop)) {
-            int index = accumulatedResponse.indexOf(stop);
-            final trimmedTotal = accumulatedResponse.substring(0, index);
-            final previousTotal = _tokenBuffer.join();
-            final lastTokenContribution = trimmedTotal.substring(
-              previousTotal.length.clamp(0, trimmedTotal.length),
-            );
-            if (lastTokenContribution.isNotEmpty) {
-              _tokenBuffer.add(lastTokenContribution);
-            }
-            accumulatedResponse = trimmedTotal;
-            stopFound = true;
-            break;
-          }
-        }
-
-        if (!stopFound) {
-          _tokenBuffer.add(token);
-        }
-
-        // Track think timing
-        if (!_thinkStarted && accumulatedResponse.contains('<think>')) {
-          _thinkStarted = true;
-          _thinkStartTime = DateTime.now();
-          _generationPhase = GenerationPhase.thinking;
-          if (_messages.isNotEmpty) {
-            _messages.last.thinkingStartTime =
-                _thinkStartTime.millisecondsSinceEpoch;
-          }
-        }
-        if (_thinkStarted &&
-            !_thinkEnded &&
-            accumulatedResponse.contains('</think>')) {
-          _thinkEnded = true;
-          // Transition out of thinking to buffering/generating
-          _generationPhase = bufferEnabled
-              ? GenerationPhase.buffering
-              : GenerationPhase.generating;
-          if (_thinkStartTime != null && _messages.isNotEmpty) {
-            _messages.last.thinkingDurationMs = DateTime.now()
-                .difference(_thinkStartTime)
-                .inMilliseconds;
-            // Keep thinkingStartTime for fallback display logic in UI
-          }
-        }
-        // If no thinking involved, first token transitions directly
-        if (!_thinkStarted && _tokensGenerated == 1) {
-          _generationPhase = bufferEnabled
-              ? GenerationPhase.buffering
-              : GenerationPhase.generating;
-        }
-
-        if (bufferEnabled) {
-          // Calculate current rolling TPS (last 3 seconds)
-          final now = DateTime.now();
-          final cutoff = now.subtract(const Duration(seconds: 3));
-          final recentCount = _tokenTimestamps
-              .where((t) => t.isAfter(cutoff))
-              .length;
-          final windowStart =
-              _tokenTimestamps.where((t) => t.isAfter(cutoff)).firstOrNull ??
-              _generationStartTime!;
-          final windowElapsed =
-              now.difference(windowStart).inMilliseconds / 1000.0;
-          final currentTps = (recentCount >= 2 && windowElapsed > 0)
-              ? recentCount / windowElapsed
-              : (_tokensGenerated > 0
-                    ? _tokensGenerated /
-                          (now
-                                  .difference(_generationStartTime!)
-                                  .inMilliseconds /
-                              1000.0)
-                    : 0.0);
-
-          if (_drainTimer == null && _tokensGenerated >= 10) {
-            // Not yet draining — calculate when to start
-            // Buffer target = how many tokens fill the configured duration
-            final bufferDuration =
-                _storageService.uiSettings.bufferDurationSeconds;
-            int bufferTarget;
-            if (currentTps > 0) {
-              bufferTarget = (currentTps * bufferDuration).round().clamp(
-                5,
-                _maxTokens,
-              );
-            } else {
-              bufferTarget = 30; // Fallback if TPS unknown
-            }
-
-            if (_tokenBuffer.length >= bufferTarget) {
-              _isBuffering = false;
-              _generationPhase = GenerationPhase.generating;
-              _startDrainTimer();
-            }
-          } else if (_drainTimer != null) {
-            // Already draining — check if buffer is running low
-            final remaining = _tokenBuffer.length - _displayedTokenCount;
-            if (remaining <= 3 && !streamDone) {
-              // Buffer critically low — pause drain to rebuild
-              _drainTimer?.cancel();
-              _drainTimer = null;
-              _isBuffering = true;
-              _generationPhase = GenerationPhase.buffering;
-            }
-          }
-        } else {
-          // No buffer: display tokens immediately
-          _isBuffering = false;
-          _generationPhase = GenerationPhase.generating;
-          _displayedTokenCount = _tokenBuffer.length;
-          _flushBufferToDisplay();
-        }
-
-        // Update TPS/progress in the bar even during buffering
-        notifyListeners();
-
-        if (stopFound) break;
-      }
-
-      // Mark stream as done
-      streamDone = true;
-      _isBuffering = false;
-
-      if (!bufferEnabled) {
-        // No buffer: everything already displayed
-        _displayedTokenCount = _tokenBuffer.length;
-        _flushBufferToDisplay();
-      } else if (_drainTimer == null) {
-        // Buffer never started draining (genTps < targetTps) — start now with all tokens ready
-        _startDrainTimer();
-        // Wait for drain to complete
-        while (_displayedTokenCount < _tokenBuffer.length) {
-          await Future.delayed(const Duration(milliseconds: 16));
-        }
-        _drainTimer?.cancel();
-        _drainTimer = null;
-      } else {
-        // Drain already running — wait for it to finish
-        while (_displayedTokenCount < _tokenBuffer.length) {
-          await Future.delayed(const Duration(milliseconds: 16));
-        }
-        _drainTimer?.cancel();
-        _drainTimer = null;
-      }
-
-      _isGenerating = false;
-      _cancelRequested = false;
-      _generationProgress = 0.0;
-      _isBuffering = false;
-      _generationPhase = GenerationPhase.idle;
-      _prefillStartTime = null;
-      _prefillPromptTokens = 0;
-      _generationStartTime = null;
-      _perfPoller?.cancel();
-      _perfPoller = null;
-
-      // Fetch final perf stats from KoboldCPP for post-generation display
-      if (isLocalBackend) {
-        _koboldService.fetchPerf().then((perf) {
-          if (perf != null) _lastPerfData = perf;
-        });
-      }
-
-      // Signal generation complete to SSE listeners
-      _tokenBroadcast.add('__DONE__');
-
-      // Flush remaining sentence buffer and signal done to sentence listeners
-      if (_sentenceBuffer.trim().isNotEmpty) {
-        _sentenceBroadcast.add(_sentenceBuffer.trim());
-        _sentenceBuffer = '';
-      }
-      _sentenceBroadcast.add('__DONE__');
-
-      notifyListeners();
-
-      // Only finalize if this generation is still current
-      if (epoch == _generationEpoch) {
-        String finalResponse = accumulatedResponse.trim();
-
-        // SillyTavern-like safety net for Continue (and call mode): even after requesting
-        // enabled:false + max_tokens:0 + exclude:true on the provider, some thinking models
-        // (Kimi 2.6:thinking etc.) can still emit stray <think> or reasoning text.
-        // Strip it from the final text before it becomes part of the character's message.
-        // This matches ST's "Strip Reasoning Tags" behavior as a client-side backstop.
-        if (mode == GenerationMode.continue_ || _callMode) {
-          finalResponse = _stripThinkBlocks(finalResponse);
-        }
-
-        // Snapshot which entries were already triggered before scanning the AI response.
-        // We will only decrement those — newly AI-triggered entries must keep their
-        // full depth budget so they are visible on the next user turn.
-        final preAiTriggered = <LorebookEntry>{};
-        final charactersForSnapshot = _activeGroup != null
-            ? _groupCharacters
-            : (_activeCharacter != null
-                  ? [_activeCharacter!]
-                  : <CharacterCard>[]);
-        for (final ch in charactersForSnapshot) {
-          if (ch.lorebook != null) {
-            for (final e in ch.lorebook!.entries) {
-              if (e.isTriggered && !e.constant) preAiTriggered.add(e);
-            }
-          }
-          for (final worldName in ch.worldNames) {
-            final world = _worldRepository.worlds
-                .where((w) => w.name == worldName)
-                .firstOrNull;
-            if (world == null) continue;
-            for (final e in world.lorebook.entries) {
-              if (e.isTriggered && !e.constant) preAiTriggered.add(e);
-            }
-          }
-        }
-
-        if (finalResponse.isNotEmpty) {
-          _lorebookScanner.scanLorebook(finalResponse);
-        }
-
-        // Decrement only entries that were active before the AI response.
-        // This preserves full depth for lore discovered in the AI's own words.
-        // Thin delegation (preAi set computed in god for snapshot; scanner owns decrement).
-        _lorebookScanner.decrementLoreDepthForEntries(preAiTriggered);
-
-        // Save session after AI message is complete
-        await _saveChat();
-
-        // ── Scene Guest (Lite NPC) parity guard ──────────────────────────
-        // A guest turn must NOT touch the active character's Realism Engine,
-        // Needs simulation, inter-character feelings, time, chips, or the
-        // periodic (facts/evolution/summary/RAG) evaluators. The guest carries
-        // no such state. Everything from here through the periodic evals is
-        // gated so guest presence/turns leave the primary's state untouched.
-        // (Lorebook scan + _saveChat above still ran for the guest.)
-        if (guestSpeaker == null) {
-          // Phase 2: Update hidden inter-character feelings for the speaker who
-          // just responded, based on what was said in the recent exchange.
-          // This makes the invisible tracking react to actual dialogue.
-          if (_activeGroup != null &&
-              !_observerMode &&
-              finalResponse.isNotEmpty) {
-            final lastSpeaker = _messages.isNotEmpty
-                ? _messages.last.sender
-                : '';
-            final speakerCard = _groupCharacters.firstWhere(
-              (c) => c.name == lastSpeaker,
-              orElse: () => _groupCharacters.first,
-            );
-            final speakerId = _getCharacterIdFromCard(speakerCard);
-            if (speakerId.isNotEmpty) {
-              _relationshipService
-                  .updateInterCharacterFeelingsFromRecentExchange(speakerId);
-              // (old checkpoint call removed in v30) // persist the hidden relationship changes
-            }
-          }
-
-          // For group non-observer turns, temporarily re-impersonate the speaker of the *just generated*
-          // response so the post-gen needs checks (now _runPostGenNeedsChecks thin to
-          // _needsImpactEvaluator) use the correct _activeCharacter (for name, personality/stance
-          // in the consolidated needs impact prompt). The pre-speaker-eval left the *scalars*
-          // (incl. needs vector) loaded for this speaker but restored the _activeCharacter pointer
-          // to the prior speaker; the thin delegate relies on the pointer for cbs. We restore the
-          // pointer after the checks (scalars remain correct for the persist below).
-          CharacterCard? prePostActiveChar;
-          if (_activeGroup != null && !_observerMode) {
-            prePostActiveChar = _activeCharacter;
-            _activeCharacter = speakingCharacter;
-            final sid = _getCharacterIdFromCard(speakingCharacter);
-            if (sid.isNotEmpty) {
-              _loadGroupRealismIntoScalars(sid);
-            }
-          }
-
-          await _runPostGenNeedsChecks(finalResponse);
-
-          if (prePostActiveChar != null) {
-            _activeCharacter = prePostActiveChar;
-          }
-
-          // For group non-observer, persist the post-scene + long-gen-decay needs changes (and any
-          // other scalars mutated by the checks) back into _groupRealism for this speaker. This is
-          // what makes sidebar member cards + getNeedsForGroupCharacter() + future loads see the
-          // effects of the just-generated response. (Pre-eval saved the pre-turn state for bond/etc;
-          // this captures the *response* effects on needs.)
-          if (_activeGroup != null &&
-              !_observerMode &&
-              finalResponse.isNotEmpty &&
-              _messages.isNotEmpty) {
-            final lastSender = _messages.last.sender;
-            final speakerCard = _groupCharacters.firstWhere(
-              (c) => c.name == lastSender,
-              orElse: () => _groupCharacters.first,
-            );
-            final sid = _getCharacterIdFromCard(speakerCard);
-            if (sid.isNotEmpty) {
-              _saveScalarsIntoGroupRealism(sid);
-            }
-          }
-
-          // Check if summary needs updating (fire-and-forget)
-          // Group name resolution for {{char}} in summary prompt is best-effort at trigger time (after prePostActiveChar restore dance); correct for 1:1, may use restored active or group fallback in group non-obs (timing-dependent per group impersonation; dispatch preserved via cbs). See leaf header + test for qualify.
-          _maybeUpdateSummary();
-
-          // Embed messages for RAG memory (fire-and-forget)
-          _maybeEmbedMessages();
-
-          // Periodic evaluations coordinator (facts + character evolution).
-          // Each now respects its own interval (autoPersonaInterval / evolutionInterval)
-          // via dedicated god-owned counters. Sequenced here when they coincide.
-          _maybeRunPeriodicEvals();
-        } // end Scene Guest parity guard (guestSpeaker == null)
-
-        // (Task completion check now runs pre-generation in sendMessage)
-
-        // TTS auto-play: speak the new character message automatically
-        if (_ttsService != null &&
-            _storageService.ttsSettings.ttsEnabled &&
-            _storageService.ttsSettings.ttsAutoPlay &&
-            _messages.isNotEmpty &&
-            !_messages.last.isUser) {
-          final lastMsg = _messages.last;
-          final msgId = 'msg_${_messages.length - 1}';
-          // Resolve per-character voice, falling back to global default
-          String? voiceKey;
-          if (_activeGroup != null) {
-            final charMatch = _groupCharacters
-                .where((c) => c.name == lastMsg.sender)
-                .firstOrNull;
-            voiceKey = charMatch?.ttsVoice;
-          } else {
-            voiceKey = _activeCharacter?.ttsVoice;
-          }
-          _ttsService!.speak(
-            lastMsg.displayText,
-            voiceKey: voiceKey,
-            messageId: msgId,
-          );
-        }
-
-        // Auto-play: if director mode is active, queue the next character
-        if (_autoPlayActive && _observerMode && _activeGroup != null) {
-          // If TTS is active, wait for it to finish before starting the delay
-          if (_ttsService != null && _ttsService!.isSpeaking) {
-            _waitForTtsThenContinue();
-          } else {
-            final delayMs = (directorDelaySec * 1000).round();
-            Future.delayed(Duration(milliseconds: delayMs), () {
-              if (_autoPlayActive && !_isGenerating) {
-                _autoPlayNext();
-              }
-            });
-          }
-        }
-      }
-
-      // Restore original model if swapped for call mode
-      if (_originalModelName != null && _llmProvider != null) {
-        _llmProvider!.openRouterService.configure(
-          modelName: _originalModelName,
-        );
-      }
-    } catch (e) {
-      final wasCancelled = _cancelRequested;
-      _drainTimer?.cancel();
-      _drainTimer = null;
-      _tokenBuffer.clear();
-      _isGenerating = false;
-      _cancelRequested = false;
-      _generationProgress = 0.0;
-      _isBuffering = false;
-      _generationPhase = GenerationPhase.idle;
-      _prefillStartTime = null;
-      _prefillPromptTokens = 0;
-      _generationStartTime = null;
-
-      // "Connection closed before full header was received" is thrown by the http package
-      // when the HTTP client is closed mid-stream (either by abortGeneration() or a process
-      // crash/restart). Treat it the same as a user cancel — keep the partial response.
-      final errStr = e.toString();
-      final isConnectionClosed =
-          errStr.contains('Connection closed before full header') ||
-          errStr.contains('Connection refused') ||
-          errStr.contains('errno = 61') || // macOS ECONNREFUSED
-          errStr.contains('SocketException') ||
-          (errStr.contains('ClientException') && errStr.contains('closed'));
-      final treatAsCancel = wasCancelled || isConnectionClosed;
-
-      // User-initiated cancel (or forced client close) — keep the partial response, no error message
-      if (treatAsCancel) {
-        // Signal clean completion to SSE listeners
-        _tokenBroadcast.add('__DONE__');
-        if (_sentenceBuffer.trim().isNotEmpty) {
-          _sentenceBroadcast.add(_sentenceBuffer.trim());
-          _sentenceBuffer = '';
-        }
-        _sentenceBroadcast.add('__DONE__');
-
-        // Restore original model if swapped for call mode
-        if (_originalModelName != null && _llmProvider != null) {
-          _llmProvider!.openRouterService.configure(
-            modelName: _originalModelName,
-          );
-        }
-
-        // Save the partial response so regen/continue work
-        await _saveChat();
-        notifyListeners();
-        return;
-      }
-
-      // Build user-friendly error message
-      String errorMsg = e.toString();
-      // Strip Dart's "Exception: " prefix for cleaner display
-      errorMsg = errorMsg.replaceFirst(RegExp(r'^Exception:\s*'), '');
-
-      if (errorMsg.contains('STREAMING_NOT_SUPPORTED') ||
-          errorMsg.contains('HTTP 405')) {
-        errorMsg =
-            'HTTP 405: The server does not support this request. '
-            'If streaming is enabled, try disabling it in Settings > Generation Settings. '
-            'Also verify your API URL is correct.';
-      } else if (errorMsg.contains('Backend process crashed')) {
-        errorMsg =
-            'The backend crashed (likely out of VRAM). '
-            'Try reducing GPU layers or context size in Settings.';
-      } else if (errorMsg.contains('timed out') ||
-          errorMsg.contains('TimeoutException')) {
-        errorMsg =
-            'Request timed out. The model may be too large or the server too slow.';
-      } else if (errorMsg.contains('Connection closed before full header') ||
-          (errorMsg.contains('ClientException') &&
-              errorMsg.contains('closed'))) {
-        errorMsg =
-            'The connection to the backend was closed unexpectedly. '
-            'The model may still be loading — wait for the green ready indicator and try again. '
-            'If this persists, the backend may have run out of VRAM.';
-      }
-
-      _messages.add(
-        ChatMessage(text: errorMsg, sender: "System", isUser: false),
-      );
-
-      // Signal error to SSE listeners
-      _tokenBroadcast.add('__ERROR__');
-
-      // Restore original model if swapped for call mode
-      if (_originalModelName != null && _llmProvider != null) {
-        _llmProvider!.openRouterService.configure(
-          modelName: _originalModelName,
-        );
-      }
-
-      notifyListeners();
-    }
-  }
-
-  String _buildChatHistory() {
-    final lines = _messages.map((m) {
-      // Director notes get bracketed so the AI treats them as instructions
-      if (m.characterId == '__director__') {
-        return '[Director: ${m.text}]';
-      }
-      return '${m.sender}: ${m.text}';
-    }).toList();
-    if (lines.any((l) => _macroPattern.hasMatch(l))) {
-      debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
-    }
-    return lines.join("\n");
-  }
-
-  /// Build chat history that fits within a token budget.
-  /// Walks messages newest-to-oldest, dropping the oldest that don't fit.
-  /// Returns ({String history, int droppedCount, int tokenCount}).
-  Future<({String history, int droppedCount, int tokenCount})>
-  _buildChatHistoryWithBudget(int tokenBudget) async {
-    if (_messages.isEmpty) return (history: '', droppedCount: 0, tokenCount: 0);
-
-    // Format all messages, skipping hidden group realism checkpoints
-    final formatted = _messages.map((m) {
-      if (m.characterId == '__director__') {
-        return '[Director: ${m.text}]';
-      }
-      return '${m.sender}: ${m.text}';
-    }).toList();
-    if (formatted.any((l) => _macroPattern.hasMatch(l))) {
-      debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
-    }
-
-    // If budget is very large or negative (unlimited), return everything
-    if (tokenBudget <= 0) {
-      return (history: formatted.join('\n'), droppedCount: 0, tokenCount: 0);
-    }
-
-    // Walk from newest to oldest, accumulating messages that fit
-    final included = <String>[];
-    int usedTokens = 0;
-    int droppedCount = 0;
-
-    for (int i = formatted.length - 1; i >= 0; i--) {
-      final msgText = formatted[i];
-      final msgTokens = await _countTokens(msgText);
-      if (usedTokens + msgTokens > tokenBudget && included.isNotEmpty) {
-        // This message would exceed budget — drop it and all older messages
-        droppedCount = i + 1;
-        break;
-      }
-      usedTokens += msgTokens;
-      included.insert(0, msgText);
-    }
-
-    // If messages were dropped, prepend a separator
-    String history = included.join('\n');
-    if (droppedCount > 0) {
-      history =
-          '[Earlier messages truncated — see summary above for context]\n$history';
-    }
-
-    return (
-      history: history,
-      droppedCount: droppedCount,
-      tokenCount: usedTokens,
-    );
-  }
-
-  /// Count tokens for a text string. Uses KoboldCpp's tokenizer when available,
-  /// falls back to chars/4 estimate for remote APIs.
-  Future<int> _countTokens(String text) async {
-    if (text.isEmpty) return 0;
-    // Use the KoboldCpp tokenizer if we're running locally
-    if (_llmProvider == null || _llmProvider!.isLocal) {
-      return _koboldService.countTokens(text);
-    }
-    // Fallback for remote APIs
-    return (text.length / 4).ceil();
-  }
 
   /// Reload the current session from the database without clearing messages first.
   /// Used after cloud sync or DB migration updates the database — preserves the
@@ -8623,456 +3597,6 @@ class ChatService extends ChangeNotifier {
     );
   }
 
-  // ── Action Suggestions ────────────────────────────────────────────────
-
-  /// Clear suggestions (called when user sends any message).
-  void clearSuggestions() {
-    if (_suggestedActions.isNotEmpty || _isGeneratingActions) {
-      _suggestedActions = [];
-      _isGeneratingActions = false;
-      notifyListeners();
-    }
-  }
-
-  /// Generate action suggestions on demand (called from UI button).
-  Future<void> generateActions() async {
-    if (_isGeneratingActions) return;
-    if (_llmProvider == null) return;
-    if (_messages.isEmpty) return;
-
-    _isGeneratingActions = true;
-    _suggestedActions = [];
-    notifyListeners();
-
-    try {
-      final llmService = _llmProvider!.activeService;
-      if (!llmService.isReady) {
-        debugPrint('[Actions] ✗ LLM not ready');
-        return;
-      }
-
-      // Build context from recent messages (last 6)
-      final recentMessages = _messages.length > 6
-          ? _messages.sublist(_messages.length - 6)
-          : _messages;
-
-      final contextText = recentMessages
-          .map((m) {
-            return '${m.sender}: ${m.text}';
-          })
-          .join('\n');
-
-      final userName = _userPersonaService.persona.name;
-
-      final prompt =
-          'Suggest 4 short actions $userName could do next. '
-          'Each action must be a BRIEF LABEL (5-10 words max) describing what to do, NOT a full response. '
-          'Think of these as button labels or menu items.\n\n'
-          'Examples of GOOD actions:\n'
-          '1. Kiss her and pull her closer\n'
-          '2. Ask about her day at work\n'
-          '3. Tease her by pulling away\n'
-          '4. Suggest moving somewhere private\n\n'
-          'Examples of BAD actions (too long, too detailed):\n'
-          '1. *I lean in and press my lips against hers, tasting...*\n\n'
-          'Recent conversation:\n$contextText\n\n'
-          'Write 4 short action labels for $userName (numbered 1-4, one per line):';
-
-      final params = GenerationParams(
-        prompt: prompt,
-        maxLength: 300,
-        temperature: 0.8,
-        stopSequences: ['\n\n\n'],
-      );
-
-      String responseText = '';
-      await for (final chunk in llmService.generateStream(params)) {
-        responseText += chunk;
-      }
-      responseText = responseText.trim();
-
-      debugPrint('[Actions] Raw response:\n$responseText');
-
-      // Parse numbered list: "1. Action", "-", "*", or bullet
-      final lines = responseText.split('\n');
-      var actions = <String>[];
-
-      for (final line in lines) {
-        var cleanLine = line
-            .trim()
-            .replaceAll(RegExp(r'^\*+|\*+$|^_+|_+$'), '')
-            .trim();
-        final match = RegExp(
-          r'^\s*(?:\d+[\.\)]|[-*•]|)\s*(.+)$',
-        ).firstMatch(cleanLine);
-        if (match != null) {
-          final action = match.group(1)!.trim().replaceAll(RegExp(r'\*$'), '');
-          // Ignore conversational filler lines
-          if (action.isNotEmpty &&
-              !action.toLowerCase().contains('here are') &&
-              !action.endsWith(':')) {
-            actions.add(action);
-          }
-        }
-      }
-
-      // Fallback if LLM just output raw lines
-      if (actions.isEmpty) {
-        for (final line in lines) {
-          final cleanLine = line.trim();
-          if (cleanLine.isNotEmpty &&
-              !cleanLine.endsWith(':') &&
-              !cleanLine.toLowerCase().contains('here are')) {
-            actions.add(cleanLine);
-          }
-        }
-      }
-
-      if (actions.isNotEmpty) {
-        _suggestedActions = actions.take(6).toList(); // cap at 6
-        debugPrint(
-          '[Actions] ✅ Generated ${_suggestedActions.length} suggestions',
-        );
-      } else {
-        debugPrint('[Actions] ✗ Could not parse any actions from response');
-      }
-    } catch (e) {
-      debugPrint('[Actions] ✗ Generation failed: $e');
-    } finally {
-      _isGeneratingActions = false;
-      notifyListeners();
-    }
-  }
-
-  // ── Objective System ───────────────────────────────────────────────────
-
-  /// Load the active objectives for the current session from DB.
-  Future<void> _loadActiveObjectives() async {
-    if (_activeCharacter == null || _currentSessionId == null) {
-      _activeObjectives = [];
-      _messagesSinceLastCheck = 0;
-      _isCheckingCompletion = false;
-      _summaryPaused =
-          false; // explicit secondary zero for _summaryPaused (symmetric; _loadActiveObjectives empty hygiene)
-      _isSummaryGenerating =
-          false; // secondary zero in _loadActiveObjectives empty (0-session hygiene for summary flag)
-      _userMessagesSinceLastPeriodicEval = 0;
-      _isExtractingFacts =
-          false; // secondary fact flag + counter zero in _loadActiveObjectives empty (0-session hygiene; fact_extraction)
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      _evolutionError =
-          ''; // explicit evo flag/status/error zero in _loadActiveObjectives empty (0-session hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
-      return;
-    }
-    final charId = _getCharacterIdFromCard(_activeCharacter!);
-    try {
-      _activeObjectives = await _db.getActiveObjectives(
-        charId,
-        chatId: _currentSessionId!,
-      );
-      for (final obj in _activeObjectives) {
-        debugPrint(
-          '[Objective] Loaded: ${obj.objective} (Primary: ${obj.isPrimary})',
-        );
-      }
-    } catch (e) {
-      debugPrint(
-        '[Objective] Failed to load (will run without objectives this session): $e',
-      );
-      _activeObjectives = [];
-    }
-    notifyListeners(); // Central _disposed guard in ChatService overrides now protects this (and all other) post-async notify sites. Per-site try/catch removed (deletion part of rec 2 task); see god _disposed + notify override + setActiveCharacter:2205 comment.
-  }
-
-  /// Build the prompt injection text for the active objectives.
-  /// Wording intensity varies based on injection depth for the primary objective.
-  /// Secondary objectives are injected as ambient background goals.
-  String _getObjectiveInjection() {
-    // Thin delegation (full in AuthorNoteBuilder per step 8). Objective state mgmt
-    // (lists, getters, tasksFor) stays in god (objective_service is later step).
-    return _authorNoteBuilder.buildObjectiveInjection();
-  }
-
-  /// Set a new objective for the current session (or for a specific character when in group mode).
-  ///
-  /// [autoGenerateTasks] defaults to false. User-created objectives (typed in the UI) should
-  /// not auto-generate subtasks — the user is in control of their own quests and can use the
-  /// explicit "Generate Tasks" button if desired.
-  ///
-  /// Autonomous objectives proposed by the character (via the realism "proposed_objective"
-  /// evals) pass true so that the character's self-generated goals come with concrete
-  /// sequential tasks. This makes the AI-driven objectives feel organic and like something
-  /// the character is actively striving to accomplish.
-  Future<void> setObjective(
-    String goal, {
-    bool isPrimary = true,
-    CharacterCard? targetCharacter,
-    bool autoGenerateTasks = false,
-  }) async {
-    if (goal.trim().isEmpty) return;
-    if (_currentSessionId == null) return;
-
-    CharacterCard? target = targetCharacter;
-    if (target == null) {
-      if (_activeGroup != null) {
-        // During per-speaker group realism evals (which propose autonomous objectives),
-        // _activeCharacter is temporarily impersonated to the evaluated speaker. Prefer it
-        // so the character's own internal goal attaches to *them*, not nextCharacter.
-        final currentIsGroupMember =
-            _activeCharacter != null &&
-            _groupCharacters.any(
-              (c) =>
-                  _getCharacterIdFromCard(c) ==
-                  _getCharacterIdFromCard(_activeCharacter!),
-            );
-        if (currentIsGroupMember) {
-          target = _activeCharacter;
-        } else {
-          target = nextCharacter ?? _groupCharacters.firstOrNull;
-        }
-      } else {
-        target = _activeCharacter;
-      }
-    }
-    if (target == null) return;
-
-    final charId = _getCharacterIdFromCard(target);
-
-    if (isPrimary) {
-      final existing = await _db.getObjectivesForCharacter(
-        charId,
-        chatId: _currentSessionId,
-      );
-      for (final obj in existing) {
-        if (obj.active && obj.isPrimary) {
-          await _db.updateObjective(
-            ObjectivesCompanion(
-              id: drift.Value(obj.id),
-              isPrimary: const drift.Value(false),
-            ),
-          );
-        }
-      }
-    } else {
-      final currentSecondaries = secondaryObjectives;
-      if (currentSecondaries.length >= 2) {
-        for (int i = 0; i < currentSecondaries.length - 1; i++) {
-          await _db.updateObjective(
-            ObjectivesCompanion(
-              id: drift.Value(currentSecondaries[i].id),
-              active: const drift.Value(false),
-            ),
-          );
-        }
-      }
-    }
-
-    final newId = const Uuid().v4();
-    await _db.insertObjective(
-      ObjectivesCompanion.insert(
-        id: newId,
-        characterId: charId,
-        objective: goal.trim(),
-        chatId: drift.Value(_currentSessionId),
-        active: const drift.Value(true),
-        isPrimary: drift.Value(isPrimary),
-      ),
-    );
-
-    await _loadActiveObjectives();
-    _messagesSinceLastCheck = 0;
-
-    if (autoGenerateTasks) {
-      try {
-        final forChar = await getActiveObjectivesFor(target);
-        final matches = forChar.where((o) => o.id == newId);
-        final addedObj = matches.isNotEmpty ? matches.first : null;
-        if (addedObj != null) {
-          unawaited(
-            generateObjectiveTasks(
-              addedObj,
-              taskCount: 3,
-              nsfw: false,
-            ), // step 11 thin (full in objective_proposal)
-          );
-        }
-      } catch (_) {
-        // Objective created successfully; task generation is best-effort and non-fatal.
-        // User can always tap "Generate Tasks" manually.
-      }
-    }
-  }
-
-  /// Generate subtasks for the current objective using the LLM.
-  /// Clears existing tasks first so regen always produces a clean slate.
-  // Thin delegation (full generateObjectiveTasks + 2000 budget + central strip + proposal
-  // handling in objective_proposal step 11; objective mgmt coordination / list / load / db
-  // updates stayed thin in god per plan for step9/11; "thin delegation here; full objective
-  // proposal in step 11").
-  Future<void> generateObjectiveTasks(
-    Objective obj, {
-    int taskCount = 5,
-    bool nsfw = false,
-  }) => _objectiveProposal.generateObjectiveTasks(
-    obj,
-    taskCount: taskCount,
-    nsfw: nsfw,
-  );
-
-  /// Marks the first uncompleted task matching taskDesc as completed (best-effort side-effect
-  /// for auto-complete in checkTaskCompletionInBackground currentTask YES path).
-  /// (Thin delegation; full mutation logic here in god per plan for step 11 to keep list/db
-  /// mutation thin/stayed in god; leaf calls via cb. Matches toggleTask pattern exactly.)
-  Future<void> markTaskCompleted(Objective obj, String taskDesc) async {
-    final tasks = tasksForObjective(obj);
-    final idx = tasks.indexWhere(
-      (t) => (t['description'] as String) == taskDesc && t['completed'] != true,
-    );
-    if (idx < 0) return;
-    tasks[idx]['completed'] = true;
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        tasks: drift.Value(jsonEncode(tasks)),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Manually toggle a task's completion status.
-  Future<void> toggleTask(Objective obj, int taskIndex) async {
-    final tasks = tasksForObjective(obj);
-    if (taskIndex < 0 || taskIndex >= tasks.length) return;
-
-    tasks[taskIndex]['completed'] = !(tasks[taskIndex]['completed'] as bool);
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        tasks: drift.Value(jsonEncode(tasks)),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Update the description of a specific task.
-  Future<void> updateTask(
-    Objective obj,
-    int taskIndex,
-    String newDescription,
-  ) async {
-    final tasks = tasksForObjective(obj);
-    if (taskIndex < 0 || taskIndex >= tasks.length) return;
-    if (newDescription.trim().isEmpty) return;
-
-    tasks[taskIndex]['description'] = newDescription.trim();
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        tasks: drift.Value(jsonEncode(tasks)),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Clear the active objective.
-  Future<void> clearObjective(Objective obj) async {
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        active: const drift.Value(false),
-      ),
-    );
-    await _loadActiveObjectives();
-    _messagesSinceLastCheck = 0;
-  }
-
-  /// Update the injection depth for the active objective.
-  Future<void> updateObjectiveDepth(Objective obj, int depth) async {
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        injectionDepth: drift.Value(depth),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Add a manually created task to the active objective.
-  Future<void> addManualTask(Objective obj, String description) async {
-    if (description.trim().isEmpty) return;
-    final tasks = tasksForObjective(obj);
-    tasks.add({'description': description.trim(), 'completed': false});
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        tasks: drift.Value(jsonEncode(tasks)),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Remove a task from the active objective.
-  Future<void> removeTask(Objective obj, int taskIndex) async {
-    final tasks = tasksForObjective(obj);
-    if (taskIndex < 0 || taskIndex >= tasks.length) return;
-    tasks.removeAt(taskIndex);
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        tasks: drift.Value(jsonEncode(tasks)),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Update how often task completion is checked.
-  Future<void> updateCheckFrequency(Objective obj, int frequency) async {
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        checkFrequency: drift.Value(frequency),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
-  /// Check if the current task has been completed (called periodically).
-  /// Manually trigger a completion check (called from UI "Check now" button).
-  void forceCheckCompletion() {
-    if (_activeObjectives.isEmpty) return;
-    _checkTaskCompletionInBackground(); // step 11 thin (full in objective_proposal)
-    notifyListeners(); // trigger UI to show spinner
-  }
-
-  /// Whether a completion check is currently running.
-  bool get isCheckingCompletion => _isCheckingCompletion;
-
-  /// Synchronous version — awaits the check. Used pre-generation.
-  Future<void> _maybeCheckTaskCompletionSync() async {
-    if (_activeObjectives.isEmpty ||
-        _llmProvider == null ||
-        _isCheckingCompletion) {
-      return;
-    }
-
-    _messagesSinceLastCheck++;
-    final freq = _realismEnabled
-        ? 1
-        : (primaryObjective?.checkFrequency ??
-              _activeObjectives.first.checkFrequency);
-    if (_messagesSinceLastCheck < freq) return;
-    _messagesSinceLastCheck = 0;
-
-    await _checkTaskCompletionInBackground(); // step 11 thin (full in objective_proposal)
-  }
-
-  // Thin delegation (full _checkTaskCompletionInBackground + 2000 budget + central strip in
-  // objective_proposal step 11; objective mgmt coordination / isChecking flag / load / db
-  // updates stayed thin in god per plan for step9/11; "thin delegation here; full objective
-  // proposal in step 11").
-  Future<void> _checkTaskCompletionInBackground() =>
-      _objectiveProposal.checkTaskCompletionInBackground();
 
   // Two god-owned "since last" counters for the independent periodic features.
   // Facts/auto-persona uses the first (tied to autoPersonaInterval).
@@ -9126,17 +3650,29 @@ class ChatService extends ChangeNotifier {
     }
 
     if (autoEvolution && !_isEvolvingCharacter) {
-      // Use actual user message count + persisted evolution count for robust scheduling.
-      // This makes "Evolve every X messages" (per the slider) work reliably based on
-      // conversation progress, even after loads/reloads or mid-chat enable.
-      // Previously relied solely on mutable side-counter which could appear not to fire
-      // on the expected schedule after context changes.
+      // Cadence is "evolve every N turns vs the persisted evolution count" — robust
+      // across loads/reloads (no fragile side-counter). In a GROUP this counts the
+      // speaker's OWN turns + their OWN evolution count, so each character evolves
+      // every N of THEIR turns. (Previously a group counted TOTAL user messages, so
+      // a 2-character group evolved each character ~twice as fast, worse with more
+      // characters — see the user report.) 1:1 counts user messages as before.
       final interval = _storageService.memorySettings.evolutionInterval;
-      final userMsgCount = _messages.where((m) => m.isUser).length;
-      final currentEvos = _characterEvolutionCount;
-      final expectedEvos = (interval > 0) ? (userMsgCount ~/ interval) : 0;
-      if (expectedEvos > currentEvos) {
-        evoDue = true;
+      if (interval > 0) {
+        if (_activeGroup != null && _activeCharacter != null) {
+          final sid = _getCharacterIdFromCard(_activeCharacter!);
+          final speakerTurns = _messages
+              .where((m) => !m.isUser && m.characterId == sid)
+              .length;
+          final speakerEvos = _groupEvolutionCounts[sid] ?? 0;
+          if (speakerTurns ~/ interval > speakerEvos) {
+            evoDue = true;
+          }
+        } else {
+          final userMsgCount = _messages.where((m) => m.isUser).length;
+          if (userMsgCount ~/ interval > _characterEvolutionCount) {
+            evoDue = true;
+          }
+        }
       }
     }
 
@@ -9279,213 +3815,15 @@ class ChatService extends ChangeNotifier {
   final Map<String, String> _evolvedPersonalities = {};
   final Map<String, String> _evolvedScenarios = {};
   int _characterEvolutionCount = 0;
+
+  /// Kept as an instance getter (not moved to the evolution part) because test
+  /// fakes (`FakeChatService implements ChatService`) override it — extension
+  /// getters are statically dispatched and cannot be overridden via `implements`.
   int get characterEvolutionCount => _characterEvolutionCount;
-
-  /// Public getter: raw evolved personality delta for the active character (null if none).
-  /// This bypasses the enabled flag and [Character Growth] layering (returns the stored growth text only).
-  /// In group mode, returns null — use getEvolvedPersonalityFor(card) instead.
-  /// Injection paths use the _getEffectivePersonality thin (delegates to leaf for full base + layered block when enabled).
-  /// Legacy/compat name retained for public surface (see god coord note in step 14 plan).
-  String? get getEffectivePersonality {
-    if (_activeCharacter == null) return null;
-    final charId = _getCharacterIdFromCard(_activeCharacter!);
-    final evolved = _evolvedPersonalities[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Public getter: raw evolved scenario delta for the active character (null if none).
-  /// This bypasses the enabled flag and [Current Situation] layering.
-  /// In group mode, returns null — use getEvolvedScenarioFor(card) instead.
-  /// See note on getEffectivePersonality (raw vs layered via thins/leaf).
-  String? get getEffectiveScenario {
-    if (_activeCharacter == null) return null;
-    final charId = _getCharacterIdFromCard(_activeCharacter!);
-    final evolved = _evolvedScenarios[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Get evolved personality for a specific character (works in both 1:1 and group mode).
-  String? getEvolvedPersonalityFor(CharacterCard card) {
-    final charId = _getCharacterIdFromCard(card);
-    final evolved = _evolvedPersonalities[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Get evolved scenario for a specific character (works in both 1:1 and group mode).
-  String? getEvolvedScenarioFor(CharacterCard card) {
-    final charId = _getCharacterIdFromCard(card);
-    final evolved = _evolvedScenarios[charId];
-    return (evolved != null && evolved.isNotEmpty) ? evolved : null;
-  }
-
-  /// Get evolution count for a specific character.
-  int getEvolutionCountFor(CharacterCard card) {
-    final charId = _getCharacterIdFromCard(card);
-    return _groupEvolutionCounts[charId] ?? 0;
-  }
 
   /// Per-character evolution counts (for group mode).
   final Map<String, int> _groupEvolutionCounts = {};
 
-  /// Load evolved fields for all characters in the active group from the
-  /// session's JSON map columns (group_evolved_personalities/scenarios).
-  Future<void> _loadGroupEvolvedFields() async {
-    if (_activeGroup == null || _currentSessionId == null) return;
-    try {
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session == null) return;
-      final personalities = _tryParseJsonMap(session.groupEvolvedPersonalities);
-      final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-      for (final ch in _groupCharacters) {
-        final charId = _getCharacterIdFromCard(ch);
-        _evolvedPersonalities[charId] = personalities[charId] ?? '';
-        _evolvedScenarios[charId] = scenarios[charId] ?? '';
-        _groupEvolutionCounts[charId] = 0;
-      }
-    } catch (e) {
-      debugPrint('[Evolution] Failed to load group evolved fields: $e');
-    }
-  }
-
-  /// Whether evolution extraction is currently running.
-  bool get isEvolvingCharacter => _isEvolvingCharacter;
-
-  /// Current status message during evolution.
-  String get evolutionStatus => _evolutionStatus;
-
-  /// Error message from the last evolution attempt (empty if no error).
-  String get evolutionError => _evolutionError;
-
-  // Duplicate old triggerEvolutionNow body excised (thin delegate to leaf is earlier near late final; deletion part of task).
-
-  // Old _triggerCharacterEvolution + _extractCharacterEvolution bodies excised
-  // (full logic now in evolution_service leaf step 14; god thins call leaf;
-  // target selection / LLM / parse / persist now in leaf via cbs; deletion part of task).
-  // (The god thin _triggerCharacterEvolution and triggerEvolutionNow are defined
-  // earlier near the late final.)
-
-  /// Reset evolved fields back to original for a character.
-  /// In 1:1 mode, targets the active character. In group mode, pass an explicit target.
-  Future<void> resetCharacterEvolution({CharacterCard? target}) async {
-    final card = target ?? _activeCharacter;
-    if (_currentSessionId == null) return;
-    final charId = card != null ? _getCharacterIdFromCard(card) : null;
-
-    if (_activeGroup != null && charId != null) {
-      // Group mode: remove this char's key from both JSON map columns
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session != null) {
-        final personalities = _tryParseJsonMap(
-          session.groupEvolvedPersonalities,
-        );
-        final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-        personalities.remove(charId);
-        scenarios.remove(charId);
-        await _db.patchSession(
-          SessionsCompanion(
-            id: drift.Value(_currentSessionId!),
-            groupEvolvedPersonalities: drift.Value(jsonEncode(personalities)),
-            groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
-          ),
-        );
-      }
-    } else {
-      // 1:1 mode: clear plain columns
-      await _db.patchSession(
-        SessionsCompanion(
-          id: drift.Value(_currentSessionId!),
-          evolvedPersonality: const drift.Value(''),
-          evolvedScenario: const drift.Value(''),
-          evolutionCount: const drift.Value(0),
-        ),
-      );
-    }
-
-    if (charId != null) {
-      _evolvedPersonalities.remove(charId);
-      _evolvedScenarios.remove(charId);
-      _groupEvolutionCounts.remove(charId);
-    }
-    if (_activeCharacter != null &&
-        (charId == null ||
-            _getCharacterIdFromCard(_activeCharacter!) == charId)) {
-      _characterEvolutionCount = 0;
-    }
-    notifyListeners();
-    debugPrint(
-      '[Evolution] Reset to original for ${card?.name ?? "active character"}',
-    );
-  }
-
-  /// Update the evolved personality text manually (user edits).
-  /// In group mode, pass an explicit target character.
-  Future<void> updateEvolvedPersonality(
-    String text, {
-    CharacterCard? target,
-  }) async {
-    if (_currentSessionId == null) return;
-    final card = target ?? _activeCharacter;
-    final charId = card != null ? _getCharacterIdFromCard(card) : null;
-
-    if (_activeGroup != null && charId != null) {
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session != null) {
-        final personalities = _tryParseJsonMap(
-          session.groupEvolvedPersonalities,
-        );
-        personalities[charId] = text;
-        await _db.patchSession(
-          SessionsCompanion(
-            id: drift.Value(_currentSessionId!),
-            groupEvolvedPersonalities: drift.Value(jsonEncode(personalities)),
-          ),
-        );
-      }
-    } else {
-      await _db.patchSession(
-        SessionsCompanion(
-          id: drift.Value(_currentSessionId!),
-          evolvedPersonality: drift.Value(text),
-        ),
-      );
-    }
-    if (charId != null) _evolvedPersonalities[charId] = text;
-    notifyListeners();
-  }
-
-  /// Update the evolved scenario text manually (user edits).
-  /// In group mode, pass an explicit target character.
-  Future<void> updateEvolvedScenario(
-    String text, {
-    CharacterCard? target,
-  }) async {
-    if (_currentSessionId == null) return;
-    final card = target ?? _activeCharacter;
-    final charId = card != null ? _getCharacterIdFromCard(card) : null;
-
-    if (_activeGroup != null && charId != null) {
-      final session = await _db.getSessionById(_currentSessionId!);
-      if (session != null) {
-        final scenarios = _tryParseJsonMap(session.groupEvolvedScenarios);
-        scenarios[charId] = text;
-        await _db.patchSession(
-          SessionsCompanion(
-            id: drift.Value(_currentSessionId!),
-            groupEvolvedScenarios: drift.Value(jsonEncode(scenarios)),
-          ),
-        );
-      }
-    } else {
-      await _db.patchSession(
-        SessionsCompanion(
-          id: drift.Value(_currentSessionId!),
-          evolvedScenario: drift.Value(text),
-        ),
-      );
-    }
-    if (charId != null) _evolvedScenarios[charId] = text;
-    notifyListeners();
-  }
 
   /// Get the list of character IDs to search for RAG memory retrieval.
   /// Reads the current character's `memorySources` from the DB and includes
@@ -9600,428 +3938,13 @@ class ChatService extends ChangeNotifier {
   // The sub-builders themselves are still instantiated and passed to the composer.
   // Chance Time remains separate (it is not part of the per-turn realism state bundle).
 
-  /// Injects a Chance Time event into the character's response prompt.
-  /// Placed AFTER the character name suffix for maximum recency weight.
-  /// Consumed after one use (cleared after response generation).
-  String _getChanceTimeInjection() {
-    // Thin delegation (full in ChaosInjection per step 8; UI flags stayed in god per plan).
-    return _chaosInjection.buildChanceTimeInjection();
-  }
-
-  // ── LLM Eval Thins (step 9; full in LlmEvalEngine) + Needs Impact Thins (consolidated) + Objective Proposal Thins (step 11) ──
-  // 0 new god privates beyond required thin delegates (fire/strip/extract/evaluate* thins + _runPostGenNeedsChecks thin (consolidated to evaluator; the prior separate _check* bodies excised as dead/vestigial per task) + generate/_check thins for objective; void_ count 15; +1 late final); thins only (public surface for now per plan); objective proposal coordination + some
-  // prompt/obj mgmt + post-gen needs orchestration (impersonation dance, pre/post group scalars, long-gen, metadata attach) stayed thin in god per plan (qualified in objective_proposal header + here + test + MD).
-  // All call sites (5 firing points for realism evals now via realism_evals step 10, gen/check now via objective_proposal step 11, proposal, direct fire/strip/extract in eval paths, post-gen needs) now delegate; non-eval uses ... also route via these thins (centralized, no parallel).
-
-  Future<String?> _fireLLMEval(
-    String prompt, {
-    void Function(String)? onChunk,
-  }) => _llmEvalEngine.fireLLMEval(prompt, onChunk: onChunk);
-
-  String _stripThinkBlocks(String text) =>
-      _llmEvalEngine.stripThinkBlocks(text);
-
-  int? _extractJsonInt(String text, String key) =>
-      _llmEvalEngine.extractJsonInt(text, key);
-
-  bool? _extractJsonBool(String text, String key) =>
-      _llmEvalEngine.extractJsonBool(text, key);
-
-  // KoboldCpp receives HTTP requests in wire order via loopback.
-  // A small stagger prevents TCP timing from reordering concurrent
-  // eval dispatches, ensuring KoboldCpp's FIFO queue (which serializes
-  // internally) processes evals in our intended order rather than
-  // reverse or interleaved. Zero wall time added — KoboldCpp serializes
-  // anyway, so the stagger just ensures already-in-flight ordering.
-  static const _kEvalDispatchStagger = Duration(milliseconds: 50);
-
-  Future<void> _evaluateRelationshipCall({void Function(String)? onChunk}) =>
-      _realismEvals.evaluateRelationshipCall(onChunk: onChunk);
-
-  Future<void> _evaluateEmotionalStateCall({void Function(String)? onChunk}) =>
-      _realismEvals.evaluateEmotionalStateCall(onChunk: onChunk);
-
-  Future<void> _evaluatePhysicalStateCall({void Function(String)? onChunk}) =>
-      _realismEvals.evaluatePhysicalStateCall(onChunk: onChunk);
-
-  Future<void> _evaluateNarrativeCall({void Function(String)? onChunk}) =>
-      _realismEvals.evaluateNarrativeCall(onChunk: onChunk);
-
-  Future<void> _evaluateOneShotCall({void Function(String)? onChunk}) =>
-      _realismEvals.evaluateOneShotCall(onChunk: onChunk);
-
-  /// One-shot trust repair evaluator.
-  ///
-  /// Called automatically on the user's next message after a severe trust drop
-  /// (≥ -20 delta). Replaces the normal relationship eval for that turn.
-  /// The LLM weighs the explanation against character persona and chat history,
-  /// returning a trust_recovery value (0–60). Recovery is capped to prevent
-  /// instant restoration from Absolute Distrust.
-  Future<void> _evaluateTrustRepairCall(
-    String userExplanation, {
-    void Function(String)? onChunk,
-  }) async {
-    if (!_realismEnabled || _activeCharacter == null) return;
-
-    if (_activeCharacter == null) {
-      // Group chat or other mode — relationship evals not supported in this path yet
-      return;
-    }
-    final charName = _activeCharacter!.name;
-    final persona = _activeCharacter!.personality;
-    final recentCount = _messages.length < 10 ? _messages.length : 10;
-    final history = _messages.reversed
-        .take(recentCount)
-        .toList()
-        .reversed
-        .map((m) => '${m.sender}: ${m.displayText}')
-        .join('\n');
-
-    final prompt =
-        'You are evaluating whether $charName should partially restore trust '
-        'after a severe breach caused by the previous interaction.\n\n'
-        'Character Persona: $persona\n\n'
-        'Recent chat history (last ~10 messages):\n$history\n\n'
-        'The user\'s trust-repair explanation is: "$userExplanation"\n\n'
-        'Evaluate ONLY whether this explanation is convincing given:\n'
-        '1. The character\'s personality — are they forgiving, stubborn, paranoid, naive?\n'
-        '2. The plausibility of the explanation against the chat history\n'
-        '3. Whether the explanation contradicts established facts\n\n'
-        'Rules:\n'
-        '- trust_recovery: 0 (rejected) to 60 (fully convincing)\n'
-        '- Paranoid/skeptical characters: give 0–20 even for good explanations\n'
-        '- Forgiving/naive characters: may give 30–60 for plausible explanations\n'
-        '- Do NOT give 60 unless the explanation perfectly resolves the breach\n'
-        '- "reason" must be 1 short sentence from the character\'s POV\n\n'
-        'Respond with ONLY: {"trust_recovery": <0-60>, "verdict": "accepted|partial|rejected", "reason": "<brief>"}\n';
-
-    try {
-      debugPrint('[Realism:TrustRepair] Evaluating repair attempt...');
-      final raw = await _fireLLMEval(prompt, onChunk: onChunk);
-      if (raw == null) return;
-
-      final text = _stripThinkBlocks(raw).trim();
-
-      final verdictMatch = RegExp(
-        r'"verdict"\s*:\s*"([^"]+)"',
-      ).firstMatch(text);
-      final reasonMatch = RegExp(r'"reason"\s*:\s*"([^"]*)"').firstMatch(text);
-
-      final recovery = (_extractJsonInt(text, 'trust_recovery') ?? 0).clamp(
-        0,
-        60,
-      );
-      final verdict = verdictMatch?.group(1) ?? 'rejected';
-      final reason = reasonMatch?.group(1) ?? '';
-
-      if (recovery > 0) {
-        _relationshipService.applyTrustDelta(recovery);
-        debugPrint(
-          '[Realism:TrustRepair] $verdict — recovered $recovery → ${_relationshipService.trustLevel} ($reason)',
-        );
-      } else {
-        debugPrint('[Realism:TrustRepair] Rejected — no recovery ($reason)');
-      }
-
-      // Surface verdict in message metadata so swipe history can record it
-      _pendingRealismMetadata = {
-        ...?_pendingRealismMetadata,
-        'trust_repair_verdict': verdict,
-        'trust_repair_recovery': recovery,
-        if (reason.isNotEmpty) 'trust_repair_reason': reason,
-      };
-
-      _saveChat();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[Realism:TrustRepair] Failed: $e');
-    }
-  }
-
-  Map<String, dynamic> _captureRealismState({Map<String, int>? preTurn}) {
-    final state = {
-      'affectionScore': _relationshipService.affectionScore,
-      'relationshipTier': _relationshipService.relationshipTier,
-      'longTermScore': _relationshipService.longTermScore,
-      'longTermTier': _relationshipService.longTermTier,
-      'turnsSinceLongTermCheck': _relationshipService.turnsSinceLongTermCheck,
-      'shortTermDeltasSummary': _relationshipService.shortTermDeltasSummary,
-      'moodDecayCounter': _moodDecayCounter,
-      'characterEmotion': _characterEmotion,
-      'emotionIntensity': _emotionIntensity,
-      'timeOfDay': _timeService.timeOfDay,
-      'dayCount': _timeService.dayCount,
-      'startDayOfWeek': _timeService.startDayOfWeekAnchor,
-      'arousalLevel': _nsfwService.arousalLevel,
-      'cooldownTurnsRemaining': _nsfwService.cooldownTurnsRemaining,
-      'cooldownTurnsTotal': _nsfwService.cooldownTurnsTotal,
-      'trustLevel': _relationshipService.trustLevel,
-      'activeFixation': _relationshipService.activeFixation,
-      'fixationLifespan': _relationshipService.fixationLifespan,
-      'spatialStance': _relationshipService.spatialStance,
-    };
-
-    // Include needs snapshot when the simulation is active (clean port).
-    // Note: 'enabled' is deliberately omitted from the per-message snapshot.
-    // The enabled flag is authoritative from the character card / current session
-    // (see setNeedsSimEnabled and ext seeding). Snapshots only carry the vector
-    // for timeline continuity while the sim is on. This prevents historical
-    // snapshots from resurrecting a stale enabled state after a mid-chat toggle-off.
-    if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
-      // Explicit <String, dynamic> for the needs snapshot so that 'deltas' (Map with
-      // mixed int/String values from computeNeedsDeltasWithReasons) can be attached
-      // without runtime generic value-type violation (the 'vector' entry statically
-      // infers Map<String,int>, which would lock the literal's value type and reject
-      // the deltas map on []=).
-      final needsSnap = <String, dynamic>{
-        'vector': Map<String, int>.from(_needsSimulation.vector),
-      };
-      state['needs'] = needsSnap;
-
-      final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-        preTurn ?? const <String, int>{},
-      );
-      if (needsDeltas.isNotEmpty) {
-        needsSnap['deltas'] = needsDeltas;
-      }
-    }
-
-    return state;
-  }
-
-  // ── Phase 1: Per-character realism evaluation for the upcoming speaker ────
-  /// Runs targeted realism evaluation for the specific character who is about
-  /// to speak next in a group chat. This is the core of making realism work
-  /// on a per-character, turn-timed basis.
-  ///
-  /// Uses temporary impersonation of _activeCharacter so that all existing
-  /// realism eval methods (_evaluateOneShotCall, _evaluateRelationshipCall, etc.)
-  /// and their parsing/inertia logic are reused without duplication.
-  Future<void> _evaluateRealismForUpcomingGroupSpeaker(
-    CharacterCard speaker,
-  ) async {
-    if (!isGroupRealismActive || observerMode) return;
-
-    final charId = _getCharacterIdFromCard(speaker);
-    if (charId.isEmpty) return;
-
-    debugPrint(
-      '[Realism:Group] Running pre-turn eval for upcoming speaker: ${speaker.name} ($charId)',
-    );
-
-    // Save previous 1:1 context (normally null in pure group sessions)
-    final previousActiveCharacter = _activeCharacter;
-
-    // Impersonate this speaker for the duration of the eval so all existing
-    // LLM eval methods, guards, name/personality reads, and delta application
-    // logic work exactly as they do for 1:1 chats.
-    _activeCharacter = speaker;
-
-    // Group non-observer: ensure this definite speaker receives their per-turn needs decay
-    // (central tick in sendMessage is skipped for groups to support random turn order without
-    // always decaying the 'first' member). Snapshot the pre-decay value for chips/realism_state
-    // *before* applying this turn's decay, then decay the speaker's map entry, then load scalars.
-    if (_activeGroup != null && !_observerMode && _needsSimEnabled) {
-      final sidForDecay = charId;
-      final currentForSpeaker = _getGroupNeeds(sidForDecay);
-      final preDecay = currentForSpeaker.isNotEmpty
-          ? Map<String, int>.from(currentForSpeaker)
-          : {
-              for (final k in NeedsSimulation.needKeys)
-                k: NeedsSimulation.needDefaults[k] ?? 80,
-            };
-      // Stash the true pre-decay for this speaker so post-gen chip delta computation
-      // (and regen) see the correct baseline including the decay portion of the turn.
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['needs_pre_turn_vector'] = preDecay;
-
-      // Apply one tick of decay directly to this speaker's group entry (custom rates or defaults).
-      final decayed = Map<String, int>.from(preDecay);
-      final customRates = _groupDecayRates;
-      for (final key in NeedsSimulation.needKeys) {
-        final cur = decayed[key] ?? 80;
-        final decay = customRates[key] ?? NeedsSimulation.needDecay[key] ?? 0;
-        decayed[key] = (cur - decay).clamp(0, 100);
-      }
-      _setGroupNeeds(sidForDecay, decayed);
-
-      // Now load the post-decay state into scalars for the remainder of the speaker eval + prompt injection.
-      _loadGroupRealismIntoScalars(charId);
-    } else {
-      // Load this speaker's persisted group realism state into the scalar fields
-      // that the eval methods will read and mutate.
-      _loadGroupRealismIntoScalars(charId);
-    }
-
-    // Phase 2: Ensure hidden inter-character relationship tracking is seeded
-    // for all other group members (neutral 0). This happens on the speaker's
-    // first turn with realism so the invisible feelings map is always present.
-    _relationshipService.ensureInterCharacterRelationshipsSeeded(charId);
-
-    _isEvaluatingRealism = true;
-    _realismEvalStreamText = '';
-    notifyListeners();
-
-    // Capture this speaker's pre-turn needs vector (before decay + eval)
-    Map<String, int>? preTurnVector;
-    if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
-      preTurnVector = Map<String, int>.from(_needsSimulation.vector);
-    }
-
-    // Temporarily load this speaker's personal objectives so the narrative
-    // evaluation (and one-shot) sees the correct primary/secondary context
-    // for "proposed_objective" generation. This is required for 1:1 parity.
-    final previousObjectives = List<Objective>.from(_activeObjectives);
-    final speakerObjectives = await getActiveObjectivesFor(speaker);
-    _activeObjectives = speakerObjectives.where((o) => o.active).toList();
-
-    void handleChunk(String chunk) {
-      _realismEvalStreamText += chunk;
-      _evalChunkTimer?.cancel();
-      _evalChunkTimer = Timer(const Duration(milliseconds: 150), () {
-        try {
-          notifyListeners();
-        } catch (_) {}
-      });
-    }
-
-    try {
-      // Respect early cancellation
-      if (_realismEvalCancelled) {
-        debugPrint(
-          '[Realism:Group] Evaluation cancelled before LLM calls for ${speaker.name}',
-        );
-        _realismEvalCancelled = false;
-        return;
-      }
-
-      if (_storageService.realismSettings.realismOneShotEval) {
-        await _evaluateOneShotCall(onChunk: handleChunk);
-      } else {
-        await Future.wait([
-          _evaluateRelationshipCall(onChunk: handleChunk),
-          Future.delayed(
-            _kEvalDispatchStagger,
-            () => _evaluateEmotionalStateCall(onChunk: handleChunk),
-          ),
-          Future.delayed(
-            _kEvalDispatchStagger * 2,
-            () => _evaluatePhysicalStateCall(onChunk: handleChunk),
-          ),
-          Future.delayed(
-            _kEvalDispatchStagger * 3,
-            () => _evaluateNarrativeCall(onChunk: handleChunk),
-          ),
-        ]);
-      }
-
-      // Handle cancellation after the eval calls
-      if (_realismEvalCancelled) {
-        debugPrint(
-          '[Realism:Group] Evaluation cancelled during/after LLM calls for ${speaker.name}',
-        );
-        _realismEvalCancelled = false;
-        return;
-      }
-
-      // Harvest the now-updated scalar fields back into this speaker's
-      // _groupRealism entry so prompt injection and UI see fresh values.
-      _saveScalarsIntoGroupRealism(charId);
-
-      // Synthesize metadata for timeline / chips (best-effort, same as 1:1 path)
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
-      _pendingRealismMetadata!['realism_state'] = _captureRealismState(
-        preTurn: preTurnVector,
-      );
-
-      if (_needsSimEnabled) {
-        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
-          preTurnVector ?? const <String, int>{},
-        );
-        if (needsDeltas.isNotEmpty) {
-          _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
-        }
-      }
-
-      _saveChat();
-    } finally {
-      // Always restore previous context and clear busy state
-      _activeCharacter = previousActiveCharacter;
-      _activeObjectives = previousObjectives;
-      _evalChunkTimer?.cancel();
-      _evalChunkTimer = null;
-      _isEvaluatingRealism = false;
-      notifyListeners();
-    }
-  }
-
-  /// Loads the given group character's realism values from _groupRealism into
-  /// the single-character scalar fields so the existing eval methods can
-  /// operate on them during impersonation.
-  void _loadGroupRealismIntoScalars(String charId) {
-    // Relationship (affection/trust/fix/tiers etc) now via service load helper (uses the same _getGroup* internally via cbs).
-    _relationshipService.loadRelationshipScalarsForSpeaker(charId);
-    // Nsfw (arousal + cooldown + nsfwEnabled per char) via service (extends prior arousal-only for full group parity).
-    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
-    _nsfwService.loadNsfwScalarsForSpeaker(charId);
-
-    _characterEmotion = _getGroupString(charId, 'emotion');
-    _emotionIntensity = _getGroupString(
-      charId,
-      'emotionIntensity',
-      defaultValue: 'moderate',
-    );
-
-    // Needs vector (if any persisted for this char)
-    final needs = _getGroupNeeds(charId);
-    if (needs.isNotEmpty) {
-      _needsSimulation.restoreFromSnapshot({'vector': needs});
-    } else if (_needsSimEnabled) {
-      // Fresh start for a group member who has never had needs for this group chat.
-      // Use full 100 to match 1:1 "new chat" behavior (prevents bleed perception).
-      _needsSimulation.initializeFresh();
-    }
-  }
-
-  /// Writes the current scalar realism fields back into the target group
-  /// character's _groupRealism entry after an impersonated eval round.
-  void _saveScalarsIntoGroupRealism(String charId) {
-    // Relationship scalars (affection/long/trust/fix/tiers/spatial) now via service.
-    _relationshipService.saveRelationshipScalarsToGroup(charId);
-    // Nsfw scalars (arousal + cooldown + enabled) now via service (for group per-char persistence parity).
-    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
-    _nsfwService.saveNsfwScalarsToGroup(charId);
-
-    if (_characterEmotion.isNotEmpty) {
-      _setGroupRealismValue(charId, 'emotion', _characterEmotion);
-    }
-    if (_emotionIntensity.isNotEmpty) {
-      _setGroupRealismValue(charId, 'emotionIntensity', _emotionIntensity);
-    }
-
-    // Persist current needs vector for this speaker
-    if (_needsSimulation.vector.isNotEmpty) {
-      _setGroupNeeds(charId, Map<String, int>.from(_needsSimulation.vector));
-    }
-  }
-
-  /// Public API: Focus the personal objectives of a specific group member so the
-  /// existing objective management UI and generation can operate on them.
-  /// Does nothing in 1:1 mode.
-  Future<void> focusObjectivesForGroupCharacter(CharacterCard character) async {
-    if (_activeGroup == null) return;
-    final charId = _getCharacterIdFromCard(character);
-    final objs = await _db.getObjectivesForCharacter(
-      charId,
-      chatId: _currentSessionId,
-    );
-    _activeObjectives = objs.where((o) => o.active).toList();
-    notifyListeners();
-  }
 
   /// Loads the active objectives for the given character in the current session.
   /// Safe to call from group objective UIs — does not mutate global _activeObjectives.
+  ///
+  /// Kept in the class body (not an extension) because [FakeChatService]
+  /// overrides it in golden tests — extension members are statically dispatched
+  /// and cannot be overridden.
   Future<List<Objective>> getActiveObjectivesFor(
     CharacterCard character,
   ) async {
@@ -10033,231 +3956,6 @@ class ChatService extends ChangeNotifier {
       debugPrint('[Objective] Failed to load for ${character.name}: $e');
       return const [];
     }
-  }
-
-  // ── Group Creation Baseline Seeding (bond/trust/emotion/time/day only) ──
-
-  /// Returns the immutable creation-time baseline realism values for a group member.
-  /// Only the allowed seeding fields are exposed: affection (bond), trust, emotion, timeOfDay, dayCount.
-  Map<String, dynamic> getBaselineSeedForGroupCharacter(
-    CharacterCard character,
-  ) {
-    if (_activeGroup == null) return {};
-    final charId = _getCharacterIdFromCard(character);
-    try {
-      final json = jsonDecode(_activeGroup!.baselineRealismState);
-      if (json is Map && json.containsKey(charId)) {
-        final data = json[charId] as Map<String, dynamic>? ?? {};
-        return {
-          'affection': (data['affection'] as num?)?.toInt() ?? 50,
-          'trust': (data['trust'] as num?)?.toInt() ?? 50,
-          'emotion': (data['emotion'] as String?) ?? 'neutral',
-          'emotionIntensity':
-              (data['emotionIntensity'] as String?) ?? 'moderate',
-          'timeOfDay': (data['timeOfDay'] as String?) ?? 'morning',
-          'dayCount': (data['dayCount'] as num?)?.toInt() ?? 1,
-        };
-      }
-    } catch (_) {}
-    return {
-      'affection': 50,
-      'trust': 50,
-      'emotion': 'neutral',
-      'emotionIntensity': 'moderate',
-      'timeOfDay': 'morning',
-      'dayCount': 1,
-    };
-  }
-
-  /// Updates the immutable creation baseline for a group member.
-  /// Only allowed fields are accepted. This should only be called during group creation seeding.
-  void setBaselineSeedForGroupCharacter(
-    CharacterCard character,
-    Map<String, dynamic> values,
-  ) {
-    if (_activeGroup == null) return;
-    final charId = _getCharacterIdFromCard(character);
-
-    Map<String, dynamic> baseline;
-    try {
-      baseline = Map<String, dynamic>.from(
-        jsonDecode(_activeGroup!.baselineRealismState),
-      );
-    } catch (_) {
-      baseline = {};
-    }
-
-    baseline[charId] = {
-      'affection': (values['affection'] as num?)?.toInt() ?? 50,
-      'trust': (values['trust'] as num?)?.toInt() ?? 50,
-      'emotion': (values['emotion'] as String?) ?? 'neutral',
-      'emotionIntensity': (values['emotionIntensity'] as String?) ?? 'moderate',
-      'timeOfDay': (values['timeOfDay'] as String?) ?? 'morning',
-      'dayCount': (values['dayCount'] as num?)?.toInt() ?? 1,
-    };
-
-    _activeGroup!.baselineRealismState = jsonEncode(baseline);
-    notifyListeners();
-  }
-
-  /// Loads the personal objectives for the current/next speaker into _activeObjectives
-  /// when in group mode. This makes the existing objective UI, generation, and injection
-  /// work per-character in groups without duplicating the entire objective system.
-  Future<void> _loadObjectivesForCurrentSpeaker() async {
-    if (_activeGroup == null || _currentSessionId == null) return;
-
-    final speaker = nextCharacter ?? _groupCharacters.firstOrNull;
-    if (speaker == null) {
-      _activeObjectives = [];
-      _messagesSinceLastCheck = 0;
-      _isCheckingCompletion = false;
-      _summaryPaused =
-          false; // explicit secondary zero for _summaryPaused (symmetric; _loadObjectivesForCurrentSpeaker no-speaker hygiene)
-      _isSummaryGenerating =
-          false; // secondary zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene for summary flag)
-      _userMessagesSinceLastPeriodicEval = 0;
-      _isExtractingFacts =
-          false; // secondary fact flag + counter zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; fact_extraction)
-      _isEvolvingCharacter = false;
-      _evolutionStatus = '';
-      _evolutionError =
-          ''; // explicit evo flag/status/error zero in _loadObjectivesForCurrentSpeaker no-speaker (group hygiene; evolution_service (stateless or prompt-only; no reset calls needed))
-      notifyListeners();
-      return;
-    }
-
-    final charId = _getCharacterIdFromCard(speaker);
-    final objs = await _db.getObjectivesForCharacter(
-      charId,
-      chatId: _currentSessionId,
-    );
-
-    _activeObjectives = objs.where((o) => o.active).toList();
-    notifyListeners();
-  }
-
-  /// One-time seeding of objectives that were carried in an imported Group Card.
-  /// Called after group state is loaded for a freshly imported group.
-  Future<void> _seedImportedMemberObjectivesIfPresent() async {
-    if (_activeGroup == null || _currentSessionId == null) return;
-
-    try {
-      final stateJson = _activeGroup!.defaultMemberRealismState;
-      if (stateJson.isEmpty || stateJson == '{}') return;
-
-      final map = jsonDecode(stateJson);
-      if (map is! Map) return;
-
-      final importedObj = map['imported_member_objectives'];
-      if (importedObj is! Map) return;
-
-      for (final entry in importedObj.entries) {
-        final charId = entry.key.toString();
-        final list = entry.value as List? ?? [];
-        for (final objData in list) {
-          final objMap = objData as Map<String, dynamic>? ?? {};
-          final newId =
-              'obj_${DateTime.now().millisecondsSinceEpoch}_${charId.hashCode}';
-          await _db.insertObjective(
-            ObjectivesCompanion.insert(
-              id: newId,
-              characterId: charId,
-              chatId: drift.Value(_currentSessionId!),
-              objective:
-                  objMap['objective']?.toString() ?? 'Imported objective',
-              tasks: drift.Value(objMap['tasks']?.toString() ?? '[]'),
-              active: const drift.Value(true),
-              isPrimary: drift.Value(objMap['isPrimary'] == true),
-              checkFrequency: drift.Value(
-                (objMap['checkFrequency'] as num?)?.toInt() ?? 3,
-              ),
-              injectionDepth: drift.Value(
-                (objMap['injectionDepth'] as num?)?.toInt() ?? 4,
-              ),
-            ),
-          );
-        }
-      }
-
-      // Remove the marker so it doesn't seed again
-      map.remove('imported_member_objectives');
-      _activeGroup!.defaultMemberRealismState = jsonEncode(map);
-      await _saveChat();
-    } catch (_) {}
-  }
-
-  String _getRealismStateInjection() {
-    // Thin delegation to the new central realism state composer.
-    // This is the single source of the grouped "Speaker Internal State" block
-    // that the model receives (metrics first + guidance). Replaces the old
-    // manual 8-builder concat.
-    return _realismStateInjection.buildRealismStateInjection();
-  }
-
-  void _restoreRealismStateFromMessage(ChatMessage? msg) {
-    if (msg == null) return;
-
-    // Check if the current visible node has an active swipe metadata array or just the base metadata
-    final meta = msg.activeMetadata;
-    if (meta == null || !meta.containsKey('realism_state')) {
-      debugPrint(
-        '[Realism] No time-travel snapshot found in message. Legacy state kept.',
-      );
-      return;
-    }
-
-    final state = meta['realism_state'] as Map<String, dynamic>;
-    _relationshipService.restoreFromMessageState(state);
-    _moodDecayCounter = state['moodDecayCounter'] as int? ?? _moodDecayCounter;
-    _characterEmotion =
-        state['characterEmotion'] as String? ?? _characterEmotion;
-    _emotionIntensity =
-        state['emotionIntensity'] as String? ?? _emotionIntensity;
-
-    _timeService.restoreTimeFromRealismState(state);
-
-    _nsfwService.restoreNsfwFromRealismState(state);
-
-    // v3.0 Restorations (relationship via service; already covered by restoreFromMessageState above for most).
-    // (Direct sets removed; service owns the scalars.)
-
-    // Needs simulation snapshot (clean port)
-    // Only restore the vector if the sim is currently enabled for this session.
-    // Never let a historical snapshot flip _needsSimEnabled back on (supports
-    // clean mid-chat toggle-off via setNeedsSimEnabled without stale state).
-    if (state.containsKey('needs') &&
-        state['needs'] is Map &&
-        _needsSimEnabled) {
-      final needsData = state['needs'] as Map;
-      _needsSimulation.restoreFromSnapshot(needsData);
-    }
-
-    debugPrint(
-      '[Realism] Engine state successfully rolled back to match timeline.',
-    );
-  }
-
-  /// Runs all post-generation needs-related checks (climax, sexual activity,
-  /// daily activities, fulfillment) via thin delegate to the consolidated
-  /// NeedsImpactEvaluator (simple model + optional Director authority review loop).
-  /// Orchestration (guards, group impersonation dance + loadGroupRealismIntoScalars
-  /// before call so prompts see correct $charName/personality/stance, preTurn
-  /// snapshot for chips, post _saveScalarsIntoGroupRealism + attach needs_deltas,
-  /// (orchestration + impersonation dance in god; full in evaluator).
-  Future<void> _runPostGenNeedsChecks(String responseText) async {
-    await _needsImpactEvaluator.evaluateAndApply(responseText);
-  }
-
-  // (unified thin + evaluator; prior _check* excised as dead. See CLAUDE.md).
-
-  // ── Score / State Helpers (thinned; core logic + counters in RelationshipService) ──
-
-  /// Apply short-term relationship decay (2 points per 10 turns toward 0)
-  /// This prevents relationships from being permanently stuck at extremes.
-  void _applyMoodDecay() {
-    // Decay mechanism moved to RelationshipService (applyShortTermDecay).
-    // Counter, 1:1/group branches, inter-char decay all delegated for mechanical fidelity.
-    _relationshipService.applyShortTermDecay();
   }
 
   // ── Public Toggle Methods ──
@@ -10307,6 +4005,18 @@ class ChatService extends ChangeNotifier {
 
   Future<void> setNsfwCooldownEnabled(bool enabled) async {
     _nsfwService.setNsfwCooldownEnabled(enabled);
+    // In a group the flag is PER-CHARACTER (each speaker's eval reloads it via
+    // loadNsfwScalarsForSpeaker), so the chat-wide toggle must be written into
+    // EVERY member's _groupRealism entry — otherwise members keep their stale
+    // (off) per-char flag and arousal is never evaluated for them. (1:1 just uses
+    // the scalar above; this loop is a no-op there.)
+    if (_activeGroup != null) {
+      for (final c in _groupCharacters) {
+        final id = _getCharacterIdFromCard(c);
+        (_groupRealism[id] ??= <String, dynamic>{})['nsfwCooldownEnabled'] =
+            enabled;
+      }
+    }
     await _saveChat();
     notifyListeners();
   }

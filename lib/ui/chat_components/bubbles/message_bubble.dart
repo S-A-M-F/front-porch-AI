@@ -653,9 +653,21 @@ class _MessageBubbleState extends State<MessageBubble> {
                             index == chatService.messages.length - 1 &&
                             !chatService.isGenerating;
                         final hasSwipes = message.swipes.length > 1;
+                        // This host (main character) message is buried under one
+                        // or more Scene Guest (Lite NPC) replies, so the normal
+                        // last-message regen can't reach it. Offer a regen that
+                        // first removes those stale guest replies. (By definition
+                        // this is never the last message.)
+                        final isRegenHostBelowGuests =
+                            index ==
+                                chatService.regenerableHostBelowGuestsIndex &&
+                            !chatService.isGenerating;
 
-                        // Nothing to show if not last message and no swipes
-                        if (!isLastBotMessage && !hasSwipes) {
+                        // Nothing to show if not last message, no swipes, and not
+                        // a host buried under guest replies.
+                        if (!isLastBotMessage &&
+                            !hasSwipes &&
+                            !isRegenHostBelowGuests) {
                           return const SizedBox.shrink();
                         }
 
@@ -664,6 +676,34 @@ class _MessageBubbleState extends State<MessageBubble> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
+                              // Regen the main character even though a Lite NPC
+                              // spoke after it — pops the NPC's now-stale reply,
+                              // regenerates this message, then lets the NPC chime
+                              // again only if still relevant.
+                              if (isRegenHostBelowGuests) ...[
+                                Tooltip(
+                                  message:
+                                      'Regenerate main character\n(removes the NPC’s reply)',
+                                  child: InkWell(
+                                    onTap: () =>
+                                        chatService.regenerateMainCharacter(),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.refresh,
+                                        size: 20,
+                                        color: AppColors.resolve(
+                                          context,
+                                          Colors.orangeAccent,
+                                          Colors.orange.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (hasSwipes) const SizedBox(width: 12),
+                              ],
                               // Regen button — last bot message only
                               if (isLastBotMessage) ...[
                                 Tooltip(

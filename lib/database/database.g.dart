@@ -1669,6 +1669,17 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cooldownTurnsTotalMeta =
+      const VerificationMeta('cooldownTurnsTotal');
+  @override
+  late final GeneratedColumn<int> cooldownTurnsTotal = GeneratedColumn<int>(
+    'cooldown_turns_total',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _trustLevelMeta = const VerificationMeta(
     'trustLevel',
   );
@@ -1945,6 +1956,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     passageOfTimeEnabled,
     arousalLevel,
     cooldownTurnsRemaining,
+    cooldownTurnsTotal,
     trustLevel,
     activeFixation,
     fixationLifespan,
@@ -2211,6 +2223,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         cooldownTurnsRemaining.isAcceptableOrUnknown(
           data['cooldown_turns_remaining']!,
           _cooldownTurnsRemainingMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cooldown_turns_total')) {
+      context.handle(
+        _cooldownTurnsTotalMeta,
+        cooldownTurnsTotal.isAcceptableOrUnknown(
+          data['cooldown_turns_total']!,
+          _cooldownTurnsTotalMeta,
         ),
       );
     }
@@ -2507,6 +2528,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.int,
         data['${effectivePrefix}cooldown_turns_remaining'],
       )!,
+      cooldownTurnsTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cooldown_turns_total'],
+      )!,
       trustLevel: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}trust_level'],
@@ -2626,6 +2651,7 @@ class Session extends DataClass implements Insertable<Session> {
   final bool passageOfTimeEnabled;
   final int arousalLevel;
   final int cooldownTurnsRemaining;
+  final int cooldownTurnsTotal;
   final int trustLevel;
   final String activeFixation;
   final int fixationLifespan;
@@ -2681,6 +2707,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.passageOfTimeEnabled,
     required this.arousalLevel,
     required this.cooldownTurnsRemaining,
+    required this.cooldownTurnsTotal,
     required this.trustLevel,
     required this.activeFixation,
     required this.fixationLifespan,
@@ -2750,6 +2777,7 @@ class Session extends DataClass implements Insertable<Session> {
     map['passage_of_time_enabled'] = Variable<bool>(passageOfTimeEnabled);
     map['arousal_level'] = Variable<int>(arousalLevel);
     map['cooldown_turns_remaining'] = Variable<int>(cooldownTurnsRemaining);
+    map['cooldown_turns_total'] = Variable<int>(cooldownTurnsTotal);
     map['trust_level'] = Variable<int>(trustLevel);
     map['active_fixation'] = Variable<String>(activeFixation);
     map['fixation_lifespan'] = Variable<int>(fixationLifespan);
@@ -2828,6 +2856,7 @@ class Session extends DataClass implements Insertable<Session> {
       passageOfTimeEnabled: Value(passageOfTimeEnabled),
       arousalLevel: Value(arousalLevel),
       cooldownTurnsRemaining: Value(cooldownTurnsRemaining),
+      cooldownTurnsTotal: Value(cooldownTurnsTotal),
       trustLevel: Value(trustLevel),
       activeFixation: Value(activeFixation),
       fixationLifespan: Value(fixationLifespan),
@@ -2904,6 +2933,7 @@ class Session extends DataClass implements Insertable<Session> {
       cooldownTurnsRemaining: serializer.fromJson<int>(
         json['cooldownTurnsRemaining'],
       ),
+      cooldownTurnsTotal: serializer.fromJson<int>(json['cooldownTurnsTotal']),
       trustLevel: serializer.fromJson<int>(json['trustLevel']),
       activeFixation: serializer.fromJson<String>(json['activeFixation']),
       fixationLifespan: serializer.fromJson<int>(json['fixationLifespan']),
@@ -2969,6 +2999,7 @@ class Session extends DataClass implements Insertable<Session> {
       'passageOfTimeEnabled': serializer.toJson<bool>(passageOfTimeEnabled),
       'arousalLevel': serializer.toJson<int>(arousalLevel),
       'cooldownTurnsRemaining': serializer.toJson<int>(cooldownTurnsRemaining),
+      'cooldownTurnsTotal': serializer.toJson<int>(cooldownTurnsTotal),
       'trustLevel': serializer.toJson<int>(trustLevel),
       'activeFixation': serializer.toJson<String>(activeFixation),
       'fixationLifespan': serializer.toJson<int>(fixationLifespan),
@@ -3024,6 +3055,7 @@ class Session extends DataClass implements Insertable<Session> {
     bool? passageOfTimeEnabled,
     int? arousalLevel,
     int? cooldownTurnsRemaining,
+    int? cooldownTurnsTotal,
     int? trustLevel,
     String? activeFixation,
     int? fixationLifespan,
@@ -3081,6 +3113,7 @@ class Session extends DataClass implements Insertable<Session> {
     arousalLevel: arousalLevel ?? this.arousalLevel,
     cooldownTurnsRemaining:
         cooldownTurnsRemaining ?? this.cooldownTurnsRemaining,
+    cooldownTurnsTotal: cooldownTurnsTotal ?? this.cooldownTurnsTotal,
     trustLevel: trustLevel ?? this.trustLevel,
     activeFixation: activeFixation ?? this.activeFixation,
     fixationLifespan: fixationLifespan ?? this.fixationLifespan,
@@ -3182,6 +3215,9 @@ class Session extends DataClass implements Insertable<Session> {
       cooldownTurnsRemaining: data.cooldownTurnsRemaining.present
           ? data.cooldownTurnsRemaining.value
           : this.cooldownTurnsRemaining,
+      cooldownTurnsTotal: data.cooldownTurnsTotal.present
+          ? data.cooldownTurnsTotal.value
+          : this.cooldownTurnsTotal,
       trustLevel: data.trustLevel.present
           ? data.trustLevel.value
           : this.trustLevel,
@@ -3271,6 +3307,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('passageOfTimeEnabled: $passageOfTimeEnabled, ')
           ..write('arousalLevel: $arousalLevel, ')
           ..write('cooldownTurnsRemaining: $cooldownTurnsRemaining, ')
+          ..write('cooldownTurnsTotal: $cooldownTurnsTotal, ')
           ..write('trustLevel: $trustLevel, ')
           ..write('activeFixation: $activeFixation, ')
           ..write('fixationLifespan: $fixationLifespan, ')
@@ -3326,6 +3363,7 @@ class Session extends DataClass implements Insertable<Session> {
     passageOfTimeEnabled,
     arousalLevel,
     cooldownTurnsRemaining,
+    cooldownTurnsTotal,
     trustLevel,
     activeFixation,
     fixationLifespan,
@@ -3380,6 +3418,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.passageOfTimeEnabled == this.passageOfTimeEnabled &&
           other.arousalLevel == this.arousalLevel &&
           other.cooldownTurnsRemaining == this.cooldownTurnsRemaining &&
+          other.cooldownTurnsTotal == this.cooldownTurnsTotal &&
           other.trustLevel == this.trustLevel &&
           other.activeFixation == this.activeFixation &&
           other.fixationLifespan == this.fixationLifespan &&
@@ -3432,6 +3471,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<bool> passageOfTimeEnabled;
   final Value<int> arousalLevel;
   final Value<int> cooldownTurnsRemaining;
+  final Value<int> cooldownTurnsTotal;
   final Value<int> trustLevel;
   final Value<String> activeFixation;
   final Value<int> fixationLifespan;
@@ -3483,6 +3523,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.passageOfTimeEnabled = const Value.absent(),
     this.arousalLevel = const Value.absent(),
     this.cooldownTurnsRemaining = const Value.absent(),
+    this.cooldownTurnsTotal = const Value.absent(),
     this.trustLevel = const Value.absent(),
     this.activeFixation = const Value.absent(),
     this.fixationLifespan = const Value.absent(),
@@ -3535,6 +3576,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.passageOfTimeEnabled = const Value.absent(),
     this.arousalLevel = const Value.absent(),
     this.cooldownTurnsRemaining = const Value.absent(),
+    this.cooldownTurnsTotal = const Value.absent(),
     this.trustLevel = const Value.absent(),
     this.activeFixation = const Value.absent(),
     this.fixationLifespan = const Value.absent(),
@@ -3587,6 +3629,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<bool>? passageOfTimeEnabled,
     Expression<int>? arousalLevel,
     Expression<int>? cooldownTurnsRemaining,
+    Expression<int>? cooldownTurnsTotal,
     Expression<int>? trustLevel,
     Expression<String>? activeFixation,
     Expression<int>? fixationLifespan,
@@ -3644,6 +3687,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (arousalLevel != null) 'arousal_level': arousalLevel,
       if (cooldownTurnsRemaining != null)
         'cooldown_turns_remaining': cooldownTurnsRemaining,
+      if (cooldownTurnsTotal != null)
+        'cooldown_turns_total': cooldownTurnsTotal,
       if (trustLevel != null) 'trust_level': trustLevel,
       if (activeFixation != null) 'active_fixation': activeFixation,
       if (fixationLifespan != null) 'fixation_lifespan': fixationLifespan,
@@ -3701,6 +3746,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<bool>? passageOfTimeEnabled,
     Value<int>? arousalLevel,
     Value<int>? cooldownTurnsRemaining,
+    Value<int>? cooldownTurnsTotal,
     Value<int>? trustLevel,
     Value<String>? activeFixation,
     Value<int>? fixationLifespan,
@@ -3756,6 +3802,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       arousalLevel: arousalLevel ?? this.arousalLevel,
       cooldownTurnsRemaining:
           cooldownTurnsRemaining ?? this.cooldownTurnsRemaining,
+      cooldownTurnsTotal: cooldownTurnsTotal ?? this.cooldownTurnsTotal,
       trustLevel: trustLevel ?? this.trustLevel,
       activeFixation: activeFixation ?? this.activeFixation,
       fixationLifespan: fixationLifespan ?? this.fixationLifespan,
@@ -3880,6 +3927,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         cooldownTurnsRemaining.value,
       );
     }
+    if (cooldownTurnsTotal.present) {
+      map['cooldown_turns_total'] = Variable<int>(cooldownTurnsTotal.value);
+    }
     if (trustLevel.present) {
       map['trust_level'] = Variable<int>(trustLevel.value);
     }
@@ -3982,6 +4032,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('passageOfTimeEnabled: $passageOfTimeEnabled, ')
           ..write('arousalLevel: $arousalLevel, ')
           ..write('cooldownTurnsRemaining: $cooldownTurnsRemaining, ')
+          ..write('cooldownTurnsTotal: $cooldownTurnsTotal, ')
           ..write('trustLevel: $trustLevel, ')
           ..write('activeFixation: $activeFixation, ')
           ..write('fixationLifespan: $fixationLifespan, ')
@@ -5325,7 +5376,7 @@ class Group extends DataClass implements Insertable<Group> {
   final String baselineRealismState;
 
   /// Per-character system prompt overrides scoped to this group.
-  /// Stored as a first-class JSON column (Map<String, String> keyed by stable charId).
+  /// Stored as a first-class JSON column (Map&lt;String, String&gt; keyed by stable charId).
   ///
   /// This was previously the last remaining "Path B" transitional hack stored inside
   /// the defaultMemberRealismState JSON blob. As of v32 it has its own proper column.
@@ -11942,6 +11993,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<bool> passageOfTimeEnabled,
       Value<int> arousalLevel,
       Value<int> cooldownTurnsRemaining,
+      Value<int> cooldownTurnsTotal,
       Value<int> trustLevel,
       Value<String> activeFixation,
       Value<int> fixationLifespan,
@@ -11995,6 +12047,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<bool> passageOfTimeEnabled,
       Value<int> arousalLevel,
       Value<int> cooldownTurnsRemaining,
+      Value<int> cooldownTurnsTotal,
       Value<int> trustLevel,
       Value<String> activeFixation,
       Value<int> fixationLifespan,
@@ -12169,6 +12222,11 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<int> get cooldownTurnsRemaining => $composableBuilder(
     column: $table.cooldownTurnsRemaining,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cooldownTurnsTotal => $composableBuilder(
+    column: $table.cooldownTurnsTotal,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12427,6 +12485,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cooldownTurnsTotal => $composableBuilder(
+    column: $table.cooldownTurnsTotal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get trustLevel => $composableBuilder(
     column: $table.trustLevel,
     builder: (column) => ColumnOrderings(column),
@@ -12668,6 +12731,11 @@ class $$SessionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cooldownTurnsTotal => $composableBuilder(
+    column: $table.cooldownTurnsTotal,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get trustLevel => $composableBuilder(
     column: $table.trustLevel,
     builder: (column) => column,
@@ -12820,6 +12888,7 @@ class $$SessionsTableTableManager
                 Value<bool> passageOfTimeEnabled = const Value.absent(),
                 Value<int> arousalLevel = const Value.absent(),
                 Value<int> cooldownTurnsRemaining = const Value.absent(),
+                Value<int> cooldownTurnsTotal = const Value.absent(),
                 Value<int> trustLevel = const Value.absent(),
                 Value<String> activeFixation = const Value.absent(),
                 Value<int> fixationLifespan = const Value.absent(),
@@ -12871,6 +12940,7 @@ class $$SessionsTableTableManager
                 passageOfTimeEnabled: passageOfTimeEnabled,
                 arousalLevel: arousalLevel,
                 cooldownTurnsRemaining: cooldownTurnsRemaining,
+                cooldownTurnsTotal: cooldownTurnsTotal,
                 trustLevel: trustLevel,
                 activeFixation: activeFixation,
                 fixationLifespan: fixationLifespan,
@@ -12924,6 +12994,7 @@ class $$SessionsTableTableManager
                 Value<bool> passageOfTimeEnabled = const Value.absent(),
                 Value<int> arousalLevel = const Value.absent(),
                 Value<int> cooldownTurnsRemaining = const Value.absent(),
+                Value<int> cooldownTurnsTotal = const Value.absent(),
                 Value<int> trustLevel = const Value.absent(),
                 Value<String> activeFixation = const Value.absent(),
                 Value<int> fixationLifespan = const Value.absent(),
@@ -12975,6 +13046,7 @@ class $$SessionsTableTableManager
                 passageOfTimeEnabled: passageOfTimeEnabled,
                 arousalLevel: arousalLevel,
                 cooldownTurnsRemaining: cooldownTurnsRemaining,
+                cooldownTurnsTotal: cooldownTurnsTotal,
                 trustLevel: trustLevel,
                 activeFixation: activeFixation,
                 fixationLifespan: fixationLifespan,

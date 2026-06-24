@@ -3090,56 +3090,13 @@ class WebServerService extends ChangeNotifier {
         turnOrder: turnOrder,
       );
 
-      // Post-fork private materialization for the additional members (extends this handler).
-      // Uses real group.id from fork result + generalized duplicate + row insert. Functional decoupled fork.
-      if (group != null) {
-        final db = await AppDatabase.instance();
-        for (final ch in additionalChars) {
-          final mid = const Uuid().v4();
-          final avDir = Directory(
-            p.join(_storageService.groupsDir.path, group.id, 'avatars'),
-          );
-          await avDir.create(recursive: true);
-          await _characterRepository!.duplicateCharacter(
-            ch,
-            targetDirOverride: avDir.path,
-            forcedBasename: mid,
-            skipLibraryInsert: true,
-          );
-          await db.insertGroupMember(
-            GroupMembersCompanion(
-              id: Value(mid),
-              groupId: Value(group.id),
-              name: Value(ch.name),
-              description: Value(ch.description),
-              personality: Value(ch.personality),
-              scenario: Value(ch.scenario),
-              firstMessage: Value(ch.firstMessage),
-              mesExample: Value(ch.mesExample),
-              systemPrompt: Value(ch.systemPrompt),
-              postHistoryInstructions: Value(ch.postHistoryInstructions),
-              alternateGreetings: Value(jsonEncode(ch.alternateGreetings)),
-              tags: Value(jsonEncode(ch.tags)),
-              avatarFilename: Value('$mid.png'),
-              ttsVoice: Value(ch.ttsVoice),
-              lorebook: Value(
-                ch.lorebook != null ? jsonEncode(ch.lorebook!.toJson()) : null,
-              ),
-              worldNames: Value(jsonEncode(ch.worldNames)),
-              frontPorchExtensions: Value(
-                ch.frontPorchExtensions != null
-                    ? jsonEncode(ch.frontPorchExtensions!.toJson())
-                    : null,
-              ),
-              rawExtensions: Value(
-                ch.rawExtensions != null ? jsonEncode(ch.rawExtensions!) : null,
-              ),
-              memberState: Value('{}'),
-            ),
-          );
-        }
-      }
-
+      // forkToGroupChat already materializes EVERY member (the host plus each
+      // additional character) via _createGroupMember, now with provenance
+      // stamped. This handler used to re-insert the additional characters a
+      // second time under fresh UUIDs — a pre-existing double-insert that left
+      // duplicate, un-stamped group_members rows for every web-API fork (and
+      // since Phase 0, a provenance gap). Removed: forkToGroupChat is the single
+      // creation path, so the members already exist and are correctly stamped.
       if (group == null) return _errorResponse(500, 'Fork failed');
 
       return shelf.Response.ok(
@@ -3208,7 +3165,10 @@ class WebServerService extends ChangeNotifier {
       final charId = body['character_id']?.toString() ?? '';
       if (charId.isEmpty) return _errorResponse(400, 'character_id required');
 
-      final match = _characterRepository!.characters.where((c) {
+      // Resolve against the LIVE group members (whose id is the member instance
+      // id), NOT the library — removeCharacterFromGroup matches member rows by
+      // that instance id, so a library lookup here silently matched nothing.
+      final match = _chatService!.groupCharacters.where((c) {
         final id = c.imagePath != null
             ? p.basenameWithoutExtension(c.imagePath!)
             : c.name.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
@@ -3224,7 +3184,7 @@ class WebServerService extends ChangeNotifier {
       if (!ok) {
         return _errorResponse(
           400,
-          'Could not remove character (min 2 required or not in group mode)',
+          'Could not remove character (not in a group, or a reply is generating)',
         );
       }
 

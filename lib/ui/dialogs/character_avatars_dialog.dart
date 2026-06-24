@@ -545,13 +545,16 @@ class _CharacterAvatarsDialogState extends State<CharacterAvatarsDialog> {
             child: const Icon(Icons.mood, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 14),
-          const Text(
-            'Expression Images',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: 0.3,
+          Flexible(
+            child: Text(
+              'Expression Images — ${widget.character.name}',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 0.3,
+              ),
             ),
           ),
           const SizedBox(width: 12),

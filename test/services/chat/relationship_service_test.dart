@@ -270,6 +270,81 @@ void main() {
       },
     );
 
+    // ── Per-character store round-trip (the safety net for unifying the host
+    //    onto the same per-participant store the group path uses) ────────────
+    test(
+      'all SAVED relationship scalars round-trip losslessly through the per-char map',
+      () {
+        final svc = createTestRelationship(
+          isGroup: true,
+          groupCharCount: 2,
+          currentSpeakerId: 'spk',
+        );
+        // Populate every saved field with a distinctive value.
+        svc.loadScalars(
+          affectionScore: 123,
+          longTermScore: -45,
+          trustLevel: 67,
+          activeFixation: 'the way she laughs',
+          fixationLifespan: 3,
+          spatialStance: 'leaning close',
+        );
+        final tierBefore = svc.relationshipTier;
+        final ltTierBefore = svc.longTermTier;
+
+        svc.saveRelationshipScalarsToGroup('spk');
+        // Wipe the working registers (as if another speaker had been loaded).
+        svc.resetForFreshChat();
+        expect(svc.affectionScore, 0);
+        expect(svc.activeFixation, '');
+
+        // Restore from the per-char map.
+        svc.loadRelationshipScalarsForSpeaker('spk');
+        expect(svc.affectionScore, 123);
+        expect(svc.longTermScore, -45);
+        expect(svc.trustLevel, 67);
+        expect(svc.activeFixation, 'the way she laughs');
+        expect(svc.fixationLifespan, 3);
+        expect(svc.spatialStance, 'leaning close');
+        expect(svc.relationshipTier, tierBefore);
+        expect(svc.longTermTier, ltTierBefore);
+      },
+    );
+
+    test(
+      'clearing fixation/spatial DOES propagate through save/load (unconditional '
+      'persist — required for unifying the always-loaded host onto this store)',
+      () {
+        final svc = createTestRelationship(
+          isGroup: true,
+          groupCharCount: 2,
+          currentSpeakerId: 'spk',
+        );
+        // Set a fixation + spatial and persist.
+        svc.loadScalars(
+          affectionScore: 10,
+          longTermScore: 10,
+          trustLevel: 0,
+          activeFixation: 'her smile',
+          fixationLifespan: 2,
+          spatialStance: 'near',
+        );
+        svc.saveRelationshipScalarsToGroup('spk');
+
+        // Now CLEAR them and save again (fixation='', lifespan=0, spatial='').
+        svc.loadScalars(affectionScore: 10, longTermScore: 10, trustLevel: 0);
+        expect(svc.activeFixation, '');
+        svc.saveRelationshipScalarsToGroup('spk');
+
+        // Reload: the clears now persist (no stale fixation/spatial survives).
+        svc.resetForFreshChat();
+        svc.loadRelationshipScalarsForSpeaker('spk');
+        expect(svc.activeFixation, '');
+        expect(svc.fixationLifespan, 0);
+        expect(svc.spatialStance, '');
+      },
+    );
+
     test(
       'seedFromCardV2OrExt does plain clamp (no *2 migration) for V2.5 card seeds; legacy migrate* still double for old session data',
       () {
