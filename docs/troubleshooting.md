@@ -88,7 +88,7 @@ If the app still fails to start, delete the entire data directory (`~/Documents/
 2. **Database corruption** (most frequent cause):
    - On launch the app runs `db.integrityCheck()` (`PRAGMA quick_check`).
    - If it fails, a red "Database Corruption" overlay appears with a list of timestamped `.db` backups.
-   - Click any backup row to restore. Backups are created automatically before cloud sync and on clean shutdown (`DbReunificationService.createBackups`).
+   - Click any backup row to restore. Backups are created automatically on a rolling 30-minute schedule (plus one daily restore point for the last 7 days) and on clean shutdown.
    - Manual location: `<data>/characters/` (and sometimes root) — look for `*.db.bak*` files.
 
 3. **GPU driver / KoboldCPP startup crash**:

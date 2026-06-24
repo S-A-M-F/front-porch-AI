@@ -84,7 +84,6 @@ If you're evaluating local AI tools, here's an honest breakdown. Every project o
 | **Character Expressions** | ✅ ONNX + LLM, live avatar swap | ⚙️ Extension required | ❌ | ❌ |
 | **RAG memory (local)** | ✅ ONNX embeddings, no cloud | ⚙️ Extension required | ❌ | ❌ |
 | **Novel / story generator** | ✅ Porch Stories pipeline | ❌ | ❌ | ❌ |
-| **Cloud sync** | ⚠️ Google Drive / WebDAV *(deprecated — use local backups)* | ❌ | ❌ | ❌ |
 | **Character card compatibility** | ✅ V2 spec + Backyard .byaf import | ✅ V2 spec | ❌ | .byaf only |
 | **Group chat** | ✅ | ✅ | ❌ | ❌ |
 | **Extension / plugin ecosystem** | ❌ | ⭐ Very large | Moderate | ❌ |
