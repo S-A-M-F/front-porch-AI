@@ -543,18 +543,17 @@ jobs:
           #    server, which throttles under this parallel burst. Every codesign
           #    RETRIES with backoff to heal the throttle.
           #
-          # 2. FLAT PyInstaller FRAMEWORKS (deterministic "Invalid"): PyInstaller
-          #    ships *flat* frameworks — e.g. Python.framework/Python is a plain
-          #    Mach-O at the framework ROOT with no Versions/A structure. codesign
-          #    cannot SEAL a flat framework ("bundle format is ambiguous"), and Apple
-          #    validates that binary AS the principal of a framework bundle, so an
-          #    unsealed flat framework fails notarization with "The signature of the
-          #    binary is invalid." — regardless of how the bare Mach-O is signed
-          #    (signing just the binary, in place or copied out, does NOT satisfy the
-          #    notary). The dedicated framework pass below rebuilds the canonical
-          #    Versions/A layout, ensures an Info.plist, signs + SEALS the framework,
-          #    and HARD-fails on a local `codesign --verify --deep --strict` so we
-          #    never submit a framework Apple would reject.
+          # 2. AMBIGUOUS PyInstaller FRAMEWORKS (deterministic "Invalid"): PyInstaller's
+          #    frameworks are already versioned (Versions/<X.Y>/<name> is the real
+          #    Mach-O) but ALSO carry a DUPLICATE real binary/Resources at the bundle
+          #    ROOT. A real Mach-O at the root looks app-like while Versions/ looks
+          #    framework-like, so codesign reports "bundle format is ambiguous (could
+          #    be app or framework)" and refuses to SEAL the framework — and Apple
+          #    then rejects notarization with "The signature of the binary is invalid."
+          #    The dedicated framework pass below normalizes each framework to the
+          #    canonical layout (root entries become symlinks into Versions/Current),
+          #    SEALS it, and HARD-fails on a local `codesign --verify --deep --strict`
+          #    so we never submit a framework Apple would reject.
           # If Apple still rejects anything, the notarize step below fetches
           # `notarytool log` so the precise reason is in the CI log.
           export MACOS_CERTIFICATE_NAME SIDECAR_ENT ENTITLEMENTS
@@ -589,74 +588,76 @@ jobs:
                 rm -f "/tmp/cs.$$.log"
               ' _ {}
 
-          echo "    Repairing + signing nested *.framework bundles (PyInstaller ships FLAT frameworks)..."
-          # Why this exists: PyInstaller emits *flat* frameworks — the principal
-          # binary (e.g. Python.framework/Python) and Resources sit at the framework
-          # ROOT with no Versions/A structure. codesign cannot SEAL a flat framework
-          # ("bundle format is ambiguous"), and Apple validates that binary AS the
-          # principal of a framework bundle — so an unsealed flat framework yields
-          # "The signature of the binary is invalid." at notarization no matter how
-          # the bare binary is signed (a copy-out / in-place sign of just the Mach-O
-          # does NOT satisfy the notary). Fix: rebuild the canonical Versions/A
-          # layout, ensure an Info.plist exists, then codesign the framework so it is
-          # sealed as a real framework (this also signs the principal binary). A hard
-          # local `codesign --verify --deep --strict` gate means we never submit a
-          # framework Apple would reject — and a wrong guess dumps the structure here
-          # instead of failing blind after a 6-minute notarization round-trip.
+          echo "    Normalizing + signing nested *.framework bundles (PyInstaller layout)..."
+          # Ground truth from a failed run's structure dump: PyInstaller's frameworks
+          # are NOT flat — they are already versioned (Versions/<X.Y>/<name> is the
+          # real Mach-O, with a Versions/Current). The problem is that PyInstaller
+          # ALSO drops a DUPLICATE real binary (and real Resources/Headers) at the
+          # framework ROOT. A real Mach-O at the bundle root looks app-like while
+          # Versions/ looks framework-like, so codesign reports
+          #   "bundle format is ambiguous (could be app or framework)"
+          # and refuses to seal it — which is why notarization then reports
+          #   "The signature of the binary is invalid."
+          # Fix: normalize to the canonical framework layout — the root entries must
+          # be SYMLINKS into Versions/Current, and Versions/Current a symlink to the
+          # real version dir — then codesign can seal the framework cleanly. The real
+          # python.org Info.plist already present in the version dir is used as-is. A
+          # hard local `codesign --verify --deep --strict` gate means we never submit
+          # a framework Apple would reject (and dumps the structure if a guess is off).
           while IFS= read -r -d '' fw; do
             name="$(basename "$fw" .framework)"
 
-            # Restructure flat → versioned (idempotent: skip already-versioned ones).
-            if [ -f "$fw/$name" ] && [ ! -e "$fw/Versions/Current/$name" ]; then
-              mkdir -p "$fw/Versions/A"
-              shopt -s dotglob nullglob
-              for entry in "$fw"/*; do
-                [ "$(basename "$entry")" = "Versions" ] && continue
-                mv "$entry" "$fw/Versions/A/"
-              done
-              shopt -u dotglob nullglob
-              ln -sfn A "$fw/Versions/Current"
-              ln -sfn "Versions/Current/$name" "$fw/$name"
-              [ -e "$fw/Versions/A/Resources" ] && ln -sfn "Versions/Current/Resources" "$fw/Resources"
-              [ -e "$fw/Versions/A/Headers" ]   && ln -sfn "Versions/Current/Headers" "$fw/Headers"
-              echo "      ↻ restructured flat framework: $fw"
-            fi
+            # Discover the real version dir: a dir under Versions/ (not Current, not a
+            # stray A) that holds the real principal binary.
+            realver=""
+            shopt -s nullglob
+            for cand in "$fw"/Versions/*/; do
+              cn="$(basename "$cand")"
+              case "$cn" in Current) continue;; esac
+              if [ -f "$cand$name" ] && [ ! -L "${cand}$name" ]; then realver="$cn"; break; fi
+            done
+            shopt -u nullglob
 
-            # codesign requires an Info.plist to seal a framework — synthesize a
-            # minimal valid one if PyInstaller didn't ship it.
-            plist="$fw/Versions/A/Resources/Info.plist"
-            if [ ! -f "$plist" ]; then
-              mkdir -p "$fw/Versions/A/Resources"
-              /usr/libexec/PlistBuddy \
-                -c "Add :CFBundleIdentifier string com.frontporch.sidecar.$name" \
-                -c "Add :CFBundleName string $name" \
-                -c "Add :CFBundleExecutable string $name" \
-                -c "Add :CFBundleVersion string 1.0" \
-                -c "Add :CFBundleShortVersionString string 1.0" \
-                -c "Add :CFBundleInfoDictionaryVersion string 6.0" \
-                -c "Add :CFBundlePackageType string FMWK" \
-                "$plist" >/dev/null
-              echo "      + synthesized Info.plist for $fw"
+            if [ -n "$realver" ]; then
+              # Remove any stray Versions/A a prior run of this script created (it only
+              # ever held a synthesized Info.plist, never a binary), unless it IS the
+              # real version we just found.
+              if [ "$realver" != "A" ] && [ -d "$fw/Versions/A" ] && [ ! -f "$fw/Versions/A/$name" ]; then
+                rm -rf "$fw/Versions/A"
+              fi
+              # Versions/Current → real version (replace whatever is there).
+              rm -rf "$fw/Versions/Current"
+              ln -s "$realver" "$fw/Versions/Current"
+              # Root entries → symlinks into Versions/Current (drop the duplicate root
+              # binary; this is what clears the "ambiguous bundle" error).
+              for sub in "$name" Resources Headers Modules; do
+                if [ -e "$fw/Versions/$realver/$sub" ] && [ ! -L "$fw/$sub" ]; then
+                  rm -rf "$fw/$sub"
+                  ln -s "Versions/Current/$sub" "$fw/$sub"
+                fi
+              done
+              echo "      ↻ normalized framework layout: $fw (version $realver)"
             fi
 
             # Sign any non-principal nested Mach-O (.so/.dylib) inside the version first.
+            tgtver="${realver:+$fw/Versions/$realver}"; tgtver="${tgtver:-$fw}"
             while IFS= read -r -d '' inner; do
-              [ "$inner" = "$fw/Versions/A/$name" ] && continue
+              case "$inner" in */"$name") [ -n "$realver" ] && [ "$inner" = "$fw/Versions/$realver/$name" ] && continue;; esac
               file "$inner" | grep -q "Mach-O" || continue
               codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$inner" >/dev/null 2>&1 || true
-            done < <(find "$fw/Versions/A" -type f -print0 2>/dev/null || true)
+            done < <(find "$tgtver" -type f -print0 2>/dev/null || true)
 
             # Seal the framework bundle (also signs the principal binary). HARD fail.
             i=0
             until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$fw" >/tmp/cs_fw.log 2>&1; do
-              i=$((i + 1)); if [ "$i" -ge 4 ]; then echo "::error::Failed to sign framework $fw"; cat /tmp/cs_fw.log; ls -laR "$fw" | head -80; exit 1; fi
+              i=$((i + 1)); if [ "$i" -ge 4 ]; then echo "::error::Failed to sign framework $fw"; cat /tmp/cs_fw.log; ls -laR "$fw" | head -120; exit 1; fi
               sleep $((i * 2))
             done
 
             # Verify locally exactly how Apple's notary does. Never ship a bad seal.
             if ! codesign --verify --deep --strict --verbose=2 "$fw" >/tmp/cs_vfy.log 2>&1; then
               echo "::error::codesign --verify failed for framework $fw"; cat /tmp/cs_vfy.log
-              echo "---- framework structure ----"; ls -laR "$fw" | head -80
+              echo "---- framework structure ----"; ls -laR "$fw" | head -120
               exit 1
             fi
             echo "      ✓ framework signed + verified: $fw"
