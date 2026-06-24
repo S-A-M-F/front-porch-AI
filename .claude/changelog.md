@@ -2256,3 +2256,11 @@ Part of the full-app UI regression golden suite (plan Phase 4). `MessageBubble` 
 - Fix: removed the isKobold gating in the panel (button always shows); auto-start gated on imageService.isConfigured. Fixed on main first then cherry-picked here. Setup-step backend chip untouched.
 - Verification: flutter analyze clean on the changed files.
 - Commit: (docs commit)
+
+## 2026-06-24 — ci(nightly/macOS): resilient codesign + self-diagnosing notarization (Rawhide-only, fixes intermittent staple failures)
+- Files: .github/workflows/nightly.yml (Code Sign macOS App step + Notarize step).
+- Reason: Rawhide macOS nightly intermittently failed notarization (status Invalid → "Could not find base64 ticket… Error 65"), while identical-signing builds incl. the v0.9.9.1.3 release passed. Diagnosed: `codesign --timestamp` runs 8-way parallel over thousands of PyInstaller Mach-O files; each --timestamp is a network call to Apple's timestamp server, which throttles under the burst. Failures were swallowed by `|| true`, so a binary could ship without a secure timestamp → Apple rejects the whole .pkg as Invalid (intermittently). Cert/credentials/Apple-service ruled out (the release notarized fine, same cert/account).
+- Fix (signing): every codesign now RETRIES (until-loop, up to 4x with backoff) so a throttled timestamp self-heals; a genuine failure now FAILS the build at the signing step naming the file (replaced `…| grep -v …|| true` with retry + per-file log shown only on failure; find targets wrapped `{ … || true; }` so a missing dir doesn't fail the pipe but a real codesign failure does); added a `codesign --verify --deep --strict` gate before notarization so an unsigned/invalid nested binary fails HERE with the path, not as a mystery Invalid later.
+- Fix (notarize): `notarytool submit --wait` exits 0 even on Invalid (the old `|| {exit 1}` never caught it → it proceeded to staple and died), so now the status is parsed explicitly and on anything but Accepted, `notarytool log <id>` is fetched + printed — future failures are self-diagnosing in CI.
+- Scope: Rawhide-only per plan — validate via a manual Rawhide build, then propagate to main's nightly.yml + release.yml (which share this signing code). Validated: YAML parses, signing-step `bash -n` parses; runtime only testable on the macOS runner.
+- Commit: (this commit)

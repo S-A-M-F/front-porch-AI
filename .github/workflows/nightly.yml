@@ -531,74 +531,112 @@ jobs:
           # Without these, macOS kills the sidecar immediately when the app runs.
           SIDECAR_ENT="${{ github.workspace }}/macos/Runner/Sidecar.entitlements"
 
-          # Parallelize signing. The bundled ML sidecars (PyInstaller) contain
-          # thousands of Mach-O files, and each codesign --timestamp call is a
-          # network round-trip to Apple's timestamp server, so signing them one at
-          # a time took ~18 min. Signing each pass concurrently collapses that to a
-          # few minutes. Behavior is otherwise unchanged: passes still run
-          # inside-out (one after another; the main .app is signed LAST), and only
-          # distinct files WITHIN a pass run in parallel (no file is signed twice
-          # at once). Exact codesign flags/entitlements/coverage are identical to
-          # the previous sequential version. JOBS is network-bound, not CPU-bound;
-          # lower it if Apple's timestamp server throttles. macOS ships BSD xargs,
-          # so we avoid GNU-only flags (no -r) and guard against empty input.
+          # Parallelize signing across the thousands of Mach-O files in the
+          # PyInstaller sidecars. Passes run inside-out (the main .app is signed
+          # LAST); only distinct files WITHIN a pass run in parallel. BSD xargs on
+          # macOS, so no GNU-only flags and we guard against empty input.
+          #
+          # RELIABILITY FIX (intermittent notarization "Invalid"): each
+          # `codesign --timestamp` is a network round-trip to Apple's timestamp
+          # server, which throttles under this parallel burst. Failures used to be
+          # swallowed by `|| true`, so a binary could ship with NO secure timestamp
+          # and Apple's notary would intermittently reject the whole .pkg with no
+          # clue why. Now every codesign RETRIES (heals transient throttling), a
+          # genuine failure FAILS the build right here (loud + specific) instead of
+          # 8 minutes later at the notary, and a final --verify --deep --strict gate
+          # catches any unsigned/invalid nested binary before we ever submit.
+          # The per-file output goes to /tmp/cs.$$.log ($$ = the xargs subshell PID,
+          # so parallel jobs don't clobber each other) and is only printed on a hard
+          # failure — keeping the log clean.
           export MACOS_CERTIFICATE_NAME SIDECAR_ENT ENTITLEMENTS
           JOBS=8
 
-          echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate (parallel x$JOBS)..."
+          echo "Code signing $APP_NAME with hardened runtime using Developer ID certificate (parallel x$JOBS, with retries)..."
 
           # Pass 1 — frameworks and dylibs first (inside-out).
-          find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0 2>/dev/null \
+          { find "$APP_NAME/Contents/Frameworks" \( -name "*.framework" -o -name "*.dylib" \) -print0 2>/dev/null || true; } \
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
-                codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" \
-                  2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
-              ' _ {} || true
+                i=0
+                until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$f" >"/tmp/cs.$$.log" 2>&1; do
+                  i=$((i + 1))
+                  if [ "$i" -ge 4 ]; then echo "::error::codesign failed after 4 tries: $f" >&2; cat "/tmp/cs.$$.log" >&2; rm -f "/tmp/cs.$$.log"; exit 1; fi
+                  sleep $((i * 2))
+                done
+                rm -f "/tmp/cs.$$.log"
+              ' _ {}
 
           echo "    Signing loose Mach-O files under Resources..."
-          find "$APP_NAME/Contents/Resources" -type f ! -path '*/.framework/*' ! -path '*/Python.framework/*' -print0 2>/dev/null \
+          { find "$APP_NAME/Contents/Resources" -type f ! -path '*/.framework/*' ! -path '*/Python.framework/*' -print0 2>/dev/null || true; } \
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
-                if file "$f" | grep -q "Mach-O"; then
-                  codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                    --entitlements "$SIDECAR_ENT" "$f" \
-                    2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
-                fi
-              ' _ {} || true
+                file "$f" | grep -q "Mach-O" || exit 0
+                i=0
+                until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$f" >"/tmp/cs.$$.log" 2>&1; do
+                  i=$((i + 1))
+                  if [ "$i" -ge 4 ]; then echo "::error::codesign failed after 4 tries: $f" >&2; cat "/tmp/cs.$$.log" >&2; rm -f "/tmp/cs.$$.log"; exit 1; fi
+                  sleep $((i * 2))
+                done
+                rm -f "/tmp/cs.$$.log"
+              ' _ {}
 
           echo "    Handling nested *.framework (Python.framework from PyInstaller etc.)..."
           while IFS= read -r -d '' fw; do
-            find "$fw" -type f -print0 2>/dev/null \
+            { find "$fw" -type f -print0 2>/dev/null || true; } \
               | xargs -0 -P "$JOBS" -I {} bash -c '
                   b="$1"; [ -n "$b" ] || exit 0
-                  if file "$b" | grep -q "Mach-O"; then
-                    codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                      --entitlements "$SIDECAR_ENT" "$b" \
-                      2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
-                  fi
-                ' _ {} || true
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-              "$fw" 2>&1 | grep -v -E '(replacing existing signature|already signed)' || true
+                  file "$b" | grep -q "Mach-O" || exit 0
+                  i=0
+                  until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$b" >"/tmp/cs.$$.log" 2>&1; do
+                    i=$((i + 1))
+                    if [ "$i" -ge 4 ]; then echo "::error::codesign failed after 4 tries: $b" >&2; cat "/tmp/cs.$$.log" >&2; rm -f "/tmp/cs.$$.log"; exit 1; fi
+                    sleep $((i * 2))
+                  done
+                  rm -f "/tmp/cs.$$.log"
+                ' _ {}
+            i=0
+            until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$fw" >/tmp/cs_fw.log 2>&1; do
+              i=$((i + 1))
+              if [ "$i" -ge 4 ]; then echo "::error::codesign failed after 4 tries: $fw"; cat /tmp/cs_fw.log; exit 1; fi
+              sleep $((i * 2))
+            done
           done < <(find "$APP_NAME/Contents/Resources" -type d -name "*.framework" -print0 2>/dev/null || true)
 
           echo "    Broad catch-all pass: force-signing EVERY Mach-O under Resources..."
-          find "$APP_NAME/Contents/Resources" -type f -print0 2>/dev/null \
+          { find "$APP_NAME/Contents/Resources" -type f -print0 2>/dev/null || true; } \
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
                 case "$f" in
                   */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*) exit 0 ;;
                 esac
-                if file "$f" | grep -qiE "mach-o|executable|shared library|dynamically linked"; then
-                  codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                    --entitlements "$SIDECAR_ENT" "$f" \
-                    2>&1 | grep -v -E "(replacing existing signature|already signed|is not signed)" || true
-                fi
-              ' _ {} || true
+                file "$f" | grep -qiE "mach-o|executable|shared library|dynamically linked" || exit 0
+                i=0
+                until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$f" >"/tmp/cs.$$.log" 2>&1; do
+                  i=$((i + 1))
+                  if [ "$i" -ge 4 ]; then echo "::error::codesign failed after 4 tries: $f" >&2; cat "/tmp/cs.$$.log" >&2; rm -f "/tmp/cs.$$.log"; exit 1; fi
+                  sleep $((i * 2))
+                done
+                rm -f "/tmp/cs.$$.log"
+              ' _ {}
 
           # Sign the main app bundle last (outermost)
-          codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME"
+          i=0
+          until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$ENTITLEMENTS" "$APP_NAME" >/tmp/cs_app.log 2>&1; do
+            i=$((i + 1))
+            if [ "$i" -ge 4 ]; then echo "::error::codesign failed after 4 tries for the app bundle"; cat /tmp/cs_app.log; exit 1; fi
+            sleep $((i * 2))
+          done
 
-          echo "✓ App signed with Developer ID"
+          # Fail BEFORE notarization if anything nested is unsigned/invalid — turns
+          # a mystery Apple "Invalid" into a specific, named failure right here.
+          echo "Verifying the signed bundle before notarization (--deep --strict)..."
+          if ! VERIFY_OUT=$(codesign --verify --deep --strict --verbose=2 "$APP_NAME" 2>&1); then
+            echo "::error::Pre-notarization signature verification FAILED — a nested binary is unsigned or invalidly signed:"
+            printf '%s\n' "$VERIFY_OUT" >&2
+            exit 1
+          fi
+
+          echo "✓ App signed with Developer ID and verified (--deep --strict)"
 
       - name: Build macOS PKG
         if: matrix.platform == 'macos'
@@ -655,11 +693,28 @@ jobs:
           fi
           
           echo "Submitting PKG for notarization..."
-          xcrun notarytool submit "$PKG_NAME" \
+          SUBMIT_OUT=$(xcrun notarytool submit "$PKG_NAME" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait || { echo "ERROR: PKG notarization failed"; exit 1; }
+            --wait 2>&1) || true
+          printf '%s\n' "$SUBMIT_OUT"
+
+          # `notarytool submit --wait` exits 0 even when the status is Invalid, so
+          # check the status explicitly. On anything other than Accepted, pull
+          # Apple's notarization log (the specific per-file reasons) so a failure
+          # is self-diagnosing in CI instead of a mystery "Invalid" + Error 65.
+          SUBMISSION_ID=$(printf '%s\n' "$SUBMIT_OUT" | grep -Eo 'id: [0-9a-f-]{36}' | head -1 | awk '{print $2}')
+          NOTARY_STATUS=$(printf '%s\n' "$SUBMIT_OUT" | grep -E '^[[:space:]]*status:' | tail -1 | awk '{print $2}')
+          if [ "$NOTARY_STATUS" != "Accepted" ]; then
+            echo "::error::Notarization status='${NOTARY_STATUS:-unknown}' for $PKG_NAME (submission ${SUBMISSION_ID:-unknown})"
+            if [ -n "$SUBMISSION_ID" ]; then
+              echo "── Apple notarization log ──"
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" --password "$APPLE_ID_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 || true
+            fi
+            exit 1
+          fi
           
           echo "Stapling notarization ticket to PKG..."
           xcrun stapler staple "$PKG_NAME"
