@@ -177,8 +177,9 @@ extension CreatorEngine on CreatorState {
   }
 
   /// Generate the avatar image from the dedicated image prompt (or a fallback
-  /// built from known details). KoboldCpp has no image API, so callers only
-  /// invoke this for remote backends.
+  /// built from known details). Uses the configured Image Studio image backend
+  /// (Draw Things / A1111 / remote API) — independent of the LLM backend, so it
+  /// works whether the active LLM is local KoboldCpp or a remote provider.
   Future<void> generateAvatar({required ImageGenService imageService}) async {
     if (isGeneratingAvatar) return;
 
@@ -854,9 +855,11 @@ extension CreatorEngine on CreatorState {
       setStep(4); // → Realism Engine step
       notify();
 
-      // Auto-start avatar generation (remote backends only — KoboldCpp has no
-      // image API).
-      if (llmProvider.activeBackend != BackendType.kobold) {
+      // Auto-start avatar generation when an image backend is configured.
+      // Avatar generation uses the Image Studio image backend (Draw Things /
+      // A1111 / a remote API), which is independent of the LLM backend — so
+      // this no longer depends on whether the active LLM is KoboldCpp.
+      if (imageService.isConfigured) {
         generateAvatar(imageService: imageService);
       }
     } else {
