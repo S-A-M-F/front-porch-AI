@@ -32,6 +32,18 @@ extension ChatServiceGroupRealismHelpers on ChatService {
     if (_activeGroup == null || _groupCharacters.isEmpty) {
       return _getCharacterId();
     }
+    // During a turn the speaker is pinned the moment they're picked
+    // (_generateResponse). Prefer it — it's the only reliable "who is speaking
+    // right now" signal, because `nextCharacter` points at the *upcoming*
+    // speaker and is null for random turn order (which made this fall back to
+    // the first/primary member for every random turn).
+    final pinned = _turnSpeakerIdForRealism;
+    if (pinned != null &&
+        _groupCharacters.any((c) => _getCharacterIdFromCard(c) == pinned)) {
+      return pinned;
+    }
+    // Outside a turn (pre-pick): the upcoming speaker if known (round-robin),
+    // else the first member.
     final next = nextCharacter;
     if (next != null) {
       return _getCharacterIdFromCard(next);

@@ -1244,6 +1244,15 @@ class ChatService extends ChangeNotifier {
   /// Keyed by stable charId. Populated from the hidden checkpoint.
   Map<String, Map<String, dynamic>> _groupRealism = {};
 
+  /// The group member id (`_getCharacterIdFromCard`) whose realism state is being
+  /// processed for the turn currently generating. Set the moment the speaker is
+  /// picked in `_generateResponse` and cleared in its `finally`, so every realism
+  /// consumer (prompt injection, decay, post-gen) keys on the character actually
+  /// speaking — `nextCharacter` points at the *upcoming* speaker and is null for
+  /// random turn order, so it cannot be that signal. Null outside a turn (the
+  /// pre-pick window keeps its prior nextCharacter-based behaviour).
+  String? _turnSpeakerIdForRealism;
+
   /// Per-character Author's Notes for group chats (independent of group-level _authorNote).
   /// Keyed by stable charId (from _getCharacterIdFromCard). Populated from the
   /// (legacy comment — now persisted via sessions.group_realism_state column)

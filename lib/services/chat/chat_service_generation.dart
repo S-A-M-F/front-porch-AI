@@ -70,6 +70,14 @@ extension ChatServiceGeneration on ChatService {
         speakingCharacter = _activeCharacter!;
       }
 
+      // Pin the realism speaker for the whole turn so prompt injection + decay
+      // key on the character actually generating — not nextCharacter (the
+      // *upcoming* speaker, null for random turn order). Scene guests carry no
+      // realism, so they leave it null. Cleared in the finally below.
+      _turnSpeakerIdForRealism = (_activeGroup != null && guestSpeaker == null)
+          ? _getCharacterIdFromCard(speakingCharacter)
+          : null;
+
       // SINGLE realism eval path (group trigger): the picked group member gets
       // their per-turn eval here, after selection, as it always has. The 1:1
       // host runs the SAME `_evaluateRealismForUpcomingSpeaker` from sendMessage
@@ -1455,6 +1463,12 @@ extension ChatServiceGeneration on ChatService {
       }
 
       notifyListeners();
+    } finally {
+      // The per-turn realism speaker pin lives only while we generate. Clear it
+      // on every exit (normal completion, early return, or error) so the next
+      // turn's pre-pick window (e.g. _applyMoodDecay) keeps its prior
+      // nextCharacter-based behaviour instead of seeing a stale speaker.
+      _turnSpeakerIdForRealism = null;
     }
   }
 }
