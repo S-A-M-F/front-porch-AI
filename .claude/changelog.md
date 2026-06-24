@@ -2271,3 +2271,10 @@ Part of the full-app UI regression golden suite (plan Phase 4). `MessageBubble` 
 - Fix: a framework's main binary must be signed via the framework BUNDLE, not the inner file. Framework pass now skips the framework's own main binary in the inner per-file loop (basename == framework basename); the existing `codesign "$fw"` bundle sign on the next line handles it. Catch-all pass excludes `*.framework/*` so it can't re-hit the same inner binary (frameworks are fully handled by the framework pass).
 - Validated: YAML parses, signing-step bash -n parses. Rawhide-only; re-test via manual Rawhide build.
 - Commit: (this commit)
+
+## 2026-06-24 — ci(nightly/macOS): retry-then-TOLERATE signing (revise — don't fail on the harmless PyInstaller framework quirk)
+- Files: .github/workflows/nightly.yml (Code Sign step).
+- Reason: the prior fail-loud iterations proved PyInstaller's bundled Python.framework (dt_grpc sidecar) can't be codesigned at all ("bundle format is ambiguous (could be app or framework)") as a file OR a bundle — yet main's v0.9.9.1.3 release has the IDENTICAL framework + identical code and Apple notarized it fine. So Apple tolerates it (warning, not rejection); failing on it breaks a build Apple accepts.
+- Revision: kept the codesign RETRIES (the real fix for the intermittent timestamp-server throttle), but after retries per-file + framework-bundle signs are now best-effort (warn + continue) like the long-standing pipeline; reverted the framework-main-binary skip, the catch-all `*.framework/*` exclusion, and the `--verify --deep --strict` gate (all of which tripped on the tolerable quirk). Only the outermost app sign stays hard. The notarize step still fetches `notarytool log` on a genuine rejection.
+- Net vs original: same signing coverage + tolerance, plus timestamp-throttle retries + self-diagnosing notarization. Validated: YAML + signing-step bash -n parse. Rawhide-only; re-test via manual build.
+- Commit: (this commit)
