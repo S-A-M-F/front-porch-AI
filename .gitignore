@@ -93,7 +93,6 @@ front_porch_ai.png
 # AI assistant metadata
 .antigravity/
 .agent/
-.claude/
 .gemini/
 .claw/
 .sandbox-*/
