@@ -2249,3 +2249,10 @@ Part of the full-app UI regression golden suite (plan Phase 4). `MessageBubble` 
 - Fix: (1) wrap the value switch in try/catch and break the metadata loop on overflow — the architecture keys (block_count/head_count/embedding_length) appear before the tokenizer data, so `meta` already holds them and the post-loop code returns valid GGUFModelInfo instead of throwing (so parsing now SUCCEEDS for these models, improving VRAM/layer estimates too); (2) negative-cache files that yield null in model_manager so they're parsed once, not every frame.
 - Verification: flutter analyze clean; dart format clean; test/utils green (no dedicated gguf test exists). Isolated to gguf_parser + model_manager (untouched by the unify refactor) — separately committable.
 - Commit: (pending)
+
+## 2026-06-23 — Creator: allow avatar generation on the KoboldCpp LLM backend (cherry-picked from main 5816782)
+- Files: lib/ui/character_creator/widgets/review_avatar_panel.dart, lib/ui/character_creator/creator_state_engine.dart, docs/Rawhide.md.
+- Reason: Review step blocked "Generate Avatar" when the chat model was KoboldCpp ("Avatar generation unavailable with KoboldCpp") — dead gating from when KoboldCpp was treated as the image source. Avatars use the Image Studio image backend (Draw Things/A1111/remote), independent of the LLM backend.
+- Fix: removed the isKobold gating in the panel (button always shows); auto-start gated on imageService.isConfigured. Fixed on main first then cherry-picked here. Setup-step backend chip untouched.
+- Verification: flutter analyze clean on the changed files.
+- Commit: (docs commit)

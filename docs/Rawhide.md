@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🎨 **Generate character avatars on the local backend too** — In the AI Character Creator's Review step, "Generate Avatar" was hidden whenever your chat model was KoboldCpp — a leftover from when KoboldCpp was mistakenly treated as the image source. Avatars actually come from the image generator you pick in Image Studio (Draw Things / A1111 / a remote API), independent of your chat model — so generating one now works no matter which LLM backend you're on.
+
 - 🎯 **Group characters now react to their *own* state, not a castmate's** — a behind-the-scenes mix-up meant a character's hidden prompt could be fed the *other* member's needs, mood, and relationship, and in shuffled turn order the needs/bond changes always landed on the first character instead of whoever actually spoke. Each speaker now reads and updates their own stats, every turn, in any turn order — so characters behave consistently with how *they* actually feel.
 
 - 📊 **Needs changes now show under every group member's messages** — the little needs chips (Hunger ▴, Bladder ▴, etc.) under a reply only appeared for the first character to respond after you typed; everyone else's messages showed none, even though their needs were updating behind the scenes. Now every speaker — including auto-advanced turns, `/speak`, and director chime-ins — shows their own needs changes on their message, exactly like the first responder.
