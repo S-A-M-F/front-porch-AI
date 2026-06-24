@@ -582,9 +582,16 @@ jobs:
 
           echo "    Handling nested *.framework (Python.framework from PyInstaller etc.)..."
           while IFS= read -r -d '' fw; do
+            FW_MAIN="$(basename "$fw" .framework)"
+            export FW_MAIN
             { find "$fw" -type f -print0 2>/dev/null || true; } \
               | xargs -0 -P "$JOBS" -I {} bash -c '
                   b="$1"; [ -n "$b" ] || exit 0
+                  # Skip the framework main binary (e.g. Python.framework/Python and
+                  # .../Versions/*/Python): signing it as a loose FILE triggers
+                  # "bundle format is ambiguous". The framework BUNDLE codesign of
+                  # "$fw" below signs the main binary correctly.
+                  [ "$(basename "$b")" = "$FW_MAIN" ] && exit 0
                   file "$b" | grep -q "Mach-O" || exit 0
                   i=0
                   until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$b" >"/tmp/cs.$$.log" 2>&1; do
@@ -607,7 +614,7 @@ jobs:
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
                 case "$f" in
-                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*) exit 0 ;;
+                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*|*.framework/*) exit 0 ;;
                 esac
                 file "$f" | grep -qiE "mach-o|executable|shared library|dynamically linked" || exit 0
                 i=0

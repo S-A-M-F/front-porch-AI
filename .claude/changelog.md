@@ -2264,3 +2264,10 @@ Part of the full-app UI regression golden suite (plan Phase 4). `MessageBubble` 
 - Fix (notarize): `notarytool submit --wait` exits 0 even on Invalid (the old `|| {exit 1}` never caught it → it proceeded to staple and died), so now the status is parsed explicitly and on anything but Accepted, `notarytool log <id>` is fetched + printed — future failures are self-diagnosing in CI.
 - Scope: Rawhide-only per plan — validate via a manual Rawhide build, then propagate to main's nightly.yml + release.yml (which share this signing code). Validated: YAML parses, signing-step `bash -n` parses; runtime only testable on the macOS runner.
 - Commit: (this commit)
+
+## 2026-06-24 — ci(nightly/macOS): fix "bundle format is ambiguous" on PyInstaller framework main binaries
+- Files: .github/workflows/nightly.yml (framework pass + catch-all pass).
+- Reason: the previous commit's fail-loud signing surfaced the REAL intermittent-notarization cause (previously swallowed by `|| true`): the framework pass tried to `codesign` a framework's MAIN binary as a loose file — e.g. dt_grpc_client/_internal/Python.framework/Python — which codesign refuses with "bundle format is ambiguous (could be app or framework)". That left the binary improperly signed → Apple rejected the .pkg as Invalid. (dt_grpc_client = the Draw Things gRPC sidecar, a newer PyInstaller bundle, which is why it surfaced now.)
+- Fix: a framework's main binary must be signed via the framework BUNDLE, not the inner file. Framework pass now skips the framework's own main binary in the inner per-file loop (basename == framework basename); the existing `codesign "$fw"` bundle sign on the next line handles it. Catch-all pass excludes `*.framework/*` so it can't re-hit the same inner binary (frameworks are fully handled by the framework pass).
+- Validated: YAML parses, signing-step bash -n parses. Rawhide-only; re-test via manual Rawhide build.
+- Commit: (this commit)
