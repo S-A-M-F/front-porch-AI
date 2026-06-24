@@ -4,6 +4,8 @@ These notes feed the in-app "Update Available" dialog for Rawhide / cutting-edge
 
 ## Recent improvements
 
+- 🎯 **Group characters now react to their *own* state, not a castmate's** — a behind-the-scenes mix-up meant a character's hidden prompt could be fed the *other* member's needs, mood, and relationship, and in shuffled turn order the needs/bond changes always landed on the first character instead of whoever actually spoke. Each speaker now reads and updates their own stats, every turn, in any turn order — so characters behave consistently with how *they* actually feel.
+
 - 📊 **Needs changes now show under every group member's messages** — the little needs chips (Hunger ▴, Bladder ▴, etc.) under a reply only appeared for the first character to respond after you typed; everyone else's messages showed none, even though their needs were updating behind the scenes. Now every speaker — including auto-advanced turns, `/speak`, and director chime-ins — shows their own needs changes on their message, exactly like the first responder.
 
 - 🧭 **Cleaner group sidebar** — the right-hand panel now leads with **Main Settings** (the per-character menu) and puts the **Group Settings** button right beneath it, *above* the cast list — so whole-group options come before per-character ones instead of being buried under the roster. Director/Verifier settings also no longer appear twice: they live solely in **Group Settings → Realism**, where they work for every member (the broken, first-character-only copy on the Needs tab is gone).
