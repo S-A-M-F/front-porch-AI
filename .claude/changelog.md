@@ -1820,3 +1820,10 @@ Brief reason: Merged MisterLotto's PR #60 (export cards as .json + fix raw .json
 
 ### Reason
 Part of the full-app UI regression golden suite (plan Phase 4). `MessageBubble` was previously blocked on `TtsService` being subprocess/timer-backed. `FakeTtsService extends ChangeNotifier implements TtsService` with `noSuchMethod` unblocks it. Realism-chip golden specifically asserts the bond/trust/emotion chip row so a regression that silently drops chips fails loudly.
+
+## 2026-06-23 — STABLE hotfix: route Kobold generation through the chat door (Stage 1 backport to main)
+- Files: lib/services/openai_chat_stream.dart (NEW), lib/services/kobold_service.dart (generateStream → shared helper; raw _generateStreamInternal deleted).
+- Reason: main needed the KoboldCpp char-gen/eval fix in stable NOW, but the full Rawhide unify can't cherry-pick (it depends on chat-service leaf files — chat_service_generation/impersonate — that don't exist on main; 159 commits of divergence). The actual fix is Stage 1 only — routing KoboldService.generateStream through KoboldCpp's /v1/chat/completions (template applied server-side) — which is fully self-contained to kobold_service + the new helper. main's kobold_service was byte-identical to Rawhide's pre-unify version, so the exact Stage-1 edit applied verbatim.
+- Scope: deliberately minimal. The prompt-shape unification and band-aid removals from the Rawhide refactor are NOT included (they need the missing leaf files); the existing EOS band-aids on main are harmless no-ops (the chat helper ignores banEosToken/trimStop). pseudo-remote on main keeps its own chat copy (not collapsed). Those cleanups ride the normal release cycle.
+- Verification: flutter analyze clean on the changed files (1 pre-existing unrelated warning in chat_service.dart:8005 left as-is); full flutter test = 1246/1246 pass.
+- Commit: (this commit)
