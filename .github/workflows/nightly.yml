@@ -536,17 +536,26 @@ jobs:
           # LAST); only distinct files WITHIN a pass run in parallel. BSD xargs on
           # macOS, so no GNU-only flags and we guard against empty input.
           #
-          # RELIABILITY FIX (intermittent notarization "Invalid"): each
-          # `codesign --timestamp` is a network round-trip to Apple's timestamp
-          # server, which throttles under this parallel burst — the real cause of
-          # the random failures. Every codesign now RETRIES (heals the throttle).
-          # Per-file signs stay BEST-EFFORT after retries: PyInstaller's bundled
-          # Python.framework cannot be codesigned ("bundle format is ambiguous")
-          # yet Apple still notarizes the build, so failing on that would break a
-          # build Apple accepts (it's why the previous `|| true` shipped fine).
-          # Only the outermost app sign is hard. If Apple actually rejects anything,
-          # the notarize step below fetches `notarytool log` so the reason is in
-          # the CI log instead of a mystery Invalid.
+          # Two distinct failure modes are handled here:
+          #
+          # 1. TIMESTAMP THROTTLE (intermittent "Invalid"): each
+          #    `codesign --timestamp` is a network round-trip to Apple's timestamp
+          #    server, which throttles under this parallel burst. Every codesign
+          #    RETRIES with backoff to heal the throttle.
+          #
+          # 2. BROKEN PyInstaller FRAMEWORK SIGNATURES (deterministic "Invalid"):
+          #    PyInstaller ships *flat* frameworks — e.g. Python.framework/Python is
+          #    a plain Mach-O with no Versions/ structure — carrying its own ad-hoc
+          #    signature. codesign refuses to re-sign that binary IN PLACE ("bundle
+          #    format is ambiguous"), so the stale/broken signature survived and
+          #    Apple's notary rejected it: "The signature of the binary is invalid."
+          #    (NOT "unsigned" — it was the bad sig that failed.) Fix: copy each
+          #    framework Mach-O OUT of the bundle, sign it as a standalone Mach-O
+          #    (the signature embeds in the file bytes), and copy it back. This is a
+          #    HARD requirement — a bad sig here is exactly what fails notarization,
+          #    so we exit 1 if we cannot produce a valid signature.
+          # If Apple still rejects anything, the notarize step below fetches
+          # `notarytool log` so the precise reason is in the CI log.
           export MACOS_CERTIFICATE_NAME SIDECAR_ENT ENTITLEMENTS
           JOBS=8
 
@@ -565,54 +574,66 @@ jobs:
                 rm -f "/tmp/cs.$$.log"
               ' _ {}
 
-          echo "    Signing loose Mach-O files under Resources..."
-          { find "$APP_NAME/Contents/Resources" -type f ! -path '*/.framework/*' ! -path '*/Python.framework/*' -print0 2>/dev/null || true; } \
+          echo "    Signing loose Mach-O files under Resources (excluding *.framework internals)..."
+          { find "$APP_NAME/Contents/Resources" -type f ! -path '*.framework/*' -print0 2>/dev/null || true; } \
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
                 file "$f" | grep -q "Mach-O" || exit 0
                 i=0
                 until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$f" >"/tmp/cs.$$.log" 2>&1; do
                   i=$((i + 1))
-                  if [ "$i" -ge 4 ]; then echo "  ⚠ codesign skipped after 4 tries (continuing — Apple still notarizes; matches the long-standing pipeline): $f" >&2; break; fi
+                  if [ "$i" -ge 4 ]; then echo "  ⚠ codesign skipped after 4 tries (continuing — non-framework Mach-O, throttle): $f" >&2; break; fi
                   sleep $((i * 2))
                 done
                 rm -f "/tmp/cs.$$.log"
               ' _ {}
 
-          echo "    Handling nested *.framework (Python.framework from PyInstaller etc.)..."
-          while IFS= read -r -d '' fw; do
-            { find "$fw" -type f -print0 2>/dev/null || true; } \
-              | xargs -0 -P "$JOBS" -I {} bash -c '
-                  b="$1"; [ -n "$b" ] || exit 0
-                  file "$b" | grep -q "Mach-O" || exit 0
-                  i=0
-                  until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$b" >"/tmp/cs.$$.log" 2>&1; do
-                    i=$((i + 1))
-                    if [ "$i" -ge 4 ]; then echo "  ⚠ codesign skipped after 4 tries (continuing): $b" >&2; break; fi
-                    sleep $((i * 2))
-                  done
-                  rm -f "/tmp/cs.$$.log"
-                ' _ {}
-            i=0
-            until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$fw" >/tmp/cs_fw.log 2>&1; do
-              i=$((i + 1))
-              if [ "$i" -ge 4 ]; then echo "  ⚠ codesign skipped after 4 tries (continuing): $fw"; break; fi
-              sleep $((i * 2))
+          echo "    Signing Mach-O binaries inside nested *.framework bundles (copy-out for flat PyInstaller frameworks)..."
+          # Retry wrapper (timestamp throttle). Returns 0 only if codesign succeeds.
+          try_sign() {
+            local t="$1" i=0
+            until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$t" >/tmp/cs_fwbin.log 2>&1; do
+              i=$((i + 1)); if [ "$i" -ge 4 ]; then return 1; fi; sleep $((i * 2))
             done
+            return 0
+          }
+          while IFS= read -r -d '' b; do
+            file "$b" | grep -q "Mach-O" || continue
+            # Proper (versioned) frameworks + plain nested .so/.dylib sign in place.
+            if try_sign "$b"; then continue; fi
+            # Flat framework principal binary (e.g. Python.framework/Python): codesign
+            # won't sign it in place. Sign a copy outside the bundle, then restore —
+            # the Developer ID signature is embedded in the Mach-O file itself.
+            tmpd=$(mktemp -d); cp "$b" "$tmpd/bin"
+            if try_sign "$tmpd/bin"; then
+              cp "$tmpd/bin" "$b"; rm -rf "$tmpd"
+              echo "      ✓ signed via copy-out: $b"; continue
+            fi
+            rm -rf "$tmpd"
+            echo "::error::Could not produce a valid signature for framework binary: $b"
+            cat /tmp/cs_fwbin.log 2>/dev/null || true
+            exit 1
+          done < <(find "$APP_NAME/Contents/Resources" -path '*.framework/*' -type f -print0 2>/dev/null || true)
+
+          # Seal proper (versioned) framework bundles. Flat PyInstaller frameworks
+          # have no bundle seal and codesign refuses them ("ambiguous") — that is
+          # fine: Apple validates the now-valid embedded binary signature above.
+          while IFS= read -r -d '' fw; do
+            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$fw" >/dev/null 2>&1 || true
           done < <(find "$APP_NAME/Contents/Resources" -type d -name "*.framework" -print0 2>/dev/null || true)
 
-          echo "    Broad catch-all pass: force-signing EVERY Mach-O under Resources..."
+          echo "    Broad catch-all pass: force-signing EVERY remaining Mach-O under Resources..."
           { find "$APP_NAME/Contents/Resources" -type f -print0 2>/dev/null || true; } \
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
                 case "$f" in
-                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*) exit 0 ;;
+                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*|*.framework/*) exit 0 ;;
                 esac
                 file "$f" | grep -qiE "mach-o|executable|shared library|dynamically linked" || exit 0
                 i=0
                 until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime --entitlements "$SIDECAR_ENT" "$f" >"/tmp/cs.$$.log" 2>&1; do
                   i=$((i + 1))
-                  if [ "$i" -ge 4 ]; then echo "  ⚠ codesign skipped after 4 tries (continuing — Apple still notarizes; matches the long-standing pipeline): $f" >&2; break; fi
+                  if [ "$i" -ge 4 ]; then echo "  ⚠ codesign skipped after 4 tries (continuing — throttle): $f" >&2; break; fi
                   sleep $((i * 2))
                 done
                 rm -f "/tmp/cs.$$.log"
