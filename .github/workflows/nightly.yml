@@ -555,8 +555,8 @@ jobs:
                   2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
               ' _ {} || true
 
-          echo "    Signing loose Mach-O files under Resources..."
-          find "$APP_NAME/Contents/Resources" -type f ! -path '*/.framework/*' ! -path '*/Python.framework/*' -print0 2>/dev/null \
+          echo "    Signing loose Mach-O files under Resources (excluding *.framework internals)..."
+          find "$APP_NAME/Contents/Resources" -type f ! -path '*.framework/*' -print0 2>/dev/null \
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
                 if file "$f" | grep -q "Mach-O"; then
@@ -566,19 +566,66 @@ jobs:
                 fi
               ' _ {} || true
 
-          echo "    Handling nested *.framework (Python.framework from PyInstaller etc.)..."
+          echo "    Normalizing + signing nested *.framework bundles (PyInstaller layout)..."
+          # PyInstaller's frameworks are already versioned (Versions/<X.Y>/<name> is
+          # the real Mach-O) but ALSO carry a DUPLICATE real binary (and Resources) at
+          # the framework ROOT. A real Mach-O at the bundle root looks app-like while
+          # Versions/ looks framework-like, so codesign reports "bundle format is
+          # ambiguous (could be app or framework)" and cannot SEAL the framework —
+          # which makes Apple's notary reject it with "The signature of the binary is
+          # invalid." (The old best-effort `|| true` loop here silently tolerated
+          # older clean caches but fails the moment a newer PyInstaller cache is used;
+          # `pip install pyinstaller` is unpinned, so that can change at any rebuild.)
+          # Fix: normalize each framework to the canonical layout (root entries become
+          # symlinks into Versions/Current, dropping the duplicate root binary), then
+          # SEAL it, with a hard local `codesign --verify --deep --strict` gate so we
+          # never submit a framework Apple would reject.
           while IFS= read -r -d '' fw; do
-            find "$fw" -type f -print0 2>/dev/null \
-              | xargs -0 -P "$JOBS" -I {} bash -c '
-                  b="$1"; [ -n "$b" ] || exit 0
-                  if file "$b" | grep -q "Mach-O"; then
-                    codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-                      --entitlements "$SIDECAR_ENT" "$b" \
-                      2>&1 | grep -v -E "(replacing existing signature|already signed)" || true
-                  fi
-                ' _ {} || true
-            codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
-              "$fw" 2>&1 | grep -v -E '(replacing existing signature|already signed)' || true
+            name="$(basename "$fw" .framework)"
+
+            realver=""
+            shopt -s nullglob
+            for cand in "$fw"/Versions/*/; do
+              cn="$(basename "$cand")"
+              case "$cn" in Current) continue;; esac
+              if [ -f "$cand$name" ] && [ ! -L "${cand}$name" ]; then realver="$cn"; break; fi
+            done
+            shopt -u nullglob
+
+            if [ -n "$realver" ]; then
+              if [ "$realver" != "A" ] && [ -d "$fw/Versions/A" ] && [ ! -f "$fw/Versions/A/$name" ]; then
+                rm -rf "$fw/Versions/A"
+              fi
+              rm -rf "$fw/Versions/Current"
+              ln -s "$realver" "$fw/Versions/Current"
+              for sub in "$name" Resources Headers Modules; do
+                if [ -e "$fw/Versions/$realver/$sub" ] && [ ! -L "$fw/$sub" ]; then
+                  rm -rf "$fw/$sub"
+                  ln -s "Versions/Current/$sub" "$fw/$sub"
+                fi
+              done
+              echo "      ↻ normalized framework layout: $fw (version $realver)"
+            fi
+
+            tgtver="${realver:+$fw/Versions/$realver}"; tgtver="${tgtver:-$fw}"
+            while IFS= read -r -d '' inner; do
+              case "$inner" in */"$name") [ -n "$realver" ] && [ "$inner" = "$fw/Versions/$realver/$name" ] && continue;; esac
+              file "$inner" | grep -q "Mach-O" || continue
+              codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$inner" >/dev/null 2>&1 || true
+            done < <(find "$tgtver" -type f -print0 2>/dev/null || true)
+
+            i=0
+            until codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime "$fw" >/tmp/cs_fw.log 2>&1; do
+              i=$((i + 1)); if [ "$i" -ge 4 ]; then echo "::error::Failed to sign framework $fw"; cat /tmp/cs_fw.log; ls -laR "$fw" | head -120; exit 1; fi
+              sleep $((i * 2))
+            done
+
+            if ! codesign --verify --deep --strict --verbose=2 "$fw" >/tmp/cs_vfy.log 2>&1; then
+              echo "::error::codesign --verify failed for framework $fw"; cat /tmp/cs_vfy.log
+              echo "---- framework structure ----"; ls -laR "$fw" | head -120
+              exit 1
+            fi
+            echo "      ✓ framework signed + verified: $fw"
           done < <(find "$APP_NAME/Contents/Resources" -type d -name "*.framework" -print0 2>/dev/null || true)
 
           echo "    Broad catch-all pass: force-signing EVERY Mach-O under Resources..."
@@ -586,7 +633,7 @@ jobs:
             | xargs -0 -P "$JOBS" -I {} bash -c '
                 f="$1"; [ -n "$f" ] || exit 0
                 case "$f" in
-                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*) exit 0 ;;
+                  */Contents/MacOS/FrontPorchAI*|*/Contents/Frameworks/*|*.framework/*) exit 0 ;;
                 esac
                 if file "$f" | grep -qiE "mach-o|executable|shared library|dynamically linked"; then
                   codesign --force --sign "$MACOS_CERTIFICATE_NAME" --timestamp --options runtime \
