@@ -300,85 +300,96 @@ class GGUFParser {
         offset += 4;
 
         dynamic value;
-        // (Same compact switch as getKvCacheBytesPerToken — kept in sync for now)
-        switch (valType) {
-          case 0:
-            value = data.getUint8(offset);
-            offset += 1;
-            break;
-          case 1:
-            value = data.getInt8(offset);
-            offset += 1;
-            break;
-          case 2:
-            value = data.getUint16(offset, Endian.little);
-            offset += 2;
-            break;
-          case 3:
-            value = data.getInt16(offset, Endian.little);
-            offset += 2;
-            break;
-          case 4:
-            value = data.getUint32(offset, Endian.little);
-            offset += 4;
-            break;
-          case 5:
-            value = data.getInt32(offset, Endian.little);
-            offset += 4;
-            break;
-          case 6:
-            value = data.getFloat32(offset, Endian.little);
-            offset += 4;
-            break;
-          case 7:
-            value = data.getUint8(offset) != 0;
-            offset += 1;
-            break;
-          case 8:
-            final strLen = data.getUint64(offset, Endian.little).toInt();
-            offset += 8;
-            value = utf8.decode(
-              bytes.sublist(offset, offset + strLen),
-              allowMalformed: true,
-            );
-            offset += strLen;
-            break;
-          case 9:
-            final arrType = data.getUint32(offset, Endian.little);
-            offset += 4;
-            final arrLen = data.getUint64(offset, Endian.little).toInt();
-            offset += 8;
-            if (arrType == 8) {
-              for (var j = 0; j < arrLen; j++) {
-                final l = data.getUint64(offset, Endian.little).toInt();
-                offset += 8 + l;
+        // Value reads here are not individually bounds-checked, so a large
+        // value (e.g. the tokenizer.ggml.tokens array on big-vocab models like
+        // Skyfall) can run past the 4 MB header buffer we loaded. Catch that and
+        // stop cleanly: the architecture keys we need (block_count, head_count,
+        // embedding_length) appear before the tokenizer data, so `meta` already
+        // holds them — far better than throwing a RangeError on every call.
+        try {
+          switch (valType) {
+            case 0:
+              value = data.getUint8(offset);
+              offset += 1;
+              break;
+            case 1:
+              value = data.getInt8(offset);
+              offset += 1;
+              break;
+            case 2:
+              value = data.getUint16(offset, Endian.little);
+              offset += 2;
+              break;
+            case 3:
+              value = data.getInt16(offset, Endian.little);
+              offset += 2;
+              break;
+            case 4:
+              value = data.getUint32(offset, Endian.little);
+              offset += 4;
+              break;
+            case 5:
+              value = data.getInt32(offset, Endian.little);
+              offset += 4;
+              break;
+            case 6:
+              value = data.getFloat32(offset, Endian.little);
+              offset += 4;
+              break;
+            case 7:
+              value = data.getUint8(offset) != 0;
+              offset += 1;
+              break;
+            case 8:
+              final strLen = data.getUint64(offset, Endian.little).toInt();
+              offset += 8;
+              value = utf8.decode(
+                bytes.sublist(offset, offset + strLen),
+                allowMalformed: true,
+              );
+              offset += strLen;
+              break;
+            case 9:
+              final arrType = data.getUint32(offset, Endian.little);
+              offset += 4;
+              final arrLen = data.getUint64(offset, Endian.little).toInt();
+              offset += 8;
+              if (arrType == 8) {
+                for (var j = 0; j < arrLen; j++) {
+                  final l = data.getUint64(offset, Endian.little).toInt();
+                  offset += 8 + l;
+                }
+              } else {
+                int size = 0;
+                if (arrType == 0 || arrType == 1 || arrType == 7) {
+                  size = 1;
+                } else if (arrType == 2 || arrType == 3) {
+                  size = 2;
+                } else if (arrType >= 4 && arrType <= 6) {
+                  size = 4;
+                } else if (arrType >= 10 && arrType <= 12) {
+                  size = 8;
+                }
+                offset += arrLen * size;
               }
-            } else {
-              int size = 0;
-              if (arrType == 0 || arrType == 1 || arrType == 7) {
-                size = 1;
-              } else if (arrType == 2 || arrType == 3) {
-                size = 2;
-              } else if (arrType >= 4 && arrType <= 6) {
-                size = 4;
-              } else if (arrType >= 10 && arrType <= 12) {
-                size = 8;
-              }
-              offset += arrLen * size;
-            }
-            break;
-          case 10:
-            value = data.getUint64(offset, Endian.little);
-            offset += 8;
-            break;
-          case 11:
-            value = data.getInt64(offset, Endian.little);
-            offset += 8;
-            break;
-          case 12:
-            value = data.getFloat64(offset, Endian.little);
-            offset += 8;
-            break;
+              break;
+            case 10:
+              value = data.getUint64(offset, Endian.little);
+              offset += 8;
+              break;
+            case 11:
+              value = data.getInt64(offset, Endian.little);
+              offset += 8;
+              break;
+            case 12:
+              value = data.getFloat64(offset, Endian.little);
+              offset += 8;
+              break;
+          }
+        } catch (_) {
+          // A value extended past the loaded 4 MB header buffer. Stop and use
+          // the architecture keys collected above rather than discarding them.
+          break;
         }
 
         if (value != null &&

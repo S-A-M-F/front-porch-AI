@@ -116,6 +116,10 @@ class ModelManager extends ChangeNotifier {
   /// Cache for full GGUF architecture info (nLayers + kv bytes + helpers).
   final Map<String, GGUFModelInfo> _ggufInfoCache = {};
 
+  /// Negative cache: files that yielded no parseable arch info, so we don't
+  /// re-parse (and re-log) them on every UI rebuild.
+  final Set<String> _ggufInfoUnparseable = {};
+
   /// Retrieves full architectural info (including real `nLayers` / block_count)
   /// by parsing the GGUF file. Populates an internal cache for fast subsequent
   /// calls (used by the layer solver / Auto-Configure).
@@ -123,14 +127,20 @@ class ModelManager extends ChangeNotifier {
     if (_ggufInfoCache.containsKey(filePath)) {
       return _ggufInfoCache[filePath];
     }
+    // A file that yields no arch info is attempted once, then negative-cached —
+    // otherwise every rebuild re-parses and re-logs, spamming the console.
+    if (_ggufInfoUnparseable.contains(filePath)) return null;
 
     try {
       final info = await GGUFParser.getModelArchitectureInfo(filePath);
       if (info != null) {
         _ggufInfoCache[filePath] = info;
+      } else {
+        _ggufInfoUnparseable.add(filePath);
       }
       return info;
     } catch (_) {
+      _ggufInfoUnparseable.add(filePath);
       return null;
     }
   }
