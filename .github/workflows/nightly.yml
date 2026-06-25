@@ -185,6 +185,28 @@ jobs:
             mv FrontPorchAI.app FrontPorchAI-Rawhide.app
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Front Porch AI Nightly" FrontPorchAI-Rawhide.app/Contents/Info.plist 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleName Front Porch AI Nightly" FrontPorchAI-Rawhide.app/Contents/Info.plist 2>/dev/null || true
+            # Give Nightly its OWN bundle identifier — this is the macOS twin of the
+            # Windows per-channel-AppId fix. Stable ships com.linux4life1.frontPorchAi.
+            # Nightly previously ALSO shipped that same id, so /Applications had two
+            # different .app bundles claiming one identity (stable front_porch_ai.app +
+            # FrontPorchAI-Rawhide.app). When the in-app updater ran `open <pkg>`, the
+            # macOS Installer's bundle-relocation looked up that shared id, found two
+            # candidates, and the .pkg payload never reliably overwrote the running
+            # Nightly bundle — so the app stayed on the old build and kept re-prompting
+            # "Update Available" forever (the macOS Nightly update loop).
+            #
+            # A distinct id makes relocation unambiguous: exactly one bundle on disk
+            # claims com.linux4life1.frontPorchAi.nightly, so the Installer overwrites
+            # the Nightly bundle in place (wherever the user keeps it) and the loop ends.
+            # IMPORTANT: this must happen BEFORE code signing below — signing seals
+            # Info.plist, so the id has to be final here.
+            #
+            # Data safety: the app is NOT sandboxed (see macos/Runner/Release.entitlements),
+            # so chats/characters live in ~/Documents/FrontPorchAI-Beta and are keyed by
+            # the FrontPorchAI-Beta dir + isPreRelease, NOT by the bundle id — they are
+            # untouched. Only macOS NSUserDefaults (which IS bundle-id-keyed) moves to a
+            # new domain, i.e. a one-time reset of Nightly's app settings on changeover.
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.linux4life1.frontPorchAi.nightly" FrontPorchAI-Rawhide.app/Contents/Info.plist 2>/dev/null || true
           fi
 
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
