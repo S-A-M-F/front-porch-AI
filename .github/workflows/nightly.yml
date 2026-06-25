@@ -157,16 +157,6 @@ jobs:
         with:
           workspaces: "tools/embed_server"
 
-      - name: Cache ML Engines (Kokoro TTS, Piper TTS, Whisper STT, etc.)
-        id: ml-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ml-engines-cache
-          key: ml-engines-v2-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/embed_server/Cargo.lock', 'tools/dt-grpc-python/**') }}
-          restore-keys: |
-            ml-engines-v2-${{ matrix.platform }}-
-
       - name: Build Application
         if: matrix.platform != 'linux'
         run: flutter build ${{ matrix.platform }} --release
@@ -212,33 +202,19 @@ jobs:
       - name: Bundle ML Engines (Kokoro TTS, Piper TTS, Whisper STT, ONNX Embeddings)
         shell: bash
         run: |
-          CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
-          CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
-          # ONLY these ML sidecar dirs are cached/restored — NEVER the freshly-built
-          # Flutter app (the .app bundle on macOS; front_porch_ai.exe + data/app.so on
-          # Windows). A prior version cached the ENTIRE build_path, so on a cache hit it
-          # copied a STALE app over the fresh one — freezing the compiled app (and its
-          # baked appVersion) at whatever day the sidecar sources last changed, while the
-          # release tag advanced daily. That shipped stale code under a fresh version
-          # label and made the in-app updater loop forever: the installed app's baked
-          # version could never catch up to the release tag, so "Update Available" never
-          # cleared, on every platform. (Verified: the published rawhide.20260625 .pkg
-          # actually contained rawhide.20260621 code.) Restricting the copy to the
-          # sidecar dirs keeps `flutter build`'s output authoritative.
-          SIDECAR_DIRS="piper whisper_stt embed_server sentiment_classifier dt_grpc_client"
-
-          if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
-            echo "ML engines cache hit — restoring sidecars only (NOT the Flutter app)"
-            mkdir -p "${{ matrix.build_path }}"
-            for d in $SIDECAR_DIRS; do
-              if [ -d "$CACHE_DIR/$d" ]; then
-                rm -rf "${{ matrix.build_path }}/$d"
-                cp -r "$CACHE_DIR/$d" "${{ matrix.build_path }}/"
-              fi
-            done
-          else
-            echo "ML engines cache miss — building from source"
-            DEST="${{ matrix.build_path }}/piper"
+          # ML sidecars are ALWAYS built fresh from source — caching of this step is
+          # deliberately DISABLED. A previous "Cache ML Engines" step cached the ENTIRE
+          # build directory (which also contains the compiled Flutter app), so on a cache
+          # hit it restored a STALE app over the fresh `flutter build` output — shipping
+          # weeks-old code under fresh version tags and causing an endless "Update
+          # Available" loop on every platform (the published rawhide.20260625 .pkg
+          # actually contained rawhide.20260621 code). Rather than risk that class of
+          # "everything says current but isn't" bug ever again, we eat the sidecar build
+          # time on every run. Correctness > a few minutes of CI. The other caches
+          # (Flutter SDK, pub, pip, cargo/rust-cache) only cache build *inputs*, never
+          # the app output, so they remain safe and are kept.
+          echo "Building ML engines from source (caching intentionally disabled)"
+          DEST="${{ matrix.build_path }}/piper"
             mkdir -p "$DEST"
 
             # Install TTS dependencies + PyInstaller
@@ -424,18 +400,6 @@ jobs:
               --exclude-module torchaudio \
               --noconfirm
             echo "Draw Things gRPC client built at: $STT_DEST/dt_grpc_client/"
-
-            # Populate ML cache for future runs — sidecars ONLY, never the Flutter app
-            # (see the cache-hit note above for why caching the whole build_path shipped
-            # stale compiled code on nightly/beta). Same source hash = instant reuse.
-            mkdir -p "$CACHE_DIR"
-            for d in $SIDECAR_DIRS; do
-              if [ -d "${{ matrix.build_path }}/$d" ]; then
-                rm -rf "$CACHE_DIR/$d"
-                cp -r "${{ matrix.build_path }}/$d" "$CACHE_DIR/"
-              fi
-            done
-          fi
 
           # For macOS, copy into the app bundle Resources (always runs)
           if [ "${{ matrix.platform }}" = "macos" ]; then
