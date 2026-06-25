@@ -420,8 +420,33 @@ class UpdateService extends ChangeNotifier {
     // Use /VERYSILENT (fully silent) for same-license upgrades
     final needsLicenseAcceptance = _currentVersion.startsWith('0.8');
     final silentFlag = needsLicenseAcceptance ? '/SILENT' : '/VERYSILENT';
+
+    // Install in place, on top of the build that is actually running, by telling
+    // the installer the current install directory via /DIR. This is the reliable
+    // way to find AND honor a custom install location: resolvedExecutable is
+    // "<installDir>\front_porch_ai.exe", so its parent is exactly the folder the
+    // user originally chose — default OR a custom drive/path — and the running app
+    // is the only component that authoritatively knows it. The installer can't
+    // safely rediscover a custom Nightly folder from the registry (the pre-split
+    // AppId was shared with Stable/Beta, so guessing risks installing over a
+    // Stable install), so we source the truth here instead.
+    //
+    // Without /DIR, a /VERYSILENT update falls back to the installer's default
+    // directory. After the channel AppId split that is how a Nightly update forked
+    // a second copy into {localappdata} and left the running build (in the user's
+    // chosen folder) untouched — the update loop. /DIR makes every channel update
+    // exactly where it already lives, ending that whole class of bug.
+    var installDir = File(Platform.resolvedExecutable).parent.path;
+    // Defensive: a trailing backslash would escape the closing quote in the
+    // generated command line. Install dirs never end in a separator in practice,
+    // but strip it so the quoted /DIR value can never be malformed.
+    while (installDir.endsWith('\\')) {
+      installDir = installDir.substring(0, installDir.length - 1);
+    }
+
     await Process.start(path, [
       silentFlag,
+      '/DIR=$installDir',
       '/SUPPRESSMSGBOXES',
       '/NORESTART',
       '/CLOSEAPPLICATIONS',
