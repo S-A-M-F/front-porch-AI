@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-25 (fix(ci): rip ALL caching out of release.yml too — stable releases build everything fresh)
+- **Files changed**: .github/workflows/release.yml — `subosito/flutter-action` `cache: true` → `cache: false`; removed the `Swatinem/rust-cache@v2` step (embed_server now recompiles every release); `actions/setup-python` `cache: 'pip'` removed (+ renamed step); updated the embed_server build comment (the 3x cargo retry loop is now the sole protection against the flaky parcel.pyke.io ONNX download).
+- **Why**: maintainer wants zero caching in the release pipeline so no cached artifact can ever go stale (same guarantee as the nightly cache removal). release.yml never had the dangerous ml-engines cache (it always built sidecars fresh — which is why STABLE was never hit by the stale-app bug), so this is belt-and-suspenders, not a bug fix.
+- **Tradeoff flagged**: removing rust-cache means every stable release re-downloads the ONNX runtime prebuilts (occasionally flaky on Windows) with no cache fallback; the cargo step retries 3x, but a fully-failed download now means re-running the job. Flutter SDK + pip are also re-fetched each run (adds a few minutes). Accepted per maintainer preference (correctness > CI time).
+- **Scope**: must be applied to BOTH Rawhide and main copies of release.yml (release runs from the tag, cut from main). beta-release.yml still has its ml-engines cache — left per standing "ignore beta" instruction.
+- **Verification**: `yaml.safe_load` ✓; grep confirms only `cache: false` + explanatory comments remain (no `actions/cache`, `rust-cache`, `Swatinem`, or `cache: 'pip'`).
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-25 (fix(ci): REMOVE the ML-engines cache entirely from nightly.yml — guarantee no stale-app class of bug, per maintainer preference)
 - **Files changed**:
   - .github/workflows/nightly.yml — deleted the `Cache ML Engines` (`actions/cache@v4`, id `ml-cache`) step, and rewrote `Bundle ML Engines` to ALWAYS build sidecars from source: removed the `cache-hit` restore branch, the `CACHE_DIR`/`CACHE_HIT`/`SIDECAR_DIRS` variables, and the cache-save block. The PyInstaller/cargo sidecar build now runs unconditionally every nightly.

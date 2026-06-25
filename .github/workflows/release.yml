@@ -53,7 +53,12 @@ jobs:
         with:
           flutter-version: '3.41.1'
           channel: 'stable'
-          cache: true
+          # Caching is intentionally disabled throughout release.yml (maintainer call):
+          # stable releases build EVERYTHING fresh so no cached artifact can ever go
+          # stale. (The nightly stale-app bug came from a cache restoring an old build;
+          # release.yml never had that ml-engines cache, but we remove all caching here
+          # too for the same guarantee.)
+          cache: false
 
       - name: Install Linux Dependencies
         if: matrix.platform == 'linux'
@@ -158,16 +163,14 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build artifacts (embed_server + ort prebuilts)
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "tools/embed_server"
+      # No Swatinem/rust-cache here — caching is disabled across release.yml. The
+      # embed_server is recompiled from source every release (the cargo step below
+      # already retries 3x to absorb the occasional flaky ONNX prebuilt download).
 
-      - name: Setup Python (with pip cache)
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Build Application
         run: flutter build ${{ matrix.platform }} --release
@@ -252,7 +255,8 @@ jobs:
 
             # Build Embedding Server (Rust binary)
             # NOTE: ort-sys downloads static ONNX from parcel.pyke.io (can be flaky on Windows).
-            # rust-cache + retries protect release builds.
+            # Caching is disabled, so the 3x retry loop below is the sole protection
+            # against a transient download failure (re-run the job if all 3 attempts fail).
             echo "Building Embedding Server (Rust)..."
             cd tools/embed_server
             for attempt in 1 2 3; do
