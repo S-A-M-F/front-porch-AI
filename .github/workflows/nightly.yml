@@ -713,13 +713,33 @@ jobs:
             PKG_NAME="Front_Porch_AI_${VERSION}.pkg"
           fi
           UNSIGNED_PKG="unsigned_${PKG_NAME}"
-          
-          echo "Building unsigned .pkg..."
+
+          # Build a NON-RELOCATABLE component pkg. `pkgbuild --component` is relocatable
+          # by default — on a channel-id transition (old shared id com.linux4life1.frontPorchAi
+          # -> new com.linux4life1.frontPorchAi.nightly) macOS bundle relocation can't find
+          # the new id, refuses to overwrite the different-id app already sitting at
+          # /Applications/FrontPorchAI-Rawhide.app, and FORKS the install into
+          # /Applications/FrontPorchAI-Rawhide.localized/ — so the user keeps launching the
+          # OLD build and the update appears to do nothing. Disabling relocation makes the
+          # install path deterministic (overwrites in place). This requires --root +
+          # --component-plist (the --component shorthand can't set it), so stage just the
+          # already-signed .app with ditto (preserves the Developer ID signature + the
+          # framework Versions/Current symlinks), flip BundleIsRelocatable to false, build.
+          # Verified locally: --component emits <relocate><bundle/></relocate> (forks);
+          # this emits an empty <relocate/> in PackageInfo (deterministic overwrite).
+          PKG_STAGE="$(mktemp -d)"
+          ditto "$APP_NAME" "$PKG_STAGE/$APP_NAME"
+          COMP_PLIST="${RUNNER_TEMP:-/tmp}/fp_component.plist"
+          pkgbuild --analyze --root "$PKG_STAGE" "$COMP_PLIST"
+          plutil -replace 0.BundleIsRelocatable -bool NO "$COMP_PLIST"
+          echo "Building non-relocatable .pkg..."
           pkgbuild \
-            --component "$APP_NAME" \
+            --root "$PKG_STAGE" \
+            --component-plist "$COMP_PLIST" \
             --install-location /Applications \
             "$UNSIGNED_PKG" || { echo "ERROR: pkgbuild failed"; exit 1; }
-            
+          rm -rf "$PKG_STAGE" "$COMP_PLIST"
+
           echo "Signing .pkg with Installer cert..."
           productsign --sign "$MACOS_INSTALLER_CERT_NAME" "$UNSIGNED_PKG" "$PKG_NAME" || { echo "ERROR: productsign failed"; exit 1; }
           rm -f "$UNSIGNED_PKG"
