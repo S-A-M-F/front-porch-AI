@@ -41,9 +41,10 @@ import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
 import 'package:front_porch_ai/ui/settings/tabs/general_tab.dart';
 
 import 'package:front_porch_ai/ui/settings/tabs/voice_media_tab.dart';
-// Note: Image Generation config options were moved out of Voice & Media into a first-class
+// Note: Image Generation *config* options (backend / model / LoRAs) live in a first-class
 // tab-like panel inside the Image Studio (see generation_options_tab.dart + studio integration).
-// The "Configure Image Gen" entry point and section were removed (deletion part of task).
+// Only the discoverable on/off switch was re-surfaced in the Voice & Media tab via
+// ImageGenEnableSection — the chat toolbar's Image Studio button stays hidden until it is on.
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});

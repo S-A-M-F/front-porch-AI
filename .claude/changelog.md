@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-06-25 (feat: surface Image Generation enable toggle in Settings → Voice & Media)
+- **Files changed**:
+  - lib/ui/settings/widgets/image_gen_enable_section.dart (NEW, ~115 lines) — focused StatelessWidget rendering the "Image Generation" on/off card (SectionHeader + AppColors card + Switch + ✨ auto_awesome icon matching the toolbar button). Reads `imageGenEnabled` and calls the existing `StorageService.setImageGenEnabled` setter through a `Consumer<StorageService>`, so the chat toolbar's Image Studio button (gated on that flag in chat_page.dart) shows/hides reactively.
+  - lib/ui/settings/tabs/voice_media_tab.dart — added the import and appended `const ImageGenEnableSection()` as the final section. Extracted into a new file rather than inlined because this tab is already ~1170 lines (well over the 500-line cap) — the god file was not grown.
+  - lib/ui/pages/settings_page.dart — refreshed the stale comment that claimed all image-gen UI had been removed from Voice & Media; the detailed backend/model/LoRA config still lives in Image Studio, but the on/off switch is back here.
+- **Reason**: Image generation defaults OFF, and the only in-app enable toggle lived behind the character creator's avatar panel (ImageGenSettingsDialog → GenerationOptionsTab). Users who just wanted to chat could never discover it, so the ✨ Image Studio button never appeared (a Discord user reported exactly this). Adds a discoverable switch in the main Settings without duplicating logic — both surfaces call the same `setImageGenEnabled` setter (no parallel implementation).
+- **Verification**: `flutter analyze` on all 3 changed files — No issues found. `dart fix --dry-run lib/ui/settings` — Nothing to fix. `flutter build macos --debug` — ✓ Built FrontPorchAI.app. New widget confirmed referenced; the other GenerationOptionsTab toggle remains in use (3 call sites) — not orphaned.
+- **Commit hash**: (uncommitted)
+
 ## 2026-06-24 (port: framework-normalize notarization fix to release.yml; CONFIRMED working on Rawhide nightly)
 - **Files changed**:
   - .github/workflows/release.yml — ported the proven framework-normalize-and-seal block (from nightly.yml) into the macOS "Code Sign macOS App" step, replacing the old best-effort `|| true` "Handling nested *.framework" loop. Broadened the loose-Mach-O exclusion to `*.framework/*` and excluded `*.framework/*` from the catch-all pass. release.yml is tag-triggered from main and is the build that cuts stable releases; its old signing only passed because the v0.9.9.1.3 tag rode an older ML-engine cache with clean frameworks — the next cache turnover would have failed it identically. This makes stable releases robust to whatever PyInstaller layout the (unpinned) sidecar build produces.
