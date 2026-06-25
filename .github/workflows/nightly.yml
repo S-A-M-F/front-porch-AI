@@ -163,9 +163,9 @@ jobs:
         with:
           path: |
             ml-engines-cache
-          key: ml-engines-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/embed_server/Cargo.lock', 'tools/dt-grpc-python/**') }}
+          key: ml-engines-v2-${{ matrix.platform }}-${{ hashFiles('kokoro_tts.py', 'piper_entry.py', 'whisper_stt.py', 'sentiment_classifier.py', 'tools/embed_server/Cargo.toml', 'tools/embed_server/Cargo.lock', 'tools/dt-grpc-python/**') }}
           restore-keys: |
-            ml-engines-${{ matrix.platform }}-
+            ml-engines-v2-${{ matrix.platform }}-
 
       - name: Build Application
         if: matrix.platform != 'linux'
@@ -214,11 +214,28 @@ jobs:
         run: |
           CACHE_HIT="${{ steps.ml-cache.outputs.cache-hit }}"
           CACHE_DIR="ml-engines-cache/${{ matrix.platform }}"
+          # ONLY these ML sidecar dirs are cached/restored — NEVER the freshly-built
+          # Flutter app (the .app bundle on macOS; front_porch_ai.exe + data/app.so on
+          # Windows). A prior version cached the ENTIRE build_path, so on a cache hit it
+          # copied a STALE app over the fresh one — freezing the compiled app (and its
+          # baked appVersion) at whatever day the sidecar sources last changed, while the
+          # release tag advanced daily. That shipped stale code under a fresh version
+          # label and made the in-app updater loop forever: the installed app's baked
+          # version could never catch up to the release tag, so "Update Available" never
+          # cleared, on every platform. (Verified: the published rawhide.20260625 .pkg
+          # actually contained rawhide.20260621 code.) Restricting the copy to the
+          # sidecar dirs keeps `flutter build`'s output authoritative.
+          SIDECAR_DIRS="piper whisper_stt embed_server sentiment_classifier dt_grpc_client"
 
           if [ "$CACHE_HIT" == "true" ] && [ -d "$CACHE_DIR" ]; then
-            echo "ML engines cache hit — skipping PyInstaller + Rust builds"
+            echo "ML engines cache hit — restoring sidecars only (NOT the Flutter app)"
             mkdir -p "${{ matrix.build_path }}"
-            cp -r "$CACHE_DIR/"* "${{ matrix.build_path }}/" || true
+            for d in $SIDECAR_DIRS; do
+              if [ -d "$CACHE_DIR/$d" ]; then
+                rm -rf "${{ matrix.build_path }}/$d"
+                cp -r "$CACHE_DIR/$d" "${{ matrix.build_path }}/"
+              fi
+            done
           else
             echo "ML engines cache miss — building from source"
             DEST="${{ matrix.build_path }}/piper"
@@ -408,9 +425,16 @@ jobs:
               --noconfirm
             echo "Draw Things gRPC client built at: $STT_DEST/dt_grpc_client/"
 
-            # Populate ML cache for future runs (same source hash = instant reuse)
+            # Populate ML cache for future runs — sidecars ONLY, never the Flutter app
+            # (see the cache-hit note above for why caching the whole build_path shipped
+            # stale compiled code on nightly/beta). Same source hash = instant reuse.
             mkdir -p "$CACHE_DIR"
-            cp -r "${{ matrix.build_path }}/"* "$CACHE_DIR/" || true
+            for d in $SIDECAR_DIRS; do
+              if [ -d "${{ matrix.build_path }}/$d" ]; then
+                rm -rf "$CACHE_DIR/$d"
+                cp -r "${{ matrix.build_path }}/$d" "$CACHE_DIR/"
+              fi
+            done
           fi
 
           # For macOS, copy into the app bundle Resources (always runs)
