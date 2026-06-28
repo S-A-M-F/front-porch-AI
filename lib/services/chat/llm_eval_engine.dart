@@ -436,6 +436,22 @@ class LlmEvalEngine {
         ? 'Current physical position/stance of $charName: "${relationshipService.spatialStance}". '
         : '';
 
+    // Shared climax-detection guidance, injected into BOTH the main and the
+    // critique prompts. Without explicit criteria the model (especially a
+    // reasoning/"thinking" model, which won't guess at an undefined field)
+    // almost never sets is_climax=true, so the post-orgasm cooldown never fires
+    // and the Lust/arousal bar stays pinned at the top. This mirrors the
+    // "high arousal is NOT climax" rule the other realism evals already use
+    // (see realism_evals.dart arousal instructions).
+    final climaxGuidance =
+        'CLIMAX DETECTION — "is_climax": Set this to true ONLY when $charName themselves reaches sexual orgasm / release in THIS scene — '
+        'i.e. the text explicitly narrates their own climax (coming, finishing, a shuddering or spasming release, '
+        'crying out as they tip over the edge, gushing/ejaculating, going limp or boneless right after the peak). '
+        'High arousal, being "close", edging, begging, grinding, foreplay, or ONLY the partner/user climaxing are NOT a climax for '
+        '$charName — leave "is_climax" false in those cases. '
+        'When (and only when) "is_climax" is true, also emit "refractory_turns" as an int from 3 to 7 for how long the post-orgasm '
+        'cooldown should last (~6-7 for an intense, drawn-out, or repeated climax; ~3 for a quick one). When false, set "refractory_turns" to 0.\n\n';
+
     final String prompt;
     if (userCritique != null && userCritique.trim().isNotEmpty) {
       // B: unified rich correction prompt (no duplication of context logic)
@@ -455,14 +471,16 @@ class LlmEvalEngine {
           'Even if the critique suggests little/no change, you MUST output the complete flat JSON with all seven _delta keys (0 is valid). Do not omit fields.\n\n'
           'MAGNITUDE: needs run 0–100 (100 = fully satisfied); ±8 BARELY registers. When the scene SATISFIES/RESTORES a need, use a LARGE positive delta so it actually fills — using the bathroom → bladder +60 to +100; a full meal → hunger +50 to +90; sleeping / a long rest → energy +60 to +100; a thorough wash → hygiene +50 to +90. Reserve small numbers for incidental effects, never a complete relief. (1x baselines; scale by the strength above.)\n\n'
           'Examples of valid correction output:\n'
-          '{"hunger_delta": 8, "energy_delta": 0, "hygiene_delta": -2, "fun_delta": 5, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 1, "reason": "ate snack per critique", "is_climax": false}\n'
-          '{"hunger_delta": 0, "energy_delta": 0, "hygiene_delta": 0, "fun_delta": 0, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 0, "reason": "no notable need impact", "is_climax": false}\n\n'
+          '{"hunger_delta": 8, "energy_delta": 0, "hygiene_delta": -2, "fun_delta": 5, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 1, "reason": "ate snack per critique", "is_climax": false, "refractory_turns": 0}\n'
+          '{"hunger_delta": 0, "energy_delta": 0, "hygiene_delta": 0, "fun_delta": 0, "social_delta": 0, "bladder_delta": 0, "comfort_delta": 0, "reason": "no notable need impact", "is_climax": false, "refractory_turns": 0}\n'
+          '{"hunger_delta": 0, "energy_delta": -12, "hygiene_delta": -10, "fun_delta": 25, "social_delta": 10, "bladder_delta": 0, "comfort_delta": 8, "reason": "$charName climaxed during sex", "is_climax": true, "refractory_turns": 6}\n\n' +
+          climaxGuidance +
           'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
           '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
           '"intensity": 1-10, '
           '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
           '"reason": "<brief grounded reason for the deltas incorporating the critique>", '
-          '"is_climax": true/false }';
+          '"is_climax": true/false, "refractory_turns": <int 3-7 when is_climax is true, else 0> }';
     } else {
       prompt =
           'You are evaluating the effects of a roleplay scene on $charName\'s needs.\n\n'
@@ -484,13 +502,15 @@ class LlmEvalEngine {
               '  • Sleeping, a long rest, or "through the night / waking next morning" → energy +60 to +100 (and broadly restores other physical needs as the body recovers; hygiene/comfort/social/fun stay only mildly affected)\n'
               '  • A thorough wash, shower, or bath → hygiene +50 to +90\n'
               '  • Deep, fulfilling connection, comfort, or play → social / fun / comfort +20 to +50\n'
-              'Partial or interrupted versions get proportionally smaller deltas. Reserve small numbers (±1 to ±8) for INCIDENTAL effects, never for a complete relief or restoration. (These are 1x baselines — scale by the strength factor above.)\n\n'
-              'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
+              'Partial or interrupted versions get proportionally smaller deltas. Reserve small numbers (±1 to ±8) for INCIDENTAL effects, never for a complete relief or restoration. (These are 1x baselines — scale by the strength factor above.)\n\n' +
+          climaxGuidance +
+          'Respond with ONLY a flat JSON object. Do NOT use markdown code blocks — return raw JSON only:\n'
               '{"activities": ["sexual", "self_touch", "messy", "dominance" or similar], '
               '"intensity": 1-10, '
               '"hunger_delta": <int>, "energy_delta": <int>, "hygiene_delta": <int>, "fun_delta": <int>, "social_delta": <int>, "bladder_delta": <int>, "comfort_delta": <int>, '
               '"reason": "<brief grounded reason for the deltas>", '
-              '"is_climax": true/false }\n'
+              '"is_climax": true/false, "refractory_turns": <int 3-7 when is_climax is true, else 0> }\n'
+              'Example when $charName climaxes: {"activities": ["sexual"], "intensity": 9, "hunger_delta": 0, "energy_delta": -12, "hygiene_delta": -10, "fun_delta": 25, "social_delta": 10, "bladder_delta": 0, "comfort_delta": 8, "reason": "$charName came hard during sex", "is_climax": true, "refractory_turns": 6}\n'
               'If the scene had little or no notable effect on needs, use small numbers or zeros and a short reason.';
     }
 
