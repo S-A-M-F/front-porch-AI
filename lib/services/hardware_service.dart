@@ -512,6 +512,14 @@ class HardwareService extends ChangeNotifier {
         }
       }
 
+      // Resolve the vendor from the name we have so far so the Method 3 guard
+      // below (vendor == 'Unknown') is actually meaningful. Without this,
+      // `vendor` is still its initial 'Unknown' here (it was only assigned
+      // after Method 3), so the guard was always true and the nvidia-smi sweep
+      // ran on every detection — even when Method 0 had already succeeded with
+      // a known NVIDIA name + VRAM — spawning a redundant process each time.
+      vendor = _vendorFromName(gpuName);
+
       // Method 3: nvidia-smi final sweep — fill in any blanks that registry
       // and WMI couldn't (e.g. RTX 50-series where both Microsoft APIs return
       // nothing useful). _runNvidiaSmi() tries PATH and absolute install
