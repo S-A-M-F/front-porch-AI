@@ -30,6 +30,7 @@ import 'package:front_porch_ai/database/database.dart' show Objective;
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/chat_generation_settings.dart';
 import 'package:front_porch_ai/models/chat_message.dart';
+import 'package:front_porch_ai/models/chat_participant.dart';
 import 'package:front_porch_ai/models/group_chat.dart';
 import 'package:front_porch_ai/providers/app_state.dart';
 import 'package:front_porch_ai/services/character_repository.dart';
@@ -43,6 +44,7 @@ import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/world.dart' as world_model;
 import 'package:front_porch_ai/services/llm_provider.dart';
+import 'package:front_porch_ai/services/stt_service.dart';
 import 'package:front_porch_ai/services/tts_service.dart';
 import 'package:front_porch_ai/services/tts_voice_info.dart';
 import 'package:front_porch_ai/services/update_service.dart';
@@ -287,6 +289,17 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   @override
   bool get chaosNsfwEnabled => _chaos.chaosNsfwEnabled;
 
+  // Unified-cast surface (empty / 1:1 defaults for the simple test doubles).
+  @override
+  List<ChatParticipant> get cast => const [];
+  @override
+  bool get observerMode => false;
+  @override
+  List<Objective> getObjectivesForGroupCharacter(CharacterCard character) =>
+      const [];
+  // getArousalForGroupCharacter is an extension on ChatService (resolves on the
+  // static type), so it needs no fake override.
+
   // Objective surface — empty by default (renders the "propose an objective" UI).
   @override
   Objective? get primaryObjective => null;
@@ -317,6 +330,12 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   // Message bubble surface.
   @override
   List<ChatMessage> get messages => List.unmodifiable(_messages);
+  // Mutates the seeded message in place so facade edit paths (e.g. inserting a
+  // generated image into the last message) are observable in unit tests.
+  @override
+  void editMessage(int index, String newText) {
+    if (index >= 0 && index < _messages.length) _messages[index].text = newText;
+  }
   @override
   bool get isGroupMode => false;
   @override
@@ -360,6 +379,25 @@ class FakeTtsService extends ChangeNotifier implements TtsService {
   bool get isDownloadingModel => false;
   @override
   String? get lastError => null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// [SttService] double that avoids the real constructor's platform-channel
+/// [AudioRecorder] (which throws MissingPluginException in headless tests).
+/// Defaults to unavailable; [transcribeAudioFile] returns a canned value so
+/// VoiceFacade's transcribe path is exercisable without Whisper.
+class FakeSttService extends ChangeNotifier implements SttService {
+  FakeSttService({this.available = false, this.transcript});
+
+  final bool available;
+  final String? transcript;
+
+  @override
+  bool get isAvailable => available;
+  @override
+  Future<String?> transcribeAudioFile(String audioPath) async => transcript;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

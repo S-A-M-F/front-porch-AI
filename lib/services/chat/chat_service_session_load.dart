@@ -124,13 +124,17 @@ extension ChatServiceSessionLoad on ChatService {
     );
     _needsSimEnabled = lastSession.needsSimEnabled;
     if (_needsSimEnabled) {
+      // Seed defaults first, then overlay the saved vector ONLY when it has
+      // values. A blank saved vector (e.g. needs was toggled on mid-chat before
+      // it seeded) must NOT clobber the defaults, or the sidebar shows no scores.
       _needsSimulation.initializeFresh();
       final nv = lastSession.needsVector;
-      _needsSimulation.restoreFromSnapshot({
-        'vector': (nv is String && nv.isNotEmpty)
-            ? (jsonDecode(nv) as Map).cast<String, int>()
-            : <String, int>{},
-      });
+      final saved = (nv is String && nv.isNotEmpty)
+          ? (jsonDecode(nv) as Map).cast<String, int>()
+          : <String, int>{};
+      if (saved.isNotEmpty) {
+        _needsSimulation.restoreFromSnapshot({'vector': saved});
+      }
     } else {
       _needsSimulation.clearVector();
     }
@@ -424,6 +428,12 @@ extension ChatServiceSessionLoad on ChatService {
         _offeredOrIgnoredGuestNames.clear();
         // (clears + restores _sceneGuestIds/_sceneGuestCards + guest evolution)
         _loadSceneGuestsFromSession(session);
+      } else {
+        // Group session: restore live per-character realism/needs from the
+        // session column — mirrors the _loadLastSession group branch so resuming
+        // an OLDER group session via the in-chat history drawer no longer drops
+        // each member's bond/trust/emotion/fixation/arousal/needs.
+        _loadGroupRealismStateFromSession(session);
       }
       _authorNote = session.authorNote;
       _authorNoteStrength = session.authorNoteDepth;
@@ -482,13 +492,17 @@ extension ChatServiceSessionLoad on ChatService {
       );
       _needsSimEnabled = session.needsSimEnabled;
       if (_needsSimEnabled) {
+        // Seed defaults first, then overlay the saved vector ONLY when it has
+        // values — a blank saved vector must not clobber the defaults (else the
+        // sidebar shows no scores). Keeps load in sync with _loadLastSession.
         _needsSimulation.initializeFresh();
         final nv = session.needsVector;
-        _needsSimulation.restoreFromSnapshot({
-          'vector': (nv is String && nv.isNotEmpty)
-              ? (jsonDecode(nv) as Map).cast<String, int>()
-              : <String, int>{},
-        });
+        final saved = (nv is String && nv.isNotEmpty)
+            ? (jsonDecode(nv) as Map).cast<String, int>()
+            : <String, int>{};
+        if (saved.isNotEmpty) {
+          _needsSimulation.restoreFromSnapshot({'vector': saved});
+        }
       } else {
         _needsSimulation.clearVector();
       }
