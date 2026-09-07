@@ -25,9 +25,11 @@ part of '../home_page.dart';
 extension _HomePageChrome on _HomePageState {
   Widget _buildModeToggle() {
     return HomeModeToggle(
-      showStories: _showStories,
-      onShowChats: () => applyState(() => _showStories = false),
-      onShowStories: () => applyState(() => _showStories = true),
+      showStories: _homeMode == HomeMode.stories,
+      showWaifu: _homeMode == HomeMode.waifu,
+      onShowChats: () => applyState(() => _homeMode = HomeMode.chats),
+      onShowStories: () => applyState(() => _homeMode = HomeMode.stories),
+      onShowWaifu: () => applyState(() => _homeMode = HomeMode.waifu),
     );
   }
 
