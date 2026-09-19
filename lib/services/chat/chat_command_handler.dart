@@ -91,6 +91,8 @@ class ChatCommandHandler {
     )
     configureAfk,
     required Future<void> Function(String args) generateImage,
+    CharacterCard? Function()? getHostCharacter,
+    bool Function()? isTurnBusy,
   }) : _setExpression = setExpression,
        _activeCharacterIsSet = activeCharacterIsSet,
        _getSceneGuestCards = getSceneGuestCards,
@@ -114,7 +116,9 @@ class ChatCommandHandler {
        _isGroupTurnOrderRandom = isGroupTurnOrderRandom,
        _setGroupTurnOrder = setGroupTurnOrder,
        _configureAfk = configureAfk,
-       _generateImage = generateImage;
+       _generateImage = generateImage,
+       _getHostCharacter = getHostCharacter,
+       _speakIsBusy = isTurnBusy;
 
   final void Function(String? label) _setExpression;
   final bool Function() _activeCharacterIsSet;
@@ -146,6 +150,8 @@ class ChatCommandHandler {
   )
   _configureAfk;
   final Future<void> Function(String args) _generateImage;
+  final CharacterCard? Function()? _getHostCharacter;
+  final bool Function()? _speakIsBusy;
 
   /// The user-facing slash-command reference (single source of truth for the
   /// "type /" helper panel). Order = display order. Aliases (/turn, /detect,
@@ -169,7 +175,7 @@ class ChatCommandHandler {
     SlashCommandInfo(
       'speak',
       '/speak [name]',
-      'Make someone present take a turn now — a guest, or a group member by name',
+      'Anyone on the porch (host, guest, or group member) takes a turn now',
     ),
     SlashCommandInfo(
       'exit',

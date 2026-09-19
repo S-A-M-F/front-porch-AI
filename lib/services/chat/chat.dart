@@ -92,6 +92,7 @@ export 'season_calendar.dart';
 export 'season_labels.dart';
 export 'scene_guest_director.dart';
 export 'scene_guest_prompt.dart';
+export 'group_speaker_prompt.dart';
 export 'scene_guest_state.dart';
 export 'scene_guest_factory.dart';
 export 'sentence_stream.dart';

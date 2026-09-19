@@ -86,6 +86,7 @@ class _GenTurn {
   late String scenario;
   late String suffix;
   String mesExampleBlock = '';
+  String speakerCardBlock = '';
   String postHistoryBlock = '';
   String authorNoteBlock = '';
   String summaryBlock = '';

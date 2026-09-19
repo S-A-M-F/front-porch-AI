@@ -146,6 +146,11 @@ extension ChatServiceGenerationPlanRegister on ChatService {
       label: 'Author\'s Note',
       text: t.authorNoteBlock,
     );
+    plan.add(
+      id: 'speaker_card',
+      label: 'Speaker Card',
+      text: t.speakerCardBlock,
+    );
     plan.add(id: 'lore.an_bottom', label: 'Lorebook', text: t.loreAnBottom);
     plan.add(
       id: 'lore.depth',

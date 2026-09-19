@@ -44,8 +44,7 @@ extension ChatServiceGroupMembers on ChatService {
       skipLibraryInsert: true,
     );
 
-    final db = await AppDatabase.instance();
-    await db.insertGroupMember(
+    await _db.insertGroupMember(
       GroupMembersCompanion(
         id: drift.Value(mid),
         groupId: drift.Value(groupId),

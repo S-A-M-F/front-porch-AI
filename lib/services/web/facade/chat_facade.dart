@@ -287,6 +287,12 @@ class ChatFacade {
     _notify();
   }
 
+  /// Clear a parked `/join` picker (web close without picking).
+  void dismissGuestPicker() {
+    _chat.dismissGuestPicker();
+    _notify();
+  }
+
   /// Web "Accept Your Fate": resolves a parked Chance Time (chaos) event so the
   /// paused send can continue and stream its reply. No-op if nothing is parked.
   Future<void> acceptChanceTime() async {

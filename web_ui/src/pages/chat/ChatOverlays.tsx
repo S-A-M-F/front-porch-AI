@@ -14,6 +14,8 @@ import { api } from '../../api/client';
 
 export function ChatOverlays(props: {
   showPicker: boolean;
+  pickerFull?: boolean;
+  pickerFilter?: string;
   onPick: (name: string, full: boolean) => void;
   onClosePicker: () => void;
   editTarget: { index: number; text: string } | null;
@@ -32,6 +34,8 @@ export function ChatOverlays(props: {
 }) {
   const {
     showPicker,
+    pickerFull,
+    pickerFilter,
     onPick,
     onClosePicker,
     editTarget,
@@ -61,6 +65,8 @@ export function ChatOverlays(props: {
 
       {showPicker && (
         <CharacterPicker
+          initialFull={pickerFull ?? false}
+          initialFilter={pickerFilter ?? ''}
           onPick={(name, full) => {
             onPick(name, full);
             onClosePicker();

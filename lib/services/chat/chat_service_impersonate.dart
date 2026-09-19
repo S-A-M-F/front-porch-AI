@@ -97,17 +97,11 @@ extension ChatServiceImpersonate on ChatService {
       // Use evolved versions if character evolution is enabled and available
       String personaBlock;
       if (_activeGroup != null) {
-        final personas = _groupCharacters
-            .map(
-              (ch) =>
-                  "${ch.name}'s Persona: ${_macroResolver.resolve(
-                    _getEffectivePersonality(ch),
-                    MacroContext(userName: userName, characterName: ch.name),
-                    section: 'persona',
-                  )}",
-            )
-            .toList();
-        personaBlock = personas.join('\n');
+        personaBlock = buildGroupRosterLine(
+          memberNames: [for (final ch in _groupCharacters) ch.name],
+          userName: userName,
+          observerMode: _observerMode,
+        );
       } else {
         personaBlock =
             "${speakingCharacter.name}'s Persona: ${_macroResolver.resolve(

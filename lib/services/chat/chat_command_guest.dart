@@ -199,44 +199,68 @@ extension ChatCommandGuest on ChatCommandHandler {
       return;
     }
 
-    final names = guests.map((g) => g.name).join(', ');
+    final host = _getHostCharacter?.call();
+    final porch = <CharacterCard>[?host, ...guests];
+    final porchNames = porch.map((c) => c.name).join(', ');
     final wanted = args.trim();
-    CharacterCard? target;
+    // Bare /speak: last guest (existing). The host is still nameable.
     if (wanted.isEmpty) {
-      target = guests.last; // the only / most-recent guest
-    } else {
-      final lower = wanted.toLowerCase();
-      for (final g in guests) {
-        if (g.name.toLowerCase() == lower) {
-          target = g;
-          break;
-        }
-      }
-      if (target == null) {
-        final partial = guests
-            .where((g) => g.name.toLowerCase().contains(lower))
-            .toList();
-        if (partial.length == 1) {
-          target = partial.first;
-        } else if (partial.length > 1) {
-          _onSystemMessage(
-            '⚠ "$args" matches more than one guest. Use the full name. '
-            'Present guests: $names.',
-          );
-          return;
-        }
-      }
+      await _speakGuest(guests.last);
+      return;
     }
 
-    if (target == null) {
-      _onSystemMessage(
-        '⚠ "$args" is not a current scene guest. '
-        'Valid guests right now: $names.',
-      );
+    final target = _resolvePorchSpeaker(wanted, porch, porchNames);
+    if (target == null) return;
+
+    final isHost = host != null && identical(target, host);
+    if (isHost) {
+      if (_speakIsBusy?.call() ?? false) {
+        _onSystemMessage('Busy — try again in a moment.');
+        return;
+      }
+      await _generatePrimaryTurn();
       return;
     }
 
     await _speakGuest(target);
+  }
+
+  /// Exact name, then unique substring, against [porch] (host + present guests).
+  CharacterCard? _resolvePorchSpeaker(
+    String wanted,
+    List<CharacterCard> porch,
+    String porchNames,
+  ) {
+    final lower = wanted.trim().toLowerCase();
+    final exact = [
+      for (final c in porch)
+        if (c.name.toLowerCase() == lower) c,
+    ];
+    if (exact.length == 1) return exact.first;
+    if (exact.length > 1) {
+      _onSystemMessage(
+        '⚠ "$wanted" matches more than one person. Use the full name. '
+        'On the porch: $porchNames.',
+      );
+      return null;
+    }
+    final partial = [
+      for (final c in porch)
+        if (c.name.toLowerCase().contains(lower)) c,
+    ];
+    if (partial.length == 1) return partial.first;
+    if (partial.length > 1) {
+      _onSystemMessage(
+        '⚠ "$wanted" matches more than one person. Use the full name. '
+        'On the porch: $porchNames.',
+      );
+      return null;
+    }
+    _onSystemMessage(
+      '⚠ "$wanted" is not on the porch. '
+      'Present: $porchNames.',
+    );
+    return null;
   }
 
   // ── Scene Guest: /exit [name] ───────────────────────────────────────────

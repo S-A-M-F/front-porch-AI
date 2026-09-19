@@ -317,6 +317,8 @@ extension ChatServiceWiringMemory on ChatService {
       },
       runCastScan: runCastDetectionNow,
       speakGuest: speakGuestNow,
+      getHostCharacter: () => _activeCharacter,
+      isTurnBusy: () => _isTurnBusy || _sceneGuest.busy,
       armExitUndo: armSceneGuestExitUndo,
       getGroupMembers: () =>
           _activeGroup != null ? _groupCharacters : const <CharacterCard>[],
@@ -329,14 +331,16 @@ extension ChatServiceWiringMemory on ChatService {
         return exitGroupMember(member, repo);
       },
       speakGroupMember: (member) async {
-        // /speak <name> in a full group: force that member to take their turn now
-        // (jump the rotation), mirroring the Lite-NPC /speak. Same setNextSpeaker
-        // + generate path the goodbye narration uses, minus the removal/directive.
-        if (_activeGroup == null || _isTurnBusy) return;
+        // /speak <name> in a full group: force that member to take their turn
+        // now (jump the rotation), including Away/at-work (forceSpeaker).
+        if (_activeGroup == null) return;
+        if (_isTurnBusy) {
+          _setGuestStatus('Busy — try again in a moment.', isError: true);
+          return;
+        }
         _groupManager?.setNextSpeaker(member);
-        // Same bucket brigade as Next Character: announce the last
-        // decided clock, then post-decide for whoever speaks next.
-        await _generateResponse(GenerationMode.normal);
+        await _generateResponse(GenerationMode.normal, forceSpeaker: member);
+        _groupManager?.clearForcedSpeaker();
       },
       isGroupTurnOrderRandom: () => isGroupTurnOrderRandom,
       setGroupTurnOrder: (random, customOrder) =>

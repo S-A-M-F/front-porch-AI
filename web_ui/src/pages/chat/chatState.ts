@@ -47,6 +47,7 @@ export interface ChatState {
   cast?: CastMember[];
   guestActivity?: { status: string | null; isError: boolean; busy: boolean };
   pendingDetection?: string | null;
+  pendingPicker?: { filter: string; full: boolean } | null;
   // Chaos "Chance Time" park state: while pending, the engine is frozen waiting
   // for the user to accept their fate (event is pre-resolved server-side).
   chanceTime?: { pending: boolean; event?: string };

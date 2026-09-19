@@ -187,6 +187,12 @@ extension ChatFacadeState on ChatFacade {
         'busy': _chat.isGuestBusy,
       },
       'pendingDetection': _chat.pendingGuestDetection?.name,
+      'pendingPicker': _chat.pendingGuestPickerFilter == null
+          ? null
+          : {
+              'filter': _chat.pendingGuestPickerFilter,
+              'full': _chat.pendingGuestPickerFull,
+            },
       // Chance Time (chaos) park state. While `pending` is true the engine is
       // frozen waiting for the user to accept their fate — the web reveal modal
       // reads this on (re)connect (a phone that slept through the live

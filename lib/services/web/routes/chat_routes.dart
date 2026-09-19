@@ -42,6 +42,7 @@ class WebChatRoutes {
     router.post('/api/chat/select-group', _selectGroup);
     router.post('/api/chat/start-fresh', _startFresh);
     router.post('/api/chat/send', _send);
+    router.post('/api/chat/guest-picker/dismiss', _dismissGuestPicker);
     router.post('/api/chat/chance-time/accept', _acceptChanceTime);
     router.post('/api/chat/chance-time/spin', _spinChanceTime);
     router.post('/api/chat/stop', _stop);
@@ -79,6 +80,11 @@ class WebChatRoutes {
 
   Future<shelf.Response> _refreshContextBudget(shelf.Request request) async =>
       JsonResponse.ok(await _facade.refreshContextBudget());
+
+  shelf.Response _dismissGuestPicker(shelf.Request request) {
+    _facade.dismissGuestPicker();
+    return JsonResponse.ok({'ok': true});
+  }
 
   /// Re-probe the current model's tool-calling support (web pill retest).
   Future<shelf.Response> _toolTest(shelf.Request request) async =>

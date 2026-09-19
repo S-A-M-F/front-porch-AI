@@ -19,7 +19,7 @@ const SLASH_COMMANDS: { cmd: string; args: string; desc: string }[] = [
   { cmd: '/create', args: '<name>: <concept>', desc: 'Create a new guest NPC and bring them into the scene' },
   { cmd: '/join', args: '[--full] [name]', desc: 'Bring a character in — --full makes a full member; in a group, always full' },
   { cmd: '/promote', args: '', desc: 'Turn the present scene into a full group (everyone becomes a full member)' },
-  { cmd: '/speak', args: '[name]', desc: 'Make someone present take a turn now — a guest, or a group member by name' },
+  { cmd: '/speak', args: '[name]', desc: 'Anyone on the porch (host, guest, or group member) takes a turn now' },
   { cmd: '/exit', args: '[name]', desc: 'A guest leaves (narrated); in a group, removes that full member by name' },
   { cmd: '/turnorder', args: '[random | <name>, …]', desc: 'Set how a group takes turns: round-robin, random, or an explicit order' },
   { cmd: '/scan', args: '', desc: 'Scan the scene for a new recurring character to add' },

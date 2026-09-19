@@ -132,8 +132,10 @@ extension ChatServiceGuestFlow on ChatService {
 
   /// Bring an existing library [card] into the scene as a Scene Guest (the
   /// picker's selection handler; same parity-safe enter path as `/create`).
-  Future<void> joinSceneGuest(CharacterCard card) =>
-      _addGuestWithStatus(displayName: card.name, existing: card);
+  Future<void> joinSceneGuest(CharacterCard card) {
+    dismissGuestPicker();
+    return _addGuestWithStatus(displayName: card.name, existing: card);
+  }
 
   /// Bring an existing library [card] in as a FULL participant (realism-bearing).
   ///
@@ -143,6 +145,7 @@ extension ChatServiceGuestFlow on ChatService {
   /// the separate Fork-to-Group wizard — same underlying machinery, no screen
   /// switch. Requires the group repository (wired from main.dart).
   Future<void> joinFull(CharacterCard card) async {
+    dismissGuestPicker();
     final repo = _groupChatRepository;
     if (repo == null) {
       _setGuestStatus(
@@ -154,6 +157,14 @@ extension ChatServiceGuestFlow on ChatService {
     if (_isTurnBusy) {
       _setGuestStatus(
         '⚠ Wait for the current reply to finish first.',
+        isError: true,
+      );
+      return;
+    }
+    if (_activeGroup == null && _messages.isEmpty) {
+      _setGuestStatus(
+        '⚠ Wait for the greeting, or send a line first — '
+        'there is no scene to convert yet.',
         isError: true,
       );
       return;

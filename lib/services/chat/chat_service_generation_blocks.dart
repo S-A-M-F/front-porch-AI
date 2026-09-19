@@ -48,21 +48,8 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.systemPrompt = defaultApiSystemPrompt;
     }
 
-    // Path B: When in a group, always attempt to layer the per-character group override
-    // (and card fallback) on top. A group prompt no longer completely hides per-char instructions.
-    if (_activeGroup != null) {
-      final groupCharPrompt = getSystemPromptForGroupCharacter(
-        t.speakingCharacter,
-      ).trim();
-      if (groupCharPrompt.isNotEmpty) {
-        t.systemPrompt +=
-            '\n\n[Group-specific instructions for ${t.speakingCharacter.name}]\n$groupCharPrompt';
-      } else if (t.speakingCharacter.systemPrompt.isNotEmpty) {
-        // Fallback to the character's own card prompt only if no group-specific override
-        t.systemPrompt +=
-            '\n\n[Specific instructions for ${t.speakingCharacter.name}]\n${t.speakingCharacter.systemPrompt.trim()}';
-      }
-    }
+    // Per-character group overlay used to append here and churn the system
+    // prefix every speaker. It now rides [t.speakerCardBlock] after history.
 
     // In call mode, inject voice-specific instructions for natural conversation
     if (_callMode && _storageService.sttSettings.callSystemPrompt.isNotEmpty) {
@@ -111,18 +98,14 @@ extension ChatServiceGenerationBlocks on ChatService {
     t.loreExBottom = loreInjection.examplesBottom;
     t.loreDepth = loreInjection.depthEntries;
 
-    // Build persona block(s)
+    // Build persona block(s). Group: names-only roster in system (stable
+    // prefix). Speaker costume sits in speakerCardBlock after history.
     if (_activeGroup != null) {
-      t.personaBlock = _groupCharacters
-          .map((ch) {
-            final persona = _macroResolver.resolve(
-              _getEffectivePersonality(ch),
-              MacroContext(userName: t.userName, characterName: ch.name),
-              section: 'persona',
-            );
-            return "${ch.name}'s Persona: $persona";
-          })
-          .join('\n');
+      t.personaBlock = buildGroupRosterLine(
+        memberNames: [for (final ch in _groupCharacters) ch.name],
+        userName: t.userName,
+        observerMode: _observerMode,
+      );
     } else {
       t.personaBlock =
           "${t.speakingCharacter.name}'s Persona: ${_macroResolver.resolve(
@@ -168,21 +151,10 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.suffix = "";
     }
 
-    // Build example dialogues block
+    // Build example dialogues block. Group examples ride the speaker card.
     if (_activeGroup != null) {
-      final examples = _groupCharacters
-          .where((ch) => ch.mesExample.isNotEmpty)
-          .map(
-            (ch) => _macroResolver.resolve(
-              ch.mesExample,
-              MacroContext(userName: t.userName, characterName: ch.name),
-              section: 'mesExample',
-            ),
-          )
-          .toList();
-      if (examples.isNotEmpty) {
-        t.mesExampleBlock = '${examples.join('\n')}\n';
-      }
+      t.mesExampleBlock = '';
+      t.speakerCardBlock = _buildGroupSpeakerCard(t);
     } else if (t.speakingCharacter.mesExample.isNotEmpty) {
       t.mesExampleBlock = '${t.speakingCharacter.mesExample}\n';
     }
@@ -376,5 +348,53 @@ extension ChatServiceGenerationBlocks on ChatService {
         t.journalCoverLines = journal.injectedContents;
       }
     }
+  }
+
+  /// Slap + speaker-only persona/examples + the per-char overlay that used
+  /// to append onto the system head (and bust the prefix every turn).
+  String _buildGroupSpeakerCard(_GenTurn t) {
+    final speaker = t.speakingCharacter;
+    final others = [
+      for (final ch in _groupCharacters)
+        if (ch.name != speaker.name) ch.name,
+    ];
+    final slap = buildSpeakerTurnNote(
+      speakerName: speaker.name,
+      otherMemberNames: others,
+      userName: t.userName,
+      observerMode: _observerMode,
+    );
+    final persona = buildSpeakerPersonaLine(
+      name: speaker.name,
+      personality: _macroResolver.resolve(
+        _getEffectivePersonality(speaker),
+        MacroContext(userName: t.userName, characterName: speaker.name),
+        section: 'persona',
+      ),
+    );
+    var example = '';
+    if (speaker.mesExample.isNotEmpty) {
+      example = _macroResolver.resolve(
+        speaker.mesExample,
+        MacroContext(userName: t.userName, characterName: speaker.name),
+        section: 'mesExample',
+      );
+      if (!example.endsWith('\n')) example = '$example\n';
+    }
+    final groupCharPrompt = getSystemPromptForGroupCharacter(speaker).trim();
+    var overlay = '';
+    if (groupCharPrompt.isNotEmpty) {
+      overlay =
+          '[Group-specific instructions for ${speaker.name}]\n$groupCharPrompt';
+    } else if (speaker.systemPrompt.isNotEmpty) {
+      overlay =
+          '[Specific instructions for ${speaker.name}]\n${speaker.systemPrompt.trim()}';
+    }
+    final buf = StringBuffer()
+      ..write(slap)
+      ..writeln(persona)
+      ..write(example);
+    if (overlay.isNotEmpty) buf.writeln(overlay);
+    return buf.toString();
   }
 }

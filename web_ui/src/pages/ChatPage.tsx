@@ -85,6 +85,11 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolsBump]);
 
+  // `/join --full` (and ambiguous `/join`) parks a picker on the Dart side.
+  useEffect(() => {
+    if (state?.pendingPicker != null) setShowPicker(true);
+  }, [state?.pendingPicker]);
+
   // Esc closes drawers (message edit owns its own Esc + dirty confirm).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -457,10 +462,15 @@ export function ChatPage() {
 
       <ChatOverlays
         showPicker={showPicker}
+        pickerFull={state?.pendingPicker?.full ?? false}
+        pickerFilter={state?.pendingPicker?.filter ?? ''}
         onPick={(name, full) => {
           void sendMessage(`/join ${full ? '--full ' : ''}${name}`);
         }}
-        onClosePicker={() => setShowPicker(false)}
+        onClosePicker={() => {
+          setShowPicker(false);
+          void api.post('/api/chat/guest-picker/dismiss', {}).catch(() => {});
+        }}
         editTarget={editTarget}
         onCancelEdit={() => setEditTarget(null)}
         onSaveEdit={saveEdit}
