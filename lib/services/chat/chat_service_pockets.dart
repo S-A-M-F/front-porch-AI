@@ -71,6 +71,55 @@ extension ChatServicePockets on ChatService {
   Map<String, List<_PendingItemIntro>> get _pendingItemIntros =>
       _pendingItemIntrosOf[this] ??= {};
 
+  /// Combined Pockets gate: Porch Life global AND this character's card flag.
+  /// Missing extensions / missing key → on. Group copy first, then library.
+  bool pocketsEnabledFor(String characterId) {
+    if (!pocketsFeatureEnabled) return false;
+    CharacterCard? card;
+    if (_activeGroup == null) {
+      card = _activeCharacter;
+    } else {
+      for (final c in _groupCharacters) {
+        if (_getCharacterIdFromCard(c) == characterId) {
+          card = c;
+          break;
+        }
+      }
+    }
+    final ext = card?.frontPorchExtensions;
+    if (ext != null) return ext.pocketsEnabled;
+    if (card != null) {
+      final library = originLibraryCardFor(card);
+      final libExt = library?.frontPorchExtensions;
+      if (libExt != null) return libExt.pocketsEnabled;
+    }
+    return true;
+  }
+
+  /// Transfer roster the model is shown: other group members whose own
+  /// Pockets flag is on. Off members are not targets — a hand-off must
+  /// not invent a kit the author hid.
+  List<String> _pocketTransferRoster(String speakerId) {
+    if (!(_storageService.realismSettings.pocketTransfersEnabled &&
+        _activeGroup != null)) {
+      return const [];
+    }
+    return [
+      for (final c in _groupCharacters)
+        if (_getCharacterIdFromCard(c) != speakerId &&
+            pocketsEnabledFor(_getCharacterIdFromCard(c)))
+          c.name,
+    ];
+  }
+
+  /// Write-through is refused only when the feature is live and this
+  /// character authored Pockets off. HIDES≠erase: a per-char-off kit is
+  /// left untouched (no invent, no wipe). Global-off callers that already
+  /// chose to write (realism_state rewind) still may — that is the
+  /// toggle-back contract.
+  bool _pocketsWriteAllowed(String characterId) =>
+      !pocketsFeatureEnabled || pocketsEnabledFor(characterId);
+
   /// Put one item INTO a character's kit by hand — the other half of the ✕
   /// eraser, from the same sidebar panel (and the web tools panel).
   ///
@@ -98,8 +147,8 @@ extension ChatServicePockets on ChatService {
     bool gift = false,
     bool correction = false,
   }) async {
-    // Same single switch every pockets surface answers to.
-    if (!_storageService.realismSettings.pocketsEnabled) return;
+    // Same combined gate every pockets surface answers to.
+    if (!pocketsEnabledFor(characterId)) return;
     // Same "name (state)" chip convention the character editor teaches.
     final item = PocketItem.parseDisplay(name);
     if (item.isEmpty || isEmptyWardrobeRef(item.name)) return;
@@ -281,7 +330,7 @@ extension ChatServicePockets on ChatService {
   void seedPocketsFromCards() {
     // The one switch Pockets answers to. Seeding while it is off would let the
     // v47 save wire persist a record the user never asked for.
-    if (!_storageService.realismSettings.pocketsEnabled) return;
+    if (!pocketsFeatureEnabled) return;
 
     final speakers = _activeGroup == null
         ? [?_activeCharacter]
@@ -289,6 +338,7 @@ extension ChatServicePockets on ChatService {
 
     for (final c in speakers) {
       final id = _getCharacterIdFromCard(c);
+      if (!pocketsEnabledFor(id)) continue;
       // Already has a record: this chat has moved on from whatever the card
       // said, and re-seeding would hand back things they put down.
       if (pocketsFor(id) != null) continue;
@@ -319,7 +369,7 @@ extension ChatServicePockets on ChatService {
     if (!after) {
       unawaited(_replantItemCards(msg, key: 'item_cards_retired'));
     }
-    if (!_storageService.realismSettings.pocketsEnabled) return;
+    if (!pocketsFeatureEnabled) return;
     final before = msg.metadata?['pockets_before'];
     if (before is! Map) return;
     final chId = before['char'];
@@ -329,7 +379,9 @@ extension ChatServicePockets on ChatService {
       final a = msg.activeMetadata?['pockets_after'];
       if (a is Map) recordJson = a;
     }
-    setPocketsFor(chId, Pockets.fromJson(recordJson));
+    if (_pocketsWriteAllowed(chId)) {
+      setPocketsFor(chId, Pockets.fromJson(recordJson));
+    }
 
     // Recipients of a give: same before/after contract as the speaker.
     final othersBefore = before['others'];
@@ -353,7 +405,9 @@ extension ChatServicePockets on ChatService {
       if (after && afterByChar.containsKey(oid)) {
         oRec = afterByChar[oid];
       }
-      setPocketsFor(oid, Pockets.fromJson(oRec));
+      if (_pocketsWriteAllowed(oid)) {
+        setPocketsFor(oid, Pockets.fromJson(oRec));
+      }
     }
   }
 }

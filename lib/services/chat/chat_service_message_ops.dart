@@ -356,7 +356,7 @@ extension ChatServiceMessageOps on ChatService {
       return;
     }
     unawaited(_replantItemCards(deleted, key: 'item_cards_retired'));
-    if (!_storageService.realismSettings.pocketsEnabled) return;
+    if (!pocketsFeatureEnabled) return;
     final before = deleted.metadata?['pockets_before'];
     if (before is! Map) return;
     final speakerId = before['char'];
@@ -390,7 +390,8 @@ extension ChatServiceMessageOps on ChatService {
     };
     final live = <String, Pockets>{
       for (final id in ids)
-        if (id.isNotEmpty) id: (pocketsFor(id) ?? Pockets()).copy(),
+        if (id.isNotEmpty && _pocketsWriteAllowed(id))
+          id: (pocketsFor(id) ?? Pockets()).copy(),
     };
     invertDeletedPocketTurn(
       speakerId: speakerId,
@@ -401,6 +402,7 @@ extension ChatServiceMessageOps on ChatService {
       live: live,
     );
     for (final e in live.entries) {
+      if (!_pocketsWriteAllowed(e.key)) continue;
       setPocketsFor(e.key, e.value);
     }
   }
