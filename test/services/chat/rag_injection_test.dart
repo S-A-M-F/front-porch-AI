@@ -1417,8 +1417,7 @@ void main() {
           reachingForQuote: false,
         );
         expect(block, contains(kRagRememberedHeader.trim()));
-        expect(block, contains('- (Day 1) the swing creaked'));
-        expect(block, isNot(contains('Nia:')));
+        expect(block, contains('- (Day 1) Nia: the swing creaked'));
         expect(block, isNot(contains('Exact earlier lines')));
       },
     );
@@ -1441,8 +1440,17 @@ void main() {
         expect(plain, contains(kRagRememberedHeader.trim()));
         expect(plain, contains('spare key'));
         expect(plain, contains('flowerpot'));
-        expect(plain, isNot(contains('You: the spare key')));
         expect(plain.split('\n').where((l) => l.startsWith('- ')).length, 1);
+        expect(
+          plain,
+          isNot(
+            contains(
+              'You: the spare key lives under the third flowerpot\n'
+              'Nia: I still think about the spare key under the third flowerpot',
+            ),
+          ),
+          reason: 'plain turn is one attributed line, not the You:+Nia: tape',
+        );
         final quoted = buildRagMemoriesBlock(
           memories: [m],
           currentSessionId: 's1',
@@ -1496,8 +1504,7 @@ void main() {
         days: {m: 1},
         reachingForQuote: false,
       );
-      expect(block, contains('- (Day 1) the swing creaked'));
-      expect(block, isNot(contains('Nia:')));
+      expect(block, contains('- (Day 1) Nia: the swing creaked'));
       final quoted = buildRagMemoriesBlock(
         memories: [m],
         currentSessionId: 's1',
@@ -1505,6 +1512,37 @@ void main() {
         reachingForQuote: true,
       );
       expect(quoted, contains('Nia: the swing creaked'));
+    });
+
+    test('plain inject keeps the speaker of the densest line', () {
+      expect(
+        rememberedAttributedLine('Nia: the swing creaked'),
+        'Nia: the swing creaked',
+      );
+      expect(
+        rememberedAttributedLine('Nia:the swing creaked'),
+        'Nia: the swing creaked',
+        reason: 'normalize the space after the colon to match formatRagLine',
+      );
+      const window =
+          'You: hi\n'
+          'Nia: the swing creaked beside the third flowerpot';
+      final attributed = rememberedAttributedLine(window);
+      expect(attributed.contains('\n'), isFalse);
+      expect(attributed, startsWith('Nia:'));
+      expect(attributed, contains('the swing creaked'));
+      expect(attributed, isNot(contains('You:')));
+      final m = _mem(window, sessionId: 's1', pos: 1);
+      final block = buildRagMemoriesBlock(
+        memories: [m],
+        currentSessionId: 's1',
+        days: {m: 1},
+        reachingForQuote: false,
+      );
+      expect(block, contains(kRagRememberedHeader.trim()));
+      expect(block, contains('- (Day 1) Nia:'));
+      expect(block.split('\n').where((l) => l.startsWith('- ')).length, 1);
+      expect(block, isNot(contains('You: hi')));
     });
 
     test('quote-reach uses the quote header; day stamp stays display-only', () {

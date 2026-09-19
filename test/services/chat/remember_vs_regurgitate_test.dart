@@ -556,9 +556,8 @@ void main() {
       expect(block, isNot(contains('Exact earlier lines')));
       expect(
         block,
-        isNot(contains(kFactUser)),
-        reason:
-            'HOLD leftover: plain turn must not inject the transcript window',
+        isNot(contains(kFactLine)),
+        reason: 'HOLD leftover: plain turn must not inject the You:+Nia: tape',
       );
     });
 
@@ -578,8 +577,7 @@ void main() {
         days: {m: 1},
         reachingForQuote: false,
       );
-      expect(plain, contains('- (Day 1) the swing creaked'));
-      expect(plain, isNot(contains('Nia:')));
+      expect(plain, contains('- (Day 1) Nia: the swing creaked'));
       final quoted = buildRagMemoriesBlock(
         memories: [m],
         currentSessionId: kSession,

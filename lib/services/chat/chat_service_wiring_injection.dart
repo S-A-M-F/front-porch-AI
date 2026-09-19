@@ -27,7 +27,8 @@ extension ChatServiceWiringInjection on ChatService {
   /// for the active group context. Includes:
   /// - Group-level lorebook
   /// - Lorebooks from worlds attached to the group
-  /// - Per-character lorebooks (and their worlds) if `inheritCharacterLorebooks` is true
+  /// - The speaking character's lorebook (and their worlds) if
+  ///   `inheritCharacterLorebooks` is true — not every member's book
   ///
   /// This is intended for UI display (e.g. sidebar) to show what lore is currently "in play".
   List<LorebookEntry> getActiveGroupLoreEntries() {
@@ -49,10 +50,10 @@ extension ChatServiceWiringInjection on ChatService {
   // _lorebookScanner (plain class). ChatService owns via late final + thin
   // delegations at *all* call sites.
   // The entry universe comes from ONE enumerator: _collectLoreRefs →
-  // collectLoreEntryRefs (group book + group worlds + member/1:1 books +
-  // attached worlds). Scanning always covers everything (inherit=true);
-  // the group's inheritCharacterLorebooks flag only filters injection and
-  // the sidebar (getActiveGroupLoreEntries), matching prior behavior.
+  // collectLoreEntryRefs (group book + chat worlds + member/1:1 books +
+  // attached worlds). Scanning always covers everything (inherit=true,
+  // no speaker). Injection honors inheritCharacterLorebooks and, on a
+  // group turn, only the speaking card's character book (ST Swap).
   // 1:1 vs group parity: scanner processes whatever the enumerator yields.
   // Reset hygiene: resetLorebookTriggerState() called from every keep-sync
   // site (startNewChat 1:1+group/ext+non-ext, setActive*, _load empty/
@@ -264,20 +265,31 @@ extension ChatServiceWiringInjection on ChatService {
   }
 
   List<LoreEntryRef> _collectLoreRefs({bool? inheritOverride}) {
+    final inherit =
+        inheritOverride ?? (_activeGroup?.inheritCharacterLorebooks ?? true);
+    final scanner = inheritOverride == true;
+    var characters = _activeGroup != null
+        ? _groupCharacters
+        : (_activeCharacter != null
+              ? [_activeCharacter!]
+              : const <CharacterCard>[]);
+    CharacterCard? speaker;
+    if (!scanner && _activeGroup != null) {
+      speaker = _workSpeakerCard();
+      // No resolved speaker → no character books. Null speaker would
+      // inherit every member and walk a present-scene row onto the porch.
+      if (speaker == null) characters = const [];
+    }
     return collectLoreEntryRefs(
-      characters: _activeGroup != null
-          ? _groupCharacters
-          : (_activeCharacter != null
-                ? [_activeCharacter!]
-                : const <CharacterCard>[]),
+      characters: characters,
       chatLorebook: _loreTimedEffects.chatLorebook,
       groupLorebook: _activeGroupLorebook,
       chatWorldIds: _chatPlaceSlots.allIds,
       // Decided empty must stay empty — never ghost to group.worldIds.
       groupWorldNames: const [],
       resolveWorld: _worldRepository.resolveWorld,
-      inherit:
-          inheritOverride ?? (_activeGroup?.inheritCharacterLorebooks ?? true),
+      inherit: inherit,
+      speaker: speaker,
     );
   }
 

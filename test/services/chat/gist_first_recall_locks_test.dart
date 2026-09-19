@@ -741,7 +741,7 @@ void main() {
   );
 
   test(
-    'LOCK 3: plain path strips speaker prefix; quote-reach keeps the raw window',
+    'LOCK 3: plain path keeps the speaker nametag; quote-reach keeps the raw window',
     () async {
       await seedOverflowSession(
         sessionId: 'sess-gistlock-prefix',
@@ -777,10 +777,10 @@ void main() {
       );
       expect(
         plain,
-        isNot(contains(kSwingLine)),
+        contains(kSwingLine),
         reason:
-            'plain path strips the speaker prefix on a single line — '
-            'result is "the swing creaked", not "Nia: the swing creaked"',
+            'plain path keeps who said it — nameless remembered lines '
+            'glue to whoever is talking now',
       );
 
       await chat.sendMessage('remember what you said about the swing?');
@@ -1041,7 +1041,7 @@ void main() {
   });
 
   test(
-    'LOCK 3: optional colon space strips Nia:the swing; quote-reach stays raw',
+    'LOCK 3: optional colon space keeps Nia: the swing; quote-reach stays raw',
     () async {
       await seedOverflowSession(
         sessionId: 'sess-gistlock-colon',
@@ -1082,18 +1082,23 @@ void main() {
       );
       expect(
         tight,
-        isNot(contains(kSwingTight)),
+        contains(kSwingSpaced),
         reason:
-            'optional space after the colon — "Nia:the swing" must become '
-            '"the swing", same as "Nia: the swing"',
+            'optional space after the colon — "Nia:the swing" becomes '
+            '"Nia: the swing" so the nametag stays',
+      );
+      expect(
+        tight,
+        isNot(contains(kSwingTight)),
+        reason: 'plain path normalizes "Nia:the" to "Nia: the"',
       );
       final spaced = await sitWith(kSwingSpaced);
       expect(spaced, contains(kRagRememberedHeader.trim()));
       expect(spaced, contains(kSwingBare));
       expect(
         spaced,
-        isNot(contains(kSwingSpaced)),
-        reason: '"Nia: the swing" strips to "the swing" on the plain path',
+        contains(kSwingSpaced),
+        reason: 'plain path keeps who said it',
       );
       memory.retrieveCalls = 0;
       memory.canned = [

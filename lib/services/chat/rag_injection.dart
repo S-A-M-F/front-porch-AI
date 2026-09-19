@@ -285,9 +285,31 @@ String rememberedLineFromWindow(String content) {
   );
 }
 
+/// Speaker of the densest line plus that body. Plain RAG inject uses this
+/// so a remembered line does not glue to whoever is talking now.
+String rememberedAttributedLine(String content) {
+  final lines = [
+    for (final raw in content.split('\n'))
+      if (raw.trim().isNotEmpty) raw.trim(),
+  ];
+  if (lines.isEmpty) return content.trim();
+  final chosenBody = rememberedLineFromWindow(content);
+  final prefix = RegExp(r'^([^:\n]{1,40}):\s*(.*)');
+  for (final line in lines) {
+    final m = prefix.firstMatch(line);
+    if (m == null) continue;
+    final speaker = m.group(1)!.trim();
+    final body = m.group(2)!.trim();
+    if (body != chosenBody) continue;
+    if (speaker.isEmpty) return chosenBody;
+    return '$speaker: $chosenBody';
+  }
+  return chosenBody;
+}
+
 /// Build the memories block. Day stamps stay display-only; packing order
 /// is the caller's (score-descending). Display order is chronological.
-/// Plain turn renders [rememberedLineFromWindow]; quote-reach keeps the
+/// Plain turn renders [rememberedAttributedLine]; quote-reach keeps the
 /// raw window.
 String buildRagMemoriesBlock({
   required List<RetrievedMemory> memories,
@@ -297,7 +319,7 @@ String buildRagMemoriesBlock({
 }) {
   if (memories.isEmpty) return '';
   String lineFor(RetrievedMemory m) => formatRagLine(
-    reachingForQuote ? m.content : rememberedLineFromWindow(m.content),
+    reachingForQuote ? m.content : rememberedAttributedLine(m.content),
     day: days[m],
     otherChat: m.sessionId != currentSessionId,
   );
