@@ -175,16 +175,17 @@ void main() {
         isNotEmpty,
         reason: 'Continue must fire a generation',
       );
-      final joined = llm.systems.join('\n');
-      // Group prompts list every member's persona. The YOU ARE line is
-      // who Continue picked. first-match-by-name would have said NORTH.
+      // Overlay sits on Speaker Card after history (not the system head),
+      // so Continue identity is on the user prompt. first-match-by-name
+      // would have said NORTH.
+      final wire = [...llm.systems, ...llm.prompts].join('\n');
       expect(
-        joined,
+        wire,
         contains('You are Alex from the SOUTH dock.'),
         reason: 'Continue must keep speaking as the stamped South Alex',
       );
       expect(
-        joined,
+        wire,
         isNot(contains('You are Alex from the NORTH porch.')),
         reason: 'first-match-by-name would have loaded the first Alex',
       );
