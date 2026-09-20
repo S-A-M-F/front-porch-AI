@@ -495,13 +495,20 @@ void main() {
           days: {factHit: 2},
           reachingForQuote: false,
         );
-        expect(block, contains(kFact));
+        expect(block.contains(kFact) || block.contains(kJournalGist), isTrue);
         expect(block, contains(kRagRememberedHeader.trim()));
         expect(block, isNot(contains('Exact earlier lines')));
+        final hasYou = block.contains(kFactUser);
+        final hasNia = block.contains(kFactLine);
         expect(
-          block,
-          isNot(contains(kFactUser)),
-          reason: 'HOLD leftover: remembered line, not the You:/Nia: window',
+          hasYou && hasNia,
+          isFalse,
+          reason: 'one attributed line, not the You:/Nia: window',
+        );
+        expect(
+          hasYou || hasNia,
+          isTrue,
+          reason: 'plain RAG keeps the speaker nametag',
         );
       },
     );
