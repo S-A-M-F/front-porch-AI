@@ -179,15 +179,21 @@ extension ChatServiceGenerationPostGen on ChatService {
       // time. Everything from here through the periodic evals is
       // gated so guest presence/turns leave the primary's state untouched.
       // (Lorebook scan + _saveChat above still ran for the guest.)
-      if (t.guestSpeaker == null) {
+      if (!_isLiteTurn(t)) {
         await _runPostGenEngineAndPeriodic(t, newPart, finalResponse);
       }
 
-      // Scene Guest: no Realism/Needs, but the chat clock still hands off
-      // to whoever speaks next (host or another guest). The early
-      // `_saveChat` above ran BEFORE this tick — persist the new clock
-      // and the rewind stamp or a reload / guest-regen loses them.
-      if (t.guestSpeaker != null) {
+      // Lite / Scene Guest: no Realism/Needs. Group soft roster
+      // members still get the glance-only withUser pass so Away /
+      // With you can move. 1:1 guestSpeaker stays out of Away
+      // rotation. The chat clock still hands off. The early
+      // `_saveChat` above ran BEFORE this tick — persist the new
+      // clock, glance bit, and rewind stamp or a reload loses them.
+      if (_isLiteTurn(t)) {
+        final scored = t.mode == GenerationMode.continue_
+            ? (_isGuestAuthoredMessage(t.streamTarget) ? '' : newPart.trim())
+            : finalResponse;
+        await _runLiteGroupGlancePass(t, scored);
         await _maybeAdvanceStoryClockAfterReply(t);
         _maybeKickDreamPrefetch();
         await _saveChat();

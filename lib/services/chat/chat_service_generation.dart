@@ -318,8 +318,11 @@ extension ChatServiceGeneration on ChatService {
 
       // Pin the realism speaker for the whole turn so prompt injection + decay
       // key on the character actually generating — not nextCharacter (the
-      // *upcoming* speaker, null for random turn order). Scene guests carry no
-      // realism, so they leave it null. Cleared in the finally below.
+      // *upcoming* speaker, null for random turn order). Soft group members
+      // are pinned too: leaving them null made the fallback steal the next
+      // full member's Needs/bond. 1:1 scene guests (guestSpeaker) stay null.
+      // Cleared in the finally below. Lite turns still skip the realism
+      // dance and the realism/objective prompt blocks.
       _turnSpeakerIdForRealism = (_activeGroup != null && guestSpeaker == null)
           ? _getCharacterIdFromCard(speakingCharacter)
           : null;
@@ -331,6 +334,7 @@ extension ChatServiceGeneration on ChatService {
       // A normal new group turn still dances. Guests carry no realism.
       if (guestSpeaker == null &&
           _activeGroup != null &&
+          !_isLiteTurn(t) &&
           _realismActiveThisMode) {
         if (mode == GenerationMode.continue_ || skipSpeakerEval) {
           final sid = _getCharacterIdFromCard(speakingCharacter);
@@ -476,9 +480,9 @@ extension ChatServiceGeneration on ChatService {
     }
     await _realismEvals.evaluatePhysicalStateCall(
       timeOnly: true,
-      skipTodayEval: t.guestSpeaker != null,
+      skipTodayEval: _isLiteTurn(t),
     );
-    if (t.guestSpeaker != null) {
+    if (_isLiteTurn(t)) {
       final named = clockNamedInReply(msg.text, _timeService.clock);
       if (named != null) await _timeService.applyReconciledClock(named);
     }
