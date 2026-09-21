@@ -6,12 +6,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/services/image/image.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/services/image/model_family.dart';
 import 'package:front_porch_ai/ui/image_studio/backend_catalog.dart';
+import 'package:front_porch_ai/ui/image_studio/comfy_create_panel.dart';
 import 'package:front_porch_ai/ui/image_studio/connection_status_card.dart';
 import 'package:front_porch_ai/ui/image_studio/lora_picker.dart';
 import 'package:front_porch_ai/ui/image_studio/model_slot_dropdown.dart';
+import 'package:front_porch_ai/ui/image_studio/remote_image_host_chips.dart';
+import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 part 'generation_options_tab.source.dart';
@@ -106,6 +109,22 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
     setState(() => _loadingModels = true);
     final svc = Provider.of<ImageGenService>(context, listen: false);
     final m = await svc.fetchImageModels();
+    if (!mounted) return;
+    final st = Provider.of<StorageService>(context, listen: false);
+    if (st.imageGenSettings.imageGenBackend == 'remote') {
+      final account = resolveImageStudioRemoteAccount(
+        imageRemoteApiUrl: st.imageGenSettings.imageRemoteApiUrl,
+        chatRemoteApiUrl: st.backendSettings.remoteApiUrl,
+        keyFor: st.backendSettings.remoteApiKeyFor,
+      );
+      final ids = [for (final model in m) model.id];
+      await sanitizeRemoteImageSlot(
+        image: st.imageGenSettings,
+        hostUrl: account.url,
+        editScoped: widget.editScoped,
+        catalogIds: ids,
+      );
+    }
     if (mounted) {
       setState(() {
         _models = m;

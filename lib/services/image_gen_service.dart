@@ -20,6 +20,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
@@ -42,11 +43,13 @@ part 'image_gen_service.local_admin.dart';
 part 'image_gen_service.backends.dart';
 part 'image_gen_service.backends.generate.dart';
 part 'image_gen_service.catalog.dart';
+part 'image_gen_service.nano_models.dart';
 part 'image_gen_service.payload.dart';
+part 'image_gen_service.comfy.dart';
 
-/// Service for generating images via the remote API. Reuses the same API
-/// URL/key configured for text generation (OpenRouter, Nano-GPT, or any
-/// OpenAI-compatible endpoint).
+/// Service for generating images via the remote API. Studio's host is
+/// [ImageGenSettings.imageRemoteApiUrl] (Nano / OpenRouter chips); keys
+/// still come from [RemoteApiKeyVault]. Chat's mouth URL is not rewritten.
 ///
 /// Split-god-file shell: the 19 members the 3 protected test fakes
 /// `implements ImageGenService` override stay literal instance members here
@@ -98,7 +101,7 @@ class ImageGenService extends ChangeNotifier {
     );
     switch (backend) {
       case ImageGenBackend.remote:
-        return _storage.backendSettings.remoteApiKey.isNotEmpty &&
+        return _imageRemoteAccount.key.isNotEmpty &&
             _storage.imageGenSettings.imageGenModel.isNotEmpty;
       case ImageGenBackend.a1111:
         return _storage.imageGenSettings.localImageGenUrl.isNotEmpty;
@@ -146,6 +149,15 @@ class ImageGenService extends ChangeNotifier {
   }
 
   ImageGenService(this._storage);
+
+  /// Studio host + vault key. Empty Studio URL falls back to chat's mouth
+  /// without writing it — flipping Studio chips never changes chat.
+  ({String url, String key}) get _imageRemoteAccount =>
+      resolveImageStudioRemoteAccount(
+        imageRemoteApiUrl: _storage.imageGenSettings.imageRemoteApiUrl,
+        chatRemoteApiUrl: _storage.backendSettings.remoteApiUrl,
+        keyFor: _storage.backendSettings.remoteApiKeyFor,
+      );
 
   /// Best-effort ComfyUI VRAM nudge before a create→edit model swap (the
   /// creator pack's "Switching to edit model" stage). No-op on every other
@@ -216,11 +228,13 @@ class ImageGenService extends ChangeNotifier {
   /// - If API fails: returns empty list with error logged
   ///
   /// **Nano-GPT and others**:
-  /// - Returns the curated list of known image models (Nano-GPT's /models
-  ///   endpoint only returns text models; there is no image-specific listing API)
+  /// - Returns the curated snapshot in `_commonImageModels` (Nano's chat
+  ///   `/models` is text-only; Image Studio does not live-fetch image
+  ///   discovery — refresh that const from the Nano image models page)
   Future<List<ImageModelInfo>> fetchImageModels() async {
-    final apiUrl = _storage.backendSettings.remoteApiUrl;
-    final apiKey = _storage.backendSettings.remoteApiKeyFor(apiUrl);
+    final account = _imageRemoteAccount;
+    final apiUrl = account.url;
+    final apiKey = account.key;
     // No account = no models. This used to fall back to the curated catalog,
     // which is how the Remote API option showed a real-looking model menu to
     // a user with no key configured at all — who reasonably concluded the
@@ -363,6 +377,14 @@ class ImageGenService extends ChangeNotifier {
   /// GET /object_info payload (see [ComfyUiService]); URL from settings.
   Future<List<String>> fetchComfyModels(String baseUrl) =>
       _ensureComfyUi.fetchModels();
+
+  /// Checkpoints + diffusion_models + encoders + VAE + LoRAs.
+  Future<ComfyFileCatalog> fetchComfyCatalog(String baseUrl) =>
+      _ensureComfyUi.fetchCatalog();
+
+  /// Live Comfy `/templates` Create list (empty when that install has none).
+  Future<List<ComfyTemplateEntry>> fetchComfyCreateTemplates(String baseUrl) =>
+      _ensureComfyUi.fetchCreateTemplates();
 
   /// ComfyUI LoRAs, enriched with base-model family. Names come from
   /// /object_info; the family is read per-LoRA from the embedded safetensors

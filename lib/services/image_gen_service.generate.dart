@@ -104,11 +104,43 @@ extension _ImageGenGenerate on ImageGenService {
       // generation (edit models can't txt2img). An explicit [model] wins
       // (batch flows pass their own). ComfyUI's edit path ignores this — its
       // models come from the comfyEdit* workflow slots.
-      final refModelName =
+      var refModelName =
           model ??
           (intent == StudioIntent.edit
               ? _storage.imageGenSettings.imageGenEditModel
               : _storage.imageGenSettings.imageGenModel);
+      if (backend == ImageGenBackend.remote) {
+        final account = _imageRemoteAccount;
+        final picked = pickRemoteImageModelId(
+          explicit: model,
+          slotModel: intent == StudioIntent.edit
+              ? _storage.imageGenSettings.imageGenEditModel
+              : _storage.imageGenSettings.imageGenModel,
+          hostModel: _storage.imageGenSettings.remoteImageModelFor(
+            account.url,
+            edit: intent == StudioIntent.edit,
+          ),
+        );
+        if (picked == null) {
+          final leftover =
+              looksLikeLocalImageModel(refModelName) ||
+              looksLikeLocalImageModel(model ?? '');
+          if (leftover) {
+            if (intent == StudioIntent.edit) {
+              await _storage.imageGenSettings.setImageGenEditModel('');
+            } else {
+              await _storage.imageGenSettings.setImageGenModel('');
+            }
+          }
+          _statusMessage = leftover
+              ? kRemoteLocalCheckpointMessage
+              : 'No image model selected.';
+          _isGenerating = false;
+          _notify();
+          return null;
+        }
+        refModelName = picked;
+      }
       final refCapability = ImageReferenceResolver.resolveForBackend(
         backend: backend,
         modelName: refModelName,
@@ -312,83 +344,20 @@ extension _ImageGenGenerate on ImageGenService {
           );
         }
       } else if (backend == ImageGenBackend.comfyUi) {
-        // ── ComfyUI (HTTP + bundled txt2img workflow) ──────────────────
         _statusMessage = 'Connecting to ComfyUI...';
         _notify();
         try {
-          final comfy = _ensureComfyUi;
-          final (width, height) = _parseSize(
-            size ?? _storage.imageGenSettings.imageGenSize,
+          imageBytes = await _generateViaComfy(
+            prompt: prompt,
+            negativePrompt: negativePrompt,
+            size: size,
+            refModelName: refModelName,
+            referenceImage: referenceImage,
+            seed: seed,
+            denoise: denoise,
+            editStrength: editStrength,
+            refRole: refRole,
           );
-          // The stored sampler is shared across backends and may be an
-          // A1111-style name; normalize it against what this server offers.
-          final available = await comfy.fetchSamplers();
-          final storedSampler = _storage.imageGenSettings.imageGenSampler;
-          // An explicit user scheduler wins; 'Automatic' derives it from the
-          // sampler (Karras-flavored names → karras, else normal) exactly as
-          // before, so the default path is unchanged.
-          final storedScheduler = _storage.imageGenSettings.imageGenScheduler;
-          final scheduler =
-              (storedScheduler.isNotEmpty && storedScheduler != 'Automatic')
-              ? storedScheduler
-              : ComfyUiService.schedulerFor(storedSampler);
-          if (refRole == ImageReferenceRole.editConditioning &&
-              referenceImage != null) {
-            // ComfyUI instruction-edit: run the SELECTED workflow (a bundled
-            // preset or the user's uploaded graph) via the token engine. The
-            // edit-scoped knobs supply steps/CFG/strength(→denoise)/shift; the
-            // sampler/scheduler use ComfyUI-friendly defaults (the DT sampler
-            // int doesn't map cleanly). Model slots come from the user's picks.
-            _statusMessage = 'Editing with ComfyUI...';
-            _notify();
-            final storedSeed = seed ?? _storage.imageGenSettings.imageGenSeed;
-            final req = resolveComfyEditRequest(
-              workflowId: _storage.imageGenSettings.comfyEditWorkflowId,
-              uploadedWorkflowJson:
-                  _storage.imageGenSettings.comfyEditUploadedWorkflow,
-              modelChoices: _storage.imageGenSettings.comfyEditModelChoices,
-              prompt: prompt,
-              negative: negativePrompt,
-              seed: storedSeed == -1 ? Random().nextInt(1 << 31) : storedSeed,
-              steps: _storage.imageGenSettings.editSteps,
-              cfg: _storage.imageGenSettings.editCfgScale,
-              denoise: editStrength ?? kEditRecommendedStrength,
-              shift: _storage.imageGenSettings.editShift,
-            );
-            if (req == null) {
-              throw Exception(
-                'No ComfyUI edit workflow is set up. Pick a preset (and its '
-                'models) or upload a workflow in the Edit tab.',
-              );
-            }
-            imageBytes = await comfy.generateImageEdit(
-              referenceImageBytes: referenceImage,
-              workflowTemplate: req.template,
-              tokenValues: req.values,
-              onProgress: _updateGenProgress,
-            );
-          } else {
-            imageBytes = await comfy.generateImage(
-              prompt: prompt,
-              negativePrompt: negativePrompt,
-              model: refModelName,
-              width: width,
-              height: height,
-              steps: _storage.imageGenSettings.imageGenSteps,
-              cfgScale: _storage.imageGenSettings.imageGenCfgScale,
-              seed: seed ?? _storage.imageGenSettings.imageGenSeed,
-              samplerName: ComfyUiService.normalizeSampler(
-                storedSampler,
-                available,
-              ),
-              scheduler: scheduler,
-              loraName: _storage.imageGenSettings.imageGenLora,
-              loraWeight: _storage.imageGenSettings.imageGenLoraWeight,
-              referenceImageBytes: referenceImage,
-              denoise: denoise ?? _storage.imageGenSettings.imageGenDenoise,
-              onProgress: _updateGenProgress,
-            );
-          }
         } catch (e) {
           // Sanitize for user display (mirrors the Draw Things branch).
           final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
@@ -403,7 +372,8 @@ extension _ImageGenGenerate on ImageGenService {
         }
       } else {
         // ── Remote API ─────────────────────────────────────────────────
-        if (_storage.backendSettings.remoteApiKey.isEmpty) {
+        final account = _imageRemoteAccount;
+        if (account.key.isEmpty) {
           _statusMessage = 'No API key configured.';
           _isGenerating = false;
           _notify();
@@ -419,8 +389,8 @@ extension _ImageGenGenerate on ImageGenService {
         }
 
         final imageSize = size ?? _storage.imageGenSettings.imageGenSize;
-        final apiUrl = _storage.backendSettings.remoteApiUrl;
-        final apiKey = _storage.backendSettings.remoteApiKeyFor(apiUrl);
+        final apiUrl = account.url;
+        final apiKey = account.key;
 
         // Remote EDIT when an edit model + a reference are in play: the
         // instruction (`prompt`) + the reference image go to the provider's edit
@@ -461,7 +431,10 @@ extension _ImageGenGenerate on ImageGenService {
       _notify();
       return imageBytes;
     } catch (e) {
-      _statusMessage = 'Generation failed: $e';
+      final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      _statusMessage = msg.startsWith('Remote image timed out')
+          ? msg
+          : 'Generation failed: $e';
       _notify();
       return null;
     } finally {
