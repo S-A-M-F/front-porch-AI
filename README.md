@@ -20,8 +20,9 @@
 > - **They can look things up while talking** — web search rides the reply. Wiki is this character’s book. Recipe cards live in the library `tools/` drawer.
 > - **A second local model** can sit beside chat for feelings and journal, and swap off the GPU.
 > - **Guests sit in a group** without becoming full members until you Promote them. `.fpchat` remembers who was a guest.
+> - **Image Studio uses their templates** — Comfy Create runs the graph Comfy ships. Remote Studio can be Nano or OpenRouter without moving chat’s backend.
 >
-> Also: porch mic (`/speak`, costume swap, `@Name` to call someone back), Porch Life is defaults not the open chat, pockets per person, leftover quests go stale, drop PNG/`.byaf` on the home porch, copy a reply like text. Details in the in-app What's New.
+> Also: porch mic (`/speak`, costume swap, `@Name` to call someone back), Porch Life is defaults not the open chat, pockets per person, leftover quests go stale, drop PNG/`.byaf` on the home porch, copy a reply like text. Opening a chat lands on the latest line. Afterglow limp only on the first reply. Details in the in-app What's New.
 
 ## 🕯️ Why Does This Exist?
 
@@ -112,6 +113,7 @@ New in 1.3, tightened in 1.4. They have pockets, clothes, and a set-aside pile �
 - **Regenerate, Continue, Impersonate, Edit** — full message control. **Impersonate is on the phone too**; a start you already typed is continued as you, not answered as the character
 - **Take a chat with you** — export a conversation as a Front Porch `.fpchat` (history, diary, growth, guests, the lot) or SillyTavern JSONL, and bring it back on desktop or the phone
 - **Copy a reply like text** — drag across the words (including an open Thought) and Copy. The name and buttons stay out of it
+- **Opens on the latest line** — no marathon scroll from the first greeting. Follow streaming replies (Settings → General, on by default) stays with new words only if you are already at the bottom; scroll up and it stays put
 - **Photo attachments** — send your character a picture and vision-capable models genuinely see and react to it (desktop and phone; local description fallback for text-only models)
 - **Look-up tools** — web search rides the character’s reply. Wiki is the book you picked for this chat. Recipe cards live in the library `tools/` folder for both chat and Waifu Coder
 - **Per-chat visual themes** — ten presets plus full color customization, desktop and web
@@ -129,6 +131,7 @@ New in 1.3, tightened in 1.4. They have pockets, clothes, and a set-aside pile �
 - **A bad day that isn't about you** — optional, off by default. They can arrive tired, hungry, or weather-beaten from their own life, and the sidebar says why. Nothing is invented
 - **Relationship & Trust system** — earn a character's trust over time; it shifts how open and vulnerable they allow themselves to be
 - **Sims-style Needs** — hunger, energy, social, fun, hygiene, comfort: they decay on their own, respond to what actually happens in the scene, and bottoming one out has real consequences
+- **Afterglow** — the first reply after a scene can still feel wrecked. After that, tired and comfortable follow Needs, not a stuck limp pose
 - **Story clock** — time advances every turn from what just happened (not a six-turn gate). It can run with the engine off. If they name 6am, the clock becomes 6am
 - **Weather & dreams** — hour-by-hour story weather, and a short dream when a story night passes
 - **Character quests** — self-chosen goals become real main quests with concrete steps. **Ambitions on the card steer those quests.** Leftover quests can go stale instead of pretending you won
@@ -186,6 +189,8 @@ New in 1.3, tightened in 1.4. They have pockets, clothes, and a set-aside pile �
 
 ### 🖼️ Image Studio & Local Image Generation
 - Natively connects to **A1111, Forge, SDNext, ComfyUI, and Draw Things** — auto-discovery, friendly status cards, no node graphs required. **Draw Things is macOS-only** (it is macOS-only software) and the chip hides on Windows and Linux
+- **Comfy Create uses Comfy’s templates** — pick Z-Image, Qwen-Image, or Flux and run the graph Comfy ships, or upload your own. Not a copy we have to rewrite every model bump
+- **Remote Studio is its own host** — Nano or OpenRouter, without changing chat’s backend. Search the list; Nano rows say included vs paid. A leftover checkpoint is not sent to Nano. Slow remote models get ten minutes, not two
 - **Subject-first Studio** — pick freeform, your character, or your persona and the prompt auto-fills; technical settings tuck away until you want them
 - **Expression packs** — a full matching emotion set from one portrait, with an optional AI vision quality check
 - **`/image` in chat** — paint the current scene (or anything else) as a picture bubble, with live in-progress preview
