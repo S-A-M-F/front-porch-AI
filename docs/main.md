@@ -14,7 +14,7 @@ The drawer got real tools. Search, wiki, a second local model, Waifu’s OpenCod
 
 - 👥 **Guests on the group couch** — `/create`, `/join --lite`, and `/scan` work in a group. They take turns and can be Away. Needs, diary, quests, and the feelings map stay off until you Promote that one person (`/promote Name` or the roster button). Turning a 1:1 into a group keeps guests as guests. A Full Front Porch `.fpchat` remembers Scene Guests and soft members. Old files still open. Same on the phone.
 
-- 🎤 **The group porch mic** — `/speak` is who talks. Swap costumes from the group. `@Ana` asks her back from Away; just saying the name does not. `/join --full` turns a 1:1 into a group. Same on the phone.
+- 🎤 **The group porch mic** — `/speak` is who talks. Swap costumes from the group. `@Name` asks them back from Away; just saying the name does not. `/join --full` turns a 1:1 into a group. Same on the phone.
 
 - 🏡 **Porch Life is the factory default** — flipping Needs, Realism, Passage of Time, Objectives, or Afterglow in Settings does not rewrite the chat you have open. Lived-in meters stay. Use the sidebar for that one story. Same on the phone.
 
@@ -25,6 +25,8 @@ The drawer got real tools. Search, wiki, a second local model, Waifu’s OpenCod
 - 📥 **Drop cards on the home porch** — drag a PNG character card or a `.byaf` archive onto the home library. Several files at once is fine. A `.byaf` puts the first image on the portrait and the rest in the Avatar Gallery. Phone and browser import `.byaf` the same way.
 
 - 📋 **Copy a reply like any other text** — drag across the words (including an open Thought) and Copy. Sending a new line no longer yanks the transcript if you had scrolled up. Same on the phone.
+
+- 🖼️ **Image Studio uses their templates, not a copy we own** — Comfy Create picks Z-Image, Qwen-Image, or Flux and runs the graph Comfy ships, or one you upload. Remote Studio can be Nano or OpenRouter without changing chat’s backend. Search the list; Nano rows say included vs paid. A leftover checkpoint is not sent to Nano, and a slow remote model gets ten minutes instead of two. Same on the phone.
 
 **Fixes that ride along**
 
@@ -40,6 +42,8 @@ The drawer got real tools. Search, wiki, a second local model, Waifu’s OpenCod
 - Windows and Linux caption buttons stay visible after the Mac title-bar fix.
 - Thinking-only replies from some cloud models show up as speech instead of an empty bubble.
 - Host switcher keeps the right API key and does not keep the last host’s model id.
+- Opening a chat lands on the latest messages. Older history loads as you scroll up. Follow streaming replies (Settings → General, on by default) stays with the newest words only if you are already at the bottom — scroll up to stop. Same on the phone.
+- Afterglow no longer keeps them limp for the whole cooldown. The first reply after a scene can still feel wrecked. After that, tired and comfortable follow Needs. Same in a group.
 
 For the complete list, see the GitHub release notes.
 
