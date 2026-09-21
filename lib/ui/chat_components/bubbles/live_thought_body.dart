@@ -1,9 +1,9 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Thought pane: cap height and follow the newest tokens unless the user
-// scrolled up. Transcript auto-scroll (option B) does not move the list;
-// this is the inner log for the think block itself.
+// Thought pane: cap height. followLatest is the General "Follow
+// streaming replies" switch (default ON). Off is the Mac-pass no-chase
+// lock. The widget already sticks only while [_atEnd].
 
 import 'package:flutter/material.dart';
 

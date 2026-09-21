@@ -17,6 +17,7 @@ import { useLayout } from '../hooks/useBreakpoint';
 import { ChatOverlays } from './chat/ChatOverlays';
 import { useChatSend } from './chat/useChatSend';
 import { useChatSession } from './chat/useChatSession';
+import { useFollowStreamingReplies } from '../followStreaming';
 
 export function ChatPage() {
   const navigate = useNavigate();
@@ -26,12 +27,13 @@ export function ChatPage() {
   // chat refresh fired the sidebar's GETs (tools / journal / growth / places)
   // for a panel nobody could see, twice over with the drawer open.
   const { isDesktop } = useLayout();
+  const followStreamingReplies = useFollowStreamingReplies();
   const session = useChatSession();
   const send = useChatSend(session.refresh);
   const {
     opening, state, loadError, streaming, chance, imageProg, genStatus,
     processing, showSessions, setShowSessions, sessions, loadingSessions,
-    toolsBump, voice, impersonateFill, scrollRef, refresh, stop, revealFate,
+    toolsBump, voice, impersonateFill, scrollRef, onTranscriptScroll, refresh, stop, revealFate,
     acceptFate, cancelRealism, openSessions, loadSession, newChat,
   } = session;
   const {
@@ -329,14 +331,17 @@ export function ChatPage() {
           </div>
         )}
         <ChatMessageList
+          sessionId={state.sessionId}
           messages={state.messages}
           castById={castById}
           multiCast={multiCast}
           lastIndex={lastIndex}
           busy={state.isGenerating}
           streaming={streaming}
+          followStreamingReplies={followStreamingReplies}
           genStatus={state.isGenerating ? genStatus : null}
           scrollRef={scrollRef}
+          onScroll={onTranscriptScroll}
           canSpeak={!!voice?.ttsEnabled}
           onBeginEdit={beginEdit}
           onSwipe={swipe}

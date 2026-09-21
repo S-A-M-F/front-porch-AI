@@ -62,6 +62,10 @@ class MessageBubble extends StatefulWidget {
   /// while any turn is running).
   final bool? isGenerating;
 
+  /// Thought-box stick-if-at-end. Chat passes the General setting
+  /// (default ON). Direct [MessageBubble] tests keep the off default.
+  final bool followStreamingReplies;
+
   /// Waifu Coder session theme. Chat leaves this null and reads
   /// [ChatService.sessionThemeOverrides] instead.
   final ChatThemeOverrides? themeOverrides;
@@ -77,6 +81,7 @@ class MessageBubble extends StatefulWidget {
     this.character,
     this.chatService,
     this.isGenerating,
+    this.followStreamingReplies = false,
     this.themeOverrides,
   });
 
@@ -116,14 +121,6 @@ class _MessageBubbleState extends State<MessageBubble> {
       _thoughtPinned = true;
       _thoughtExpanded = next;
     });
-  }
-
-  /// Inner think pane follows new tokens; the transcript does not.
-  bool get _followLiveThought {
-    if (widget.isGenerating == true) return true;
-    final chat = widget.chatService;
-    if (chat == null || !chat.isGenerating) return false;
-    return chat.messages.isNotEmpty && widget.index == chat.messages.length - 1;
   }
 
   bool get hasStorage {

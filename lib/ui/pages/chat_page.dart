@@ -20,6 +20,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,7 +78,15 @@ class _ChatPageState extends State<ChatPage> {
   final StyledTextController _controller = StyledTextController(
     preset: StyledTextPreset.chat,
   );
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _scrollController = ScrollController(
+    keepScrollOffset: false,
+  );
+
+  /// Owns the transcript ListView so a Stack sibling toggle or a
+  /// stream rebuild cannot dispose the scroll position (re-anchor
+  /// at newest + scrollbar metrics reset).
+  final GlobalKey _transcriptListKey = GlobalKey();
+
   late final FocusNode _chatFocusNode;
   // Journal receipts tap-to-jump: the just-landed-on bubble, briefly tinted.
   ChatMessage? _jumpFlashMessage;
