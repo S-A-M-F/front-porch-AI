@@ -150,7 +150,12 @@ class _GenerationOptionsTabState extends State<GenerationOptionsTab> {
 
   Future<void> _fetchLocalSamplers(String url) async {
     final st = Provider.of<StorageService>(context, listen: false);
-    final isComfy = st.imageGenSettings.imageGenBackend == 'comfyui';
+    final backend = st.imageGenSettings.imageGenBackend;
+    // Draw Things samplers are the gRPC enum in the advanced panel. Its port
+    // speaks gRPC, not /sdapi, so an Automatic1111 sampler fetch here just
+    // closes the connection.
+    if (backend == 'drawthings') return;
+    final isComfy = backend == 'comfyui';
     if (!isComfy && url.isEmpty) return;
     final svc = Provider.of<ImageGenService>(context, listen: false);
     // Samplers and schedulers come from the same server (and, for ComfyUI, the

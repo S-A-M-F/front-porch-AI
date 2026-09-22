@@ -230,7 +230,10 @@ class EngineStrip extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.only(top: 10),
         child: Text(
-          'Models appear here once the engine is connected.',
+          c.backend == ImageGenBackend.drawThings && c.connectionOk == true
+              ? 'Draw Things is connected, but Model Browser is off, so '
+                    'there is no model list.'
+              : 'Models appear here once the engine is connected.',
           style: TextStyle(
             color: AppColors.textTertiary(context),
             fontSize: 11,

@@ -55,6 +55,10 @@ extension _GenerationOptionsLocalPanel on _GenerationOptionsTabState {
               ? 'Is ComfyUI running? It listens on http://127.0.0.1:8188 '
                     'by default.'
               : 'Is Stable Diffusion WebUI running with the --api flag?',
+          emptyModelsHint: isDT
+              ? 'Draw Things answered, but sent no model list. Turn on '
+                    'Model Browser in its gRPC server settings, then retry.'
+              : null,
           onRetry: _testConnection,
         ),
         const SizedBox(height: 8),
