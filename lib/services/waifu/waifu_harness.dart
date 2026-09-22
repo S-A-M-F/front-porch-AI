@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:front_porch_ai/services/services.dart';
@@ -30,6 +31,7 @@ import 'package:front_porch_ai/services/waifu/waifu_sit_down.dart';
 import 'package:front_porch_ai/services/waifu/waifu_speech.dart';
 import 'package:front_porch_ai/services/waifu/waifu_store.dart';
 import 'package:front_porch_ai/services/waifu/waifu_todos.dart';
+import 'package:front_porch_ai/services/waifu/waifu_tools_mcp.dart';
 
 const kWaifuPhotosUnsupported =
     'Photos are not in this OpenCode version — the text still went through.';
@@ -49,6 +51,7 @@ class WaifuHarness implements OpenCodeEventSink {
     this.store,
     this.mcpOptIn = false,
     this.mcpConfigOf,
+    this.skillsDirOf,
   }) : _client = client,
        _sessionId = sessionId,
        _seatedBackend = backend;
@@ -62,7 +65,8 @@ class WaifuHarness implements OpenCodeEventSink {
   WaifuAskFn? onAsk;
   WaifuQuestionFn? onQuestion;
   bool mcpOptIn;
-  final Map<String, dynamic> Function()? mcpConfigOf;
+  final FutureOr<Map<String, dynamic>> Function()? mcpConfigOf;
+  final Directory? Function()? skillsDirOf;
 
   OpenCodeClient? _client;
   String? _sessionId;
@@ -270,7 +274,11 @@ class WaifuHarness implements OpenCodeEventSink {
       pathMode: session.pathMode,
       mode: session.mode,
       backend: back,
-      mcp: session.mcpOptIn ? mcpConfigOf?.call() : null,
+      mcp: await porchToolsMcpForSitDown(
+        optIn: session.mcpOptIn,
+        mcpConfigOf: mcpConfigOf,
+      ),
+      skillsDir: skillsDirOf?.call(),
     );
     _sessionId = info.id;
     _seatedBackend = back;
