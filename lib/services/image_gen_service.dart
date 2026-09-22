@@ -20,6 +20,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
@@ -40,22 +41,16 @@ part 'image_gen_service.generate.dart';
 part 'image_gen_service.prompt.dart';
 part 'image_gen_service.local_admin.dart';
 part 'image_gen_service.backends.dart';
+part 'image_gen_service.backends.generate.dart';
 part 'image_gen_service.catalog.dart';
+part 'image_gen_service.nano_models.dart';
+part 'image_gen_service.payload.dart';
+part 'image_gen_service.comfy.dart';
+part 'image_gen_service.clients.dart';
 
-/// Parse a "WxH" size string into width and height integers.
-(int width, int height) _parseSize(String size) {
-  final parts = size.split('x');
-  if (parts.length == 2) {
-    final w = int.tryParse(parts[0]) ?? 1024;
-    final h = int.tryParse(parts[1]) ?? 1024;
-    return (w, h);
-  }
-  return (1024, 1024);
-}
-
-/// Service for generating images via the remote API. Reuses the same API
-/// URL/key configured for text generation (OpenRouter, Nano-GPT, or any
-/// OpenAI-compatible endpoint).
+/// Service for generating images via the remote API. Studio's host is
+/// [ImageGenSettings.imageRemoteApiUrl] (Nano / OpenRouter chips); keys
+/// still come from [RemoteApiKeyVault]. Chat's mouth URL is not rewritten.
 ///
 /// Split-god-file shell: the 19 members the 3 protected test fakes
 /// `implements ImageGenService` override stay literal instance members here
@@ -100,34 +95,10 @@ class ImageGenService extends ChangeNotifier {
   String? get lastSavedPath => _lastSavedPath;
 
   /// Whether image gen is configured and ready to use.
-  bool get isConfigured {
-    if (!_storage.imageGenSettings.imageGenEnabled) return false;
-    final backend = ImageGenBackend.fromKey(
-      _storage.imageGenSettings.imageGenBackend,
-    );
-    switch (backend) {
-      case ImageGenBackend.remote:
-        return _storage.backendSettings.remoteApiKey.isNotEmpty &&
-            _storage.imageGenSettings.imageGenModel.isNotEmpty;
-      case ImageGenBackend.a1111:
-        return _storage.imageGenSettings.localImageGenUrl.isNotEmpty;
-      case ImageGenBackend.drawThings:
-        return _storage.imageGenSettings.drawThingsGrpcHost.isNotEmpty;
-      case ImageGenBackend.comfyUi:
-        return _storage.imageGenSettings.comfyUiUrl.isNotEmpty;
-    }
-  }
+  bool get isConfigured => _isConfiguredImpl;
 
   DrawThingsGrpcService? _drawThingsGrpc;
   ComfyUiService? _comfyUi;
-
-  ComfyUiService get _ensureComfyUi {
-    final url = _storage.imageGenSettings.comfyUiUrl;
-    if (_comfyUi == null || _comfyUi!.baseUrl != url) {
-      _comfyUi = ComfyUiService(baseUrl: url);
-    }
-    return _comfyUi!;
-  }
 
   // Thin delegation hook for prompt construction.
   // Full ownership of ImageGenContext mapping semantics, mode contracts
@@ -142,34 +113,12 @@ class ImageGenService extends ChangeNotifier {
   // See ImagePromptBuilder for the authoritative mode semantics and style rules.
   late final ImagePromptBuilder _promptBuilder = ImagePromptBuilder();
 
-  DrawThingsGrpcService get _ensureDrawThingsGrpc {
-    final h = _storage.imageGenSettings.drawThingsGrpcHost;
-    final p = _storage.imageGenSettings.drawThingsGrpcPort;
-    // Recreate if host/port changed since last use (cheap; keeps things in sync with settings)
-    if (_drawThingsGrpc == null ||
-        _drawThingsGrpc!.host != h ||
-        _drawThingsGrpc!.port != p) {
-      _drawThingsGrpc = DrawThingsGrpcService(host: h, port: p);
-    }
-    return _drawThingsGrpc!;
-  }
-
   ImageGenService(this._storage);
 
   /// Best-effort ComfyUI VRAM nudge before a create→edit model swap (the
   /// creator pack's "Switching to edit model" stage). No-op on every other
   /// backend — DT/remote load-unload per request on their own.
-  Future<void> nudgeComfyFree() async {
-    final backend = ImageGenBackend.fromKey(
-      _storage.imageGenSettings.imageGenBackend,
-    );
-    if (backend != ImageGenBackend.comfyUi) return;
-    await _ensureComfyUi.freeMemory();
-  }
-
-  /// Build the images directory path.
-  Directory get _imagesDir =>
-      Directory(path.join(_storage.rootPath ?? '', 'KoboldManager', 'images'));
+  Future<void> nudgeComfyFree() => _nudgeComfyFreeImpl();
 
   /// Generate an image from a prompt.
   ///
@@ -225,11 +174,13 @@ class ImageGenService extends ChangeNotifier {
   /// - If API fails: returns empty list with error logged
   ///
   /// **Nano-GPT and others**:
-  /// - Returns the curated list of known image models (Nano-GPT's /models
-  ///   endpoint only returns text models; there is no image-specific listing API)
+  /// - Returns the curated snapshot in `_commonImageModels` (Nano's chat
+  ///   `/models` is text-only; Image Studio does not live-fetch image
+  ///   discovery — refresh that const from the Nano image models page)
   Future<List<ImageModelInfo>> fetchImageModels() async {
-    final apiUrl = _storage.backendSettings.remoteApiUrl;
-    final apiKey = _storage.backendSettings.remoteApiKey;
+    final account = _imageRemoteAccount;
+    final apiUrl = account.url;
+    final apiKey = account.key;
     // No account = no models. This used to fall back to the curated catalog,
     // which is how the Remote API option showed a real-looking model menu to
     // a user with no key configured at all — who reasonably concluded the
@@ -283,8 +234,7 @@ class ImageGenService extends ChangeNotifier {
     String? lastMessage,
     String? characterName,
     String? characterDescription,
-    String?
-    characterPersonality, // kept for signature compatibility during transition (ignored for visuals)
+    String? characterPersonality, // kept for signature compatibility during transition (ignored for visuals)
     String? scenario,
     String? worldInfo,
     String? personaName,
@@ -373,6 +323,14 @@ class ImageGenService extends ChangeNotifier {
   Future<List<String>> fetchComfyModels(String baseUrl) =>
       _ensureComfyUi.fetchModels();
 
+  /// Checkpoints + diffusion_models + encoders + VAE + LoRAs.
+  Future<ComfyFileCatalog> fetchComfyCatalog(String baseUrl) =>
+      _ensureComfyUi.fetchCatalog();
+
+  /// Live Comfy `/templates` Create list (empty when that install has none).
+  Future<List<ComfyTemplateEntry>> fetchComfyCreateTemplates(String baseUrl) =>
+      _ensureComfyUi.fetchCreateTemplates();
+
   /// ComfyUI LoRAs, enriched with base-model family. Names come from
   /// /object_info; the family is read per-LoRA from the embedded safetensors
   /// metadata via /view_metadata (authoritative), falling back to the file name
@@ -391,7 +349,10 @@ class ImageGenService extends ChangeNotifier {
       for (final n in slice) {
         final meta = metas[j++];
         out.add(
-          ImageModelFamily.classifyLora(n, metadata: meta.isEmpty ? null : meta),
+          ImageModelFamily.classifyLora(
+            n,
+            metadata: meta.isEmpty ? null : meta,
+          ),
         );
       }
     }
@@ -473,33 +434,17 @@ class ImageGenService extends ChangeNotifier {
     required int seed,
     String? referenceImageB64,
     double denoise = 0.5,
-  }) {
-    final isImg2Img =
-        referenceImageB64 != null && referenceImageB64.isNotEmpty;
-    return <String, dynamic>{
-      'prompt': prompt,
-      'negative_prompt': negativePrompt,
-      'width': width,
-      'height': height,
-      'steps': steps,
-      'cfg_scale': cfgScale,
-      'sampler_name': samplerName,
-      // Only pin the scheduler when the user picked an explicit one. 'Automatic'
-      // omits the field so A1111 uses its own default (and older forks that
-      // don't know the field never see it). Newer A1111/Forge builds accept
-      // `scheduler` alongside `sampler_name`.
-      if (scheduler.isNotEmpty && scheduler != 'Automatic')
-        'scheduler': scheduler,
-      'seed': seed,
-      'batch_size': 1,
-      if (isImg2Img) 'init_images': [referenceImageB64],
-      if (isImg2Img) 'denoising_strength': denoise,
-      // NOTE: override_settings is intentionally omitted here.
-      // Passing sd_model_checkpoint inside override_settings causes A1111 to
-      // attempt a model reload mid-request, which splits tensors across
-      // cpu and cuda and throws:
-      //   "Expected all tensors to be on the same device"
-      // The model switch is already handled by switchLocalModel() above.
-    };
-  }
+  }) => _buildA1111PayloadImpl(
+    prompt: prompt,
+    negativePrompt: negativePrompt,
+    width: width,
+    height: height,
+    steps: steps,
+    cfgScale: cfgScale,
+    samplerName: samplerName,
+    scheduler: scheduler,
+    seed: seed,
+    referenceImageB64: referenceImageB64,
+    denoise: denoise,
+  );
 }
