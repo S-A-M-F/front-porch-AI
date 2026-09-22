@@ -8,7 +8,7 @@ New stage. New fighters. Same porch.
 
 - 🛠️ **Waifu Coder joins the battle.** A private OpenCode binary you start, stop, and update. Same seat. First sit-down still downloads if the closet is empty.
 
-- 🧰 **Recipe cards in the library drawer.** Chat uses `tools/` JSON. Waifu sees that same drawer through OpenCode MCP. A `skills/` folder is Waifu-only.
+- 🧰 **Same recipe cards as chat.** Drop JSON in the library `tools` folder. Opt in from the Waifu harness and they show up as tools. Skills are a separate Waifu-only drawer (`skills/<name>/SKILL.md`). Not Docker, not extra MCP servers. Same on Porch Life.
 
 - 🔎 **A challenger approaches… the web.** Search rides the reply. The open internet, not a silent pass before they speak. Same on the phone.
 
