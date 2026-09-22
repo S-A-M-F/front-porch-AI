@@ -29,7 +29,7 @@ class ComfyCreatePreset {
   /// Official Comfy template file stem (`image_z_image_turbo`). Empty for SD.
   final String comfyTemplateName;
 
-  /// SD pile: [ComfyWorkflow] builders, not a template.
+  /// Kept on the wire for older panels. Create no longer takes this branch.
   final bool usesCheckpointBuilder;
 
   final List<ComfyModelSlot> modelSlots;
@@ -57,6 +57,10 @@ class ComfyCreateRequest {
   final String modelNodeId;
   final String clipNodeId;
 
+  /// Output index on [clipNodeId] that is CLIP. 1 for a checkpoint, 0 for a
+  /// CLIP loader.
+  final int clipOutputIndex;
+
   const ComfyCreateRequest({
     required this.template,
     required this.values,
@@ -67,6 +71,7 @@ class ComfyCreateRequest {
     this.vaeOutputIndex = 0,
     this.modelNodeId = 'unet',
     this.clipNodeId = 'clip',
+    this.clipOutputIndex = 0,
   });
 }
 
@@ -110,6 +115,7 @@ Map<String, dynamic> spliceComfyLora(
   required double loraWeight,
   required String modelNodeId,
   required String clipNodeId,
+  int clipOutputIndex = 0,
 }) {
   if (loraName.isEmpty) return graph;
   final out = substituteComfyWorkflow(graph, const {});
@@ -120,11 +126,16 @@ Map<String, dynamic> spliceComfyLora(
       'strength_model': loraWeight,
       'strength_clip': loraWeight,
       'model': [modelNodeId, 0],
-      'clip': [clipNodeId, 0],
+      'clip': [clipNodeId, clipOutputIndex],
     },
   };
   _rewire(out, from: [modelNodeId, 0], to: ['lora', 0], skip: 'lora');
-  _rewire(out, from: [clipNodeId, 0], to: ['lora', 1], skip: 'lora');
+  _rewire(
+    out,
+    from: [clipNodeId, clipOutputIndex],
+    to: ['lora', 1],
+    skip: 'lora',
+  );
   return out;
 }
 

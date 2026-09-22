@@ -40,6 +40,10 @@ class ImageFacade {
   Map<String, dynamic> config() {
     final img = _storage.imageGenSettings;
     final b = _storage.backendSettings;
+    final surface = imageSurfaceFor(
+      backend: ImageGenBackend.fromKey(img.imageGenBackend),
+      modelName: img.imageGenModel,
+    );
     return {
       'backend': img.imageGenBackend, // 'remote' | 'a1111' | 'drawthings'
       'isConfigured': _image.isConfigured,
@@ -53,6 +57,9 @@ class ImageFacade {
       'cfgScale': img.imageGenCfgScale,
       'sampler': img.imageGenSampler,
       'scheduler': img.imageGenScheduler,
+      'lora': img.imageGenLora,
+      'loraWeight': img.imageGenLoraWeight,
+      'surface': surface.toJson(),
       'localUrl': img.localImageGenUrl,
       'comfyUrl': img.comfyUiUrl,
       'promptReview': img.imageGenPromptReview,
@@ -128,6 +135,12 @@ class ImageFacade {
     }
     if (f['scheduler'] is String) {
       await img.setImageGenScheduler(f['scheduler'] as String);
+    }
+    if (f['lora'] is String) {
+      await img.setImageGenLora(f['lora'] as String);
+    }
+    if (f['loraWeight'] is num) {
+      await img.setImageGenLoraWeight((f['loraWeight'] as num).toDouble());
     }
     if (f['localUrl'] is String) {
       await img.setLocalImageGenUrl(f['localUrl'] as String);

@@ -30,6 +30,12 @@ extension _GenerationOptionsLocalPanel on _GenerationOptionsTabState {
     final backend = ImageGenBackend.fromKey(
       st.imageGenSettings.imageGenBackend,
     );
+    final controls = imageSurfaceFor(
+      backend: backend,
+      modelName: widget.editScoped && isDT
+          ? st.imageGenSettings.imageGenEditModel
+          : st.imageGenSettings.imageGenModel,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -304,7 +310,7 @@ extension _GenerationOptionsLocalPanel on _GenerationOptionsTabState {
         ],
         // LoRA (name + weight slider). A1111 injects <lora:name:weight> into
         // the prompt; Draw Things applies it natively via the gRPC config.
-        ...[
+        if (controls.showLora) ...[
           Divider(color: AppColors.borderOf(context)),
           const SizedBox(height: 4),
           Text(

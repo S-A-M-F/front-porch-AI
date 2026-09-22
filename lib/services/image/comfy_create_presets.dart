@@ -18,7 +18,7 @@
 
 // Create families are pointers at Comfy's own templates (or BYO), not
 // Porch-authored node graphs. Live `/templates/{name}.json` wins; bundled
-// starters are replaceable stock API JSON. SD keeps the existing builder.
+// starters are replaceable stock API JSON. SD uses the same token fill.
 
 import 'dart:convert';
 
@@ -54,7 +54,6 @@ const ComfyModelSlot kComfyVaeSlot = ComfyModelSlot(
 const ComfyCreatePreset kSdCreatePreset = ComfyCreatePreset(
   id: 'sd',
   label: 'SD / SDXL / Pony / Illustrious',
-  usesCheckpointBuilder: true,
   requiredNodes: [
     'CheckpointLoaderSimple',
     'CLIPTextEncode',
@@ -184,7 +183,6 @@ Map<String, dynamic>? loadComfyCreateSource({
       return null;
     }
   }
-  if (workflowId == 'sd') return null;
   if (liveTemplate != null && liveTemplate.isNotEmpty) return liveTemplate;
   return comfyStarterGraph(workflowId);
 }
@@ -249,24 +247,6 @@ ComfyCreateRequest? resolveComfyCreateRequest({
     scheduler: scheduler,
   );
 
-  if (workflowId == 'sd' ||
-      (comfyCreatePresetById(workflowId)?.usesCheckpointBuilder ?? false)) {
-    final file =
-        modelChoices['$workflowId/$kComfyCheckpointToken'] ??
-        checkpointFallback;
-    return ComfyCreateRequest(
-      template: const {},
-      values: values,
-      useCheckpointBuilder: true,
-      checkpoint: file,
-      slots: kSdCreatePreset.modelSlots,
-      vaeNodeId: 'ckpt',
-      vaeOutputIndex: 2,
-      modelNodeId: 'ckpt',
-      clipNodeId: 'ckpt',
-    );
-  }
-
   final source = loadComfyCreateSource(
     workflowId: workflowId,
     uploadedWorkflowJson: uploadedWorkflowJson,
@@ -277,10 +257,15 @@ ComfyCreateRequest? resolveComfyCreateRequest({
   if (api == null) return null;
   final adapted = adaptComfyApiWorkflow(api);
   for (final slot in adapted.slots) {
-    final file =
+    var file =
         modelChoices['$workflowId/${slot.token}'] ??
         modelChoices['${comfyTemplateNameFor(workflowId) ?? ''}/${slot.token}'] ??
         '';
+    if (file.isEmpty &&
+        slot.token == kComfyCheckpointToken &&
+        checkpointFallback.isNotEmpty) {
+      file = checkpointFallback;
+    }
     if (file.isNotEmpty) values[slot.token] = file;
   }
   return ComfyCreateRequest(
@@ -291,6 +276,7 @@ ComfyCreateRequest? resolveComfyCreateRequest({
     vaeOutputIndex: adapted.vaeOutputIndex,
     modelNodeId: adapted.modelNodeId,
     clipNodeId: adapted.clipNodeId,
+    clipOutputIndex: adapted.clipOutputIndex,
   );
 }
 
@@ -319,7 +305,6 @@ bool comfyCreateReady({
     liveTemplate: liveTemplate,
   );
   if (req == null) return false;
-  if (req.useCheckpointBuilder) return req.checkpoint.isNotEmpty;
   if (workflowId == kComfyUploadedWorkflowId) {
     final tokens = detectComfyTokens(req.template);
     if (!tokens.contains(ComfyEditTokens.prompt) &&

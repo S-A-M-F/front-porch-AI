@@ -108,28 +108,6 @@ extension _ImageGenComfy on ImageGenService {
         'template (and its model files) in Image Studio, or upload one.',
       );
     }
-    if (req.useCheckpointBuilder) {
-      if (req.checkpoint.isEmpty) {
-        throw Exception('Select a checkpoint model for ComfyUI first.');
-      }
-      return comfy.generateImage(
-        prompt: prompt,
-        negativePrompt: negativePrompt,
-        model: req.checkpoint,
-        width: width,
-        height: height,
-        steps: settings.imageGenSteps,
-        cfgScale: settings.imageGenCfgScale,
-        seed: effectiveSeed,
-        samplerName: sampler,
-        scheduler: scheduler,
-        loraName: settings.imageGenLora,
-        loraWeight: settings.imageGenLoraWeight,
-        referenceImageBytes: referenceImage,
-        denoise: denoise ?? settings.imageGenDenoise,
-        onProgress: _updateGenProgress,
-      );
-    }
 
     _statusMessage = 'Generating with ComfyUI...';
     _notify();
@@ -153,6 +131,7 @@ extension _ImageGenComfy on ImageGenService {
         loraWeight: settings.imageGenLoraWeight,
         modelNodeId: req.modelNodeId,
         clipNodeId: req.clipNodeId,
+        clipOutputIndex: req.clipOutputIndex,
       );
     }
     final graph = substituteComfyWorkflow(template, values);

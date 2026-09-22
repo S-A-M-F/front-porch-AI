@@ -182,10 +182,15 @@ class AvatarCreationController extends ChangeNotifier {
 
   /// Pack GENERATION is possible: an engine, a portrait source to build from,
   /// and — remote only — an edit model (remote has no img2img floor).
-  bool get packPossible =>
-      engineReady &&
-      source != PortraitSource.none &&
-      (backend != ImageGenBackend.remote || packEditModeNow);
+  bool get packPossible {
+    final controls = imageSurfaceFor(
+      backend: backend,
+      modelName: storage.imageGenSettings.imageGenEditModel,
+    );
+    return engineReady &&
+        source != PortraitSource.none &&
+        (controls.showImg2img || packEditModeNow);
+  }
 
   List<String> get chosenSet =>
       fullSet ? kFullExpressionSet : kCuratedExpressionSet;

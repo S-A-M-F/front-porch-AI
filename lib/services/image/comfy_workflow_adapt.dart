@@ -31,6 +31,9 @@ class AdaptedComfyGraph {
   final String modelNodeId;
   final String clipNodeId;
 
+  /// CheckpointLoaderSimple CLIP is output 1. A CLIP loader's CLIP is output 0.
+  final int clipOutputIndex;
+
   const AdaptedComfyGraph({
     required this.template,
     required this.slots,
@@ -39,6 +42,7 @@ class AdaptedComfyGraph {
     this.vaeOutputIndex = 0,
     this.modelNodeId = 'unet',
     this.clipNodeId = 'clip',
+    this.clipOutputIndex = 0,
   });
 }
 
@@ -63,6 +67,7 @@ AdaptedComfyGraph adaptComfyApiWorkflow(Map<String, dynamic> api) {
   var vaeNodeId = '';
   var modelNodeId = '';
   var clipNodeId = '';
+  var clipFromCheckpoint = false;
   var hasFluxGuidance = false;
   for (final v in graph.values) {
     if (v is Map && v['class_type'] == 'FluxGuidance') hasFluxGuidance = true;
@@ -117,7 +122,10 @@ AdaptedComfyGraph adaptComfyApiWorkflow(Map<String, dynamic> api) {
         );
       case 'CLIPLoader':
         clipN++;
-        clipNodeId = clipNodeId.isEmpty ? e.key : clipNodeId;
+        if (clipNodeId.isEmpty) {
+          clipNodeId = e.key;
+          clipFromCheckpoint = false;
+        }
         slot(
           clipN == 1 ? '%MODEL_CLIP%' : '%MODEL_CLIP_$clipN%',
           'CLIPLoader',
@@ -126,7 +134,10 @@ AdaptedComfyGraph adaptComfyApiWorkflow(Map<String, dynamic> api) {
           'text_encoders',
         );
       case 'DualCLIPLoader':
-        clipNodeId = clipNodeId.isEmpty ? e.key : clipNodeId;
+        if (clipNodeId.isEmpty) {
+          clipNodeId = e.key;
+          clipFromCheckpoint = false;
+        }
         slot(
           '%MODEL_CLIP1%',
           'DualCLIPLoader',
@@ -154,7 +165,10 @@ AdaptedComfyGraph adaptComfyApiWorkflow(Map<String, dynamic> api) {
       case 'CheckpointLoaderSimple':
         ckptN++;
         modelNodeId = modelNodeId.isEmpty ? e.key : modelNodeId;
-        clipNodeId = clipNodeId.isEmpty ? e.key : clipNodeId;
+        if (clipNodeId.isEmpty) {
+          clipNodeId = e.key;
+          clipFromCheckpoint = true;
+        }
         vaeNodeId = vaeNodeId.isEmpty ? e.key : vaeNodeId;
         slot(
           ckptN == 1 ? '%MODEL_CHECKPOINT%' : '%MODEL_CHECKPOINT_$ckptN%',
@@ -221,6 +235,7 @@ AdaptedComfyGraph adaptComfyApiWorkflow(Map<String, dynamic> api) {
     vaeOutputIndex: ckptN > 0 && vaeN == 0 ? 2 : 0,
     modelNodeId: modelNodeId.isEmpty ? 'unet' : modelNodeId,
     clipNodeId: clipNodeId.isEmpty ? 'clip' : clipNodeId,
+    clipOutputIndex: clipFromCheckpoint ? 1 : 0,
   );
 }
 

@@ -18,7 +18,7 @@
 
 import 'package:flutter/material.dart';
 
-import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/image/image.dart';
 import 'package:front_porch_ai/ui/dialogs/image_gen_settings_dialog.dart';
 import 'package:front_porch_ai/ui/image_studio/comfy_create_panel.dart';
 import 'package:front_porch_ai/ui/image_studio/model_slot_dropdown.dart';
@@ -38,6 +38,10 @@ class EngineStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
+    final controls = imageSurfaceFor(
+      backend: c.backend,
+      modelName: c.storage.imageGenSettings.imageGenModel,
+    );
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -84,9 +88,9 @@ class EngineStrip extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          if (c.backend == ImageGenBackend.comfyUi)
+          if (controls.showWorkflowSlots)
             const ComfyCreatePanel()
-          else
+          else if (controls.showCheckpointSlot)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

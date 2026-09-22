@@ -174,9 +174,8 @@ class ImageGenService extends ChangeNotifier {
   /// - If API fails: returns empty list with error logged
   ///
   /// **Nano-GPT and others**:
-  /// - Returns the curated snapshot in `_commonImageModels` (Nano's chat
-  ///   `/models` is text-only; Image Studio does not live-fetch image
-  ///   discovery — refresh that const from the Nano image models page)
+  /// - GET `{apiUrl}/image-models`. A failed or empty response falls back
+  ///   to the bundled snapshot in `_commonImageModels`.
   Future<List<ImageModelInfo>> fetchImageModels() async {
     final account = _imageRemoteAccount;
     final apiUrl = account.url;
@@ -185,20 +184,15 @@ class ImageGenService extends ChangeNotifier {
     // which is how the Remote API option showed a real-looking model menu to
     // a user with no key configured at all — who reasonably concluded the
     // whole thing was free and ready, then hit "No API key configured." on
-    // Generate (maintainer report, 2026-08-13). The catalog below is a
-    // convenience for CONFIGURED providers without an image-listing endpoint
-    // (Nano-GPT), never a stand-in for having an account.
+    // Generate (maintainer report, 2026-08-13). The bundled list is the
+    // offline fallback for a CONFIGURED provider whose listing fetch fails,
+    // never a stand-in for having an account.
     if (apiUrl.isEmpty || apiKey.isEmpty) return const [];
 
-    // Detect if this is OpenRouter
-    final isOpenRouter = _isOpenRouterStyle(apiUrl);
-
-    if (isOpenRouter) {
+    if (_isOpenRouterStyle(apiUrl)) {
       return _fetchOpenRouterImageModels(apiUrl, apiKey);
-    } else {
-      // For Nano-GPT and other providers: return curated list
-      return List.from(_commonImageModels);
     }
+    return _fetchNanoImageModels(apiUrl, apiKey);
   }
 
   /// Available style labels for UI display.
@@ -234,7 +228,8 @@ class ImageGenService extends ChangeNotifier {
     String? lastMessage,
     String? characterName,
     String? characterDescription,
-    String? characterPersonality, // kept for signature compatibility during transition (ignored for visuals)
+    String?
+    characterPersonality, // kept for signature compatibility during transition (ignored for visuals)
     String? scenario,
     String? worldInfo,
     String? personaName,
