@@ -17,7 +17,7 @@
 
 > ### 🧰 New in 1.4.0 — Toolbox
 > - **Waifu Coder runs OpenCode** the way the app already runs Kobold — private binary, start / stop / update. Same Waifu seat.
-> - **They can look things up while talking** — web search rides the reply. Wiki is this character’s book. Recipe cards live in the library `tools/` drawer.
+> - **They can look things up while talking** — web search rides the reply. A wiki can sit in for a lorebook, or next to one.
 > - **A second local model** can sit beside chat for feelings and journal, and swap off the GPU.
 > - **Guests sit in a group** without becoming full members until you Promote them. `.fpchat` remembers who was a guest.
 > - **Image Studio uses their templates** — Comfy Create runs the graph Comfy ships. Remote Studio can be Nano or OpenRouter without moving chat’s backend.
@@ -115,7 +115,7 @@ New in 1.3, tightened in 1.4. They have pockets, clothes, and a set-aside pile �
 - **Copy a reply like text** — drag across the words (including an open Thought) and Copy. The name and buttons stay out of it
 - **Opens on the latest line** — no marathon scroll from the first greeting. Follow streaming replies (Settings → General, on by default) stays with new words only if you are already at the bottom; scroll up and it stays put
 - **Photo attachments** — send your character a picture and vision-capable models genuinely see and react to it (desktop and phone; local description fallback for text-only models)
-- **Look-up tools** — web search rides the character’s reply. Wiki is the book you picked for this chat. Recipe cards live in the library `tools/` folder for both chat and Waifu Coder
+- **Look-up tools** — web search rides the character’s reply. A wiki can sit in for a lorebook, or next to one. Recipe cards are JSON in the library `tools/` folder: chat can ring them; Waifu only if you opt in. Skills are a separate Waifu-only drawer
 - **Per-chat visual themes** — ten presets plus full color customization, desktop and web
 - **Output Sanitizer** — automatic find-and-replace on model output (goodbye em-dash tics), with per-chat overrides
 - **Slash commands** — `/image`, `/join`, `/join --lite`, `/exit`, `/speak`, `/turnorder`, `/promote`, `/afk`, `/scan`, and more, with a `/` helper panel
@@ -221,7 +221,7 @@ New in 1.3, tightened in 1.4. They have pockets, clothes, and a set-aside pile �
 ### 👩‍💻 Waifu Coder
 - **OpenCode in the closet** — Front Porch downloads and manages a private OpenCode binary the way it already manages Kobold. First sit-down still fetches it if the closet is empty
 - **Same Waifu seat** — you still talk to Waifu. OpenCode does the file work. “Check for updates” in Settings also covers that GitHub lookup
-- **Recipe cards** — chat and Waifu share one library `tools/` drawer. OpenCode’s own read/edit/grep stay OpenCode’s; Porch does not duplicate them into chat
+- **Recipe cards, if you opt in** — drop JSON in the library `tools/` folder. Chat can ring them. Waifu only sees them when you turn that on. Skills are a separate Waifu-only drawer (`skills/<name>/SKILL.md`). Not Docker, not extra MCP servers. OpenCode’s own read/edit/grep stay OpenCode’s
 
 ### 🧠 Worker model (feelings & journal)
 - A second local GGUF can sit beside chat for Realism evals, journal, and similar side work, and **unload / swap** off the GPU when chat needs the card
