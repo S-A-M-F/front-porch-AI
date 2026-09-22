@@ -8,6 +8,8 @@ New stage. New fighters. Same porch.
 
 - 🛠️ **Waifu Coder joins the battle.** A private OpenCode binary you start, stop, and update. Same seat. First sit-down still downloads if the closet is empty.
 
+- 🧰 **Recipe cards in the library drawer.** Chat uses `tools/` JSON. Waifu sees that same drawer through OpenCode MCP. A `skills/` folder is Waifu-only.
+
 - 🔎 **A challenger approaches… the web.** Search rides the reply. The open internet, not a silent pass before they speak. Same on the phone.
 
 - 📖 **Skip the handwriting.** A wiki can sit in for a lorebook, or next to one. Point at the site instead of copying the whole thing into cards by hand. They open the page when the scene needs it. Same on the phone.
