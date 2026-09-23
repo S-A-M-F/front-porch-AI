@@ -28,6 +28,7 @@ import { canonicalizeReasoning } from '../utils/reasoningMarkers';
 /// flags promptDone only when the console confirmed completion.
 export type GenStatus = {
   phase: string;
+  elapsed?: number;
   busyWith: string | null;
   queued: number;
   promptCur: number | null;
@@ -94,7 +95,9 @@ function genStatusLabel(s: GenStatus): { label: string; fraction: number | null 
     };
   }
   if (s.phase === 'thinking') return { label: 'Model is thinking…', fraction: null };
-  return { label: 'Processing prompt…', fraction: null };
+  const secs =
+    s.elapsed != null && s.elapsed >= 1 ? ` (${Math.floor(s.elapsed)}s)` : '';
+  return { label: `Processing prompt…${secs}`, fraction: null };
 }
 
 type TranscriptProps = {

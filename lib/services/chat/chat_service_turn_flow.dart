@@ -295,6 +295,10 @@ extension ChatServiceTurnFlow on ChatService {
   /// Manually set the recap text.
   void setSummary(String text) {
     _summary = text;
+    final id = _currentSessionId;
+    if (id != null) {
+      unawaited(_journalStore.persistRecap(id, text));
+    }
     _saveChat();
     notifyListeners();
   }

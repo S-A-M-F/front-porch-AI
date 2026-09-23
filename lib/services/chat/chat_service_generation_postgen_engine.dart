@@ -150,10 +150,7 @@ extension ChatServiceGenerationPostGenEngine on ChatService {
           // to ride the pre-generation scene-time eval, which is why
           // characters teleported: the prompt asserted a position derived
           // from the previous exchange while the reply had already moved
-          // them somewhere else. Maintainer ruling 2026-08-08. Skipped on
-          // Continue with its siblings — a continuation is the same
-          // exchange, and re-reading it would just re-answer the same
-          // question at the price of another call.
+          // them somewhere else. Maintainer ruling 2026-08-08.
           //
           // The result is picked up by the group persist below
           // (spatialStance rides saveRelationshipScalarsToGroup), by the

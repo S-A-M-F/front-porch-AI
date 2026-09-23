@@ -157,6 +157,7 @@ mixin ChatServiceFieldBag {
   int _prefillPromptTokens =
       0; // Estimated prompt token count for progress display
   Map<String, dynamic>? _lastPerfData; // Cached KoboldCPP perf data
+  final TokenCountMemo _tokenCountMemo = TokenCountMemo();
   final List<String> _tokenBuffer = [];
   Timer? _drainTimer;
   int _displayedTokenCount = 0;

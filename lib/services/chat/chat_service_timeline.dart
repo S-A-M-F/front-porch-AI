@@ -25,6 +25,7 @@ extension ChatServiceTimeline on ChatService {
     if (_summary.isNotEmpty && (rewriteInsideRecap || transcriptGone)) {
       _summary = '';
       recapCleared = true;
+      unawaited(_journalStore.persistRecap(sessionId, ''));
       if (transcriptGone) {
         _summaryLastIndex = 0;
       }

@@ -75,22 +75,24 @@ void main() {
     expect(jobs, isEmpty);
   });
 
-  test('wiki keeps the character prompt and drops web_search', () {
-    final full = mouth();
+  test('wiki gets the short window and drops web_search', () {
+    const window = 'Sam: who is her sister\nMara: Yoruichi\nSam: $lastLine';
     final jobs = catalogDoorbellJobs(
-      mouth: full,
+      mouth: mouth(),
       catalog: buildToolCatalog(
         inProcess: [inProcessWebSearchTool(), inProcessWikiSearchTool()],
       ),
       lastUserMessage: lastLine,
+      wikiWindow: window,
     );
     expect(jobs, hasLength(2));
     expect(jobs[0].params.prompt, lastLine);
     expect(jobs[0].catalog.hasSearch, isTrue);
     expect(jobs[0].catalog.hasWiki, isFalse);
-    expect(jobs[1].params.prompt, transcript);
-    expect(jobs[1].params.systemPrompt, card);
-    expect(identical(jobs[1].params, full), isTrue);
+    expect(jobs[1].params.prompt, window);
+    expect(jobs[1].params.systemPrompt, kWikiDoorbellSystem);
+    expect(jobs[1].params.prompt, isNot(contains('TRANSCRIPT')));
+    expect(jobs[1].params.systemPrompt, isNot(contains('CARD')));
     expect(jobs[1].catalog.hasSearch, isFalse);
     expect(jobs[1].catalog.hasWiki, isTrue);
   });

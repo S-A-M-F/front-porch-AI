@@ -87,6 +87,11 @@ class _GenTurn {
   late String suffix;
   String mesExampleBlock = '';
   String speakerCardBlock = '';
+
+  /// Character Growth. After the transcript, not glued onto the persona,
+  /// so a ring update does not rewrite the cached prompt head. Not a state
+  /// zone member: Continue keeps it, the way the persona used to.
+  String growthBlock = '';
   String postHistoryBlock = '';
   String authorNoteBlock = '';
   String summaryBlock = '';

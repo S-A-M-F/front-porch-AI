@@ -36,6 +36,9 @@ extension ChatServiceGroupEntry on ChatService {
       // way as the 1:1 slow path.
       await flushPendingSaves();
       _generationEpoch++;
+      // Detach before clearing the recap. A save during the awaits below
+      // used to stamp an empty "Where we are" onto the chat being left.
+      _currentSessionId = null;
 
       // Reset AFK idle state when switching to a different group
       _cancelIdleTimer();
@@ -122,7 +125,6 @@ extension ChatServiceGroupEntry on ChatService {
       _messages.clear();
       _greetingIndex = 0;
       _history.reset();
-      _currentSessionId = null;
       _clearTodayPointer();
       // Clear fork/branch state so it doesn't leak across group switches
       // (see startNewChat and setActiveCharacter for rationale).

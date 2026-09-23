@@ -365,6 +365,11 @@ class ChatService extends ChangeNotifier
 
   /// Estimated prompt token count for the current generation (for progress display).
   int get prefillPromptTokens => _prefillPromptTokens;
+
+  /// Kobold's tokenizer and perf poll are measured. oMLX and remote hosts
+  /// are not — the status bar must not print a chars/4 guess as tokens.
+  bool get prefillMetricsAreMeasured =>
+      _llmProvider == null || _llmProvider!.isLocal;
   bool get isGroupMode => _groupManager?.isActive ?? false;
   GroupChat? get activeGroup => _groupManager?.activeGroup;
   bool get observerMode => _groupManager?.observerMode ?? false;

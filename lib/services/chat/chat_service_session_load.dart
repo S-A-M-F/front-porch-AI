@@ -309,6 +309,12 @@ extension ChatServiceSessionLoad on ChatService {
       session.generationSettings,
     );
 
+    // Same-session reload (model switch, settings, DB rebind) used to
+    // replace the live recap with whatever the row still held. A journal
+    // pass or a sidebar edit can be ahead of that row. Keep the live text
+    // and write it through so the next open still has it.
+    final sameSession = _currentSessionId == sessionId;
+    final liveRecap = sameSession ? _summary : '';
     try {
       // Backfill checks `_currentSessionId` so this must be set first.
       _currentSessionId = sessionId;
@@ -360,6 +366,10 @@ extension ChatServiceSessionLoad on ChatService {
         _loadGroupRealismStateFromSession(session);
       }
       await _hydrateSessionScalars(session);
+      if (sameSession && liveRecap.isNotEmpty && _summary != liveRecap) {
+        _summary = liveRecap;
+        await _journalStore.persistRecap(sessionId, liveRecap);
+      }
       await _reapplyOpeningOverlayIfNeeded();
 
       // Quests are keyed (character, CHAT) — so switching chats has to reload

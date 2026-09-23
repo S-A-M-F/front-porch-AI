@@ -254,6 +254,7 @@ extension ChatServiceGenerationRequest on ChatService {
         mouth: genParams,
         catalog: catalog,
         lastUserMessage: _latestUserLineForDoorbell(),
+        wikiWindow: wikiWindowFromMessages(_messages),
       );
       final scraps = <String>[];
       if (jobs.isNotEmpty) {

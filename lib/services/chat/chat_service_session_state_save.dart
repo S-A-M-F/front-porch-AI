@@ -176,6 +176,16 @@ extension ChatServiceSessionStateSave on ChatService {
       groupDbId = keptGroup;
     }
 
+    // Opening a chat clears the live recap before hydrate. A save in that
+    // window must not blank the row. The stored text wins until hydrate
+    // has put it back in memory.
+    final summaryText = _isLoadingSession
+        ? (existing?.summary ?? '')
+        : _summary;
+    final summaryIndex = _isLoadingSession
+        ? (existing?.summaryLastIndex ?? 0)
+        : _summaryLastIndex;
+
     // Upsert session (INSERT OR REPLACE to avoid UNIQUE constraint errors)
     final timestamp = int.tryParse(sessionId) ?? 0;
     final createdAt = timestamp > 0
@@ -191,10 +201,8 @@ extension ChatServiceSessionStateSave on ChatService {
         userPersonaId: drift.Value(personaId),
         authorNote: drift.Value(_authorNote),
         authorNoteDepth: drift.Value(_authorNoteStrength),
-        summary: drift.Value(_summary.isEmpty ? null : _summary),
-        summaryLastIndex: drift.Value(
-          _summaryLastIndex > 0 ? _summaryLastIndex : null,
-        ),
+        summary: drift.Value(summaryText.isEmpty ? null : summaryText),
+        summaryLastIndex: drift.Value(summaryIndex > 0 ? summaryIndex : null),
         parentSession: drift.Value(_parentSessionId),
         forkIndex: drift.Value(_forkIndex),
         affectionScore: drift.Value(_relationshipService.affectionScore),
