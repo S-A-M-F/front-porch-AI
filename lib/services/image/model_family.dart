@@ -144,12 +144,67 @@ class ImageModelFamily {
     return ModelFamily.unknown;
   }
 
+  /// Draw Things `custom_lora.json` `version` (`flux2_9b`, `qwen_image`,
+  /// `sdxl_base_v0.9`, `z_image`, `v1`). Video and other lines (LTX, Cosmos,
+  /// Minimax, Krea, Ernie) stay [ModelFamily.unknown] so a known image
+  /// checkpoint does not treat them as a match.
+  static ModelFamily familyFromDrawThingsVersion(String version) {
+    final s = version.trim().toLowerCase();
+    if (s.isEmpty) return ModelFamily.unknown;
+    if (s.contains('kontext')) return ModelFamily.kontext;
+    if (s.contains('z_image') ||
+        s.contains('z-image') ||
+        s.contains('zimage')) {
+      return ModelFamily.zImage;
+    }
+    if (s.contains('qwen')) return ModelFamily.qwen;
+    if (s.contains('flux')) return ModelFamily.flux;
+    if (s.contains('pony')) return ModelFamily.pony;
+    if (s.contains('sdxl') || s.contains('illustrious')) {
+      return ModelFamily.sdxl;
+    }
+    if (s.contains('sd3')) return ModelFamily.sd3;
+    if (s == 'v1' ||
+        s.contains('sd15') ||
+        s.contains('sd_v1') ||
+        s.contains('sd1')) {
+      return ModelFamily.sd15;
+    }
+    return ModelFamily.unknown;
+  }
+
+  /// The main picker row. A known checkpoint shows matches, plus the Pony ↔
+  /// SDXL soft pair. Other bases and unlabeled files stay in the drawer.
+  /// With no checkpoint family, only metadata-certain mismatches are tucked
+  /// away.
+  static bool shownInMainList({
+    required ModelFamily lora,
+    required ModelFamily checkpoint,
+    required bool metadataBacked,
+  }) {
+    final compat = compatibility(
+      lora,
+      checkpoint,
+      metadataBacked: metadataBacked,
+    );
+    if (checkpoint == ModelFamily.unknown) return shownInPicker(compat);
+    if (compat == LoraCompat.match) return true;
+    final ponyPair =
+        (lora == ModelFamily.pony && checkpoint == ModelFamily.sdxl) ||
+        (lora == ModelFamily.sdxl && checkpoint == ModelFamily.pony);
+    return compat == LoraCompat.likely && ponyPair;
+  }
+
   /// Family from a safetensors metadata block (A1111 `/sdapi/v1/loras` entry
   /// `metadata`, or ComfyUI `/view_metadata`). Reads `ss_base_model_version`
   /// and `modelspec.architecture`. Returns [ModelFamily.unknown] when neither is
   /// present or recognizable (SD2 is deliberately unknown, not force-classified,
   /// so it is never falsely hidden).
   static ModelFamily detectFromMetadata(Map<String, dynamic> metadata) {
+    final dtBase = metadata['dt_base_model']?.toString() ?? '';
+    if (dtBase.trim().isNotEmpty) {
+      return familyFromDrawThingsVersion(dtBase);
+    }
     final ver = (metadata['ss_base_model_version'] ?? '')
         .toString()
         .toLowerCase();

@@ -124,11 +124,14 @@ extension _ImageGenComfy on ImageGenService {
     } else {
       values[ComfyEditTokens.denoise] = 1.0;
     }
-    if (settings.imageGenLora.isNotEmpty) {
-      template = spliceComfyLora(
+    final loraChain = [
+      for (final slot in settings.activeImageGenLoras)
+        (name: slot.file, weight: slot.weight),
+    ];
+    if (loraChain.isNotEmpty) {
+      template = spliceComfyLoraChain(
         template,
-        loraName: settings.imageGenLora,
-        loraWeight: settings.imageGenLoraWeight,
+        loras: loraChain,
         modelNodeId: req.modelNodeId,
         clipNodeId: req.clipNodeId,
         clipOutputIndex: req.clipOutputIndex,

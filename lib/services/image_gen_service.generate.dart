@@ -171,14 +171,10 @@ extension _ImageGenGenerate on ImageGenService {
             final cfgZeroStar = _storage.imageGenSettings.drawThingsCfgZeroStar;
             // Same shared LoRA setting the A1111 path uses; DT applies it
             // natively via the generation config instead of a prompt tag.
-            final loraName = _storage.imageGenSettings.imageGenLora;
-            final loraWeight = _storage.imageGenSettings.imageGenLoraWeight;
-
-            final dtLoras = loraName.isEmpty
-                ? const <Map<String, dynamic>>[]
-                : [
-                    {'file': loraName, 'weight': loraWeight},
-                  ];
+            final dtLoras = [
+              for (final slot in _storage.imageGenSettings.activeImageGenLoras)
+                {'file': slot.file, 'weight': slot.weight},
+            ];
             final dt = drawThingsGenerationKnobs(
               role: refRole,
               createSteps: steps,
@@ -292,8 +288,7 @@ extension _ImageGenGenerate on ImageGenService {
             size: imageSize,
             modelCheckpoint: modelCheckpoint,
             switchModelFirst: modelCheckpoint.isNotEmpty,
-            loraName: _storage.imageGenSettings.imageGenLora,
-            loraWeight: _storage.imageGenSettings.imageGenLoraWeight,
+            loras: _storage.imageGenSettings.activeImageGenLoras,
             steps: _storage.imageGenSettings.imageGenSteps,
             cfgScale: _storage.imageGenSettings.imageGenCfgScale,
             samplerName: _storage.imageGenSettings.imageGenSampler,

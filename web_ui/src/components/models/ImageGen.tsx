@@ -24,6 +24,7 @@ interface ImageConfig {
   scheduler: string;
   lora?: string;
   loraWeight?: number;
+  loras?: { file: string; weight: number }[];
   surface?: {
     edit: boolean;
     img2img: boolean;
@@ -337,28 +338,17 @@ export function ImageGen({ onError }: { onError: (s: string) => void }) {
         </label>
       )}
       {surface?.lora && (
-        <div className="img-row2">
-          <label>
-            LoRA
-            <input
-              value={cfg.lora ?? ''}
-              onChange={(e) => set({ lora: e.target.value })}
-              onBlur={() => saveConfig({ lora: cfg.lora ?? '' })}
-            />
-          </label>
-          <label>
-            LoRA weight
-            <input
-              type="number"
-              min={0}
-              max={1}
-              step={0.05}
-              value={cfg.loraWeight ?? 0.8}
-              onChange={(e) => set({ loraWeight: Number(e.target.value) })}
-              onBlur={() => saveConfig({ loraWeight: cfg.loraWeight ?? 0.8 })}
-            />
-          </label>
-        </div>
+        <LoraSlots
+          slots={loraSlots(cfg)}
+          onChange={(next) => {
+            set({
+              loras: next,
+              lora: next[0]?.file ?? '',
+              loraWeight: next[0]?.weight ?? 0.8,
+            });
+            void saveConfig({ loras: next });
+          }}
+        />
       )}
 
       <label>
@@ -382,5 +372,63 @@ export function ImageGen({ onError }: { onError: (s: string) => void }) {
         </div>
       )}
     </section>
+  );
+}
+
+const LORA_VISIBLE = 4;
+const LORA_SLOTS = 8;
+
+function loraSlots(cfg: ImageConfig): { file: string; weight: number }[] {
+  const fromList = cfg.loras ?? [];
+  const out = Array.from({ length: LORA_SLOTS }, (_, i) => fromList[i] ?? { file: '', weight: 0.8 });
+  if (fromList.length === 0 && cfg.lora) {
+    out[0] = { file: cfg.lora, weight: cfg.loraWeight ?? 0.8 };
+  }
+  return out;
+}
+
+function LoraSlots({
+  slots,
+  onChange,
+}: {
+  slots: { file: string; weight: number }[];
+  onChange: (next: { file: string; weight: number }[]) => void;
+}) {
+  const setSlot = (index: number, patch: Partial<{ file: string; weight: number }>) => {
+    const next = slots.map((s, i) => (i === index ? { ...s, ...patch } : s));
+    onChange(next);
+  };
+  const row = (index: number) => (
+    <div className="img-row2" key={index}>
+      <label>
+        LoRA {index + 1}
+        <input
+          value={slots[index]?.file ?? ''}
+          onChange={(e) => setSlot(index, { file: e.target.value })}
+          onBlur={() => onChange(slots)}
+        />
+      </label>
+      <label>
+        Weight
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          value={slots[index]?.weight ?? 0.8}
+          onChange={(e) => setSlot(index, { weight: Number(e.target.value) })}
+          onBlur={() => onChange(slots)}
+        />
+      </label>
+    </div>
+  );
+  return (
+    <div>
+      {Array.from({ length: LORA_VISIBLE }, (_, i) => row(i))}
+      <details>
+        <summary>More LoRAs</summary>
+        {Array.from({ length: LORA_SLOTS - LORA_VISIBLE }, (_, i) => row(i + LORA_VISIBLE))}
+      </details>
+    </div>
   );
 }

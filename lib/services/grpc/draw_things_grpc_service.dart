@@ -126,13 +126,14 @@ class DrawThingsGrpcService {
   /// Echo("models") is used when Draw Things has Model Browser on. A local
   /// server that answers with an empty list is read from its Models folder
   /// instead, so the picker can name a file the gRPC generate config accepts.
-  Future<List<String>> fetchLoras() async {
+  Future<List<DrawThingsLoraEntry>> fetchLoras() async {
     final native = DrawThingsNativeClient(host: host, port: port);
     try {
       final loras = (await native.listFiles())
           .where((f) => f.toLowerCase().contains('lora'))
           .map(drawThingsLoraBasename)
           .where((f) => f.isNotEmpty)
+          .map(DrawThingsLoraEntry.new)
           .toList();
       if (loras.isNotEmpty) {
         debugPrint('[DT-Native] Fetched ${loras.length} LoRAs');

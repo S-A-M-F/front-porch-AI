@@ -19,20 +19,39 @@ void main() {
       await File(p.join(dir.path, 'notes_lora.txt')).writeAsString('no');
       await File(p.join(dir.path, 'custom_lora.json')).writeAsString(
         jsonEncode([
-          {'file': 'flux_style_lora_f16.ckpt', 'name': 'Style'},
-          {'file': 'detail_slider.ckpt', 'name': 'Detail'},
-          {'file': 'gone_lora_f16.ckpt', 'name': 'Gone'},
+          {
+            'file': 'flux_style_lora_f16.ckpt',
+            'name': 'Style',
+            'version': 'flux2_9b',
+          },
+          {
+            'file': 'detail_slider.ckpt',
+            'name': 'Detail',
+            'version': 'qwen_image',
+          },
+          {'file': 'gone_lora_f16.ckpt', 'name': 'Gone', 'version': 'flux1'},
         ]),
       );
       await File(
         p.join(dir.path, 'detail_slider.ckpt'),
       ).writeAsBytes(const [2]);
 
-      final names = await drawThingsLoraFilesIn(dir);
-      expect(names, ['detail_slider.ckpt', 'flux_style_lora_f16.ckpt']);
-      expect(names, isNot(contains('gone_lora_f16.ckpt')));
-      expect(names, isNot(contains('notes_lora.txt')));
-      expect(names, isNot(contains('custom_lora.json')));
+      final rows = await drawThingsLoraFilesIn(dir);
+      expect(rows.map((r) => r.file), [
+        'detail_slider.ckpt',
+        'flux_style_lora_f16.ckpt',
+      ]);
+      expect(
+        rows.firstWhere((r) => r.file == 'flux_style_lora_f16.ckpt').version,
+        'flux2_9b',
+      );
+      expect(
+        rows.firstWhere((r) => r.file == 'detail_slider.ckpt').version,
+        'qwen_image',
+      );
+      expect(rows.map((r) => r.file), isNot(contains('gone_lora_f16.ckpt')));
+      expect(rows.map((r) => r.file), isNot(contains('notes_lora.txt')));
+      expect(rows.map((r) => r.file), isNot(contains('custom_lora.json')));
     } finally {
       await dir.delete(recursive: true);
     }

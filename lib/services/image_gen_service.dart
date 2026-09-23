@@ -298,15 +298,23 @@ class ImageGenService extends ChangeNotifier {
   /// same Echo('models') listing as [fetchDrawThingsModels], filtered to
   /// LoRAs). The selected name is applied natively via the generation config.
   ///
-  /// Draw Things does not expose per-model compatibility over its gRPC surface,
-  /// so family is detected from the (canonical) file name only —
-  /// [LoraOption.familyFromMetadata] is false, which makes the UI warn on a
-  /// mismatch rather than hide it.
+  /// Draw Things records the base model on each LoRA in `custom_lora.json`
+  /// (`version`). That id is passed as metadata so the picker can keep the
+  /// checkpoint's family and tuck the other bases away. A bare file name is
+  /// still only a guess.
   Future<List<LoraOption>> fetchDrawThingsLoras(String baseUrl) async {
     try {
       final grpcService = _ensureDrawThingsGrpc;
-      final names = await grpcService.fetchLoras();
-      return names.map((n) => ImageModelFamily.classifyLora(n)).toList();
+      final rows = await grpcService.fetchLoras();
+      return [
+        for (final row in rows)
+          ImageModelFamily.classifyLora(
+            row.file,
+            metadata: row.version.isEmpty
+                ? null
+                : {'dt_base_model': row.version},
+          ),
+      ];
     } catch (e) {
       debugPrint('ImageGen: fetchDrawThingsLoras failed: $e');
       return [];

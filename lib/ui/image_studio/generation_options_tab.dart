@@ -11,7 +11,7 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/image_studio/backend_catalog.dart';
 import 'package:front_porch_ai/ui/image_studio/comfy_create_panel.dart';
 import 'package:front_porch_ai/ui/image_studio/connection_status_card.dart';
-import 'package:front_porch_ai/ui/image_studio/lora_picker.dart';
+import 'package:front_porch_ai/ui/image_studio/lora_slot_board.dart';
 import 'package:front_porch_ai/ui/image_studio/model_slot_dropdown.dart';
 import 'package:front_porch_ai/ui/image_studio/remote_image_host_chips.dart';
 import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';

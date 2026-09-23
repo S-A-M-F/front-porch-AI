@@ -16,6 +16,7 @@ export 'comfy_template_index.dart';
 export 'comfy_workflow_adapt.dart';
 export 'comfy_workflow_convert.dart';
 export 'edit_profile.dart';
+export 'image_gen_lora_slots.dart';
 export 'image_gen_types.dart';
 export 'image_job.dart';
 export 'image_studio_remote.dart';

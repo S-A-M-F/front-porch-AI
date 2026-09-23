@@ -135,7 +135,12 @@ class _LoraPickerState extends State<LoraPicker> {
     final visible = <LoraOption>[];
     final hidden = <LoraOption>[];
     for (final l in widget.loras) {
-      if (ImageModelFamily.shownInPicker(_compat(l))) {
+      final show = ImageModelFamily.shownInMainList(
+        lora: l.family,
+        checkpoint: widget.checkpointFamily,
+        metadataBacked: l.familyFromMetadata,
+      );
+      if (show) {
         visible.add(l);
       } else {
         hidden.add(l);
@@ -172,7 +177,12 @@ class _LoraPickerState extends State<LoraPicker> {
       ),
       for (final l in visible)
         DropdownMenuItem(value: l.name, child: _row(context, l, _compat(l))),
-      if (selectedOpt != null && _compat(selectedOpt) == LoraCompat.certain)
+      if (selectedOpt != null &&
+          !ImageModelFamily.shownInMainList(
+            lora: selectedOpt.family,
+            checkpoint: widget.checkpointFamily,
+            metadataBacked: selectedOpt.familyFromMetadata,
+          ))
         DropdownMenuItem(
           value: selectedOpt.name,
           child: _row(context, selectedOpt, LoraCompat.certain),
@@ -255,7 +265,7 @@ class _LoraPickerState extends State<LoraPicker> {
           dense: true,
           visualDensity: VisualDensity.compact,
           title: Text(
-            'Show ${hidden.length} incompatible ($families)',
+            'Show ${hidden.length} other bases ($families)',
             style: TextStyle(
               color: AppColors.textSecondary(context),
               fontSize: 9.5,

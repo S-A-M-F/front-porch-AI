@@ -346,20 +346,16 @@ extension _GenerationOptionsLocalPanel on _GenerationOptionsTabState {
               ),
             )
           else
-            LoraPicker(
+            LoraSlotBoard(
               loras: _localLoras,
-              // Family-filter against the slot this surface generates with
-              // (the Edit tab pairs LoRAs with the EDIT model on DT).
               checkpointFamily: ImageModelFamily.detectFromName(
                 widget.editScoped && isDT
                     ? st.imageGenSettings.imageGenEditModel
                     : st.imageGenSettings.imageGenModel,
               ),
-              selected: st.imageGenSettings.imageGenLora,
-              weight: st.imageGenSettings.imageGenLoraWeight,
-              onSelected: (val) => st.imageGenSettings.setImageGenLora(val),
-              onWeightChanged: (v) =>
-                  st.imageGenSettings.setImageGenLoraWeight(v),
+              slots: st.imageGenSettings.imageGenLoraSlots,
+              onSlot: (index, file, weight) => st.imageGenSettings
+                  .setImageGenLoraSlot(index, file: file, weight: weight),
             ),
         ],
         const SizedBox(height: 8),

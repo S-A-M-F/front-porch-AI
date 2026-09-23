@@ -59,6 +59,10 @@ class ImageFacade {
       'scheduler': img.imageGenScheduler,
       'lora': img.imageGenLora,
       'loraWeight': img.imageGenLoraWeight,
+      'loras': [
+        for (final slot in img.imageGenLoraSlots)
+          {'file': slot.file, 'weight': slot.weight},
+      ],
       'surface': surface.toJson(),
       'localUrl': img.localImageGenUrl,
       'comfyUrl': img.comfyUiUrl,
@@ -141,6 +145,19 @@ class ImageFacade {
     }
     if (f['loraWeight'] is num) {
       await img.setImageGenLoraWeight((f['loraWeight'] as num).toDouble());
+    }
+    if (f['loras'] is List) {
+      final parsed = <ImageGenLoraSlot>[];
+      for (final row in f['loras'] as List) {
+        if (row is! Map) continue;
+        parsed.add(
+          ImageGenLoraSlot(
+            file: row['file']?.toString() ?? '',
+            weight: (row['weight'] as num?)?.toDouble() ?? 0.8,
+          ),
+        );
+      }
+      await img.setImageGenLoraSlots(parsed);
     }
     if (f['localUrl'] is String) {
       await img.setLocalImageGenUrl(f['localUrl'] as String);

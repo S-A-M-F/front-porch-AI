@@ -65,12 +65,24 @@ bool drawThingsHostIsLocal(String host) {
   }
 }
 
-/// LoRA file names Draw Things can load from [modelsDir].
+/// One LoRA weight Draw Things can load, plus the base-model id from
+/// `custom_lora.json` when that catalog names the file.
+class DrawThingsLoraEntry {
+  final String file;
+  final String version;
+
+  const DrawThingsLoraEntry(this.file, [this.version = '']);
+}
+
+/// LoRA weights Draw Things can load from [modelsDir].
 ///
 /// A weight whose name contains "lora" is included. `custom_lora.json` can
 /// also name a weight that does not have "lora" in the file name; that file
-/// is included only when it is actually in the folder.
-Future<List<String>> drawThingsLoraFilesIn(Directory modelsDir) async {
+/// is included only when it is actually in the folder. [DrawThingsLoraEntry.version]
+/// is the catalog's base-model id (`flux2_9b`, `qwen_image`, …).
+Future<List<DrawThingsLoraEntry>> drawThingsLoraFilesIn(
+  Directory modelsDir,
+) async {
   if (!await modelsDir.exists()) return const [];
   final present = <String>{};
   final named = <String>{};
@@ -84,6 +96,7 @@ Future<List<String>> drawThingsLoraFilesIn(Directory modelsDir) async {
     present.add(base);
     if (base.toLowerCase().contains('lora')) named.add(base);
   }
+  final versions = <String, String>{};
   final catalog = File(p.join(modelsDir.path, 'custom_lora.json'));
   if (await catalog.exists()) {
     try {
@@ -92,15 +105,20 @@ Future<List<String>> drawThingsLoraFilesIn(Directory modelsDir) async {
         for (final row in decoded) {
           if (row is! Map) continue;
           final file = p.basename(row['file']?.toString() ?? '');
-          if (file.isNotEmpty && present.contains(file)) named.add(file);
+          if (file.isEmpty || !present.contains(file)) continue;
+          named.add(file);
+          final version = row['version']?.toString().trim() ?? '';
+          if (version.isNotEmpty) versions[file] = version;
         }
       }
     } catch (_) {
       // A broken catalog must not hide the files that are on disk.
     }
   }
-  final out = named.toList()..sort();
-  return out;
+  final files = named.toList()..sort();
+  return [
+    for (final file in files) DrawThingsLoraEntry(file, versions[file] ?? ''),
+  ];
 }
 
 bool _isWeight(String base) {
