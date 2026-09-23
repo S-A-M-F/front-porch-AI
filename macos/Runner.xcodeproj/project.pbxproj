@@ -383,7 +383,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nLIB=\"${SRCROOT}/../tools/fpzip/libfpzip.dylib\"\nif [ ! -f \"$LIB\" ]; then\n  \"${SRCROOT}/../scripts/build-fpzip-macos.sh\"\nfi\nDEST=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nmkdir -p \"$DEST\"\ncp \"$LIB\" \"$DEST/libfpzip.dylib\"\n# Debug has no Developer ID pass. Ad-hoc sign only there so flutter run\n# can load the dylib. Release and Profile are signed later by\n# scripts/build-macos.sh (Developer ID, timestamp, hardened runtime).\nif [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n  codesign --force --sign - \"$DEST/libfpzip.dylib\"\nfi\n";
+			shellScript = "set -e\nLIB=\"${SRCROOT}/../tools/fpzip/libfpzip.dylib\"\nif [ ! -f \"$LIB\" ]; then\n  \"${SRCROOT}/../scripts/build-fpzip-macos.sh\"\nfi\nDEST=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nmkdir -p \"$DEST\"\ncp \"$LIB\" \"$DEST/libfpzip.dylib\"\n# Xcode seals the .app at the end of every config. An unsigned nested\n# dylib fails that seal (nightly: code object is not signed at all).\n# Ad-hoc sign here so flutter run and flutter build both succeed. The\n# Developer ID pass re-signs with --force afterwards.\ncodesign --force --sign - \"$DEST/libfpzip.dylib\"\n";
 		};
 		A269611A2A7580B82FDE657A /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
