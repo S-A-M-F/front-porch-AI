@@ -196,11 +196,12 @@ extension ChatServiceGenerationRequest on ChatService {
 
     // Unified tools catalog: in-process web_search / wiki_search plus user
     // recipe cards from <library>/tools/. Continue / autonomous / xml-only
-    // skip the round-trip. Regen is a new try (directUserSend). Tools ride
-    // the *character* prompt. Doorbell/clerk use the eval side lane
-    // (not user max-gen / thinking). A ring → clerk loop (cap 3), one
-    // collated scrap, then mouth-stream with full character params.
-    // No ring → discard doorbell speech and mouth-stream the same way.
+    // skip the round-trip. Regen is a new try (directUserSend). Web search
+    // sees only the latest user line. Wiki and recipe cards still see the
+    // character prompt. Doorbell/clerk use the eval side lane (not user
+    // max-gen / thinking). A ring → clerk loop (cap 3), one collated scrap,
+    // then mouth-stream with full character params. No ring → discard
+    // doorbell speech and mouth-stream the same way.
     final globalDefault = _storageService.webSearchSettings.webSearchDefault;
     final xmlOnly = _toolProbe.isXmlOnly(_evalBackendIdentity);
     final includeSearch = shouldAdvertiseWebSearch(
@@ -249,21 +250,39 @@ extension ChatServiceGenerationRequest on ChatService {
       ],
     );
     if (catalog.tools.isNotEmpty) {
-      final round = await _withWorkerLane(
-        () => runCatalogRound(
-          llm: sideLaneLlm,
-          params: genParams,
-          catalog: catalog,
-          search: _webSearchService,
-          wiki: _wikiSearchService,
-          backendIdentity: _evalBackendIdentity,
-        ),
+      final jobs = catalogDoorbellJobs(
+        mouth: genParams,
+        catalog: catalog,
+        lastUserMessage: _latestUserLineForDoorbell(),
       );
-      t.searchReceipt = round.searchReceipt;
-      t.toolReceipt = round.toolReceipt;
-      final injection = round.injection;
-      if (injection != null && injection.isNotEmpty) {
-        t.plan.section('web_search').text = injection;
+      final scraps = <String>[];
+      if (jobs.isNotEmpty) {
+        await _withWorkerLane(() async {
+          for (final job in jobs) {
+            final round = await runCatalogRound(
+              llm: sideLaneLlm,
+              params: job.params,
+              catalog: job.catalog,
+              search: _webSearchService,
+              wiki: _wikiSearchService,
+              backendIdentity: _evalBackendIdentity,
+            );
+            if (round.searchReceipt != null) {
+              t.searchReceipt = round.searchReceipt;
+            }
+            if (round.toolReceipt != null) {
+              t.toolReceipt = round.toolReceipt;
+            }
+            final injection = round.injection;
+            if (injection != null && injection.isNotEmpty) {
+              scraps.add(injection);
+            }
+          }
+        });
+      }
+      final joined = collateCatalogInjections(scraps);
+      if (joined != null && joined.isNotEmpty) {
+        t.plan.section('web_search').text = joined;
         genParams = paramsOf(t.plan.userText);
         debugPrint('[Tools] dispatch inject+stream (in-character reply)');
       } else {
@@ -352,5 +371,15 @@ extension ChatServiceGenerationRequest on ChatService {
     if (original == null || _llmProvider == null) return;
     _callEvalModelOriginal = null;
     _llmProvider!.openRouterService.configure(modelName: original);
+  }
+
+  /// Latest user line for the web-search doorbell. promptText, so a photo
+  /// is the caption marker and a think block is already stripped.
+  String _latestUserLineForDoorbell() {
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      if (!_messages[i].isUser) continue;
+      return _messages[i].promptText.trim();
+    }
+    return '';
   }
 }
