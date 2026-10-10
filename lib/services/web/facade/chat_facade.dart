@@ -119,6 +119,7 @@ class ChatFacade {
     final groupId = _chat.activeGroup?.id;
     final nextDbId = _chat.nextCharacter?.dbId;
     final isGroup = _chat.isGroupMode;
+    final placeholders = _placeholderCastIds(isGroup);
     return _chat.cast.map((p) {
       final card = p.card;
       final avatarUrl = (isGroup && groupId != null)
@@ -139,8 +140,71 @@ class ChatFacade {
         'isNext': card.dbId != null && card.dbId == nextDbId,
         'hasAvatar': card.imagePath != null && card.imagePath!.isNotEmpty,
         'avatarUrl': avatarUrl,
+        // The picture is only the flat no-portrait colour: the header and
+        // side portrait skip it (additive field).
+        'placeholderPortrait': placeholders.contains(p.id),
       };
     }).toList();
+  }
+
+  /// Cast ids whose avatar is the flat placeholder a character made without
+  /// a portrait carries. The chat state is refetched constantly, so this
+  /// never waits: it answers from the probe cache, counts an unknown picture
+  /// as real, probes it in the background, and pushes one `chat_updated`
+  /// when that finds a placeholder.
+  Set<String> _placeholderCastIds(bool isGroup) {
+    final ids = <String>{};
+    final unknown = <Future<bool>>[];
+    final epoch = _characters.coverEpoch;
+    final library = isGroup ? const <String, CharacterCard>{} : _castLibrary();
+    for (final p in _chat.cast) {
+      final file = _castAvatarFile(p.card, isGroup, library);
+      if (file == null) continue;
+      final known = PlaceholderPortraitProbe.known(file, version: epoch);
+      if (known == true) ids.add(p.id);
+      if (known == null) {
+        unknown.add(PlaceholderPortraitProbe.check(file, version: epoch));
+      }
+    }
+    if (unknown.isNotEmpty) {
+      Future.wait(unknown).then((found) {
+        if (found.contains(true)) _hub?.broadcastChatUpdate();
+      });
+    }
+    return ids;
+  }
+
+  /// The file the cast entry's `avatarUrl` serves: a group member's private
+  /// copy, else the library card's (★-aware) cover.
+  File? _castAvatarFile(
+    CharacterCard card,
+    bool isGroup,
+    Map<String, CharacterCard> library,
+  ) {
+    if (isGroup) {
+      final path = card.imagePath;
+      return path == null || path.isEmpty ? null : File(path);
+    }
+    return _characters.coverImageFileFor(library[card.dbId] ?? card);
+  }
+
+  /// The cast's library cards by dbId, from one pass over the library per
+  /// state build (stopping once every cast member is found).
+  Map<String, CharacterCard> _castLibrary() {
+    final wanted = {
+      for (final p in _chat.cast)
+        if (p.card.dbId != null) p.card.dbId!,
+    };
+    final found = <String, CharacterCard>{};
+    if (wanted.isEmpty) return found;
+    for (final c in _characters.characters) {
+      final id = c.dbId;
+      if (id != null && wanted.contains(id)) {
+        found[id] = c;
+        if (found.length == wanted.length) break;
+      }
+    }
+    return found;
   }
 
   /// Realism for a single cast participant (focus-scoped sidebar). Delegates to

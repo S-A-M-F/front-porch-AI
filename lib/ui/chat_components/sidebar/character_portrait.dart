@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 /// Square character portrait used by Chat and Waifu Coder.
 ///
@@ -64,14 +65,20 @@ class CharacterPortrait extends StatelessWidget {
             switchOutCurve: Curves.easeInOut,
             child: display == null
                 ? _fallback(context)
-                : Image.file(
-                    display,
+                // The flat placeholder a character made without a portrait
+                // carries shows the person tile, as a missing picture does.
+                : RealPortrait(
                     key: ValueKey(imageKey),
-                    width: size,
-                    height: size,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                    errorBuilder: (_, _, _) => _fallback(context),
+                    file: display,
+                    portrait: (_, file) => Image.file(
+                      file,
+                      width: size,
+                      height: size,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.topCenter,
+                      errorBuilder: (_, _, _) => _fallback(context),
+                    ),
+                    noPortrait: _fallback,
                   ),
           ),
           ...overlays,
@@ -89,11 +96,8 @@ class CharacterPortrait extends StatelessWidget {
       key: const ValueKey('portrait-fallback'),
       width: size,
       height: size,
-      color: AppColors.resolve(
-        context,
-        Colors.black26,
-        Colors.black.withValues(alpha: 0.1),
-      ),
+      // The Home card's no-portrait look.
+      color: AppColors.surfaceContainerOf(context),
       child: Icon(
         Icons.person,
         color: AppColors.iconSecondary(context),

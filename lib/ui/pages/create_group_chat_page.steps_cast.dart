@@ -165,15 +165,23 @@ extension _GroupWizardCastSteps on _CreateGroupChatPageState {
     );
   }
 
+  /// A character made without a portrait shows the person icon, not its
+  /// flat coloured card picture.
   Widget _avatar(CharacterCard c, {double radius = 20}) {
-    return CircleAvatar(
-      radius: radius,
-      backgroundImage: c.imagePath != null
-          ? FileImage(File(c.imagePath!))
-          : null,
-      child: c.imagePath == null
-          ? Icon(Icons.person, size: radius * 0.9)
-          : null,
+    return RealPortrait(
+      file: c.imagePath != null ? File(c.imagePath!) : null,
+      portrait: (_, file) =>
+          CircleAvatar(radius: radius, backgroundImage: FileImage(file)),
+      // The Home card's no-portrait look.
+      noPortrait: (_) => CircleAvatar(
+        radius: radius,
+        backgroundColor: AppColors.surfaceContainerOf(context),
+        child: Icon(
+          Icons.person,
+          size: radius * 0.9,
+          color: AppColors.iconSecondary(context),
+        ),
+      ),
     );
   }
 
