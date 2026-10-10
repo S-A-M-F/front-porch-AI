@@ -18,11 +18,7 @@ extension _GroupRealismNeedsControls on _GroupRealismNeedsTabState {
           Icon(
             Icons.schedule,
             size: 18,
-            color: AppColors.resolve(
-              context,
-              Colors.lightBlueAccent,
-              Colors.lightBlueAccent,
-            ),
+            color: AppColors.porchAmberOf(context),
           ),
           const SizedBox(width: 8),
           const Expanded(
@@ -57,15 +53,18 @@ extension _GroupRealismNeedsControls on _GroupRealismNeedsTabState {
                   borderSide: BorderSide.none,
                 ),
               ),
-              style: const TextStyle(fontSize: 12),
-              items: ['morning', 'afternoon', 'evening', 'night']
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(e, style: const TextStyle(fontSize: 12)),
-                    ),
-                  )
-                  .toList(),
+              // A dropdown's style replaces the theme's text style, so the
+              // ink must be set here or the value paints white on paper.
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textPrimary(context),
+              ),
+              items: [
+                'morning',
+                'afternoon',
+                'evening',
+                'night',
+              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
               onChanged: (v) {
                 if (v != null) _updateGroupTimeOfDay(v);
               },
