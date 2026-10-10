@@ -44,6 +44,18 @@ extension ChatServiceNeedsPass on ChatService {
       _needsSimEnabled &&
       _storageService.realismSettings.needsSimDefault;
 
+  /// The chat's Needs switch at the start of a 1:1 chat, from the card's
+  /// own choice ([FrontPorchExtensions.needsSimChoice]). A card that says
+  /// nothing follows the Porch Life Needs switch, but only in a chat whose
+  /// Realism is on: Needs need Realism, so filling in Needs where it cannot
+  /// run would only flip a stored switch (an old Realism-off chat reopened).
+  /// A card that chose is still vetoed by the Porch Life switch, and its
+  /// explicit false wins (maintainer ruling, 2026-10-10). Reads
+  /// `_realismEnabled`, so callers set Realism first.
+  bool _seedNeedsSim(bool? cardChoice) =>
+      (cardChoice ?? _realismEnabled) &&
+      _storageService.realismSettings.needsSimDefault;
+
   /// The pre-turn stamp: the body as it is before this reply, with the
   /// carried fraction, on the pending map, so regen and the chip rewind to
   /// the turn's base. 1:1 stamps the live vector; a group stamps the
