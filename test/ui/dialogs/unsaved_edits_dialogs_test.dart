@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/database/database.dart' as db;
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/ui/chat_components/sidebar/journal_memory/growth_panel.editor.dart';
 import 'package:front_porch_ai/ui/dialogs/data_bank_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/journal_card_editor.dart';
 import 'package:front_porch_ai/ui/dialogs/lorebook_entry/lorebook_entry_fields.dart';
@@ -362,5 +363,38 @@ void main() {
     await tester.pumpAndSettle();
     await _discard(tester);
     expect(closed, isTrue);
+  });
+
+  testWidgets('growth ring: a changed sentence or category asks first', (
+    tester,
+  ) async {
+    final opened = await _open(
+      tester,
+      (ctx) => GrowthRingEditorDialog.show(
+        ctx,
+        title: 'Edit ring',
+        initialContent: 'Guards their sleep.',
+      ),
+    );
+    await _escape(tester);
+    expect(find.text(_question), findsNothing);
+    expect(opened.closed, isTrue, reason: 'unchanged closes quietly');
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    opened.closed = false;
+    await tester.tap(find.text('habit'));
+    await tester.pumpAndSettle();
+    await _escape(tester);
+    await _keepEditing(tester);
+    expect(opened.closed, isFalse);
+
+    await tester.enterText(find.byType(TextField), 'Reads to them at night.');
+    await tester.pump();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await _discard(tester);
+    expect(opened.closed, isTrue);
+    expect(opened.result, isNull);
   });
 }
