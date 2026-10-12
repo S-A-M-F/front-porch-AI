@@ -76,10 +76,13 @@ String studioUnfilledWords({
 }
 
 /// The line beside Generate: Ready, or what is missing and how to fix it.
+/// [loaderNoteShown] is true where the GGUF loader's own note already sits
+/// on screen, so the line does not repeat it.
 String studioNotReadyLine({
   required StudioReadiness readiness,
   required String backendName,
   String primaryFile = '',
+  bool loaderNoteShown = false,
 }) {
   final message = readiness.message?.trim() ?? '';
   switch (readiness.kind) {
@@ -98,7 +101,15 @@ String studioNotReadyLine({
     case StudioReady.loraMismatch:
       return 'Not ready — LoRA architecture does not match $primaryFile.';
     case StudioReady.needsLoaderUpdate:
+      if (loaderNoteShown) {
+        return 'Not ready — the GGUF loader needs an update first.';
+      }
+      return 'Not ready — ${message.isEmpty ? kCity96NeedsUpdate : message}';
     case StudioReady.needsComfyRestart:
+      if (loaderNoteShown) {
+        return 'Not ready — restart ComfyUI so it loads the updated GGUF '
+            'loader.';
+      }
       return 'Not ready — ${message.isEmpty ? kCity96NeedsUpdate : message}';
     case StudioReady.missingFile:
       final why = message.isEmpty

@@ -321,6 +321,7 @@ class _StudioDeskState extends State<StudioDesk> {
                 readiness: ready,
                 backendName: studioBackendName(backend),
                 primaryFile: primary,
+                loaderNoteShown: true,
               ),
         generateEnabled: enabled,
         onGenerate: widget.onGenerate,
