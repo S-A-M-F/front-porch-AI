@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { usePersonaSeed } from '../components/library/PersonaConvertDialogs';
 import { api, ApiError } from '../api/client';
 import { ChatSocket } from '../api/ws';
 import { StepIndicator } from '../components/StepIndicator';
@@ -54,10 +55,28 @@ export function CreateAiCharacterPage() {
   const [busy, setBusy] = useState(false);
   const [steps, setSteps] = useState<string[]>([]);
   const [error, setError] = useState('');
+  // "Make a Character" → AI Assist: the persona is Quick mode's brief.
+  const { seed: personaSeed, error: seedError } = usePersonaSeed(params);
+  const withSeed = (base: ChargenForm): ChargenForm =>
+    personaSeed
+      ? {
+          ...base,
+          mode: 'quick',
+          name: personaSeed.name,
+          quickConcept: personaSeed.aiConcept,
+          quickScenario: '',
+        }
+      : base;
+  useEffect(() => {
+    if (!personaSeed) return;
+    setForm(withSeed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaSeed]);
   // Until a character exists the typed setup lives only here. After that the
-  // Greetings step saves as it goes.
+  // Greetings step saves as it goes. A persona's seed is the start, not an
+  // edit.
   const { prompt, leaveWithoutAsking } = useUnsavedChanges(
-    !createdId && JSON.stringify(form) !== JSON.stringify(DEFAULT_FORM),
+    !createdId && JSON.stringify(form) !== JSON.stringify(withSeed(DEFAULT_FORM)),
   );
 
   useEffect(() => {
@@ -94,7 +113,11 @@ export function CreateAiCharacterPage() {
     setSteps([]);
     setError('');
     try {
-      await api.post('/api/chargen/create', buildPayload(form));
+      await api.post('/api/chargen/create', {
+        ...buildPayload(form),
+        ...(personaSeed?.hasPortrait ? { portraitPersonaId: personaSeed.personaId } : {}),
+        ...(personaSeed?.birthday ? { birthday: personaSeed.birthday } : {}),
+      });
     } catch (e) {
       setBusy(false);
       setError(e instanceof ApiError ? e.message : 'Could not start generation');
@@ -126,6 +149,14 @@ export function CreateAiCharacterPage() {
       </header>
 
       <StepIndicator steps={STEPS} current={step} onJump={held ? undefined : setStep} variant="porch" />
+
+      {personaSeed && (
+        <p className="muted small" data-testid="persona-seed-note">
+          Starting from the persona "{personaSeed.name}"
+          {personaSeed.hasPortrait ? '; its picture becomes the portrait.' : '.'}
+        </p>
+      )}
+      {seedError && <p className="error">{seedError}</p>}
 
       {available === false && (
         <p className="muted">No LLM backend is ready — start or connect a model on the Models page first.</p>

@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import { confirmDiscard } from '../hooks/useUnsavedChanges';
+import { MakeCharacterDialog } from './library/PersonaConvertDialogs';
 
 interface Persona {
   id: string;
@@ -50,6 +51,7 @@ export function PersonaManager({ onDirtyChange }: { onDirtyChange?: (dirty: bool
   };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [makeFrom, setMakeFrom] = useState<PersonaDetail | null>(null);
 
   const load = () =>
     api.get<{ personas: Persona[] }>('/api/personas').then((r) => setPersonas(r.personas)).catch(() => {});
@@ -77,6 +79,13 @@ export function PersonaManager({ onDirtyChange }: { onDirtyChange?: (dirty: bool
     try {
       const d = await api.get<PersonaDetail>(`/api/personas/${id}/detail`);
       openEdit({ id: d.id, title: d.title, name: d.name, persona: d.persona, birthday: d.birthday ?? '' });
+    } catch {
+      setError('Could not load persona');
+    }
+  };
+  const beginMakeCharacter = async (id: string) => {
+    try {
+      setMakeFrom(await api.get<PersonaDetail>(`/api/personas/${id}/detail`));
     } catch {
       setError('Could not load persona');
     }
@@ -133,6 +142,14 @@ export function PersonaManager({ onDirtyChange }: { onDirtyChange?: (dirty: bool
               <button className="icon-btn" title="Edit" onClick={() => beginEdit(p.id)}>✎</button>
               <button
                 className="icon-btn"
+                title="Make a character"
+                aria-label={`Make a character from ${p.label}`}
+                onClick={() => beginMakeCharacter(p.id)}
+              >
+                🧑
+              </button>
+              <button
+                className="icon-btn"
                 title="Delete"
                 disabled={busy || personas.length <= 1}
                 onClick={() => apply(api.post(`/api/personas/${p.id}/delete`), edit?.id === p.id)}
@@ -183,6 +200,15 @@ export function PersonaManager({ onDirtyChange }: { onDirtyChange?: (dirty: bool
             </button>
           </div>
         </div>
+      )}
+
+      {makeFrom && (
+        <MakeCharacterDialog
+          personaId={makeFrom.id}
+          personaName={makeFrom.name}
+          personaText={makeFrom.persona}
+          onClose={() => setMakeFrom(null)}
+        />
       )}
 
       {error && <p className="error">{error}</p>}

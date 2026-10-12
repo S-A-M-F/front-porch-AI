@@ -20,6 +20,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 /// Everything the manual creator's steps write: text controllers, tag and
@@ -34,7 +35,7 @@ class CreateCharacterDraft {
     _blank = fingerprint();
   }
 
-  late final String _blank;
+  late String _blank;
 
   /// True once the wizard holds anything a blank one does not (and [reset]
   /// makes it blank again).
@@ -180,6 +181,21 @@ class CreateCharacterDraft {
   String needsPace = 'normal';
   List<String> needsOff = const [];
 
+  /// Picture for the first save (a persona's, when seeded from one);
+  /// null writes the placeholder the Portrait step replaces.
+  String? portraitSourcePath;
+
+  /// Start from a persona: name, description, birthday and picture.
+  void applyPersonaSeed(PersonaCharacterSeed seed) {
+    nameController.text = seed.name;
+    descriptionController.text = seed.description;
+    realismBirthday = seed.birthday;
+    portraitSourcePath = seed.portraitPath;
+    updateTokenEstimate();
+    // The persona is where this draft starts, not an edit.
+    _blank = fingerprint();
+  }
+
   // ── Token counter ──
   final ValueNotifier<int> tokenNotifier = ValueNotifier<int>(0);
 
@@ -295,6 +311,7 @@ class CreateCharacterDraft {
     needsBaselineComfort = 80;
     needsPace = 'normal';
     needsOff = const [];
+    portraitSourcePath = null;
     tokenNotifier.value = 0;
   }
 
