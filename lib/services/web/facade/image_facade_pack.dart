@@ -278,7 +278,8 @@ extension ImageStudioPacks on ImageFacade {
       );
     }
     final ready = Completer<bool>();
-    final work = _image.startExpressionPack(
+    final work = ImageGenService.startExpressionPackOn(
+      _image,
       reroll
           ? [run.session.slots[index].emotion]
           : [
