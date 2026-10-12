@@ -16,16 +16,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'realism_settings.dart';
-
-/// The once-only flag for the imported-card Needs clean-up
-/// (`imported_needs_cleanup.dart`). Read live, not cached in [load]: it is
-/// read once per launch, after the settings have loaded.
-extension RealismSettingsImportStamp on RealismSettings {
-  bool get importedNeedsStampCleared =>
-      prefs?.getBool(k('imported_needs_stamp_cleared')) ?? false;
-
-  Future<void> markImportedNeedsStampCleared() async {
-    await prefs?.setBool(k('imported_needs_stamp_cleared'), true);
-  }
-}
+/// How the pre-generation realism judges are fused (eval review Tier-1 §3.4,
+/// maintainer-approved 2026-08-10). [auto] — the default — uses the fused
+/// one-shot call on remote backends that have already proven native tool
+/// calls (exactly the class of model the combined prompt is easy for) and the
+/// multi-call path everywhere else, including every local backend. [on]/[off]
+/// are the explicit choices the old bool expressed; the user always wins in
+/// both directions.
+enum OneShotMode { auto, on, off }

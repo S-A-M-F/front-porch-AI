@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'story_project.dart';
+import 'package:front_porch_ai/models/story/story_json.dart';
 
 /// Every change the Director can propose. Wire names are the enum names in
 /// SCREAMING_SNAKE_CASE (what the planner model writes).
@@ -115,21 +115,21 @@ class DirectorAction {
   };
 
   static DirectorAction? fromJson(Map<String, dynamic> json) {
-    final type = DirectorActionType.fromWire(_str(json['type']));
+    final type = DirectorActionType.fromWire(storyStr(json['type']));
     if (type == null) return null;
     return DirectorAction(
       type: type,
-      sceneId: _str(json['scene_id']),
+      sceneId: storyStr(json['scene_id']),
       beat: (json['beat'] as num?)?.toInt() ?? 0,
       sequence: (json['sequence'] as num?)?.toInt() ?? 0,
       act: (json['act'] as num?)?.toInt() ?? 0,
-      summary: _str(json['summary']),
+      summary: storyStr(json['summary']),
       details: (json['details'] as Map?)?.map(
         (k, v) => MapEntry(k.toString(), v.toString()),
       ),
       enabled: json['enabled'] != false,
       locked: json['locked'] == true,
-      result: _str(json['result']),
+      result: storyStr(json['result']),
     );
   }
 }
@@ -173,16 +173,16 @@ class DirectorPlan {
   };
 
   factory DirectorPlan.fromJson(Map<String, dynamic> json) => DirectorPlan(
-    directive: _str(json['directive']),
-    evaluation: _str(json['evaluation']),
+    directive: storyStr(json['directive']),
+    evaluation: storyStr(json['evaluation']),
     scope: json['scope'] == 'arc' ? 'arc' : 'local',
-    consistencyNotes: _str(json['consistency_notes']),
+    consistencyNotes: storyStr(json['consistency_notes']),
     actions: (json['actions'] as List?)
         ?.map((a) => DirectorAction.fromJson(a as Map<String, dynamic>))
         .whereType<DirectorAction>()
         .toList(),
-    review: _str(json['review']),
-    createdAt: DateTime.tryParse(_str(json['created_at'])),
+    review: storyStr(json['review']),
+    createdAt: DateTime.tryParse(storyStr(json['created_at'])),
   );
 }
 
@@ -207,8 +207,8 @@ class DirectorApplied {
 
   factory DirectorApplied.fromJson(Map<String, dynamic> json) =>
       DirectorApplied(
-        directive: _str(json['directive']),
-        appliedAt: DateTime.tryParse(_str(json['applied_at'])),
+        directive: storyStr(json['directive']),
+        appliedAt: DateTime.tryParse(storyStr(json['applied_at'])),
         changeCount: (json['change_count'] as num?)?.toInt() ?? 0,
       );
 }

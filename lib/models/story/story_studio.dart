@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'story_project.dart';
+import 'package:front_porch_ai/models/story/story_json.dart';
 
 /// How a story is generated. Quick is the original one-pass engine; Studio
 /// adds interviews, review loops, continuity and relationship tracking.
@@ -74,33 +74,25 @@ class StoryLaneChoice {
   static StoryLaneChoice fromJson(Object? raw, StoryLaneChoice fallback) {
     if (raw is String) {
       return StoryLaneChoice(
-        lane: _enumByName(StoryModelLane.values, raw, fallback.lane),
+        lane: storyEnumByName(StoryModelLane.values, raw, fallback.lane),
       );
     }
     if (raw is Map) {
       return StoryLaneChoice(
-        lane: _enumByName(StoryModelLane.values, raw['lane'], fallback.lane),
-        backendType: _str(raw['backend']),
-        apiUrl: _str(raw['url']),
-        model: _str(raw['model']),
-        kcpps: _str(raw['kcpps']),
+        lane: storyEnumByName(
+          StoryModelLane.values,
+          raw['lane'],
+          fallback.lane,
+        ),
+        backendType: storyStr(raw['backend']),
+        apiUrl: storyStr(raw['url']),
+        model: storyStr(raw['model']),
+        kcpps: storyStr(raw['kcpps']),
       );
     }
     return fallback.copy();
   }
 }
-
-T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
-  for (final v in values) {
-    if (v.name == name) return v;
-  }
-  return fallback;
-}
-
-List<String> _stringList(Object? raw) =>
-    (raw as List?)?.map((e) => e.toString()).toList() ?? [];
-
-String _str(Object? raw) => raw?.toString() ?? '';
 
 /// A sequence: a run of scenes inside an act bound by one short-term dramatic
 /// question. Numbers are 1-based and global across the story.
@@ -147,14 +139,14 @@ class StorySequence {
   factory StorySequence.fromJson(Map<String, dynamic> json) => StorySequence(
     number: (json['number'] as num?)?.toInt() ?? 1,
     act: (json['act'] as num?)?.toInt() ?? 1,
-    title: _str(json['title']),
-    function: _str(json['function']),
-    dramaticQuestion: _str(json['dramatic_question']),
-    description: _str(json['description']),
-    climax: _str(json['climax']),
-    endingHook: _str(json['ending_hook']),
-    threadIds: _stringList(json['thread_ids']),
-    summary: _str(json['summary']),
+    title: storyStr(json['title']),
+    function: storyStr(json['function']),
+    dramaticQuestion: storyStr(json['dramatic_question']),
+    description: storyStr(json['description']),
+    climax: storyStr(json['climax']),
+    endingHook: storyStr(json['ending_hook']),
+    threadIds: storyStringList(json['thread_ids']),
+    summary: storyStr(json['summary']),
   );
 }
 
@@ -181,10 +173,10 @@ class RelationshipShift {
 
   factory RelationshipShift.fromJson(Map<String, dynamic> json) =>
       RelationshipShift(
-        sceneId: _str(json['scene_id']),
-        from: _str(json['from']),
-        to: _str(json['to']),
-        reason: _str(json['reason']),
+        sceneId: storyStr(json['scene_id']),
+        from: storyStr(json['from']),
+        to: storyStr(json['to']),
+        reason: storyStr(json['reason']),
       );
 }
 
@@ -228,11 +220,11 @@ class StoryRelationship {
 
   factory StoryRelationship.fromJson(Map<String, dynamic> json) =>
       StoryRelationship(
-        from: _str(json['from']),
-        to: _str(json['to']),
-        feeling: _str(json['feeling']),
-        note: _str(json['note']),
-        subtext: _str(json['subtext']),
+        from: storyStr(json['from']),
+        to: storyStr(json['to']),
+        feeling: storyStr(json['feeling']),
+        note: storyStr(json['note']),
+        subtext: storyStr(json['subtext']),
         trust: ((json['trust'] as num?)?.toInt() ?? 5).clamp(0, 10),
         history: (json['history'] as List?)
             ?.map((h) => RelationshipShift.fromJson(h as Map<String, dynamic>))
@@ -272,11 +264,11 @@ class ContinuityFact {
 
   factory ContinuityFact.fromJson(Map<String, dynamic> json) => ContinuityFact(
     category: json['category']?.toString() ?? 'Fact',
-    key: _str(json['key']),
-    value: _str(json['value']),
-    entity: _str(json['entity']),
-    sceneId: _str(json['scene_id']),
-    retiredSceneId: _str(json['retired_scene_id']),
+    key: storyStr(json['key']),
+    value: storyStr(json['value']),
+    entity: storyStr(json['entity']),
+    sceneId: storyStr(json['scene_id']),
+    retiredSceneId: storyStr(json['retired_scene_id']),
   );
 }
 
@@ -303,10 +295,10 @@ class StoryLens {
   };
 
   factory StoryLens.fromJson(Map<String, dynamic> json) => StoryLens(
-    id: _str(json['id']),
-    name: _str(json['name']),
-    context: _str(json['context']),
-    prompt: _str(json['prompt']),
+    id: storyStr(json['id']),
+    name: storyStr(json['name']),
+    context: storyStr(json['context']),
+    prompt: storyStr(json['prompt']),
   );
 }
 
@@ -319,8 +311,10 @@ class ProseEdit {
 
   Map<String, dynamic> toJson() => {'find': find, 'replace': replace};
 
-  factory ProseEdit.fromJson(Map<String, dynamic> json) =>
-      ProseEdit(find: _str(json['find']), replace: _str(json['replace']));
+  factory ProseEdit.fromJson(Map<String, dynamic> json) => ProseEdit(
+    find: storyStr(json['find']),
+    replace: storyStr(json['replace']),
+  );
 }
 
 /// Record of a surgical continuity fix so the writer can show it and undo it.
@@ -341,8 +335,8 @@ class ContinuityFix {
   };
 
   factory ContinuityFix.fromJson(Map<String, dynamic> json) => ContinuityFix(
-    reason: _str(json['reason']),
-    before: _str(json['before']),
+    reason: storyStr(json['reason']),
+    before: storyStr(json['before']),
     edits: (json['edits'] as List?)
         ?.map((e) => ProseEdit.fromJson(e as Map<String, dynamic>))
         .toList(),

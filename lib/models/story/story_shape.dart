@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'story_project.dart';
+import 'package:front_porch_ai/models/story_project.dart';
 
 /// Word target behind each "Target length" choice. The legacy `prose_length`
 /// names stay as the stored key so Quick prompts read the same as before.

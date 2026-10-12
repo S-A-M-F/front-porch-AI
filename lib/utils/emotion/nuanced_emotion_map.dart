@@ -16,9 +16,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'emotion_labels.dart';
-
-const Map<String, String> _nuancedToStandard = {
+/// Nuanced Realism Engine emotion words mapped to standard expression
+/// labels; read through [EmotionLabels.nuancedToStandard].
+const Map<String, String> kNuancedEmotionToStandard = {
   // -> admiration
   'in_awe': 'admiration',
   'impressed': 'admiration',

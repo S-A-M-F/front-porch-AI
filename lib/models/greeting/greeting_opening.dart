@@ -1,7 +1,22 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'greeting_realism_seed.dart';
+import 'package:front_porch_ai/models/greeting_realism_seed.dart';
 
 /// Filled opening state after merging a [GreetingRealismSeed] onto a base
 /// (card-level `realism_engine`, or a group's per-member seed).
@@ -284,24 +299,4 @@ int recoverGreetingIndex({
     if (resolvedGreetings[i] == t) return i;
   }
   return 0;
-}
-
-String? _str(Map<String, dynamic> json, String snake, String camel) {
-  final v = json.containsKey(snake) ? json[snake] : json[camel];
-  if (v is String) return v;
-  return null;
-}
-
-int? _int(Map<String, dynamic> json, String snake, String camel) {
-  final v = json.containsKey(snake) ? json[snake] : json[camel];
-  if (v is int) return v;
-  if (v is num) return v.toInt();
-  if (v is String) return int.tryParse(v.trim());
-  return null;
-}
-
-Map<String, dynamic>? _map(Map<String, dynamic> json, String key) {
-  final v = json[key];
-  if (v is Map) return Map<String, dynamic>.from(v);
-  return null;
 }

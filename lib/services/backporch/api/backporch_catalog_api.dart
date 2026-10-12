@@ -8,40 +8,52 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-part of 'backporch_api.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 
-extension BackporchApiCatalog on BackporchApi {
-  /// Upload a character card (the V2 [card] JSON + an avatar image) to The
-  /// Stoop. Lands in the moderation queue as PENDING. Returns its id + status.
+import 'package:http/http.dart' as http;
+
+import 'package:front_porch_ai/services/backporch/api/backporch_api_types.dart';
+import 'package:front_porch_ai/services/backporch/api/backporch_transport.dart';
+import 'package:front_porch_ai/services/backporch/stoop_card.dart';
+import 'package:front_porch_ai/services/backporch/stoop_character.dart';
+import 'package:front_porch_ai/services/backporch/stoop_creator.dart';
+import 'package:front_porch_ai/services/backporch/stoop_message.dart';
+
+/// Upload, browse, card, creator and inbox endpoints. [BackporchApi] forwards
+/// here.
+class BackporchCatalogApi {
+  BackporchCatalogApi(this._t);
+
+  final BackporchTransport _t;
+
   Future<({String id, String status})> uploadCharacter({
     required String accessToken,
     required Map<String, dynamic> payload,
     required Uint8List avatarBytes,
     required String avatarFilename,
   }) async {
-    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/characters'))
-      ..headers['Authorization'] = 'Bearer $accessToken'
-      ..fields['payload'] = jsonEncode(payload)
-      ..files.add(
-        http.MultipartFile.fromBytes(
-          'avatar',
-          avatarBytes,
-          filename: avatarFilename,
-        ),
-      );
+    final req =
+        http.MultipartRequest('POST', Uri.parse('${_t.baseUrl}/characters'))
+          ..headers['Authorization'] = 'Bearer $accessToken'
+          ..fields['payload'] = jsonEncode(payload)
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'avatar',
+              avatarBytes,
+              filename: avatarFilename,
+            ),
+          );
     final res = await http.Response.fromStream(
       await req.send().timeout(const Duration(seconds: 60)),
     );
-    final json = _parse(res);
+    final json = _t.parse(res);
     return (
       id: json['id'] as String? ?? '',
       status: json['status'] as String? ?? 'PENDING',
     );
   }
 
-  /// Publish a new version of an existing character IN PLACE (owner only). Keeps
-  /// the Stoop id, downloads, score, and votes; re-enters the moderation queue.
-  /// Used by the Mine-tab "Update" flow.
   Future<({String id, int version, String status})> publishVersion({
     required String accessToken,
     required String characterId,
@@ -52,7 +64,7 @@ extension BackporchApiCatalog on BackporchApi {
     final req =
         http.MultipartRequest(
             'POST',
-            Uri.parse('$baseUrl/characters/$characterId/versions'),
+            Uri.parse('${_t.baseUrl}/characters/$characterId/versions'),
           )
           ..headers['Authorization'] = 'Bearer $accessToken'
           ..fields['payload'] = jsonEncode(payload)
@@ -66,7 +78,7 @@ extension BackporchApiCatalog on BackporchApi {
     final res = await http.Response.fromStream(
       await req.send().timeout(const Duration(seconds: 60)),
     );
-    final json = _parse(res);
+    final json = _t.parse(res);
     return (
       id: json['id'] as String? ?? characterId,
       version: (json['version'] as num?)?.toInt() ?? 2,
@@ -74,9 +86,8 @@ extension BackporchApiCatalog on BackporchApi {
     );
   }
 
-  /// The signed-in user's own uploads and their moderation status.
   Future<List<StoopCharacter>> myCharacters(String accessToken) async {
-    final json = await _get(
+    final json = await _t.get(
       '/me/characters?types=$kStoopWorldTypes',
       accessToken,
     );
@@ -86,10 +97,8 @@ extension BackporchApiCatalog on BackporchApi {
         .toList();
   }
 
-  /// Cards the user has downloaded before (newest first), so they can grab them
-  /// again on a new device. Returns the same shape as browse items.
   Future<List<StoopCard>> myDownloads(String accessToken) async {
-    final json = await _get(
+    final json = await _t.get(
       '/me/downloads?types=$kStoopWorldTypes',
       accessToken,
     );
@@ -98,24 +107,10 @@ extension BackporchApiCatalog on BackporchApi {
         .map((e) => StoopCard.fromJson(e as Map<String, dynamic>))
         .toList();
   }
-  // ---- Browse / discovery ----
 
-  /// The authenticated URL for a card asset (avatar). Load with an Authorization
-  /// header — assets are served only to signed-in users, never publicly.
-  /// [thumb] asks for the postcard-sized WebP the hub uses for tiles.
   String assetUrl(String assetId, {bool thumb = false}) =>
-      '$baseUrl${stoopAssetPath(assetId, thumb: thumb)}';
-}
+      '${_t.baseUrl}${stoopAssetPath(assetId, thumb: thumb)}';
 
-/// Server path for a card asset. [thumb] is the postcard-sized WebP the hub
-/// shows on tiles (`?v=thumb`); without it the server returns the original.
-/// One builder so the desktop client and the web relay ask for the same URL.
-String stoopAssetPath(String assetId, {bool thumb = false}) =>
-    '/assets/${Uri.encodeComponent(assetId)}/raw${thumb ? '?v=thumb' : ''}';
-
-extension BackporchApiCatalogBrowse on BackporchApi {
-  /// Browse approved cards. [sort] is `newest`|`top`|`downloads`; [type] is
-  /// `solo`|`group`|`all`. [q] supports `@creator`, `#tag`, or a name.
   Future<StoopBrowsePage> browse({
     required String accessToken,
     String sort = 'newest',
@@ -142,22 +137,22 @@ extension BackporchApiCatalogBrowse on BackporchApi {
     };
     final query = Uri(queryParameters: params).query;
     return StoopBrowsePage.fromJson(
-      await _get('/characters?$query', accessToken),
+      await _t.get('/characters?$query', accessToken),
     );
   }
 
-  /// Full card detail (definitions, greetings, lorebook, tags, the caller's vote).
   Future<StoopCardDetail> cardDetail(String accessToken, String id) async {
-    return StoopCardDetail.fromJson(await _get('/characters/$id', accessToken));
+    return StoopCardDetail.fromJson(
+      await _t.get('/characters/$id', accessToken),
+    );
   }
 
-  /// Cast a vote (1 up, -1 down, 0 clear). Returns the new score + your vote.
   Future<({int score, int myVote})> vote(
     String accessToken,
     String id,
     int value,
   ) async {
-    final json = await _post('/characters/$id/vote', {
+    final json = await _t.post('/characters/$id/vote', {
       'value': value,
     }, token: accessToken);
     return (
@@ -166,13 +161,10 @@ extension BackporchApiCatalogBrowse on BackporchApi {
     );
   }
 
-  /// Record a download and return the card payload for local import.
   Future<Map<String, dynamic>> download(String accessToken, String id) async {
-    return _post('/characters/$id/download', const {}, token: accessToken);
+    return _t.post('/characters/$id/download', const {}, token: accessToken);
   }
 
-  /// Fetch a card asset's bytes: the original (for embedding on import, the
-  /// card page) or the postcard [thumb] the grids show.
   Future<Uint8List> assetBytes(
     String accessToken,
     String assetId, {
@@ -193,58 +185,51 @@ extension BackporchApiCatalogBrowse on BackporchApi {
     }
   }
 
-  /// File a report against a card. [category] is one of SPAM, MISLABELED,
-  /// ILLEGAL, STOLEN, REAL_PERSON, LOW_EFFORT, PROHIBITED_IMAGE, OTHER.
   Future<void> reportCharacter(
     String accessToken,
     String characterId, {
     required String category,
     String reason = '',
   }) async {
-    await _post('/reports', {
+    await _t.post('/reports', {
       'characterId': characterId,
       'category': category,
       'reason': reason,
     }, token: accessToken);
   }
 
-  /// A creator's profile + their approved cards.
   Future<StoopCreator> creatorProfile(String accessToken, String id) async {
     return StoopCreator.fromJson(
-      await _get('/creators/$id?types=$kStoopWorldTypes', accessToken),
+      await _t.get('/creators/$id?types=$kStoopWorldTypes', accessToken),
     );
   }
 
-  /// Follow / unfollow a creator. Returns the new follow state + follower count.
   Future<({bool following, int followers})> setFollow(
     String accessToken,
     String creatorId,
     bool follow,
   ) async {
     final json = follow
-        ? await _post(
+        ? await _t.post(
             '/creators/$creatorId/follow',
             const {},
             token: accessToken,
           )
-        : await _delete('/creators/$creatorId/follow', accessToken);
+        : await _t.delete('/creators/$creatorId/follow', accessToken);
     return (
       following: json['following'] as bool? ?? follow,
       followers: (json['followers'] as num?)?.toInt() ?? 0,
     );
   }
 
-  /// The creators the signed-in user follows.
   Future<List<StoopFollowedCreator>> myFollowing(String accessToken) async {
-    final json = await _get('/me/following', accessToken);
+    final json = await _t.get('/me/following', accessToken);
     final items = (json['items'] as List?) ?? const [];
     return items
         .map((e) => StoopFollowedCreator.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  /// Owner-only PATCH for `commentsEnabled` / `commentsLocked`.
-  /// 404 is fail-closed at the call site (hide Discussion).
   Future<({bool commentsEnabled, bool commentsLocked})> patchCardComments(
     String accessToken,
     String cardId, {
@@ -254,38 +239,36 @@ extension BackporchApiCatalogBrowse on BackporchApi {
     final body = <String, dynamic>{};
     if (commentsEnabled != null) body['commentsEnabled'] = commentsEnabled;
     if (commentsLocked != null) body['commentsLocked'] = commentsLocked;
-    final json = await _patch('/characters/$cardId', body, token: accessToken);
+    final json = await _t.patch(
+      '/characters/$cardId',
+      body,
+      token: accessToken,
+    );
     return (
       commentsEnabled: json['commentsEnabled'] == true,
       commentsLocked: json['commentsLocked'] == true,
     );
   }
 
-  // --- messaging: the user's thread with the moderation team ---
-
-  /// The whole conversation, oldest first.
   Future<List<StoopMessage>> myMessages(String accessToken) async {
-    final json = await _get('/me/messages', accessToken);
+    final json = await _t.get('/me/messages', accessToken);
     final items = (json['items'] as List?) ?? const [];
     return items
         .map((e) => StoopMessage.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  /// Count of unread moderator messages (drives the notification bell badge).
   Future<int> unreadMessageCount(String accessToken) async {
-    final json = await _get('/me/messages/unread', accessToken);
+    final json = await _t.get('/me/messages/unread', accessToken);
     return (json['count'] as num?)?.toInt() ?? 0;
   }
 
-  /// Mark all moderator messages as read (called when the inbox opens).
   Future<void> markMessagesRead(String accessToken) async {
-    await _post('/me/messages/read', const {}, token: accessToken);
+    await _t.post('/me/messages/read', const {}, token: accessToken);
   }
 
-  /// Send a reply in the thread.
   Future<StoopMessage> sendMessage(String accessToken, String body) async {
-    final json = await _post('/me/messages', {
+    final json = await _t.post('/me/messages', {
       'body': body,
     }, token: accessToken);
     return StoopMessage.fromJson(json['message'] as Map<String, dynamic>);
