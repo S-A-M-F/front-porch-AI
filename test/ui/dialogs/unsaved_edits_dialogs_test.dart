@@ -10,8 +10,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
+import 'package:front_porch_ai/database/database.dart' as db;
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/ui/dialogs/data_bank_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/journal_card_editor.dart';
 import 'package:front_porch_ai/ui/dialogs/lorebook_entry/lorebook_entry_fields.dart';
 import 'package:front_porch_ai/ui/dialogs/lorebook_entry_dialog.dart';
@@ -287,5 +290,77 @@ void main() {
     await _keepEditing(tester);
     expect(opened.closed, isFalse);
     expect(find.text('Dust Squall'), findsOneWidget);
+  });
+
+  testWidgets('data bank: a typed entry asks before Cancel or the X drop it', (
+    tester,
+  ) async {
+    // Never closed: drift's close wall-hangs under testWidgets.
+    final database = db.AppDatabase.forTesting(sameIsolate: true);
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var closed = false;
+    await tester.pumpWidget(
+      Provider<db.AppDatabase>.value(
+        value: database,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () async {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (_) => const DataBankDialog(
+                      characterId: 'Ada_1',
+                      characterName: 'Ada',
+                    ),
+                  );
+                  closed = true;
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    // The entry list loads from the database before the toolbar settles.
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+    }
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add Entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text(_question), findsNothing, reason: 'empty form is quiet');
+    expect(find.text('New Entry'), findsNothing);
+
+    await tester.tap(find.text('Add Entry'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Hours of notes');
+    await tester.pump();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await _keepEditing(tester);
+    expect(find.text('Hours of notes'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    await _keepEditing(tester);
+    expect(closed, isFalse);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    await _discard(tester);
+    expect(closed, isTrue);
   });
 }
