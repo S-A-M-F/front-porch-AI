@@ -2,13 +2,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // RAG retrieve: score stored windows and Data Bank entries against the
-// query. Embed/store stays on MemoryService. Session isolation for
-// sessionScopedCharacterIds stays here (group_rag_identity_test).
+// query. Session isolation for sessionScopedCharacterIds stays here
+// (group_rag_identity_test).
 
-part of 'memory_service.dart';
+import 'package:flutter/foundation.dart';
 
-extension MemoryServiceRetrieve on MemoryService {
-  Future<List<RetrievedMemory>> _retrieveImpl({
+import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/services/embedding_service.dart';
+import 'package:front_porch_ai/services/memory/memory_vectors.dart';
+import 'package:front_porch_ai/services/memory_service.dart';
+
+class MemoryRetriever {
+  MemoryRetriever({
+    required EmbeddingService embeddings,
+    required AppDatabase Function() db,
+    required bool Function() isOperational,
+    required void Function(String? error) reportError,
+  }) : _embeddings = embeddings,
+       _db = db,
+       _isOperational = isOperational,
+       _reportError = reportError;
+
+  final EmbeddingService _embeddings;
+  final AppDatabase Function() _db;
+  final bool Function() _isOperational;
+
+  /// Receives null when a search starts, and the failure text when it fails.
+  final void Function(String? error) _reportError;
+
+  /// See [MemoryService.retrieve].
+  Future<List<RetrievedMemory>> retrieve({
     required String queryText,
     required List<String> sourceCharacterIds,
     required String currentSessionId,
@@ -18,9 +41,9 @@ extension MemoryServiceRetrieve on MemoryService {
     Map<String, double>? characterPriorities,
     required Set<String> sessionScopedCharacterIds,
   }) async {
-    lastRetrieveError = null;
-    await _ensureEmbeddingsReady();
-    if (!isOperational || queryText.trim().isEmpty) {
+    _reportError(null);
+    await ensureEmbeddingsReady(_embeddings);
+    if (!_isOperational() || queryText.trim().isEmpty) {
       debugPrint(
         '[RAG:Memory] retrieve() skipped — not operational or empty query',
       );
@@ -35,7 +58,7 @@ extension MemoryServiceRetrieve on MemoryService {
       return [];
     }
 
-    final cleanedQuery = _cleanForEmbedding(queryText);
+    final cleanedQuery = cleanForEmbedding(queryText);
     final queryPreview = cleanedQuery.length > 100
         ? '${cleanedQuery.substring(0, 100)}...'
         : cleanedQuery;
@@ -49,9 +72,9 @@ extension MemoryServiceRetrieve on MemoryService {
     );
 
     try {
-      final queryVector = await _embeddingService.embed(cleanedQuery);
+      final queryVector = await _embeddings.embed(cleanedQuery);
       if (queryVector == null) {
-        lastRetrieveError = 'query embed failed';
+        _reportError('query embed failed');
         debugPrint(
           '[RAG:Memory] ✗ Query embedding failed — aborting retrieval',
         );
@@ -59,7 +82,7 @@ extension MemoryServiceRetrieve on MemoryService {
       }
       debugPrint('[RAG:Memory] Query vector: ${queryVector.length}d');
 
-      final candidates = await _db.getEmbeddingsForCharacters(
+      final candidates = await _db().getEmbeddingsForCharacters(
         sourceCharacterIds,
         currentSessionId: currentSessionId,
         sessionScopedCharacterIds: sessionScopedCharacterIds,
@@ -68,7 +91,7 @@ extension MemoryServiceRetrieve on MemoryService {
 
       final dataBankCandidates = <DataBankEntry>[];
       for (final charId in sourceCharacterIds) {
-        final entries = await _db.getDataBankEntriesForCharacter(charId);
+        final entries = await _db().getDataBankEntriesForCharacter(charId);
         dataBankCandidates.addAll(
           entries.where((e) => e.embedding != null && e.dimensions > 0),
         );
@@ -114,16 +137,13 @@ extension MemoryServiceRetrieve on MemoryService {
           continue;
         }
 
-        final storedVector = MemoryService.bytesToVector(
+        final storedVector = bytesToVector(
           candidate.embedding,
           candidate.dimensions,
         );
         if (storedVector == null) continue;
 
-        final rawScore = MemoryService.cosineSimilarity(
-          queryVector,
-          storedVector,
-        );
+        final rawScore = cosineSimilarity(queryVector, storedVector);
         final priority = characterPriorities?[candidate.characterId] ?? 1.0;
         final score = rawScore * priority;
 
@@ -144,16 +164,10 @@ extension MemoryServiceRetrieve on MemoryService {
       }
 
       for (final entry in dataBankCandidates) {
-        final storedVector = MemoryService.bytesToVector(
-          entry.embedding!,
-          entry.dimensions,
-        );
+        final storedVector = bytesToVector(entry.embedding!, entry.dimensions);
         if (storedVector == null) continue;
 
-        final rawScore = MemoryService.cosineSimilarity(
-          queryVector,
-          storedVector,
-        );
+        final rawScore = cosineSimilarity(queryVector, storedVector);
         final priority = characterPriorities?[entry.characterId] ?? 1.0;
         final score = rawScore * priority;
 
@@ -198,7 +212,7 @@ extension MemoryServiceRetrieve on MemoryService {
 
       return results;
     } catch (e) {
-      lastRetrieveError = '$e';
+      _reportError('$e');
       debugPrint('[RAG:Memory] ✗ Retrieval failed: $e');
       return [];
     }

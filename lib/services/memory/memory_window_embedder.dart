@@ -1,26 +1,96 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// This file is part of Front Porch AI.
-//
-// Front Porch AI is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Front Porch AI is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
+// Sliding-window embed + insert for RAG memory. Owns the in-flight counters
+// and the per-session lock.
 
-part of 'memory_service.dart';
+import 'dart:async';
 
-/// Window embed insert. Retrieve scoring stays on [MemoryService].
-extension MemoryServiceEmbed on MemoryService {
-  Future<({int stored, bool hasMore, bool aborted})> _embedMessageWindowBody({
+import 'package:drift/drift.dart' as drift;
+import 'package:flutter/foundation.dart';
+
+import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/services/embedding_service.dart';
+import 'package:front_porch_ai/services/memory/memory_vectors.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+
+typedef EmbedPassResult = ({int stored, bool hasMore, bool aborted});
+
+class MemoryWindowEmbedder {
+  MemoryWindowEmbedder({
+    required EmbeddingService embeddings,
+    required StorageService storage,
+    required AppDatabase Function() db,
+    required bool Function() isOperational,
+    required void Function() onChanged,
+  }) : _embeddings = embeddings,
+       _storage = storage,
+       _db = db,
+       _isOperational = isOperational,
+       _onChanged = onChanged;
+
+  final EmbeddingService _embeddings;
+  final StorageService _storage;
+  final AppDatabase Function() _db;
+  final bool Function() _isOperational;
+  final void Function() _onChanged;
+
+  bool _isEmbedding = false;
+  int _pendingEmbeddings = 0;
+
+  /// Per-session chain so import backfill and live post-gen embed cannot both
+  /// discover the same missing window and insert duplicate rows (no unique
+  /// key on position ranges).
+  final Map<String, Future<void>> _embedChains = {};
+
+  bool get isEmbedding => _isEmbedding;
+  int get pendingEmbeddings => _pendingEmbeddings;
+
+  /// See [MemoryService.embedMessageWindow].
+  Future<EmbedPassResult> embed({
+    required String sessionId,
+    required String characterId,
+    required List<String> formattedMessages,
+    required int totalMessageCount,
+    int positionOffset = 0,
+    int? maxWindows,
+    bool Function()? shouldContinue,
+  }) {
+    // Serialize discover+insert per session so import backfill and live
+    // post-gen cannot double-insert the same range (no unique DB key).
+    return _withSessionEmbedLock(
+      sessionId,
+      () => _embedBody(
+        sessionId: sessionId,
+        characterId: characterId,
+        formattedMessages: formattedMessages,
+        totalMessageCount: totalMessageCount,
+        positionOffset: positionOffset,
+        maxWindows: maxWindows,
+        shouldContinue: shouldContinue,
+      ),
+    );
+  }
+
+  Future<T> _withSessionEmbedLock<T>(
+    String sessionId,
+    Future<T> Function() body,
+  ) async {
+    final prev = _embedChains[sessionId] ?? Future<void>.value();
+    final gate = Completer<void>();
+    _embedChains[sessionId] = gate.future;
+    await prev;
+    try {
+      return await body();
+    } finally {
+      gate.complete();
+      if (identical(_embedChains[sessionId], gate.future)) {
+        _embedChains.remove(sessionId);
+      }
+    }
+  }
+
+  Future<EmbedPassResult> _embedBody({
     required String sessionId,
     required String characterId,
     required List<String> formattedMessages,
@@ -29,10 +99,10 @@ extension MemoryServiceEmbed on MemoryService {
     int? maxWindows,
     bool Function()? shouldContinue,
   }) async {
-    await _ensureEmbeddingsReady();
-    if (!isOperational) {
+    await ensureEmbeddingsReady(_embeddings);
+    if (!_isOperational()) {
       debugPrint(
-        '[RAG:Memory] embedMessageWindow skipped — not operational (enabled=${_storageService.memorySettings.ragEnabled}, available=${_embeddingService.isAvailable})',
+        '[RAG:Memory] embedMessageWindow skipped — not operational (enabled=${_storage.memorySettings.ragEnabled}, available=${_embeddings.isAvailable})',
       );
       return (stored: 0, hasMore: false, aborted: false);
     }
@@ -43,16 +113,16 @@ extension MemoryServiceEmbed on MemoryService {
 
     _isEmbedding = true;
     _pendingEmbeddings++;
-    notify();
+    _onChanged();
 
     var stored = 0;
     var aborted = false;
     var hasMore = false;
     try {
-      final windowSize = _storageService.memorySettings.ragWindowSize;
+      final windowSize = _storage.memorySettings.ragWindowSize;
 
       // Ranges only — never load embedding BLOBs for a presence check.
-      final existingRanges = await _db.getEmbeddingRangesForSession(
+      final existingRanges = await _db().getEmbeddingRangesForSession(
         sessionId,
         characterId: characterId,
       );
@@ -82,7 +152,7 @@ extension MemoryServiceEmbed on MemoryService {
         }
 
         final windowText = formattedMessages.sublist(i, end + 1).join('\n');
-        final cleanedText = _cleanForEmbedding(windowText);
+        final cleanedText = cleanForEmbedding(windowText);
         if (cleanedText.isEmpty) continue; // Skip if only think blocks
         newWindows.add((
           start: persistStart,
@@ -141,7 +211,7 @@ extension MemoryServiceEmbed on MemoryService {
         debugPrint(
           '[RAG:Memory]   Window [${window.start}-${window.end}] (${window.text.length} chars)...',
         );
-        final vector = await _embeddingService.embed(window.text);
+        final vector = await _embeddings.embed(window.text);
         if (vector == null) {
           debugPrint(
             '[RAG:Memory]   ✗ Embedding returned null for window [${window.start}-${window.end}]',
@@ -155,7 +225,7 @@ extension MemoryServiceEmbed on MemoryService {
           vector.map((e) => e.toDouble()).toList(),
         );
 
-        await _db.insertEmbedding(
+        await _db().insertEmbedding(
           MessageEmbeddingsCompanion(
             sessionId: drift.Value(sessionId),
             characterId: drift.Value(characterId),
@@ -187,7 +257,7 @@ extension MemoryServiceEmbed on MemoryService {
     } finally {
       _pendingEmbeddings--;
       _isEmbedding = _pendingEmbeddings > 0;
-      notify();
+      _onChanged();
     }
     return (stored: stored, hasMore: hasMore, aborted: aborted);
   }

@@ -1,32 +1,55 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// This file is part of Front Porch AI.
-//
-// Front Porch AI is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Front Porch AI is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
+// One-shot purge of legacy character-linked world clones.
 
-part of 'world_repository.dart';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/models/world.dart' as model;
+import 'package:front_porch_ai/services/character_repository.dart';
+import 'package:front_porch_ai/services/group_chat_repository.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/utils/utils.dart';
 
 const _purgePrefKey = 'purged_character_linked_worlds_v1';
+const _recoveryDirName = 'recovered_character_lore_clones';
 
-/// One-shot character-linked clone purge. CRUD stays on [WorldRepository].
-extension WorldRepositoryPurge on WorldRepository {
-  Future<void> _maybePurgeCharacterLinkedWorlds() async {
+class CharacterLinkedWorldPurge {
+  CharacterLinkedWorldPurge({
+    required WorldRepository repo,
+    required AppDatabase Function() db,
+    required StorageService storage,
+    required CharacterRepository? Function() characters,
+    required GroupChatRepository? Function() groups,
+    required void Function(Set<String> ids) dropFromCache,
+  }) : _repo = repo,
+       _db = db,
+       _storage = storage,
+       _characters = characters,
+       _groups = groups,
+       _dropFromCache = dropFromCache;
+
+  final WorldRepository _repo;
+  final AppDatabase Function() _db;
+  final StorageService _storage;
+  final CharacterRepository? Function() _characters;
+  final GroupChatRepository? Function() _groups;
+  final void Function(Set<String> ids) _dropFromCache;
+
+  String get _recoveryPath => p.join(_storage.worldsDir.path, _recoveryDirName);
+
+  /// Runs [WorldRepository.purgeCharacterLinkedWorlds] once per library.
+  Future<void> maybePurge() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(_purgePrefKey) == true) return;
-      final result = await purgeCharacterLinkedWorlds();
+      final result = await _repo.purgeCharacterLinkedWorlds();
       // Only mark the one-shot done when every clone was exported+deleted —
       // a skipped world (failed recovery export) must be retried next launch,
       // not stranded forever behind the pref.
@@ -40,14 +63,10 @@ extension WorldRepositoryPurge on WorldRepository {
       }
       final n = result.deleted;
       if (n > 0) {
-        final recovery = p.join(
-          _storageService.worldsDir.path,
-          'recovered_character_lore_clones',
-        );
         debugPrint(
           '[Worlds] Purged $n character-linked lore clones '
           '(character card lore untouched; any edits that lived only on the '
-          'world were saved as .fpworld under $recovery)',
+          'world were saved as .fpworld under $_recoveryPath)',
         );
       }
     } catch (e) {
@@ -65,14 +84,11 @@ extension WorldRepositoryPurge on WorldRepository {
   /// export FAILS is not deleted — it stays in place and the caller retries
   /// on a later launch. Returns how many worlds were deleted and how many
   /// were skipped that way.
-  Future<({int deleted, int skipped})> _purgeCharacterLinkedWorldsImpl() async {
-    final doomed = _worlds.where(isCharacterLinkedWorld).toList();
+  Future<({int deleted, int skipped})> purge() async {
+    final doomed = _repo.worlds.where(isCharacterLinkedWorld).toList();
     if (doomed.isEmpty) return (deleted: 0, skipped: 0);
 
-    // Lossless edge case: export before hard delete (Claude review 2026-07-28).
-    final recoveryDir = Directory(
-      p.join(_storageService.worldsDir.path, 'recovered_character_lore_clones'),
-    );
+    final recoveryDir = Directory(_recoveryPath);
     try {
       await recoveryDir.create(recursive: true);
     } catch (e) {
@@ -88,7 +104,7 @@ extension WorldRepositoryPurge on WorldRepository {
         final safe = _safeFileStem(w.name);
         final idShort = w.id.length >= 8 ? w.id.substring(0, 8) : w.id;
         final out = p.join(recoveryDir.path, '${safe}_$idShort.fpworld');
-        await exportFpWorld(w, out);
+        await _repo.exportFpWorld(w, out);
       } catch (e) {
         debugPrint(
           '[Worlds] recovery export failed for "${w.name}" (${w.id}) — '
@@ -109,22 +125,42 @@ extension WorldRepositoryPurge on WorldRepository {
     final ids = {for (final w in exportedWorlds) w.id};
     final names = {for (final w in exportedWorlds) w.name};
 
-    // Strip refs BEFORE deleting rows (Grok review): if the strip throws,
-    // nothing has been deleted yet, so the next launch re-dooms the same
-    // worlds and retries the whole purge. Strip-after-delete had a pref-lock
-    // hole — a partial run deleted worlds, the next launch saw no doomed
-    // rows, reported clean, and locked the one-shot pref with dangling
-    // character/group refs never stripped.
-    await _db.stripWorldRefsFromCharactersAndGroups(ids: ids, names: names);
+    // Strip refs BEFORE deleting rows: if the strip throws, nothing has been
+    // deleted yet, so the next launch re-dooms the same worlds and retries
+    // the whole purge. Strip-after-delete let a partial run lock the
+    // one-shot pref with dangling character/group refs never stripped.
+    await _db().stripWorldRefsFromCharactersAndGroups(ids: ids, names: names);
+    await _stripInMemoryRefs(ids, names);
 
-    // Keep in-memory character/group lists in sync without a full app restart.
-    final charRepo = _characterRepository;
+    // Delete only now that refs are gone. A failed delete leaves an
+    // unreferenced clone row that the next launch re-dooms and retries.
+    var deleted = 0;
+    for (final w in exportedWorlds) {
+      await _db().deleteChatWorldLinksForWorld(w.id);
+      await _db().deleteWorldById(w.id);
+      deleted++;
+    }
+    _dropFromCache(ids);
+    debugPrint(
+      '[Worlds] purged $deleted/${doomed.length} clones '
+      '($skipped kept on failed export) → ${recoveryDir.path}',
+    );
+
+    _repo.notify();
+    return (deleted: deleted, skipped: skipped);
+  }
+
+  /// Keep in-memory character/group lists in sync without a full restart.
+  Future<void> _stripInMemoryRefs(Set<String> ids, Set<String> names) async {
+    bool keep(String ref) => !ids.contains(ref) && !names.contains(ref);
+
+    final charRepo = _characters();
     if (charRepo != null) {
       for (final c in charRepo.characters) {
         final before = c.worldNames.length;
         c.worldNames = [
           for (final ref in c.worldNames)
-            if (!ids.contains(ref) && !names.contains(ref)) ref,
+            if (keep(ref)) ref,
         ];
         if (c.worldNames.length != before) {
           try {
@@ -135,13 +171,13 @@ extension WorldRepositoryPurge on WorldRepository {
         }
       }
     }
-    final groupRepo = _groupRepository;
+    final groupRepo = _groups();
     if (groupRepo != null) {
       for (final g in List.of(groupRepo.groups)) {
         final before = g.worldIds.length;
         g.worldIds = [
           for (final ref in g.worldIds)
-            if (!ids.contains(ref) && !names.contains(ref)) ref,
+            if (keep(ref)) ref,
         ];
         if (g.worldIds.length != before) {
           try {
@@ -152,23 +188,6 @@ extension WorldRepositoryPurge on WorldRepository {
         }
       }
     }
-
-    // Delete only now that refs are gone. A failed delete leaves an
-    // unreferenced clone row that the next launch re-dooms and retries.
-    var deleted = 0;
-    for (final w in exportedWorlds) {
-      await _db.deleteChatWorldLinksForWorld(w.id);
-      await _db.deleteWorldById(w.id);
-      deleted++;
-    }
-    _worlds.removeWhere((w) => ids.contains(w.id));
-    debugPrint(
-      '[Worlds] purged $deleted/${doomed.length} clones '
-      '($skipped kept on failed export) → ${recoveryDir.path}',
-    );
-
-    notify();
-    return (deleted: deleted, skipped: skipped);
   }
 
   /// Filesystem-safe stem for recovery exports (no path separators).

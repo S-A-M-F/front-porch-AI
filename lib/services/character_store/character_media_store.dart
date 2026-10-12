@@ -1,62 +1,63 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// This file is part of Front Porch AI.
-//
-// Front Porch AI is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Front Porch AI is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
+// Avatar-gallery media for the character library: expression and look rows,
+// their files under Characters/<safeName>/{avatars,looks}/, and the
+// media-folder move a rename needs.
 
-part of 'character_repository.dart';
+import 'dart:io';
 
-/// Character-name → on-disk media folder name (same rule used everywhere an
-/// avatar/look path is built). Centralized so the rename move can't drift
-/// from the write/read/delete sites.
-String _mediaFolderName(String characterName) =>
-    characterName.replaceAll(RegExp(r'[^\w\s\-]'), '').replaceAll(' ', '_');
+import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
-/// Avatar-gallery media: the expression/look CRUD, the media-folder rename
-/// move, and the portrait-promotion delete. Extracted verbatim from
-/// `character_repository.dart` (zero behaviour change) to shrink the god
-/// file — see the split map for that file. As `part of` the same library,
-/// these reach the private DB/storage/list state — and `getCharacterCardById`
-/// / `updateCharacter` in the sibling parts — exactly as the in-class
-/// methods did.
-extension CharacterRepositoryMedia on CharacterRepository {
-  /// Get all avatar images for a character from the database.
-  Future<List<AvatarImage>> getAvatarImages(String characterId) async {
+import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/character_store/character_row_codec.dart';
+import 'package:front_porch_ai/services/portrait_promotion.dart';
+import 'package:front_porch_ai/services/storage_service.dart';
+
+class CharacterMediaStore {
+  CharacterMediaStore({
+    required AppDatabase Function() db,
+    required StorageService storage,
+    required List<CharacterCard> Function() characters,
+    required Future<CharacterCard?> Function(String id) cardById,
+    required Future<void> Function(CharacterCard card) saveCardSilently,
+  }) : _db = db,
+       _storage = storage,
+       _characters = characters,
+       _cardById = cardById,
+       _saveCardSilently = saveCardSilently;
+
+  final AppDatabase Function() _db;
+  final StorageService _storage;
+  final List<CharacterCard> Function() _characters;
+  final Future<CharacterCard?> Function(String id) _cardById;
+
+  /// Persists a card without a change broadcast (portrait bootstrap).
+  final Future<void> Function(CharacterCard card) _saveCardSilently;
+
+  Directory _mediaDir(String characterName, String sub) => Directory(
+    p.join(_storage.charactersDir.path, mediaFolderName(characterName), sub),
+  );
+
+  /// All avatar images for a character from the database.
+  Future<List<AvatarImage>> avatarImages(String characterId) async {
     try {
-      final driftAvatars = await _db.getAvatarImagesByCharacterId(characterId);
-      return driftAvatars
-          .map(
-            (a) => AvatarImage(
-              id: a.id,
-              characterId: a.characterId,
-              filename: a.filename,
-              label: a.label,
-              displayOrder: a.displayOrder,
-              createdAt: a.createdAt,
-            ),
-          )
-          .toList();
+      final driftAvatars = await _db().getAvatarImagesByCharacterId(
+        characterId,
+      );
+      return driftAvatars.map(avatarFromRow).toList();
     } catch (e) {
       debugPrint('[CharacterRepository] Failed to get avatar images: $e');
       return [];
     }
   }
 
-  /// Add a new avatar image for a character.
   /// Add a labeled expression avatar (goes to `avatars/`). Returns the new
-  /// avatar id so callers can roll back a partial batch on failure.
+  /// avatar id.
   Future<String> addAvatar(
     String characterId,
     String characterName,
@@ -67,12 +68,7 @@ extension CharacterRepositoryMedia on CharacterRepository {
       debugPrint(
         '[CharacterRepository] addAvatar: started, characterId=$characterId, label=$label',
       );
-      final safeName = characterName
-          .replaceAll(RegExp(r'[^\w\s\-]'), '')
-          .replaceAll(' ', '_');
-      final avatarDir = Directory(
-        p.join(_storage.charactersDir.path, safeName, 'avatars'),
-      );
+      final avatarDir = _mediaDir(characterName, 'avatars');
       if (!await avatarDir.exists()) {
         await avatarDir.create(recursive: true);
       }
@@ -82,12 +78,12 @@ extension CharacterRepositoryMedia on CharacterRepository {
       await File(filePath).writeAsBytes(imageBytes);
       debugPrint('[CharacterRepository] addAvatar: file written');
 
-      final displayOrder = await _db.countAvatarsForCharacter(characterId);
+      final displayOrder = await _db().countAvatarsForCharacter(characterId);
       final avatarId = const Uuid().v4();
       debugPrint(
         '[CharacterRepository] addAvatar: inserting DB record, filename=$filename, displayOrder=$displayOrder',
       );
-      await _db.insertAvatar(
+      await _db().insertAvatar(
         AvatarImagesCompanion(
           id: Value(avatarId),
           characterId: Value(characterId),
@@ -109,8 +105,7 @@ extension CharacterRepositoryMedia on CharacterRepository {
   /// `looks/` folder and tagged [AvatarImage.lookLabel] so it stays out of the
   /// emotion pipeline. Returns the new avatar id, or `''` when the bytes were
   /// applied as the **portrait only** (no gallery look row) because the card
-  /// had no face or only a solid-color placeholder. Selecting a look (per chat)
-  /// remains the caller's job when a real look id is returned.
+  /// had no face or only a solid-color placeholder.
   Future<String> addLook(
     String characterId,
     String characterName,
@@ -120,7 +115,7 @@ extension CharacterRepositoryMedia on CharacterRepository {
     // alone. Writing a look *and* overwriting the portrait produced a dupe
     // (same face twice in the gallery) and left home stuck on the placeholder
     // until a ★ click forced a different cover path.
-    final card = await getCharacterCardById(characterId);
+    final card = await _cardById(characterId);
     if (card != null) {
       final needsPortrait =
           !hasUsablePortrait(card, _storage) ||
@@ -130,27 +125,29 @@ extension CharacterRepositoryMedia on CharacterRepository {
           card: card,
           storage: _storage,
           bytes: imageBytes,
-          updateCharacter: (c) => updateCharacter(c, notify: false),
+          updateCharacter: _saveCardSilently,
         );
         if (wrote) return '';
       }
     }
+    return _writeLook(characterId, characterName, imageBytes);
+  }
 
-    final safeName = characterName
-        .replaceAll(RegExp(r'[^\w\s\-]'), '')
-        .replaceAll(' ', '_');
-    final looksDir = Directory(
-      p.join(_storage.charactersDir.path, safeName, 'looks'),
-    );
+  Future<String> _writeLook(
+    String characterId,
+    String characterName,
+    Uint8List imageBytes,
+  ) async {
+    final looksDir = _mediaDir(characterName, 'looks');
     if (!await looksDir.exists()) {
       await looksDir.create(recursive: true);
     }
     final filename = 'look_${DateTime.now().millisecondsSinceEpoch}.png';
     await File(p.join(looksDir.path, filename)).writeAsBytes(imageBytes);
 
-    final displayOrder = await _db.countAvatarsForCharacter(characterId);
+    final displayOrder = await _db().countAvatarsForCharacter(characterId);
     final avatarId = const Uuid().v4();
-    await _db.insertAvatar(
+    await _db().insertAvatar(
       AvatarImagesCompanion(
         id: Value(avatarId),
         characterId: Value(characterId),
@@ -160,6 +157,52 @@ extension CharacterRepositoryMedia on CharacterRepository {
       ),
     );
     return avatarId;
+  }
+
+  /// Remove an avatar row and its file.
+  Future<void> removeAvatar(String characterId, String avatarId) async {
+    try {
+      final avatar = await _db().getAvatarById(avatarId);
+      if (avatar != null) {
+        final char = _characters()
+            .where((c) => c.dbId == characterId)
+            .firstOrNull;
+        if (char != null && char.name.isNotEmpty) {
+          // Looks live in `looks/`, expressions in `avatars/` — pick the right
+          // folder off the row's own label (single-sourced via
+          // AvatarImage.subfolder) so deleting a look doesn't orphan its PNG.
+          final model = avatarFromRow(avatar);
+          final file = File(
+            p.join(_mediaDir(char.name, model.subfolder).path, avatar.filename),
+          );
+          if (await file.exists()) {
+            await file.delete();
+          }
+        }
+      }
+      await _db().deleteAvatar(avatarId);
+    } catch (e) {
+      debugPrint('[CharacterRepository] Failed to remove avatar: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> setPrimeAvatar(String characterId, int primeIndex) async {
+    try {
+      await _db().updatePrimeAvatarIndex(characterId, primeIndex);
+    } catch (e) {
+      debugPrint('[CharacterRepository] Failed to set prime avatar: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateAvatarLabel(String avatarId, String label) async {
+    try {
+      await _db().updateAvatarLabel(avatarId, label);
+    } catch (e) {
+      debugPrint('[CharacterRepository] Failed to update avatar label: $e');
+      rethrow;
+    }
   }
 
   /// Move a character's avatar-gallery media folder when a rename changes its
@@ -173,9 +216,9 @@ extension CharacterRepositoryMedia on CharacterRepository {
   /// this method itself just moved (and then empty dirs) — it never runs a
   /// blanket recursive delete, so an un-merged file can't be destroyed.
   /// No-op when the safe name is unchanged or the source is absent.
-  Future<void> _moveCharacterMediaFolder(String oldName, String newName) async {
-    final oldSafe = _mediaFolderName(oldName);
-    final newSafe = _mediaFolderName(newName);
+  Future<void> moveMediaFolder(String oldName, String newName) async {
+    final oldSafe = mediaFolderName(oldName);
+    final newSafe = mediaFolderName(newName);
     if (oldSafe.isEmpty || newSafe.isEmpty || oldSafe == newSafe) return;
 
     final base = _storage.charactersDir.path;
@@ -235,85 +278,28 @@ extension CharacterRepositoryMedia on CharacterRepository {
     }
   }
 
-  /// Delete gallery looks (`isLook`) for [characterId]. Expression avatars stay.
-  Future<void> clearGalleryLooks(String characterId) async {
-    for (final img in await getAvatarImages(characterId)) {
-      if (img.isLook) await removeAvatar(characterId, img.id);
-    }
-  }
-
-  /// Remove an avatar image for a character.
-  Future<void> removeAvatar(String characterId, String avatarId) async {
+  /// Delete the whole media folder of [character] unless another library
+  /// character maps to the same safe name. Best-effort; logs on failure.
+  Future<void> deleteMediaFolder(CharacterCard character) async {
     try {
-      final avatar = await _db.getAvatarById(avatarId);
-      if (avatar != null) {
-        final char = _characters
-            .where((c) => c.dbId == characterId)
-            .firstOrNull;
-        if (char != null && char.name.isNotEmpty) {
-          final safeName = char.name
-              .replaceAll(RegExp(r'[^\w\s\-]'), '')
-              .replaceAll(' ', '_');
-          // Looks live in `looks/`, expressions in `avatars/` — pick the right
-          // folder off the row's own label (single-sourced via
-          // AvatarImage.subfolder) so deleting a look doesn't orphan its PNG.
-          final model = AvatarImage(
-            id: avatar.id,
-            characterId: avatar.characterId,
-            filename: avatar.filename,
-            label: avatar.label,
-            displayOrder: avatar.displayOrder,
-            createdAt: avatar.createdAt,
-          );
-          final file = File(
-            p.join(
-              _storage.charactersDir.path,
-              safeName,
-              model.subfolder,
-              avatar.filename,
-            ),
-          );
-          if (await file.exists()) {
-            await file.delete();
-          }
+      final safeName = mediaFolderName(character.name);
+      // Only delete when NO other character shares this folder — sanitized
+      // names collide ("A!" and "A" → same folder), and nuking a shared folder
+      // would take another character's gallery with it. When ambiguous, leave
+      // it (a small disk leak) rather than risk cross-character data loss.
+      final shared = _characters().any(
+        (c) => c.dbId != character.dbId && mediaFolderName(c.name) == safeName,
+      );
+      if (safeName.isNotEmpty && !shared) {
+        final mediaDir = Directory(
+          p.join(_storage.charactersDir.path, safeName),
+        );
+        if (await mediaDir.exists()) {
+          await mediaDir.delete(recursive: true);
         }
       }
-      await _db.deleteAvatar(avatarId);
     } catch (e) {
-      debugPrint('[CharacterRepository] Failed to remove avatar: $e');
-      rethrow;
+      debugPrint('[CharacterRepository] delete media folder failed: $e');
     }
   }
-
-  /// Set the prime avatar index for a character.
-  Future<void> setPrimeAvatar(String characterId, int primeIndex) async {
-    try {
-      await _db.updatePrimeAvatarIndex(characterId, primeIndex);
-    } catch (e) {
-      debugPrint('[CharacterRepository] Failed to set prime avatar: $e');
-      rethrow;
-    }
-  }
-
-  /// Update the label for an avatar image.
-  Future<void> updateAvatarLabel(String avatarId, String label) async {
-    try {
-      await _db.updateAvatarLabel(avatarId, label);
-    } catch (e) {
-      debugPrint('[CharacterRepository] Failed to update avatar label: $e');
-      rethrow;
-    }
-  }
-
-  /// Deletes the canonical portrait; a gallery look is promoted in its place.
-  /// Returns the promoted look's id (callers clean their own cascades). Logic
-  /// lives in the portrait_promotion leaf — this file is over the size cap.
-  Future<String> deletePortraitPromotingLook(CharacterCard card) =>
-      promoteLookOverPortrait(
-        card: card,
-        storage: _storage,
-        updateCharacter: updateCharacter,
-        removeAvatar: removeAvatar,
-        addLook: addLook,
-      );
 }
