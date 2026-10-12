@@ -317,14 +317,14 @@ class _StudioDeskState extends State<StudioDesk> implements StudioDeskHost {
               : null,
           comfyOwnShift: ready?.ownShift ?? kEditRecommendedShift,
         ),
-        readyLine: studioReadyLine(
-          ready: enabled,
-          checking: report == null,
-          blockedLora: ready?.kind == StudioReady.loraMismatch ? primary : null,
-          missing: ready?.kind == StudioReady.missingFile
-              ? studioMissingEncoderLine(primary: primary, rows: support.rows)
-              : '',
-        ),
+        readyLine: ready == null
+            ? 'Checking…'
+            : studioNotReadyLine(
+                readiness: ready,
+                backendName: studioBackendName(backend),
+                primaryFile: primary,
+                loaderNoteShown: true,
+              ),
         generateEnabled: enabled,
         onGenerate: widget.onGenerate,
         showGenerate: widget.showGenerate,

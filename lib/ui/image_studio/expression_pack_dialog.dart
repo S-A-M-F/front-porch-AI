@@ -238,7 +238,8 @@ class ExpressionPackDialogState extends State<ExpressionPackDialog> {
   Future<void> _resume(ExpressionPackSession session) async {
     if (widget.imageGen.isGenerating || _imported) return;
     setState(() => _cancelRequested = false);
-    final names = await widget.imageGen.startExpressionPack(
+    final names = await ImageGenService.startExpressionPackOn(
+      widget.imageGen,
       [
         for (final slot in session.slots)
           if (slot.state == ExpressionSlotState.pending) slot.emotion,
