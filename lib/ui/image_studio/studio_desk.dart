@@ -315,14 +315,13 @@ class _StudioDeskState extends State<StudioDesk> {
               : null,
           comfyOwnShift: ready?.ownShift ?? kEditRecommendedShift,
         ),
-        readyLine: studioReadyLine(
-          ready: enabled,
-          checking: report == null,
-          blockedLora: ready?.kind == StudioReady.loraMismatch ? primary : null,
-          missing: ready?.kind == StudioReady.missingFile
-              ? studioMissingEncoderLine(primary: primary, rows: support.rows)
-              : '',
-        ),
+        readyLine: ready == null
+            ? 'Checking…'
+            : studioNotReadyLine(
+                readiness: ready,
+                backendName: studioBackendName(backend),
+                primaryFile: primary,
+              ),
         generateEnabled: enabled,
         onGenerate: widget.onGenerate,
         showGenerate: widget.showGenerate,

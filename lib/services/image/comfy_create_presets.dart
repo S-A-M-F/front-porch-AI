@@ -322,6 +322,26 @@ bool comfyCreateReady({
   String checkpointFallback = '',
   Map<String, dynamic>? liveTemplate,
   Map<String, dynamic>? objectInfo,
+}) =>
+    comfyCreateUnfilled(
+      workflowId: workflowId,
+      uploadedWorkflowJson: uploadedWorkflowJson,
+      modelChoices: modelChoices,
+      checkpointFallback: checkpointFallback,
+      liveTemplate: liveTemplate,
+      objectInfo: objectInfo,
+    )?.isEmpty ??
+    false;
+
+/// The placeholders a Create run would leave unfilled; empty when it can run.
+/// Null when the graph itself cannot be loaded or read.
+Set<String>? comfyCreateUnfilled({
+  required String workflowId,
+  required String uploadedWorkflowJson,
+  required Map<String, String> modelChoices,
+  String checkpointFallback = '',
+  Map<String, dynamic>? liveTemplate,
+  Map<String, dynamic>? objectInfo,
 }) {
   final req = resolveComfyCreateRequest(
     workflowId: workflowId,
@@ -340,14 +360,14 @@ bool comfyCreateReady({
     liveTemplate: liveTemplate,
     objectInfo: objectInfo,
   );
-  if (req == null) return false;
+  if (req == null) return null;
   if (workflowId == kComfyUploadedWorkflowId) {
     final tokens = detectComfyTokens(req.template);
     if (!tokens.contains(ComfyEditTokens.prompt) &&
         !ComfyEditTokens.createRequired.every(tokens.contains)) {
       // Adapter always writes %PROMPT% when a text node exists.
       if (!req.template.toString().contains(ComfyEditTokens.prompt)) {
-        return false;
+        return {ComfyEditTokens.prompt};
       }
     }
   }
@@ -355,5 +375,5 @@ bool comfyCreateReady({
     ...req.values,
     ComfyEditTokens.image: 'x',
   });
-  return unresolvedComfyTokens(graph).isEmpty;
+  return unresolvedComfyTokens(graph);
 }
