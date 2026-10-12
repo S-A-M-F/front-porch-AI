@@ -16,130 +16,131 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'system_role_probe.dart';
+import 'dart:convert';
 
-extension _SystemRoleProbeMeasure on SystemRoleProbe {
-  /// One three-arm measurement: true = honored, false = dropped, null =
-  /// inconclusive (and therefore retryable). Owns every log line that quotes
-  /// the numbers, because it is the only place that has them.
-  Future<bool?> _measure(
-    String identity,
-    int attempt,
-    Future<int?> Function(String system, String user) arm,
-  ) async {
-    try {
-      // Short-circuit on the first arm that can't answer: a server that
-      // failed once won't answer the rest either, and a probe that cannot
-      // conclude must not spend three times the traffic proving it (nor hold
-      // the engine slot through three timeouts).
-      final baseline = await arm(kSystemRoleProbeMarker, _kProbePing);
-      final inSystem = baseline == null || baseline <= 0
-          ? null
-          : await arm(
-              '$kSystemRoleProbeMarker\n$kSystemRoleProbeFiller',
-              _kProbePing,
-            );
-      final inUser = inSystem == null
-          ? null
-          : await arm(
-              kSystemRoleProbeMarker,
-              '$kSystemRoleProbeFiller\n\n$_kProbePing',
-            );
-      if (baseline == null || inSystem == null || inUser == null) {
-        debugPrint(
-          '[SystemRole] Probe inconclusive on $identity — assuming the '
-          'system message works (attempt $attempt)',
-        );
-        return null;
-      }
-      final sysCost = inSystem - baseline;
-      final refCost = inUser - baseline;
-      if (refCost < kSystemRoleProbeMinRefTokens) {
-        // The calibration arm did not move: this server's prompt_tokens are
-        // not a real measurement (constant, rounded to a block, or padded to
-        // a fixed size). Never guess a verdict from numbers that don't track
-        // the payload.
-        debugPrint(
-          '[SystemRole] $identity reports unusable prompt_tokens '
-          '(baseline $baseline, filler in user cost $refCost) — leaving it '
-          'untested (attempt $attempt)',
-        );
-        return null;
-      }
-      final delivered = sysCost / refCost;
-      if (delivered <= kSystemRoleDroppedRatio) {
-        debugPrint(
-          '[SystemRole] $identity DROPS the system message — the same filler '
-          'cost $sysCost tokens in the system role vs $refCost in the user '
-          'role (${(delivered * 100).round()}% delivered). Folding it into '
-          'the user message so the character card still reaches the model',
-        );
-        return false;
-      }
-      if (delivered >= kSystemRoleHonoredRatio) {
-        debugPrint(
-          '[SystemRole] $identity delivers the system message '
-          '($sysCost vs $refCost prompt tokens for the same filler)',
-        );
-        return true;
-      }
-      // Partial delivery we can't confidently name. Fail open rather than
-      // fold a card into the user turn on a backend that mostly works.
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+/// One three-arm measurement: true = honored, false = dropped, null =
+/// inconclusive (and therefore retryable). Owns every log line that quotes
+/// the numbers, because it is the only place that has them.
+Future<bool?> measureSystemRole(
+  String identity,
+  int attempt,
+  Future<int?> Function(String system, String user) arm,
+) async {
+  try {
+    // Short-circuit on the first arm that can't answer: a server that
+    // failed once won't answer the rest either, and a probe that cannot
+    // conclude must not spend three times the traffic proving it (nor hold
+    // the engine slot through three timeouts).
+    final baseline = await arm(kSystemRoleProbeMarker, _kProbePing);
+    final inSystem = baseline == null || baseline <= 0
+        ? null
+        : await arm(
+            '$kSystemRoleProbeMarker\n$kSystemRoleProbeFiller',
+            _kProbePing,
+          );
+    final inUser = inSystem == null
+        ? null
+        : await arm(
+            kSystemRoleProbeMarker,
+            '$kSystemRoleProbeFiller\n\n$_kProbePing',
+          );
+    if (baseline == null || inSystem == null || inUser == null) {
       debugPrint(
-        '[SystemRole] $identity delivered only '
-        '${(delivered * 100).round()}% of the system filler — ambiguous, '
-        'leaving it untested (attempt $attempt)',
+        '[SystemRole] Probe inconclusive on $identity — assuming the '
+        'system message works (attempt $attempt)',
       );
       return null;
-    } catch (e) {
-      // Fail open: an unreachable/annoyed server says nothing about the
-      // template. The attempt is already counted, so this cannot spin.
-      debugPrint('[SystemRole] Probe failed on $identity: $e');
+    }
+    final sysCost = inSystem - baseline;
+    final refCost = inUser - baseline;
+    if (refCost < kSystemRoleProbeMinRefTokens) {
+      // The calibration arm did not move: this server's prompt_tokens are
+      // not a real measurement (constant, rounded to a block, or padded to
+      // a fixed size). Never guess a verdict from numbers that don't track
+      // the payload.
+      debugPrint(
+        '[SystemRole] $identity reports unusable prompt_tokens '
+        '(baseline $baseline, filler in user cost $refCost) — leaving it '
+        'untested (attempt $attempt)',
+      );
       return null;
     }
-  }
-
-  /// One `max_tokens: 1` completion; returns the server-reported prompt token
-  /// count, or null when the server did not report one.
-  ///
-  /// The client is parked on [run] for the duration so [reset] can close it —
-  /// see [reset] for why waiting out the timeout instead is not an option.
-  Future<int?> _promptTokens(
-    String baseUrl,
-    _ProbeRun run,
-    String system,
-    String user,
-  ) async {
-    if (run.cancelled) return null;
-    final client = http.Client();
-    run.client = client;
-    try {
-      final response = await client
-          .post(
-            Uri.parse('$baseUrl/v1/chat/completions'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'model': 'koboldcpp',
-              'stream': false,
-              'max_tokens': 1,
-              'temperature': 0.1,
-              'messages': [
-                {'role': 'system', 'content': system},
-                {'role': 'user', 'content': user},
-              ],
-            }),
-          )
-          .timeout(kSystemRoleProbeTimeout);
-      if (response.statusCode != 200) return null;
-      final json = jsonDecode(response.body);
-      if (json is! Map) return null;
-      final usage = json['usage'];
-      if (usage is! Map) return null;
-      return (usage['prompt_tokens'] as num?)?.toInt();
-    } finally {
-      if (identical(run.client, client)) run.client = null;
-      client.close();
+    final delivered = sysCost / refCost;
+    if (delivered <= kSystemRoleDroppedRatio) {
+      debugPrint(
+        '[SystemRole] $identity DROPS the system message — the same filler '
+        'cost $sysCost tokens in the system role vs $refCost in the user '
+        'role (${(delivered * 100).round()}% delivered). Folding it into '
+        'the user message so the character card still reaches the model',
+      );
+      return false;
     }
+    if (delivered >= kSystemRoleHonoredRatio) {
+      debugPrint(
+        '[SystemRole] $identity delivers the system message '
+        '($sysCost vs $refCost prompt tokens for the same filler)',
+      );
+      return true;
+    }
+    // Partial delivery we can't confidently name. Fail open rather than
+    // fold a card into the user turn on a backend that mostly works.
+    debugPrint(
+      '[SystemRole] $identity delivered only '
+      '${(delivered * 100).round()}% of the system filler — ambiguous, '
+      'leaving it untested (attempt $attempt)',
+    );
+    return null;
+  } catch (e) {
+    // Fail open: an unreachable/annoyed server says nothing about the
+    // template. The attempt is already counted, so this cannot spin.
+    debugPrint('[SystemRole] Probe failed on $identity: $e');
+    return null;
+  }
+}
+
+/// One `max_tokens: 1` completion; returns the server-reported prompt token
+/// count, or null when the server did not report one.
+///
+/// The client is parked on [run] for the duration so [reset] can close it —
+/// see [SystemRoleProbe.reset] for why waiting out the timeout instead is not an option.
+Future<int?> systemRoleProbePromptTokens(
+  String baseUrl,
+  SystemRoleProbeRun run,
+  String system,
+  String user,
+) async {
+  if (run.cancelled) return null;
+  final client = http.Client();
+  run.client = client;
+  try {
+    final response = await client
+        .post(
+          Uri.parse('$baseUrl/v1/chat/completions'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'model': 'koboldcpp',
+            'stream': false,
+            'max_tokens': 1,
+            'temperature': 0.1,
+            'messages': [
+              {'role': 'system', 'content': system},
+              {'role': 'user', 'content': user},
+            ],
+          }),
+        )
+        .timeout(kSystemRoleProbeTimeout);
+    if (response.statusCode != 200) return null;
+    final json = jsonDecode(response.body);
+    if (json is! Map) return null;
+    final usage = json['usage'];
+    if (usage is! Map) return null;
+    return (usage['prompt_tokens'] as num?)?.toInt();
+  } finally {
+    if (identical(run.client, client)) run.client = null;
+    client.close();
   }
 }
 
@@ -148,7 +149,7 @@ extension _SystemRoleProbeMeasure on SystemRoleProbe {
 /// that is already on the wire without also disowning the fresh chain that
 /// replaced it — the two are otherwise indistinguishable, since they share a
 /// key, a base URL and a verdict slot.
-class _ProbeRun {
+class SystemRoleProbeRun {
   /// Set by [cancel]. Checked after every await that could have spanned a
   /// reset, so a disowned chain writes no verdict and issues no further arms.
   bool cancelled = false;
