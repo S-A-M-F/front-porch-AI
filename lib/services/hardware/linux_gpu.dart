@@ -1,7 +1,12 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-part of 'hardware_service.dart';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:front_porch_ai/utils/utils.dart';
+
+import 'free_memory.dart';
 
 /// Where Linux keeps what [readLinuxGpu] reads. A test lays out its own.
 class LinuxGpuPaths {
