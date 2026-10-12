@@ -100,6 +100,10 @@ extension LLMProviderLaneApi on LLMProvider {
     type: type,
     url: url,
     model: model,
-    koboldLaunchPath: (m) => _parts?.launcher.effectiveLaunchPath(m) ?? '',
+    koboldLaunchPath: (m) {
+      final raw = m.trim();
+      if (raw.isNotEmpty && raw != 'kobold') return raw;
+      return _parts?.launcher.effectiveLaunchPath(m) ?? '';
+    },
   );
 }

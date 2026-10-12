@@ -195,9 +195,10 @@ class HardwareService extends ChangeNotifier {
           hasRocm: _hasRocm,
         );
       } else if (Platform.isLinux) {
-        final info = await detectLinuxHardware(hasCuda: _hasCuda);
-        _hasRocm = info.hasRocm;
-        _hardwareInfo = info;
+        _hardwareInfo = await detectLinuxHardware(
+          hasCuda: _hasCuda,
+          onRocm: (rocm) => _hasRocm = rocm,
+        );
       } else if (Platform.isMacOS) {
         _hardwareInfo = await detectMacHardware(
           hasCuda: _hasCuda,

@@ -28,7 +28,12 @@ import 'nvidia_smi.dart';
 /// the distro family the backend downloader keys off. ROCm presence is
 /// decided here (an AMD card with the compute device), so the result's
 /// `hasRocm` replaces the caller's.
-Future<HardwareInfo> detectLinuxHardware({required bool hasCuda}) async {
+/// [onRocm] gets the ROCm verdict as soon as it is known, before the slower
+/// device-access and nvidia-smi probes run.
+Future<HardwareInfo> detectLinuxHardware({
+  required bool hasCuda,
+  required void Function(bool hasRocm) onRocm,
+}) async {
   var cardCount = 1;
   int ramMb = 0;
 
@@ -72,6 +77,7 @@ Future<HardwareInfo> detectLinuxHardware({required bool hasCuda}) async {
   // ROCm runs through AMD's compute device, which KoboldCpp's ROCm build
   // opens with the runtime it carries: no separate ROCm install needed.
   final hasRocm = vendor == 'AMD' && gpu.hasKfd;
+  onRocm(hasRocm);
   final rocmAccess = hasRocm && await kfdAccessible();
 
   // nvidia-smi is authoritative for NVIDIA cards — it gives both the

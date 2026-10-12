@@ -246,7 +246,7 @@ class UserPersonaService extends ChangeNotifier {
 
   /// Import persona(s) from a JSON file. Supports SillyTavern, native,
   /// TavernAI V2 / Backyard, and generic name+description payloads (see
-  /// [PersonaFileCodec.decodeImport]). Returns the first imported persona,
+  /// [PersonaFileCodec.importAll]). Returns the first imported persona,
   /// or null on failure.
   Future<UserPersona?> importFromJsonFile(
     String filePath, {
@@ -265,15 +265,11 @@ class UserPersonaService extends ChangeNotifier {
         );
         return null;
       }
-      final imported = await PersonaFileCodec.decodeImport(
+      return await PersonaFileCodec.importAll(
         data,
+        add: _addImportedPersona,
         avatarSaveDir: avatarSaveDir,
       );
-      if (imported == null || imported.isEmpty) return null;
-      for (final p in imported) {
-        await _addImportedPersona(p);
-      }
-      return imported.first;
     } catch (e) {
       debugPrint('[Persona:Import] Error importing persona JSON: $e');
       return null;

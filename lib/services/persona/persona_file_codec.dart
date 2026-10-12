@@ -51,10 +51,15 @@ class PersonaFileCodec {
   ///   `description`, `personality`, `user_persona`, etc.
   /// - **Generic**: any JSON with at least `name` + `description`
   ///
+  /// Each decoded persona goes to [add] as soon as it is read, so a bad
+  /// entry part-way through a batch keeps the ones before it.
+  ///
   /// [avatarSaveDir] is where decoded base64 avatars are saved; when null,
-  /// base64 avatars are discarded. Returns null for an unrecognized payload.
-  static Future<List<UserPersona>?> decodeImport(
+  /// base64 avatars are discarded. Returns the first persona, or null for an
+  /// unrecognized or empty payload.
+  static Future<UserPersona?> importAll(
     Map<String, dynamic> json, {
+    required Future<void> Function(UserPersona persona) add,
     String? avatarSaveDir,
   }) async {
     // ── SillyTavern export format ──
@@ -67,7 +72,7 @@ class PersonaFileCodec {
       final descriptionsMap =
           json['persona_descriptions'] as Map<String, dynamic>;
 
-      final imported = <UserPersona>[];
+      UserPersona? first;
       for (final entry in personasMap.entries) {
         final avatarKey = entry.key; // e.g. "1766044822296-Linus.png"
         final name = entry.value as String? ?? 'Imported Persona';
@@ -75,22 +80,22 @@ class PersonaFileCodec {
         // ST uses 'description' as the persona text.
         final personaText = descEntry?['description'] as String? ?? '';
         final title = descEntry?['title'] as String? ?? '';
-        imported.add(
-          UserPersona(
-            id: newPersonaId(),
-            title: title,
-            name: name,
-            persona: personaText,
-            avatarPath: null,
-          ),
+        final persona = UserPersona(
+          id: newPersonaId(),
+          title: title,
+          name: name,
+          persona: personaText,
+          avatarPath: null,
         );
+        await add(persona);
+        first ??= persona;
       }
-      if (imported.isNotEmpty) {
+      if (first != null) {
         debugPrint(
           '[Persona:Import] Imported ${personasMap.length} persona(s) from SillyTavern',
         );
       }
-      return imported;
+      return first;
     }
 
     // ── Front Porch native batch format (personas is a List) ──
@@ -98,16 +103,19 @@ class PersonaFileCodec {
       final list = (json['personas'] as List)
           .map((e) => UserPersona.fromJson(e as Map<String, dynamic>))
           .toList();
-      if (list.isNotEmpty) {
-        debugPrint(
-          '[Persona:Import] Imported ${list.length} persona(s) from Front Porch native format',
-        );
+      if (list.isEmpty) return null;
+      for (final persona in list) {
+        await add(persona);
       }
-      return list;
+      debugPrint(
+        '[Persona:Import] Imported ${list.length} persona(s) from Front Porch native format',
+      );
+      return list.first;
     }
 
     final single = await _decodeSingle(json, avatarSaveDir: avatarSaveDir);
-    return single == null ? null : [single];
+    if (single != null) await add(single);
+    return single;
   }
 
   static Future<UserPersona?> _decodeSingle(
