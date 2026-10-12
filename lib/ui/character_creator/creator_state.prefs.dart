@@ -273,6 +273,7 @@ extension CreatorStatePrefs on CreatorState {
   Future<void> _queuePrefsWrite(
     Future<void> Function(SharedPreferences prefs) write,
   ) {
+    if (!persistDraft) return Future<void>.value();
     final run = _saveQueue.then(
       (_) async => write(await SharedPreferences.getInstance()),
     );

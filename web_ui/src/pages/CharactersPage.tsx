@@ -458,7 +458,7 @@ export function CharactersPage() {
         <UseAsPersonaDialog
           characterId={dialog.char.id}
           characterName={dialog.char.name}
-          onDone={(name) => setPersonaNotice(`"${name}" is now a persona and your default for new chats.`)}
+          onDone={(name) => setPersonaNotice(`"${name}" is now a persona. Pick it under your personas to play as it.`)}
           onClose={() => setDialog(null)}
         />
       )}

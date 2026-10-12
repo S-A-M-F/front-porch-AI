@@ -22,7 +22,11 @@ import 'creator_state.dart';
 
 /// "Make a Character" → AI Assist: the persona becomes Quick mode's brief.
 extension CreatorPersonaSeed on CreatorState {
+  /// Starts from a blank form and stays off the saved draft: nothing from
+  /// an unfinished character leaks in, and nothing here overwrites it.
   void applyPersonaSeed(PersonaCharacterSeed seed) {
+    persistDraft = false;
+    resetAllFields();
     creatorMode = CreatorMode.quick;
     nameController.text = seed.name;
     conceptController.text = seed.aiConcept;

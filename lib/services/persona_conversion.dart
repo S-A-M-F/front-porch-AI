@@ -62,9 +62,10 @@ class PersonaConversion {
       hasCharUserMacros(card.description) ||
       hasCharUserMacros(card.personality);
 
-  /// Saves [card] as a new persona (which, like any new persona, becomes the
-  /// default). The portrait is re-encoded into [avatarDir] so the persona
-  /// keeps its picture even if the character is deleted later.
+  /// Saves [card] as a new persona. It only joins the list: the default and
+  /// the persona you are right now stay as they were. The portrait is
+  /// re-encoded into [avatarDir] so the persona keeps its picture even if the
+  /// character is deleted later.
   static Future<UserPersona> createPersonaFromCharacter(
     CharacterCard card, {
     required UserPersonaService personas,
@@ -76,14 +77,15 @@ class PersonaConversion {
     final avatarPath = avatarDir == null
         ? null
         : await _copyPortrait(card.imagePath, name, avatarDir);
-    await personas.createPersona(
+    final id = await personas.createPersona(
       clash ? '$name (from character)' : '',
       name,
       personaTextFromCharacter(card, swapMacros: swapMacros),
       avatarPath,
       birthday: card.frontPorchExtensions?.birthday ?? '',
+      activate: false,
     );
-    return personas.defaultPersona;
+    return personas.personas.firstWhere((x) => x.id == id);
   }
 
   /// What a new character starts from when it is made from [persona].

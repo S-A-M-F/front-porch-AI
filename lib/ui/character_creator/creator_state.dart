@@ -409,6 +409,10 @@ class CreatorState extends ChangeNotifier {
   /// put older text back.
   Future<void> _saveQueue = Future<void>.value();
 
+  /// False for a session seeded from a persona: it never loads or writes the
+  /// saved draft, so the user's own unfinished character is left alone.
+  bool persistDraft = true;
+
   /// Class door — `_CountingCreatorState` in the debounce test `@override`s
   /// this. An extension member is statically dispatched and cannot be.
   /// Drops a pending [scheduleSave]: this save already includes that text.

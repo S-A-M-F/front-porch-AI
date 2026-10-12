@@ -49,4 +49,30 @@ void main() {
     state.resetAllFields();
     expect(state.portraitSourcePath, isNull);
   });
+
+  test('a seeded session leaves the saved draft alone, both ways', () async {
+    SharedPreferences.setMockInitialValues({
+      'chargen_name': 'Old Draft',
+      'chargen_concept': 'Something half-written',
+      'chargen_age': '41',
+      'chargen_sex': 'Female',
+    });
+    final state = CreatorState();
+    addTearDown(state.disposeControllers);
+    await state.loadSavedState();
+    state.applyPersonaSeed(
+      const PersonaCharacterSeed(name: 'Jo', description: 'Keeps bees.'),
+    );
+
+    expect(state.ageController.text, isEmpty, reason: 'no draft leaks in');
+    expect(state.sexController.text, isEmpty);
+
+    state.nameController.text = 'Jo the Beekeeper';
+    await state.saveState();
+    await state.clearSavedFormPrefsAfterSave();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('chargen_name'), 'Old Draft');
+    expect(prefs.getString('chargen_concept'), 'Something half-written');
+    expect(prefs.getString('chargen_age'), '41');
+  });
 }

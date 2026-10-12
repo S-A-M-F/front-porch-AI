@@ -66,6 +66,8 @@ void main() {
       firstMessage: 'Evening!',
       frontPorchExtensions: FrontPorchExtensions(birthday: '1990-06-14'),
     )..imagePath = portrait;
+    final defaultBefore = personas.defaultPersona.id;
+    final activeBefore = personas.persona.id;
 
     final persona = await PersonaConversion.createPersonaFromCharacter(
       card,
@@ -81,7 +83,10 @@ void main() {
       '{{user}} lives next door to {{char}}.\n\nPersonality: Nosy but kind.',
     );
     expect(persona.birthday, '1990-06-14');
-    expect(personas.defaultPersona.id, persona.id);
+    // Only joins the list: who you are, now and in new chats, stays put.
+    expect(personas.defaultPersona.id, defaultBefore);
+    expect(personas.persona.id, activeBefore);
+    expect(persona.id, isNot(defaultBefore));
     final copied = persona.avatarPath;
     expect(copied, isNotNull);
     expect(copied, isNot(portrait));
@@ -95,6 +100,7 @@ void main() {
     );
     expect(row.persona, persona.persona);
     expect(row.avatarPath, copied);
+    expect(row.isActive, isFalse);
   });
 
   test('a second persona of the same name is told apart by its title, and '

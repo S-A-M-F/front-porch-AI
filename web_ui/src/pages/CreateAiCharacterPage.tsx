@@ -103,6 +103,7 @@ export function CreateAiCharacterPage() {
       await api.post('/api/chargen/create', {
         ...buildPayload(form),
         ...(personaSeed?.hasPortrait ? { portraitPersonaId: personaSeed.personaId } : {}),
+        ...(personaSeed?.birthday ? { birthday: personaSeed.birthday } : {}),
       });
     } catch (e) {
       setBusy(false);

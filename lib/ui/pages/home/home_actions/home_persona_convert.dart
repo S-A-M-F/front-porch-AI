@@ -49,7 +49,7 @@ Future<void> convertHomeCharacterToPersona(
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '"${persona.name}" is now a persona and your default for new chats.',
+          '"${persona.name}" is now a persona. Pick it in Personas to play as it.',
         ),
       ),
     );

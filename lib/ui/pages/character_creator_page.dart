@@ -55,11 +55,12 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
   @override
   void initState() {
     super.initState();
-    // The seed lands after the saved draft loads, or the draft overwrites it.
-    creatorState.loadSavedState().then((_) {
-      final seed = widget.seed;
-      if (seed != null && mounted) creatorState.applyPersonaSeed(seed);
-    });
+    final seed = widget.seed;
+    if (seed != null) {
+      creatorState.applyPersonaSeed(seed);
+    } else {
+      creatorState.loadSavedState();
+    }
     creatorState.addListener(_onCreatorStateChanged);
 
     // Ensure local models are scanned for the KoboldCpp picker in Setup (was never called before).

@@ -130,6 +130,7 @@ void main() {
     appState.setIndex(0);
 
     // ── 1. Use as Persona from the library card's menu ───────────────────
+    final defaultBefore = personas.defaultPersona.id;
     final tile = find.ancestor(
       of: find.text(_kName),
       matching: find.byType(CharacterGridCard),
@@ -152,7 +153,7 @@ void main() {
       '{{user}} lives next door to {{char}}.\n\nPersonality: Nosy but kind.',
     );
     expect(persona.birthday, '1990-06-14');
-    expect(personas.defaultPersona.id, persona.id);
+    expect(personas.defaultPersona.id, defaultBefore);
     final avatar = persona.avatarPath;
     expect(avatar, isNotNull, reason: 'the portrait comes along');
     expect(avatar, isNot(card.imagePath));

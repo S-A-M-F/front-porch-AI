@@ -418,6 +418,14 @@ class ChargenFacade {
         });
         return;
       }
+      // A persona's birthday rides along, as the desktop's realismBirthday.
+      final birthday = fields['birthday']?.toString().trim() ?? '';
+      if (birthday.isNotEmpty) {
+        card.frontPorchExtensions =
+            (card.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+              birthday: birthday,
+            );
+      }
       // Auto-render a portrait when an image backend is configured (web-only
       // convenience; desktop generation moved to the explicit Portrait &
       // Avatars panel). The LLM authored the prompt during generation; strip the
