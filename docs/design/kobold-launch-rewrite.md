@@ -1105,7 +1105,7 @@ summary card.
 
 ### Stage 7: web (item 21)
 
-- Routes on the backend facade (`backend_facade.local_model.dart`, see
+- Routes on the backend facade (`backend/local_model_card.dart`, see
   "Stage 7 as built" below): list presets with summaries, set the chat
   preset (limited to the engine folder), set the context.
 - Web chat-preset picker and summary card. No editor (deferred).
