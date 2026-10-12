@@ -16,7 +16,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chargen_facade.dart';
+import 'dart:async';
+
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/character_facade.dart';
+import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
 
 /// The greeting being written, so Stop reaches that run and no other.
 class _GreetingJob {
@@ -34,7 +39,26 @@ class _GreetingJob {
 /// once; the text streams over the hub as `chargen_greeting_progress`, then
 /// `chargen_greeting_done` (saved), `_error` or `_stopped`. A greeting is
 /// saved only when it is done, so Stop leaves the card as it was.
-extension ChargenGreetings on ChargenFacade {
+class ChargenGreetings {
+  ChargenGreetings(
+    this._llm,
+    this._characters,
+    this._hub, {
+    required bool Function() isCreating,
+  }) : _isCreating = isCreating;
+
+  final LLMProvider _llm;
+  final CharacterFacade _characters;
+  final StreamHub? _hub;
+
+  /// Whether a whole character is being created right now.
+  final bool Function() _isCreating;
+
+  /// The one greeting being written, and a cache of how characters created
+  /// here wrote their greetings (the card's own stamp is the record).
+  _GreetingJob? _greetingJob;
+  final Map<String, GreetingRecipe> _recipes = {};
+
   /// Rewrite greeting `index` (0 = the first message) of `characterId`,
   /// steered by `direction`; with [add], write a new alternate instead.
   /// `{ok: true}`, or `{ok: false, status, error}` to refuse at once.
@@ -52,7 +76,7 @@ extension ChargenGreetings on ChargenFacade {
         'A greeting is already being written. Stop it or wait for it.',
       );
     }
-    if (_creating) {
+    if (_isCreating()) {
       return _refuse(409, 'A character is still being created. Wait for it.');
     }
     final alts = card.alternateGreetings.length;
@@ -144,7 +168,7 @@ extension ChargenGreetings on ChargenFacade {
       const GreetingRecipe();
 
   /// Cache how a character created here wrote its greetings (the last few).
-  void _rememberRecipe(String? characterId, GreetingRecipe? recipe) {
+  void rememberRecipe(String? characterId, GreetingRecipe? recipe) {
     if (characterId == null || recipe == null) return;
     _recipes.remove(characterId);
     _recipes[characterId] = recipe;

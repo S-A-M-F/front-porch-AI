@@ -16,9 +16,113 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'character_facade.dart';
+import 'dart:io';
 
-extension CharacterFacadeByaf on CharacterFacade {
+import 'package:path/path.dart' as p;
+
+import 'package:front_porch_ai/database/database.dart';
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+
+/// Imports an uploaded character card (V2 PNG, JSON or .byaf) through the
+/// desktop import path, with the web's name-collision policy.
+class CharacterImporter {
+  CharacterImporter(this._repo, this._storage, this._db);
+
+  final CharacterRepository _repo;
+  final StorageService _storage;
+  final AppDatabase _db;
+
+  /// See [CharacterFacade.importBytes].
+  Future<Map<String, dynamic>?> importBytes(
+    List<int> bytes,
+    String filename, {
+    String collision = 'keepBoth',
+    String? replaceId,
+  }) async {
+    final repo = _repo;
+    final ext = p.extension(filename).isNotEmpty
+        ? p.extension(filename)
+        : '.png';
+    final tmp = File(
+      p.join(
+        Directory.systemTemp.path,
+        'fpa_import_${DateTime.now().microsecondsSinceEpoch}$ext',
+      ),
+    );
+    try {
+      await tmp.writeAsBytes(bytes, flush: true);
+
+      if (filename.toLowerCase().endsWith('.byaf')) {
+        return await _importByafFile(
+          tmp,
+          filename,
+          collision: collision,
+          replaceId: replaceId,
+        );
+      }
+
+      // Peek identity for collision policy (same rules as desktop single-import).
+      CharacterCard? peeked;
+      try {
+        final isJson = tmp.path.toLowerCase().endsWith('.json');
+        final v2 = V2CardService();
+        peeked = isJson
+            ? await v2.readCardFromJsonFile(tmp.path)
+            : await v2.readCard(tmp.path);
+      } catch (_) {
+        peeked = null;
+      }
+      final name = peeked?.name ?? p.basenameWithoutExtension(filename);
+      final stableId = peeked?.frontPorchExtensions?.stableId;
+      final stableMatch = repo.findByStableId(stableId);
+
+      if (stableMatch == null) {
+        final existing = repo.charactersWithName(name);
+        if (existing.isNotEmpty) {
+          if (collision == 'ask') {
+            return {
+              'status': 'name_collision',
+              'name': name,
+              'existing': [
+                for (final c in existing) {'id': c.dbId, 'name': c.name},
+              ],
+            };
+          }
+          if (collision == 'replace') {
+            CharacterCard? target;
+            if (replaceId != null && replaceId.isNotEmpty) {
+              for (final c in existing) {
+                if (c.dbId == replaceId) {
+                  target = c;
+                  break;
+                }
+              }
+            }
+            target ??= existing.first;
+            final card = await repo.importCharacter(
+              tmp,
+              forceReplaceTarget: target,
+            );
+            if (card == null) return null;
+            return {'id': card.dbId, 'name': card.name, 'replaced': true};
+          }
+          // keepBoth: fall through to plain import (insert)
+        }
+      }
+
+      final card = await repo.importCharacter(tmp);
+      if (card == null) return null;
+      return {'id': card.dbId, 'name': card.name};
+    } catch (_) {
+      return null;
+    } finally {
+      try {
+        if (tmp.existsSync()) await tmp.delete();
+      } catch (_) {}
+    }
+  }
+
   /// Parse a `.byaf` upload with [ByafService], persist as a V2 PNG, then
   /// attach extra archive images as gallery looks. Matches desktop defaults:
   /// gallery on, chat history on, Backyard sampler settings on.
@@ -29,7 +133,6 @@ extension CharacterFacadeByaf on CharacterFacade {
     String? replaceId,
   }) async {
     final repo = _repo;
-    if (repo == null) return null;
     final byaf = ByafService();
     ByafImportPreview? preview;
     try {

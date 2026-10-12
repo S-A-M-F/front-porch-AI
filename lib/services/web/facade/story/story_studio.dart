@@ -16,23 +16,42 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'story_facade.dart';
+import 'dart:io';
 
-/// Studio additions to the web adapter: Stop, the Director, continuity-fix
-/// undo, lore uploads and search, the run log, and the read-only helpers
-/// the Engine step and the writer's chips need (quality, lenses, pacing,
-/// lane labels). The PWA computes nothing of this itself.
-extension StoryFacadeStudio on StoryFacade {
-  /// Ask the running operation to stop at its next safe point.
-  Map<String, dynamic> stop() {
-    (_inFlight ?? _pipeline).requestStop();
-    return status();
-  }
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/story/story.dart';
 
-  Future<StoryProject?> _project(String id) async {
-    await _ensureLoaded();
-    return _repo.getById(id);
-  }
+/// Studio additions to the web adapter: the Director, continuity-fix undo,
+/// lore uploads and search, the run log, and the read-only helpers the Engine
+/// step and the writer's chips need (quality, lenses, pacing, lane labels).
+/// The PWA computes nothing of this itself.
+class StoryStudio {
+  StoryStudio(
+    this._repo, {
+    required StoryPipelineService Function() pipeline,
+    required Future<StoryProject?> Function(String id) project,
+    ImageGenService? imageGen,
+    StorageService? storage,
+    LLMProvider? llm,
+  }) : _pipelineOf = pipeline,
+       _project = project,
+       _imageGen = imageGen,
+       _storage = storage,
+       _llm = llm;
+
+  final StoryRepository _repo;
+
+  /// The pipeline the app uses now (re-pointed on a backend switch).
+  final StoryPipelineService Function() _pipelineOf;
+
+  /// Loads the library once, then finds a project by id.
+  final Future<StoryProject?> Function(String id) _project;
+  final ImageGenService? _imageGen;
+  final StorageService? _storage;
+  final LLMProvider? _llm;
+
+  StoryPipelineService get _pipeline => _pipelineOf();
 
   Future<bool> directorAction(String id, int index, bool enabled) async {
     final p = await _project(id);
@@ -208,8 +227,7 @@ extension StoryFacadeStudio on StoryFacade {
   /// Rename without touching anything else — a full-project write from
   /// the shelf could overwrite a run in progress.
   Future<bool> rename(String id, String title) async {
-    await _ensureLoaded();
-    final p = _repo.getById(id);
+    final p = await _project(id);
     if (p == null || title.trim().isEmpty) return false;
     p.title = title.trim();
     await _repo.saveProject(p);
