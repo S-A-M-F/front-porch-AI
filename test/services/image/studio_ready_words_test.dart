@@ -222,6 +222,75 @@ void main() {
         'other_vae.safetensors',
       );
     });
+
+    test('its own checkpoint wins over the global image model', () {
+      final json = jsonEncode({
+        'ckpt': {
+          'class_type': 'CheckpointLoaderSimple',
+          'inputs': {'ckpt_name': 'graph_own.safetensors'},
+        },
+        'pos': {
+          'class_type': 'CLIPTextEncode',
+          'inputs': {
+            'text': 'a porch',
+            'clip': ['ckpt', 1],
+          },
+        },
+        'latent': {
+          'class_type': 'EmptyLatentImage',
+          'inputs': {'width': 512, 'height': 512, 'batch_size': 1},
+        },
+        'ks': {
+          'class_type': 'KSampler',
+          'inputs': {
+            'model': ['ckpt', 0],
+            'positive': ['pos', 0],
+            'negative': ['pos', 0],
+            'latent_image': ['latent', 0],
+            'seed': 1,
+            'steps': 8,
+            'cfg': 1,
+            'sampler_name': 'euler',
+            'scheduler': 'simple',
+            'denoise': 1,
+          },
+        },
+        'decode': {
+          'class_type': 'VAEDecode',
+          'inputs': {
+            'samples': ['ks', 0],
+            'vae': ['ckpt', 2],
+          },
+        },
+        'save': {
+          'class_type': 'SaveImage',
+          'inputs': {
+            'images': ['decode', 0],
+            'filename_prefix': 'fpai',
+          },
+        },
+      });
+      final req = resolveComfyCreateRequest(
+        workflowId: kComfyUploadedWorkflowId,
+        uploadedWorkflowJson: json,
+        modelChoices: const {},
+        checkpointFallback: 'other.safetensors',
+        prompt: 'p',
+        negative: '',
+        seed: 1,
+        steps: 8,
+        cfg: 1,
+        denoise: 1,
+        shift: null,
+        width: 512,
+        height: 512,
+      )!;
+      final graph = substituteComfyWorkflow(req.template, req.values);
+      expect(
+        (graph['ckpt'] as Map)['inputs']['ckpt_name'],
+        'graph_own.safetensors',
+      );
+    });
   });
 }
 
