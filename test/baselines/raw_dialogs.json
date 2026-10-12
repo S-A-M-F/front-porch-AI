@@ -51,7 +51,6 @@
   "lib/ui/dialogs/user_persona_dialog.dart": 2,
   "lib/ui/dialogs/user_persona_dialog.edit_form.dart": 1,
   "lib/ui/dialogs/web_access_setup_dialog.dart": 1,
-  "lib/ui/image_studio/expression_pack_dialog.dart": 1,
   "lib/ui/image_studio/expression_pack_prompt_editor.dart": 2,
   "lib/ui/image_studio/studio_civitai_key.dart": 2,
   "lib/ui/image_studio/studio_desk.dart": 4,
