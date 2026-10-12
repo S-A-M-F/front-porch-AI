@@ -191,14 +191,28 @@ class _CreateCharacterPageState extends State<CreateCharacterPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Once Review has saved the card, what is left is optional portrait work.
+    return UnsavedChangesGuard(
+      isDirty: () => _savedCard == null && _draft.hasContent,
+      child: _scaffold(),
+    );
+  }
+
+  /// A tab page, not a route: back switches to Home, after asking.
+  Future<void> _backToHome() async {
+    final appState = Provider.of<AppState>(context, listen: false);
+    if (!await UnsavedChanges.instance.confirmLeave(context)) return;
+    appState.setIndex(0);
+  }
+
+  Widget _scaffold() {
     return Scaffold(
       backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
         backgroundColor: AppColors.surfaceOf(context),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () =>
-              Provider.of<AppState>(context, listen: false).setIndex(0),
+          onPressed: _backToHome,
         ),
         title: Row(
           children: [
