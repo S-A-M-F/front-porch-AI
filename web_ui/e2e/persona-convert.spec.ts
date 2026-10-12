@@ -65,7 +65,9 @@ test('a character becomes a persona, and the persona starts a character both way
     await nameBox.fill(madeName);
     for (let i = 0; i < 5; i++) await page.getByRole('button', { name: 'Next →' }).click();
     await page.getByRole('button', { name: 'Create character' }).click();
-    await expect(page).toHaveURL(/\/chat/);
+    // `/chat?opening=1` comes first; wait for the select to land so its
+    // `/chat` redirect cannot pull the next navigation back.
+    await expect(page).toHaveURL(/\/chat$/);
     const lib = (await (await page.request.get('/api/characters')).json()) as
       | { id: string; name: string }[]
       | { characters: { id: string; name: string }[] };
