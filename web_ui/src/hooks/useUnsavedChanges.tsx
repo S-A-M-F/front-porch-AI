@@ -16,6 +16,7 @@ import {
 import {
   type BlockerFunction,
   UNSAFE_DataRouterContext,
+  UNSAFE_LocationContext,
   useBlocker,
 } from 'react-router-dom';
 
@@ -50,8 +51,20 @@ export interface UnsavedChanges {
 export function useUnsavedChanges(dirty: boolean): UnsavedChanges {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  // Set by a Save that is about to leave. It holds until the page has moved
+  // on or the user edits again: clearing it as soon as the save made the page
+  // clean let a back() that leaves the document hit the unload prompt before
+  // the listener was removed.
   const bypassRef = useRef(false);
-  if (!dirty) bypassRef.current = false;
+  const locationKey = useContext(UNSAFE_LocationContext)?.location?.key;
+  useEffect(() => {
+    bypassRef.current = false;
+  }, [locationKey]);
+  const wasDirty = useRef(dirty);
+  useEffect(() => {
+    if (dirty && !wasDirty.current) bypassRef.current = false;
+    wasDirty.current = dirty;
+  }, [dirty]);
 
   useEffect(() => {
     if (!dirty) return;
