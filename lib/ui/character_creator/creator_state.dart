@@ -251,6 +251,9 @@ class CreatorState extends ChangeNotifier {
   double progress = 0.0;
   CharacterCard? generatedCard;
   String? imagePrompt;
+
+  /// First-save picture (a persona's); null writes a placeholder.
+  String? portraitSourcePath;
   Map<int, bool> lorebookEntryEnabled = {};
 
   // Quick-mode NSFW flag (synced into [nsfwEnabled] when generation starts).

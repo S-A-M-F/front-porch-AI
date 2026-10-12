@@ -398,6 +398,7 @@ extension CreatorStatePrefs on CreatorState {
 
     // Persona
     selectedPersonaId = '';
+    portraitSourcePath = null;
 
     // Active gen service
     activeGenService = null;

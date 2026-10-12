@@ -64,6 +64,14 @@ extension WebServerHostWiring on WebServerHost {
       _characterRepository,
     );
 
+    final personas = _userPersonaService;
+    final personaConversionFacade =
+        (_characterRepository != null && personas != null)
+        ? PersonaConversionFacade(_characterRepository!, personas, _storage)
+        : null;
+    // "Make a Character" from a persona keeps the persona's picture.
+    characterFacade.personaPortrait = personaConversionFacade?.portraitPathFor;
+
     if (streamHub != null) {
       _attachLibraryRelay(characterFacade, streamHub);
       _attachSettingsRelay(streamHub);
@@ -233,6 +241,7 @@ extension WebServerHostWiring on WebServerHost {
       porchFacade: (chatService != null && _characterRepository != null)
           ? PorchFacade(_characterRepository!, chatService, _storage)
           : null,
+      personaConversionFacade: personaConversionFacade,
       chatToolsFacade: chatToolsFacade,
       groupFacade: groupFacade,
       settingsFacade: settingsFacade,

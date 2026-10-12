@@ -403,10 +403,15 @@ class ChargenFacade {
       // convenience; desktop generation moved to the explicit Portrait &
       // Avatars panel). The LLM authored the prompt during generation; strip the
       // name (image models render names as text) and render a 512² portrait.
-      final portrait = await renderPortrait(name, gen.generatedImagePrompt);
+      // A character made from a persona keeps the persona's picture.
+      final personaPortrait = _characters.portraitFromFields(fields);
+      final portrait = personaPortrait == null
+          ? await renderPortrait(name, gen.generatedImagePrompt)
+          : null;
       final saved = await _characters.persistNewCard(
         card,
         portraitBytes: portrait,
+        portraitPath: personaPortrait,
       );
       if (saved == null) {
         _hub?.broadcast({

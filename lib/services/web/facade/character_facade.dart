@@ -50,6 +50,9 @@ class CharacterFacade {
   final FolderService? _folders;
   final ChatService? _chat;
 
+  /// Persona id → picture, for `portraitPersonaId` (wired by the host).
+  String? Function(String personaId)? personaPortrait;
+
   /// List characters with optional search/folder filtering and sort, matching
   /// the legacy `/api/characters` payload.
   ///
@@ -332,7 +335,12 @@ class CharacterFacade {
   Future<Map<String, dynamic>?> persistNewCard(
     CharacterCard card, {
     List<int>? portraitBytes,
-  }) => _persistNewCardImpl(card, portraitBytes: portraitBytes);
+    String? portraitPath,
+  }) => _persistNewCardImpl(
+    card,
+    portraitBytes: portraitBytes,
+    portraitPath: portraitPath,
+  );
 
   /// Import a character card uploaded from the web (V2 PNG or .byaf). Writes the
   /// bytes to a temp file and reuses the desktop import path

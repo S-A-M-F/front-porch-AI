@@ -20,6 +20,15 @@ part of 'character_facade.dart';
 
 /// Write half of the web character adapter: update, create, persist, import.
 extension CharacterFacadeImport on CharacterFacade {
+  /// The picture of the persona named by `fields['portraitPersonaId']`, if
+  /// any — shared by manual create and AI chargen.
+  String? portraitFromFields(Map<String, dynamic> fields) {
+    final id = fields['portraitPersonaId']?.toString() ?? '';
+    if (id.isEmpty) return null;
+    final path = personaPortrait?.call(id);
+    return path == null || path.isEmpty ? null : path;
+  }
+
   Future<bool> _updateImpl(String id, Map<String, dynamic> fields) async {
     final repo = _repo;
     if (repo == null) return false;
@@ -140,12 +149,13 @@ extension CharacterFacadeImport on CharacterFacade {
       frontPorchExtensions: fpExt,
     );
 
-    return persistNewCard(card);
+    return persistNewCard(card, portraitPath: portraitFromFields(fields));
   }
 
   Future<Map<String, dynamic>?> _persistNewCardImpl(
     CharacterCard card, {
     List<int>? portraitBytes,
+    String? portraitPath,
   }) async {
     final repo = _repo;
     if (repo == null) return null;
@@ -163,7 +173,7 @@ extension CharacterFacadeImport on CharacterFacade {
       // A rendered portrait (e.g. AI chargen) becomes the card's base image;
       // otherwise sourceImagePath stays null → V2CardService synthesizes a
       // placeholder avatar.
-      String? sourceImagePath;
+      String? sourceImagePath = portraitPath;
       if (portraitBytes != null && portraitBytes.isNotEmpty) {
         sourceImagePath = p.join(
           Directory.systemTemp.path,
