@@ -22,7 +22,7 @@ part of 'creator_state_engine.dart';
 /// steered), add one, delete an alternate, stop the one being written, and
 /// re-read the outfit after a new first message. One write at a time; the
 /// box keeps its old text until the new one is in, so Stop has nothing to
-/// undo. The web relay calls the same [GenGreeting] service functions.
+/// undo. The web relay calls the same [CharacterGenService] greeting functions.
 extension CreatorGreetingEngine on CreatorState {
   /// Rewrite greeting [index] (0 = the first message, 1 and up = the
   /// alternates), steered by that greeting's steer box when it has text.
