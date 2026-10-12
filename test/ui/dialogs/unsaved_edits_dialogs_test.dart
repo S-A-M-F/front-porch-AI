@@ -260,4 +260,32 @@ void main() {
     expect(find.text(_question), findsNothing);
     expect(jsonDecode(opened.result! as String), isA<Map<String, dynamic>>());
   });
+
+  testWidgets('climate editor: a weather renamed before its danger level '
+      'still asks', (tester) async {
+    final opened = await _open(
+      tester,
+      (ctx) => showClimateEditorDialog(
+        ctx,
+        worldName: 'Harbor',
+        existingBiomeJson: null,
+        fahrenheit: false,
+      ),
+    );
+    final rename = find.byWidgetPredicate(
+      (w) =>
+          w is TextField &&
+          w.decoration?.hintText == 'rename (e.g. Dust Squall)',
+    );
+    // The form is a lazy list: scroll the left column down to the renames.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -2500));
+    await tester.pumpAndSettle();
+    await tester.enterText(rename.first, 'Dust Squall');
+    await tester.pump();
+    await tester.tap(_climateClose);
+    await tester.pumpAndSettle();
+    await _keepEditing(tester);
+    expect(opened.closed, isFalse);
+    expect(find.text('Dust Squall'), findsOneWidget);
+  });
 }

@@ -21,11 +21,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/services/chat/chat.dart';
-import 'package:front_porch_ai/ui/pages/worlds/climate_editor_chrome.dart';
 import 'package:front_porch_ai/ui/pages/worlds/climate_editor_right.dart';
-import 'package:front_porch_ai/ui/pages/worlds/climate_editor_widgets.dart';
 import 'package:front_porch_ai/ui/pages/worlds/climate_season_strip.dart';
-import 'package:front_porch_ai/ui/pages/worlds/climate_skin_row.dart';
+import 'package:front_porch_ai/ui/pages/worlds/worlds.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
@@ -109,12 +107,15 @@ class _ClimateEditorDialogState extends State<_ClimateEditorDialog> {
     _seedFrom(existing ?? Biome.desert);
     // The mockup opens with the preview already computed.
     _preview = previewBiome(_buildDraft());
-    _startJson = _draftJson;
+    _startState = _editState;
   }
 
-  /// What Save would hand back; differs from [_startJson] once edited.
   String get _draftJson => jsonEncode(_buildDraft().toJson());
-  late final String _startJson;
+  String get _editState => climateEditState(_draftJson, _skins, [
+    _anchorCtls,
+    _labelCtls,
+  ], _weightCtls);
+  late final String _startState;
 
   void _ensureSeason(String id) {
     if (_labelCtls.containsKey(id)) return;
@@ -333,7 +334,7 @@ class _ClimateEditorDialogState extends State<_ClimateEditorDialog> {
   Widget build(BuildContext context) {
     final errors = _blockingErrors();
     return UnsavedChangesGuard(
-      isDirty: () => _draftJson != _startJson,
+      isDirty: () => _editState != _startState,
       child: Dialog(
         backgroundColor: AppColors.cardOf(context),
         shape: RoundedRectangleBorder(
