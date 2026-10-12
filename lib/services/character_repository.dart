@@ -271,12 +271,10 @@ class CharacterRepository extends ChangeNotifier {
     return done;
   }
 
-  /// [notify] = false persists silently (DB + PNG still written): the Avatar
-  /// Gallery's ★ writes per click, and broadcasting each one repainted the
-  /// whole home grid behind the open dialog. Silent callers MUST follow up
-  /// with [notifyCharactersChanged] when their surface closes.
-  Future<void> updateCharacter(CharacterCard card, {bool notify = true}) async {
-    if (card.imagePath == null) return;
+  Future<void> _updateCharacter(
+    CharacterCard card, {
+    required bool notify,
+  }) async {
     _clearCoverCache(); // avatar files may have changed under a stable key
     _bumpCoverEpoch();
 
@@ -485,4 +483,16 @@ class CharacterRepository extends ChangeNotifier {
         removeAvatar: removeAvatar,
         addLook: addLook,
       );
+}
+
+/// Static dispatch keeps a pathless card a no-op on test doubles too.
+extension CharacterRepositoryUpdate on CharacterRepository {
+  /// [notify] = false persists silently (DB + PNG still written): the Avatar
+  /// Gallery's ★ writes per click, and broadcasting each one repainted the
+  /// whole home grid behind the open dialog. Silent callers MUST follow up
+  /// with [notifyCharactersChanged] when their surface closes.
+  Future<void> updateCharacter(CharacterCard card, {bool notify = true}) async {
+    if (card.imagePath == null) return;
+    await _updateCharacter(card, notify: notify);
+  }
 }
