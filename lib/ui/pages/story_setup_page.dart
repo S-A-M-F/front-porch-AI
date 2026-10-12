@@ -102,7 +102,10 @@ class _StorySetupPageState extends State<StorySetupPage> {
   int get _stepCount => _stepLabels.length + (_narrow ? 1 : 0);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      UnsavedChangesGuard(isDirty: _unsavedTyped, child: _page(context));
+
+  Widget _page(BuildContext context) {
     return StudioTheme(
       child: Scaffold(
         backgroundColor: StudioColors.bgOf(context),
@@ -227,20 +230,22 @@ class _StorySetupPageState extends State<StorySetupPage> {
 
   void _changed() => setState(() {});
 
+  /// No story row until the first Next: a typed title or idea is only kept
+  /// if the user goes on, so back, the sidebar and the window close ask.
+  bool _unsavedTyped() =>
+      _projectId == null &&
+      (_draft.titleController.text.trim().isNotEmpty ||
+          _draft.conceptController.text.trim().isNotEmpty);
+
   Future<void> _back() => _oneAtATime(() async {
     await _save(step: _step - 1);
     if (mounted) setState(() => _step--);
   });
 
   Future<void> _leave() => _oneAtATime(() async {
-    // No story row until the first Next: what is typed here is only kept
-    // if the user goes on, so ask before dropping it.
+    // Nothing saved yet: the guard asks first if anything was typed.
     if (_projectId == null) {
-      final typed =
-          _draft.titleController.text.trim().isNotEmpty ||
-          _draft.conceptController.text.trim().isNotEmpty;
-      if (typed && !await confirmDiscardChanges(context)) return;
-      if (mounted) Navigator.of(context).pop();
+      await Navigator.of(context).maybePop();
       return;
     }
     await _save(step: _step);

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { GrowthReviewModal } from './GrowthReviewModal';
-import { confirmDiscard } from '../hooks/useUnsavedChanges';
+import { confirmDiscard, UnsavedPrompt } from '../hooks/useUnsavedChanges';
 
 export interface GrowthRing {
   id: string;
@@ -57,11 +57,13 @@ function RingEditor({
   const startCategory = CATEGORIES.includes(initialCategory) ? initialCategory : 'trait';
   const [text, setText] = useState(initialText);
   const [category, setCategory] = useState(startCategory);
+  const dirty = text !== initialText || category !== startCategory;
   const dismiss = () => {
-    if (confirmDiscard(text !== initialText || category !== startCategory)) onClose();
+    if (confirmDiscard(dirty)) onClose();
   };
   return (
     <div className="drawer-backdrop center" onClick={dismiss}>
+      <UnsavedPrompt dirty={dirty} />
       <div className="modal growth-editor" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <span>{title}</span>

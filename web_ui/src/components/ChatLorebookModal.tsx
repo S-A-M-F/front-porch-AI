@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { confirmDiscard } from '../hooks/useUnsavedChanges';
+import { confirmDiscard, UnsavedPrompt } from '../hooks/useUnsavedChanges';
 import { LoreEntriesEditor, type LoreEntry } from './LoreEntriesEditor';
 
 export function ChatLorebookModal({ onClose }: { onClose: () => void }) {
@@ -15,8 +15,9 @@ export function ChatLorebookModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState('null');
+  const dirty = JSON.stringify(entries) !== loaded;
   const dismiss = () => {
-    if (confirmDiscard(JSON.stringify(entries) !== loaded)) onClose();
+    if (confirmDiscard(dirty)) onClose();
   };
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function ChatLorebookModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="drawer-backdrop center" onClick={dismiss}>
+      <UnsavedPrompt dirty={dirty} />
       <div className="modal lore-chat-modal" onClick={(e) => e.stopPropagation()}>
         <h3>This chat's lorebook</h3>
         <p className="muted small">

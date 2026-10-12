@@ -85,3 +85,14 @@ export function useUnsavedChanges(dirty: boolean): UnsavedChanges {
 
   return { prompt, leaveWithoutAsking };
 }
+
+/**
+ * For a modal over a page that has no Save-gated form of its own: while the
+ * modal holds typed input, browser back, a nav link or a reload asks too,
+ * not only its own close. A page that already calls useUnsavedChanges
+ * should fold the modal's dirty flag into that call instead (a router runs
+ * one blocker at a time).
+ */
+export function UnsavedPrompt({ dirty }: { dirty: boolean }) {
+  return useUnsavedChanges(dirty).prompt;
+}

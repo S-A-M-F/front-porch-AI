@@ -70,13 +70,14 @@ class _LorebookEntryDialogState extends State<_LorebookEntryDialog> {
 
   int _tab = 0;
 
-  /// Taken before the tabs touch the draft.
+  /// The entry as Save would write it, taken before any edit, so trimming
+  /// alone (imported trailing whitespace) does not count as a change.
   late final String _initialJson;
 
   @override
   void initState() {
     super.initState();
-    _initialJson = jsonEncode(_draft.toJson());
+    _initialJson = jsonEncode(_applied(_draft.clone()).toJson());
   }
 
   /// The draft with the Simple fields applied, as Save would pop it.

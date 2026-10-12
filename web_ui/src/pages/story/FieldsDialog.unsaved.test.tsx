@@ -87,4 +87,15 @@ describe('a story edit dialog with typed input', () => {
     expect(onSubmit).toHaveBeenCalledWith({ title: 'Tidewater Rising' });
     expect(confirm).not.toHaveBeenCalled();
   });
+
+  it('a reload or tab close asks only while something is typed', () => {
+    const clean = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    type('Tidewater Rising');
+    const dirty = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+  });
 });

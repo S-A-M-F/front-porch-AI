@@ -23,7 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:front_porch_ai/ui/story_studio/studio_buttons.dart';
 import 'package:front_porch_ai/ui/story_studio/studio_theme.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
-import 'package:front_porch_ai/ui/widgets/unsaved_changes_guard.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 // Cards, dialogs and the small status pieces of the spec.
 

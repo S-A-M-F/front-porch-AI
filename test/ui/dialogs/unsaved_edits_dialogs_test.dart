@@ -105,6 +105,22 @@ void main() {
       expect(opened.closed, isTrue);
     });
 
+    testWidgets('an imported entry with stray whitespace is not an edit', (
+      tester,
+    ) async {
+      final opened = await openEntry(
+        tester,
+        LorebookEntry(
+          name: ' Harbor ',
+          keys: const ['harbor ', ' docks'],
+          content: 'Fog rolls in.\n\n',
+        ),
+      );
+      await _escape(tester);
+      expect(find.text(_question), findsNothing);
+      expect(opened.closed, isTrue);
+    });
+
     testWidgets('typed content survives Escape until the user discards', (
       tester,
     ) async {

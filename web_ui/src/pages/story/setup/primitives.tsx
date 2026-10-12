@@ -7,7 +7,7 @@
 // comes from studio.css (.s-chip, .s-seg, .s-tog, .s-menu, .s-dialog …).
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { confirmDiscard } from '../../../hooks/useUnsavedChanges';
+import { confirmDiscard, UnsavedPrompt } from '../../../hooks/useUnsavedChanges';
 
 /** True under the studio's phone breakpoint (same 760px as studio.css). */
 export function useNarrow(): boolean {
@@ -185,6 +185,8 @@ export function Dialog({ title, onClose, dirty, actions, children, sheet, wide, 
   }, [onClose]);
   return (
     <div className="s-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) dismiss(); }}>
+      {/* Browser back, a nav link or a reload ask too, not only this dialog's own close. */}
+      {dirty !== undefined && <UnsavedPrompt dirty={dirty} />}
       <div className={sheet ? 's-sheet' : `s-dialog${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} data-testid={testid}>
         <div className="s-row nowrap">
           <span className="t s-grow">{title}</span>
