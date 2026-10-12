@@ -21,17 +21,42 @@
 // Every key is part of the wire contract and additive only — a browser
 // running an older bundle must keep working against a newer host.
 
-part of 'settings_facade.dart';
+import 'dart:io';
 
-extension SettingsFacadeRead on SettingsFacade {
-  Map<String, dynamic> read() {
-    _seedReasoningCatalog();
-    _kickRemoteEffortProbe();
+import 'package:path/path.dart' as p;
+
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/settings/settings_backend_names.dart';
+import 'package:front_porch_ai/services/web/facade/settings/settings_reasoning.dart';
+import 'package:front_porch_ai/services/web/facade/settings_worker.dart';
+
+/// Builds the web Settings JSON snapshot from live storage + backend state.
+class SettingsSnapshot {
+  SettingsSnapshot(this._storage, this._llm, this._reasoning);
+
+  final StorageService _storage;
+  final LLMProvider _llm;
+  final SettingsReasoning _reasoning;
+
+  String _loadedModel() {
+    final b = _storage.backendSettings;
+    if (_llm.isLocal) {
+      final path = b.lastUsedModelPath;
+      return (path != null && path.isNotEmpty)
+          ? p.basename(path)
+          : 'No model loaded';
+    }
+    return b.remoteModelName.isNotEmpty ? b.remoteModelName : 'Not set';
+  }
+
+  Map<String, dynamic> build() {
+    _reasoning.seedCatalog();
+    _reasoning.kickRemoteEffortProbe();
     final g = _storage.generationSettings;
     final b = _storage.backendSettings;
     return {
-      'backend': SettingsFacade._name(_llm.activeBackend),
-      'backends': SettingsFacade.backends,
+      'backend': backendWireName(_llm.activeBackend),
+      'backends': kWebSettingsBackends,
       'isLocal': _llm.isLocal,
       'loadedModel': _loadedModel(),
       'remoteApiUrl': b.remoteApiUrl,
@@ -63,9 +88,9 @@ extension SettingsFacadeRead on SettingsFacade {
       // ReasoningSupportResolver. Same two fields, so the web control needs
       // no local-only branch — plus one ADDITIVE field for the copy that
       // only a template verdict can produce ("this model cannot think").
-      'reasoningMandatory': reasoningEffortIsMandatory(_reasoningModelKey),
-      'reasoningEfforts': reasoningEffortChipsFor(_reasoningModelKey),
-      'reasoningLocalSupport': _thinkingSupportName,
+      'reasoningMandatory': reasoningEffortIsMandatory(_reasoning.modelKey),
+      'reasoningEfforts': reasoningEffortChipsFor(_reasoning.modelKey),
+      'reasoningLocalSupport': _reasoning.thinkingSupportName,
       'generation': {
         'temperature': g.temperature,
         'minP': g.minP,
@@ -159,10 +184,4 @@ extension SettingsFacadeRead on SettingsFacade {
       ...readWorkerSettings(_storage, _llm),
     };
   }
-
-  /// Dictionary tags the host can actually check, for the web's picker.
-  /// Async because it asks the native side, so it cannot live in [read] —
-  /// the routes merge it in.
-  Future<List<String>> spellCheckLanguages() =>
-      DesktopSpellCheckService.availableLanguages();
 }

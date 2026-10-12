@@ -21,9 +21,21 @@
 // push into the LIVE conversation versus which are read per turn straight
 // off StorageService — that distinction is the parity contract, not trivia.
 
-part of 'settings_facade.dart';
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/chat.dart' show ChaosFrequency;
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/settings/settings_backend_names.dart';
+import 'package:front_porch_ai/services/web/facade/settings/settings_reasoning.dart';
+import 'package:front_porch_ai/services/web/facade/settings_worker.dart';
 
-extension SettingsFacadeUpdate on SettingsFacade {
+/// Applies a web Settings POST body to storage and the live backend.
+class SettingsWriter {
+  SettingsWriter(this._storage, this._llm, this._reasoning);
+
+  final StorageService _storage;
+  final LLMProvider _llm;
+  final SettingsReasoning _reasoning;
+
   /// Why [body] must not be stored, in plain words, or null. Asked before
   /// anything is written, so a refused save changes nothing.
   String? refusal(Map<String, dynamic> body) =>
@@ -39,7 +51,7 @@ extension SettingsFacadeUpdate on SettingsFacade {
     final ctx = body['contextSize'];
     if (ctx is! num || ctx.toInt() == b.contextSize) return null;
     final next =
-        SettingsFacade._parse(body['backend']?.toString() ?? '') ??
+        parseBackendWireName(body['backend']?.toString() ?? '') ??
         _llm.activeBackend;
     return koboldPresetOwnsContext(
           backend: next.name,
@@ -57,7 +69,7 @@ extension SettingsFacadeUpdate on SettingsFacade {
   /// form, which is not a switch.
   String? _intelMacRefusal(Map<String, dynamic> body) {
     bool kobold(Object? type) =>
-        SettingsFacade._parse(type?.toString() ?? '') == BackendType.kobold;
+        parseBackendWireName(type?.toString() ?? '') == BackendType.kobold;
     final switches =
         (kobold(body['backend']) && _llm.activeBackend != BackendType.kobold) ||
         (kobold(body['workerBackend']) && !kobold(_storage.workerBackendType));
@@ -225,7 +237,7 @@ extension SettingsFacadeUpdate on SettingsFacade {
     var backendChanged = false;
     final backend = body['backend']?.toString();
     if (backend != null) {
-      final type = SettingsFacade._parse(backend);
+      final type = parseBackendWireName(backend);
       if (type != null) {
         backendChanged = type != _llm.activeBackend;
         await _llm.setActiveBackend(type);
@@ -288,15 +300,7 @@ extension SettingsFacadeUpdate on SettingsFacade {
         apiKey: b.remoteApiKey,
         modelName: b.remoteModelName,
       );
-      if (_usesTemplateResolve) {
-        unawaited(_resolveTemplate(b.remoteModelName));
-      } else {
-        kickReasoningEffortProbe(
-          model: b.remoteModelName,
-          apiUrl: b.remoteApiUrl,
-          apiKey: b.remoteApiKey,
-        );
-      }
+      _reasoning.refreshAfterRemoteChange();
     }
 
     final gen = body['generation'];

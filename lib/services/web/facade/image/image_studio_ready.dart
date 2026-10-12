@@ -1,28 +1,39 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'image_facade.dart';
+import 'package:flutter/foundation.dart';
 
-/// Phone JSON for a LoRA family fact. [meta] is true only when the
-/// family came from the file's own metadata, which is what makes a
-/// mismatch certain.
-List<Map<String, Object>> phoneLoraFacts({
-  List<LoraOption> options = const [],
-  List<DeskLoraCheck> checks = const [],
-}) {
-  return [
-    for (final row in options)
-      {
-        'file': row.name,
-        'family': row.family.name,
-        'meta': row.familyFromMetadata,
-      },
-    for (final row in checks)
-      {'file': row.file, 'family': row.family.name, 'meta': row.metadataBacked},
-  ];
-}
+import 'package:front_porch_ai/services/comfy_ui_service.dart';
+import 'package:front_porch_ai/services/image/image.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_desk_rules.dart';
+import 'package:front_porch_ai/services/web/facade/image/phone_lora_facts.dart';
 
-extension ImageStudioReady on ImageFacade {
+/// Readiness, catalogs and install checks behind the phone Generate button.
+class ImageStudioReady {
+  ImageStudioReady(this._image, this._storage, this._comfyFinder);
+
+  final ImageGenService _image;
+  final StorageService _storage;
+
+  /// Read live: tests point the facade's finder at their servers.
+  final ComfyUrlFinder? Function() _comfyFinder;
+
   void setExistingLoaderSupport({
     required String comfyUrl,
     required bool confirmed,
@@ -81,7 +92,7 @@ extension ImageStudioReady on ImageFacade {
     // A ComfyUI that moved, or was started after Front Porch, is found here
     // too; one the person did not choose is only named ('neighborUrl').
     final redial = backend == 'comfyui'
-        ? await redialComfy(settings, finder: comfyFinder)
+        ? await redialComfy(settings, finder: _comfyFinder())
         : null;
     final comfy = backend == 'comfyui'
         ? ComfyUiService(baseUrl: settings.comfyUiUrl)

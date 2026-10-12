@@ -1,10 +1,35 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'image_facade.dart';
+import 'package:front_porch_ai/services/capability/capability.dart';
+import 'package:front_porch_ai/services/image/image.dart';
+import 'package:front_porch_ai/services/image_prompt/image_prompt.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_desk_rules.dart';
 
-extension ImageStudioPackRules on ImageFacade {
-  ExpressionPromptRules _readPromptRules(Map<String, dynamic> f) {
+/// Expression prompt rules: defaults, previews and edits to a phone pack.
+class ImageStudioPackRules {
+  ImageStudioPackRules(this._storage, this._board);
+
+  final StorageService _storage;
+  final ExpressionPackBoard _board;
+
+  ExpressionPromptRules readPromptRules(Map<String, dynamic> f) {
     if (!f.containsKey('promptRules')) {
       return _storage.expressionSettings.expressionPromptRules.copy();
     }
@@ -21,7 +46,7 @@ extension ImageStudioPackRules on ImageFacade {
   Future<Map<String, Object?>> savePackPromptDefaults(
     Map<String, dynamic> f,
   ) async {
-    final rules = _readPromptRules(f);
+    final rules = readPromptRules(f);
     await _storage.expressionSettings.setExpressionPromptRules(rules);
     return rules.toJson();
   }
@@ -35,7 +60,7 @@ extension ImageStudioPackRules on ImageFacade {
   }
 
   Map<String, Object?> _previewPackPrompts(Map<String, dynamic> f) {
-    final rules = _readPromptRules(f);
+    final rules = readPromptRules(f);
     final active = f['activePack'] == true ? _board.run?.session : null;
     if (f['activePack'] == true && active == null) {
       throw const DeskRefused('no_pack', 'No expression pack.', 404);
@@ -94,7 +119,7 @@ extension ImageStudioPackRules on ImageFacade {
         'Provide promptRules explicitly.',
       );
     }
-    final rules = _readPromptRules(f);
+    final rules = readPromptRules(f);
     try {
       for (var i = 0; i < run.session.slots.length; i++) {
         rules.apply(run.session.originalPromptFor(i));

@@ -16,11 +16,19 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_tools_facade.dart';
+import 'package:front_porch_ai/database/database.dart' show Objective;
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 
 /// Quests: set, generate and edit tasks, completion checks, promotion, and
 /// abandoning today's side quest.
-extension ChatToolsFacadeObjectives on ChatToolsFacade {
+class ChatToolsObjectives {
+  ChatToolsObjectives(this._ctx);
+
+  final ChatToolsContext _ctx;
+  ChatService get _chat => _ctx.chat;
+  void _notify() => _ctx.notify();
+
   // ── Objectives (per-character; scoped to the focused cast participant so a
   //    new goal attaches to whoever the sidebar is focused on) ───────────────
   Future<void> setObjective(
@@ -32,7 +40,7 @@ extension ChatToolsFacadeObjectives on ChatToolsFacade {
     await _chat.setObjective(
       goal,
       isPrimary: isPrimary,
-      targetCharacter: _focusedParticipant(participantId)?.card,
+      targetCharacter: _ctx.focusedParticipant(participantId)?.card,
     );
     _notify();
   }

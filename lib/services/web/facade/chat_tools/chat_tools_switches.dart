@@ -16,12 +16,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_tools_facade.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 
 /// The plain toggles: engine, needs, one-shot, chaos, NSFW cooldown,
 /// passage of time, Director, wiki base. Each writes the same setting the
 /// desktop row writes and pushes to the live chat where the desktop does.
-extension ChatToolsFacadeSwitches on ChatToolsFacade {
+class ChatToolsSwitches {
+  ChatToolsSwitches(this._ctx);
+
+  final ChatToolsContext _ctx;
+  ChatService get _chat => _ctx.chat;
+  StorageService get _storage => _ctx.storage;
+  void _notify() => _ctx.notify();
+
   Future<void> setRealismEnabled(bool v) async {
     await _chat.setRealismEnabled(v);
     _notify();

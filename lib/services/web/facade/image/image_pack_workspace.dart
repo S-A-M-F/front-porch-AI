@@ -1,9 +1,47 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'image_facade.dart';
+import 'dart:convert';
 
-extension ImageStudioPackWorkspace on ImageFacade {
+import 'package:front_porch_ai/services/capability/capability.dart';
+import 'package:front_porch_ai/services/image/image.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_desk_rules.dart';
+
+/// The busy guards, the pack's mode, portrait and prompt, and discarding a
+/// phone pack.
+class ImageStudioPackWorkspace {
+  ImageStudioPackWorkspace(
+    this._image,
+    this._storage,
+    this._characters,
+    this._packBoard,
+    this._promptLlm,
+  );
+
+  final ImageGenService _image;
+  final StorageService _storage;
+  final CharacterRepository? _characters;
+  final ExpressionPackBoard _packBoard;
+
+  /// Read live: the host wires the facade's [promptLlm] after construction.
+  final LLMService? Function()? Function() _promptLlm;
+
   void requireIdlePackImport() {
     if (_packBoard.run?.importing == true) {
       throw const DeskRefused(
@@ -73,7 +111,7 @@ extension ImageStudioPackWorkspace on ImageFacade {
       );
     }
     return _image.generateSmartPrompt(
-      llmService: promptLlm?.call(),
+      llmService: _promptLlm()?.call(),
       mode: ImageGenMode.characterPortrait,
       style: _storage.imageGenSettings.imageGenStyle,
       characterName: card.name,

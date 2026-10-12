@@ -16,18 +16,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_tools_facade.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/chat/chat.dart';
+import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 
 /// Journal, Growth Rings, the recap, promises and the milestone timeline:
 /// the memory surfaces of the chat tools sidebar. Every one delegates to the
 /// store the desktop panel uses, so the two cannot drift.
-extension ChatToolsFacadeMemory on ChatToolsFacade {
+class ChatToolsMemory {
+  ChatToolsMemory(this._ctx);
+
+  final ChatToolsContext _ctx;
+  ChatService get _chat => _ctx.chat;
+  StorageService get _storage => _ctx.storage;
+  void _notify() => _ctx.notify();
+
   /// Growth Rings payload for the focused participant (group-aware via the
   /// same owner-id keying the desktop GrowthPanel uses; 1:1 falls back to the
   /// host). Rings ship with derived tier + decoded receipts so the web
   /// renders without re-implementing the physics.
   Map<String, dynamic> growth(String? participantId) {
-    final owner = _growthOwner(participantId);
+    final owner = _ctx.growthOwner(participantId);
     if (owner == null) {
       return {
         'name': '',
@@ -68,7 +77,7 @@ extension ChatToolsFacadeMemory on ChatToolsFacade {
     String action,
     Map<String, dynamic> body,
   ) async {
-    final owner = _growthOwner(participantId);
+    final owner = _ctx.growthOwner(participantId);
     if (owner == null) return;
     final ringId = body['ringId'] as String? ?? '';
     final rings = _chat.growthRingsForOwner(owner.id);
@@ -162,18 +171,6 @@ extension ChatToolsFacadeMemory on ChatToolsFacade {
       await _chat.growthReview.discard();
     }
     _notify();
-  }
-
-  /// The growth owner behind [participantId]: the focused participant, or the
-  /// host (1:1) / first member as fallback — mirrors the desktop's focused
-  /// default.
-  ChatParticipant? _growthOwner(String? participantId) {
-    final focused = _focusedParticipant(participantId);
-    if (focused != null) return focused;
-    for (final p in _chat.cast) {
-      if (p.isHost) return p;
-    }
-    return _chat.cast.firstOrNull;
   }
 
   // ── Summary controls ─────────────────────────────────────────────────────

@@ -1,67 +1,53 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'image_facade.dart';
+import 'dart:convert';
+import 'dart:io';
 
-/// A request to the phone desk that is refused, with a stable [code] and
-/// words for the person. Nothing has been changed when this is thrown.
-class DeskRefused implements Exception {
-  const DeskRefused(this.code, this.message, [this.status = 400]);
+import 'package:flutter/foundation.dart';
 
-  final String code;
-  final String message;
-  final int status;
+import 'package:front_porch_ai/services/image/image.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/storage/storage.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_desk_rules.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_pack_workspace.dart';
 
-  @override
-  String toString() => 'DeskRefused($code)';
-}
+/// The Image Studio desk on the phone: model, graph and slot picks, graph
+/// uploads, and the picture an Edit works on.
+class ImageStudioDesk {
+  ImageStudioDesk(this._image, this._storage, this._ws, this._savedImageFile);
 
-/// The most a graph file, or a picture to edit, may weigh.
-const int kMaxDeskGraphBytes = 8 * 1024 * 1024;
-const int kMaxDeskPictureBytes = 12 * 1024 * 1024;
+  final ImageGenService _image;
+  final StorageService _storage;
+  final ImageStudioPackWorkspace _ws;
+  final File? Function(String name) _savedImageFile;
 
-/// Whether a config write would store a ComfyUI graph the caller supplied.
-/// A graph is what Comfy runs on this computer, so it is credential-grade.
-bool imageConfigUploadsGraph(Map<String, dynamic> body) {
-  for (final key in [
-    'comfyCreateUploadedWorkflow',
-    'comfyEditUploadedWorkflow',
-  ]) {
-    final value = body[key];
-    if (value is String && value.trim().isNotEmpty) return true;
-  }
-  return false;
-}
-
-/// [raw] as a ComfyUI graph the desk may store: within the size limit and a
-/// JSON object. Throws [DeskRefused] otherwise.
-String checkedDeskGraph(String raw) {
-  if (utf8.encode(raw).length > kMaxDeskGraphBytes) {
-    throw const DeskRefused(
-      'too_large',
-      'That graph is too large to use.',
-      413,
-    );
-  }
-  final kept = pngWorkflowText({'prompt': raw});
-  if (kept == null || workflowNodeCount(kept) == 0) {
-    throw const DeskRefused('not_graph', 'That file isn’t a ComfyUI graph.');
-  }
-  return kept;
-}
-
-extension ImageStudioDesk on ImageFacade {
   ImageGenSettings get _s => _storage.imageGenSettings;
 
   Future<void> _setWorkflow(bool edit, String id) {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     return edit
         ? _s.setComfyEditWorkflowId(id)
         : _s.setComfyCreateWorkflowId(id);
   }
 
   Future<void> _setChoice(bool edit, String id, String token, String file) {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     return edit
         ? _s.setComfyEditModelChoice(id, token, file)
         : _s.setComfyCreateModelChoice(id, token, file);
@@ -106,7 +92,7 @@ extension ImageStudioDesk on ImageFacade {
   /// own slot. A bundled graph follows the file's family, except that a file
   /// of no known family stays on the graph it was chosen on.
   Future<void> pickModel({required bool edit, required String file}) async {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     final before = ImageModelFamily.detectFromName(
       studioPrimaryFor(_s, edit: edit),
     );
@@ -119,18 +105,18 @@ extension ImageStudioDesk on ImageFacade {
     final key = _s.k('image_studio_lora_override_family');
     final override = _s.prefs?.getString(key) ?? '';
     if (before != after && override.isNotEmpty && override != after.name) {
-      requireIdleImageSettings();
+      _ws.requireIdleImageSettings();
       await _s.prefs?.remove(key);
       _s.notify();
     }
   }
 
   Future<void> _pickModel({required bool edit, required String file}) async {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     final name = _cleanName(file);
     if (_s.imageGenBackend == 'remote') {
       await _s.setRemoteImageModelFor(_s.imageRemoteApiUrl, name, edit: edit);
-      requireIdleImageSettings();
+      _ws.requireIdleImageSettings();
       await (edit ? _s.setImageGenEditModel(name) : _s.setImageGenModel(name));
       return;
     }
@@ -160,7 +146,7 @@ extension ImageStudioDesk on ImageFacade {
   /// bundled graph of its own family; a saved or template graph keeps the
   /// files it has and empty slots are filled.
   Future<void> pickGraph({required bool edit, required String id}) async {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     final graph = _cleanName(id);
     final uploaded = edit
         ? _s.comfyEditUploadedWorkflow
@@ -203,7 +189,7 @@ extension ImageStudioDesk on ImageFacade {
     required String token,
     required String file,
   }) async {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     final slot = _cleanName(token);
     if (!RegExp(r'^%MODEL_[A-Z0-9_]+%$').hasMatch(slot)) {
       throw const DeskRefused('bad_slot', 'That is not a model slot.');
@@ -234,7 +220,7 @@ extension ImageStudioDesk on ImageFacade {
     required bool edit,
     String? useFor,
   }) async {
-    requireIdleImageSettings();
+    _ws.requireIdleImageSettings();
     if (bytes.length > kMaxDeskGraphBytes) {
       throw const DeskRefused(
         'too_large',
@@ -270,11 +256,11 @@ extension ImageStudioDesk on ImageFacade {
     final shown = title.length > 120 ? title.substring(0, 120) : title;
     if (forEdit) {
       await _s.setComfyEditUploadedWorkflow(json, title: shown);
-      requireIdleImageSettings();
+      _ws.requireIdleImageSettings();
       await _s.setComfyEditWorkflowId(kComfyUploadedWorkflowId);
     } else {
       await _s.setComfyCreateUploadedWorkflow(json, title: shown);
-      requireIdleImageSettings();
+      _ws.requireIdleImageSettings();
       await _s.setComfyCreateWorkflowId(kComfyUploadedWorkflowId);
     }
     return {
@@ -288,12 +274,12 @@ extension ImageStudioDesk on ImageFacade {
 
   /// The picture an Edit works on, or a Create varies: a picture this app
   /// saved (by file name) or one the phone sent (a data URL).
-  Future<Uint8List?> _reference(Map<String, dynamic> f) async {
+  Future<Uint8List?> reference(Map<String, dynamic> f) async {
     final saved = f['referenceFilename']?.toString() ?? '';
     final sent = f['referenceImage']?.toString() ?? '';
     Uint8List? bytes;
     if (saved.isNotEmpty) {
-      final file = savedImageFile(saved);
+      final file = _savedImageFile(saved);
       if (file == null) {
         throw const DeskRefused('no_picture', 'That picture is gone.', 404);
       }

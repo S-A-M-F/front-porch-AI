@@ -1,7 +1,27 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'image_facade.dart';
+import 'dart:convert';
+
+import 'package:front_porch_ai/services/comfy_ui_service.dart';
+import 'package:front_porch_ai/services/image/image.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/image/phone_lora_facts.dart';
 
 Map<String, dynamic> _templateRow(ComfyTemplateEntry t) => {
   'id': t.pickerId,
@@ -17,7 +37,13 @@ Map<String, dynamic> _graphRow(DeskGraphChoice row) => {
   'group': row.group,
 };
 
-extension ImageComfyCatalog on ImageFacade {
+/// Live ComfyUI drawers, templates and graph slots for the phone desk.
+class ImageComfyCatalog {
+  ImageComfyCatalog(this._image, this._storage);
+
+  final ImageGenService _image;
+  final StorageService _storage;
+
   /// Live Comfy drawers, template names and both Change graph lists, from one
   /// read of the install. [edit] says which mode's model filters the graph
   /// lists, as on the desktop desk. With a [token] (`%MODEL_CLIP%`,

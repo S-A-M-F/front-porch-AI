@@ -16,18 +16,45 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_facade.dart';
+import 'dart:io';
 
-/// Full `/api/chat/state` payload. Send/load and history stay on [ChatFacade].
-extension ChatFacadeState on ChatFacade {
+import 'package:path/path.dart' as p;
+
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/chat/chat_message_chips.dart';
+import 'package:front_porch_ai/services/web/facade/chat_realism_read.dart';
+import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
+
+/// Builds the full `/api/chat/state` payload from the live chat.
+class ChatStateSnapshot {
+  ChatStateSnapshot(
+    this._chat,
+    this._characters,
+    this._personas,
+    this._hub,
+    this._llm,
+    this._realism,
+  );
+
+  final ChatService _chat;
+  final CharacterRepository _characters;
+  final StreamHub? _hub;
+  final UserPersonaService? _personas;
+
+  /// Null in tests that construct a facade without a provider — treated as
+  /// ready so they do not inherit a "No API connection" hint.
+  final LLMProvider? _llm;
+  final ChatRealismRead _realism;
+
   /// Full chat state payload (matches legacy `/api/chat/state`).
-  Map<String, dynamic> state() {
+  Map<String, dynamic> build() {
     final activeChar = _chat.activeCharacter;
     final base = _chat.historyBasePosition;
     final messages = _chat.messages.asMap().entries.map((e) {
       final m = e.value;
       final md = m.activeMetadata;
-      final chips = _messageChips(md, e.key);
+      final chips = webMessageChips(_chat, md, e.key);
       // Generated-image messages (from /image or the Studio's "Send to chat")
       // and user-attached photos: expose the basename so the client renders
       // it via the existing GET /api/image/saved/<name> endpoint (both live
@@ -246,5 +273,101 @@ extension ChatFacadeState on ChatFacade {
         'wiki': _chat.wikiLookupAvailable,
       },
     };
+  }
+
+  /// The unified cast as JSON. Each entry carries enough to render a roster
+  /// (avatar, role, emotion, next-up) and to scope the sidebar via [id]
+  /// ([groupMemberStoreId] in groups). Avatars resolve to the character endpoint for host/guests
+  /// and the group-member endpoint for members.
+  List<Map<String, dynamic>> _castJson() {
+    final groupId = _chat.activeGroup?.id;
+    final nextDbId = _chat.nextCharacter?.dbId;
+    final isGroup = _chat.isGroupMode;
+    final placeholders = _placeholderCastIds(isGroup);
+    return _chat.cast.map((p) {
+      final card = p.card;
+      final avatarUrl = (isGroup && groupId != null)
+          ? '/api/groups/$groupId/members/${card.dbId}/avatar'
+          : '/api/characters/${card.dbId}/avatar';
+      return {
+        'id': p.id,
+        'dbId': card.dbId,
+        'name': p.name,
+        'isHost': p.isHost,
+        'isLite': p.isLite,
+        'realismEnabled': p.realismEnabled,
+        'emotion': !p.realismEnabled
+            ? null
+            : (isGroup
+                  ? _chat.getEmotionForGroupCharacter(card)
+                  : _chat.characterEmotion),
+        'isNext': card.dbId != null && card.dbId == nextDbId,
+        'hasAvatar': card.imagePath != null && card.imagePath!.isNotEmpty,
+        'avatarUrl': avatarUrl,
+        // The picture is only the flat no-portrait colour: the header and
+        // side portrait skip it (additive field).
+        'placeholderPortrait': placeholders.contains(p.id),
+      };
+    }).toList();
+  }
+
+  /// Cast ids whose avatar is the flat placeholder a character made without
+  /// a portrait carries. The chat state is refetched constantly, so this
+  /// never waits: it answers from the probe cache, counts an unknown picture
+  /// as real, probes it in the background, and pushes one `chat_updated`
+  /// when that finds a placeholder.
+  Set<String> _placeholderCastIds(bool isGroup) {
+    final ids = <String>{};
+    final unknown = <Future<bool>>[];
+    final epoch = _characters.coverEpoch;
+    final library = isGroup ? const <String, CharacterCard>{} : _castLibrary();
+    for (final p in _chat.cast) {
+      final file = _castAvatarFile(p.card, isGroup, library);
+      if (file == null) continue;
+      final known = PlaceholderPortraitProbe.known(file, version: epoch);
+      if (known == true) ids.add(p.id);
+      if (known == null) {
+        unknown.add(PlaceholderPortraitProbe.check(file, version: epoch));
+      }
+    }
+    if (unknown.isNotEmpty) {
+      Future.wait(unknown).then((found) {
+        if (found.contains(true)) _hub?.broadcastChatUpdate();
+      });
+    }
+    return ids;
+  }
+
+  /// The file the cast entry's `avatarUrl` serves: a group member's private
+  /// copy, else the library card's (★-aware) cover.
+  File? _castAvatarFile(
+    CharacterCard card,
+    bool isGroup,
+    Map<String, CharacterCard> library,
+  ) {
+    if (isGroup) {
+      final path = card.imagePath;
+      return path == null || path.isEmpty ? null : File(path);
+    }
+    return _characters.coverImageFileFor(library[card.dbId] ?? card);
+  }
+
+  /// The cast's library cards by dbId, from one pass over the library per
+  /// state build (stopping once every cast member is found).
+  Map<String, CharacterCard> _castLibrary() {
+    final wanted = {
+      for (final p in _chat.cast)
+        if (p.card.dbId != null) p.card.dbId!,
+    };
+    final found = <String, CharacterCard>{};
+    if (wanted.isEmpty) return found;
+    for (final c in _characters.characters) {
+      final id = c.dbId;
+      if (id != null && wanted.contains(id)) {
+        found[id] = c;
+        if (found.length == wanted.length) break;
+      }
+    }
+    return found;
   }
 }

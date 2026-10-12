@@ -16,11 +16,19 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_tools_facade.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/chat/chat.dart';
+import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 
 /// Pockets and Wardrobe: what they are wearing and carrying, plus the
 /// hand-add and erase affordances the desktop PocketsRow has.
-extension ChatToolsFacadePockets on ChatToolsFacade {
+class ChatToolsPockets {
+  ChatToolsPockets(this._ctx);
+
+  final ChatToolsContext _ctx;
+  ChatService get _chat => _ctx.chat;
+  void _notify() => _ctx.notify();
+
   // ── Toggles (chat-scoped; delegate to the same ChatService methods the
   //    desktop sidebar calls, which persist + handle group parity) ──────────
   /// Strike one pocket item by hand from the web panel — the same eraser the
@@ -35,11 +43,11 @@ extension ChatToolsFacadePockets on ChatToolsFacade {
     required String section,
     required int index,
   }) async {
-    final focused = _focusedParticipant(participantId);
+    final focused = _ctx.focusedParticipant(participantId);
     // Guests have no record — without this, the strike lands on the HOST's
     // kit (see _isGuestFocus). The panel is hidden for a guest focus, but
     // the endpoint must hold the same line a stale bundle could cross.
-    if (_isGuestFocus(focused)) return;
+    if (_ctx.isGuestFocus(focused)) return;
     final card = focused?.card ?? _chat.activeCharacter;
     if (card == null) return;
     final target = switch (section) {
@@ -67,10 +75,10 @@ extension ChatToolsFacadePockets on ChatToolsFacade {
     bool gift = false,
     bool correction = false,
   }) async {
-    final focused = _focusedParticipant(participantId);
+    final focused = _ctx.focusedParticipant(participantId);
     // Same guest guard as the eraser — an add would otherwise write the
     // HOST's record under the guest's name.
-    if (_isGuestFocus(focused)) return;
+    if (_ctx.isGuestFocus(focused)) return;
     final card = focused?.card ?? _chat.activeCharacter;
     if (card == null) return;
     final target = switch (section) {

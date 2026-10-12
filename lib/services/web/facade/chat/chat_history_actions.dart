@@ -16,10 +16,32 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_facade.dart';
+import 'dart:async';
+import 'dart:io';
 
-/// Swipe, edit/delete, personas, and session history for [ChatFacade].
-extension ChatFacadeHistory on ChatFacade {
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/image/comfy_gguf_city96_gate.dart'
+    show withoutCity96Ask;
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
+import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
+
+/// Swipe, edit/delete, Needs redo, images, author note and chat lorebook for
+/// the web chat. Each action delegates to the [ChatService] method the
+/// desktop calls, then pushes `chat_updated`.
+class ChatHistoryActions {
+  ChatHistoryActions(
+    this._chat,
+    this._hub,
+    this._notify, {
+    File? Function(String name)? resolveSavedImage,
+  }) : _resolveSavedImage = resolveSavedImage;
+
+  final ChatService _chat;
+  final StreamHub? _hub;
+  final void Function() _notify;
+  final File? Function(String name)? _resolveSavedImage;
+
   Map<String, dynamic> variants(int messageIndex) =>
       _chat.variantPickerPayload(messageIndex);
 
@@ -133,146 +155,6 @@ extension ChatFacadeHistory on ChatFacade {
     _chat.setAuthorNote(note, strength: strength);
     _notify();
   }
-
-  /// All user personas for the web persona surfaces.
-  ///
-  /// Two flags, because there are two distinct answers: `default` is who a NEW
-  /// chat starts as (Settings), `active` is who the CURRENT chat is speaking as
-  /// (the in-chat switcher). `active` is kept for older PWA builds that only
-  /// know that key — additive-only, per the API contract.
-  List<Map<String, dynamic>> personas() {
-    final svc = _personas;
-    if (svc == null) return const [];
-    final activeId = svc.persona.id;
-    final defaultId = svc.defaultPersonaId;
-    return svc.personas
-        .map(
-          (p) => {
-            'id': p.id,
-            'label': p.displayLabel,
-            'name': p.name,
-            'active': p.id == activeId,
-            'default': p.id == defaultId,
-          },
-        )
-        .toList();
-  }
-
-  /// Change which persona NEW chats start as (Settings → Personas). Leaves the
-  /// open chat alone. Returns false if personas aren't wired.
-  Future<bool> setPersona(String id) async {
-    final svc = _personas;
-    if (svc == null) return false;
-    await svc.setDefaultPersona(id);
-    _notify();
-    return true;
-  }
-
-  /// Speak as [id] in the CURRENT chat, and bind the session to it — the web
-  /// counterpart of the desktop composer's persona switcher. Saves immediately
-  /// so the binding survives a reload even if the user says nothing else.
-  Future<bool> setChatPersona(String id) async {
-    final svc = _personas;
-    if (svc == null) return false;
-    await svc.setActivePersona(id);
-    await _chat.persistSessionPersona();
-    _notify();
-    return true;
-  }
-
-  /// Full persona detail for the editor (text + name/title), or null if absent.
-  Map<String, dynamic>? personaDetail(String id) {
-    final svc = _personas;
-    if (svc == null) return null;
-    for (final p in svc.personas) {
-      if (p.id == id) {
-        return {
-          'id': p.id,
-          'title': p.title,
-          'name': p.name,
-          'persona': p.persona,
-          'birthday': p.birthday,
-        };
-      }
-    }
-    return null;
-  }
-
-  /// Create a new persona (and make it active, matching the desktop). Returns
-  /// false if personas aren't wired.
-  Future<bool> createPersona(Map<String, dynamic> f) async {
-    final svc = _personas;
-    if (svc == null) return false;
-    await svc.createPersona(
-      f['title']?.toString() ?? '',
-      f['name']?.toString() ?? 'User',
-      f['persona']?.toString() ?? '',
-      null,
-      birthday: f['birthday']?.toString() ?? '',
-    );
-    _notify();
-    return true;
-  }
-
-  /// Edit an existing persona's text fields (only provided keys change).
-  Future<bool> updatePersona(String id, Map<String, dynamic> f) async {
-    final svc = _personas;
-    if (svc == null) return false;
-    UserPersona? existing;
-    for (final p in svc.personas) {
-      if (p.id == id) {
-        existing = p;
-        break;
-      }
-    }
-    if (existing == null) return false;
-    await svc.updatePersona(
-      existing.copyWith(
-        title: f.containsKey('title') ? f['title']?.toString() : null,
-        name: f.containsKey('name') ? f['name']?.toString() : null,
-        persona: f.containsKey('persona') ? f['persona']?.toString() : null,
-        birthday: f.containsKey('birthday') ? f['birthday']?.toString() : null,
-      ),
-    );
-    _notify();
-    return true;
-  }
-
-  /// Delete a persona. The service refuses to delete the last one (throws),
-  /// which we surface as false. Returns false if personas aren't wired.
-  Future<bool> deletePersona(String id) async {
-    final svc = _personas;
-    if (svc == null) return false;
-    try {
-      await svc.deletePersona(id);
-    } catch (_) {
-      return false;
-    }
-    _notify();
-    return true;
-  }
-
-  /// All saved conversations. See [ChatSessionFacade.list].
-  Future<List<Map<String, dynamic>>> sessions({
-    String? characterId,
-    String? groupId,
-  }) => _sessions.list(characterId: characterId, groupId: groupId);
-
-  /// New / load / delete. See [ChatSessionFacade.apply].
-  Future<String?> session({
-    String? action,
-    String? sessionId,
-    bool startReplacement = true,
-  }) => _sessions.apply(
-    action: action,
-    sessionId: sessionId,
-    startReplacement: startReplacement,
-  );
-
-  /// Fork at [messageIndex]. See [ChatSessionFacade.fork].
-  Future<String?> fork(int messageIndex) => _sessions.fork(messageIndex);
-
-  String? get currentSessionId => _chat.currentSessionId;
 
   /// The chat-scoped lorebook as web editor rows (full-fidelity via `ext`).
   Map<String, dynamic> chatLorebookRows() => {

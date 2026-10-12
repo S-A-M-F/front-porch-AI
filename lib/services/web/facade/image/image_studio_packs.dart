@@ -1,13 +1,58 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'image_facade.dart';
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/capability/capability.dart';
+import 'package:front_porch_ai/services/image/image.dart';
+import 'package:front_porch_ai/services/image_prompt/image_prompt.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_desk_rules.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_pack_rules.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_pack_workspace.dart';
+import 'package:front_porch_ai/services/web/facade/image/image_studio_desk.dart';
 
 /// Expression packs on the phone: the same pack, the same decision and the
 /// same lock as the desktop dialog. The phone sends what the person chose; the
 /// computer decides how the pictures are made (or why they cannot be).
-extension ImageStudioPacks on ImageFacade {
-  ExpressionPackBoard get _board => _packBoard;
+class ImageStudioPacks {
+  ImageStudioPacks(
+    this._image,
+    this._storage,
+    this._characters,
+    this._board, {
+    required ImageStudioPackWorkspace workspace,
+    required ImageStudioPackRules rules,
+    required ImageStudioDesk desk,
+  }) : _ws = workspace,
+       _rules = rules,
+       _desk = desk;
+
+  final ImageGenService _image;
+  final StorageService _storage;
+  final CharacterRepository? _characters;
+  final ExpressionPackBoard _board;
+  final ImageStudioPackWorkspace _ws;
+  final ImageStudioPackRules _rules;
+  final ImageStudioDesk _desk;
 
   /// The pack on the board, or null.
   Map<String, Object?>? packView() => _board.view();
@@ -15,7 +60,7 @@ extension ImageStudioPacks on ImageFacade {
   /// Starts a pack for [f]`['characterId']`. It answers at once with the
   /// pack's state; the pictures are made in the background.
   Future<Map<String, Object?>> startPack(Map<String, dynamic> f) async {
-    requireIdlePackImport();
+    _ws.requireIdlePackImport();
     if (f['workspace'] == true && _board.run != null) {
       throw const DeskRefused(
         'existing_pack',
@@ -26,7 +71,7 @@ extension ImageStudioPacks on ImageFacade {
     if (f['workspace'] == true && _image.isGenerating) {
       throw const DeskRefused('busy', kAlreadyGeneratingMessage, 409);
     }
-    final rules = _readPromptRules(f);
+    final rules = _rules.readPromptRules(f);
     final repo = _characters;
     if (repo == null) {
       throw const DeskRefused(
@@ -51,7 +96,7 @@ extension ImageStudioPacks on ImageFacade {
     if (!plan.canStart) throw DeskRefused('not_ready', plan.refusal!, 409);
 
     final raw =
-        await _reference(f) ??
+        await _desk.reference(f) ??
         await packBaseImage(repo, _storage, id, card.name);
     if (raw == null) {
       throw DeskRefused(
@@ -73,7 +118,7 @@ extension ImageStudioPacks on ImageFacade {
     }
     var prompt = '${f['prompt'] ?? ''}'.trim();
     if (!plan.edit && prompt.isEmpty && f['workspace'] == true) {
-      prompt = await craftPackPrompt(id);
+      prompt = await _ws.craftPackPrompt(id);
     }
     if (!plan.edit && prompt.isEmpty) {
       throw const DeskRefused(
@@ -125,7 +170,7 @@ extension ImageStudioPacks on ImageFacade {
         409,
       );
     }
-    requireIdlePackImport();
+    _ws.requireIdlePackImport();
     final flight = await withoutCity96Ask(
       () => beginExpressionPack(
         imageGen: _image,

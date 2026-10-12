@@ -16,11 +16,30 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'chat_tools_facade.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/chat/chat.dart';
+import 'package:front_porch_ai/services/story/faithful_mode.dart';
+import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 
 /// The story clock and the scene it describes — set date/time, nudge,
 /// calendar, presence, and handing a chat to Porch Stories.
-extension ChatToolsFacadeScene on ChatToolsFacade {
+class ChatToolsScene {
+  ChatToolsScene(
+    this._ctx, {
+    StoryRepository? storyRepo,
+    UserPersonaService? personas,
+  }) : _storyRepo = storyRepo,
+       _personas = personas;
+
+  final ChatToolsContext _ctx;
+
+  /// Living Time §4 story-from-chat deps. Optional; the endpoint 400s without.
+  final StoryRepository? _storyRepo;
+  final UserPersonaService? _personas;
+
+  ChatService get _chat => _ctx.chat;
+  void _notify() => _ctx.notify();
+
   /// Story Calendar writes (story-calendar.md §6): set the current story
   /// moment / re-anchor Day 1. Mirrors the desktop dialog's two gear actions.
   Future<void> setStoryClock(DateTime clock) async {
@@ -81,7 +100,8 @@ extension ChatToolsFacadeScene on ChatToolsFacade {
     _notify();
   }
 
-  String? _presenceWord() {
+  /// The host's presence glance word for the time chip (1:1 only).
+  String? presenceWord() {
     final card = _chat.activeCharacter;
     if (card == null || _chat.isGroupMode) return null;
     final ext = card.frontPorchExtensions;
