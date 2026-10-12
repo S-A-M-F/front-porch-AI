@@ -25,6 +25,7 @@ import 'package:front_porch_ai/ui/pages/story_dashboard_page.dart';
 import 'package:front_porch_ai/ui/story_setup/story_setup.dart';
 import 'package:front_porch_ai/ui/story_studio/story_studio.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 /// New Story (sketches I–L): Idea → Cast → Shape → Engine, with a summary
 /// rail that fills in as you go. The project row is created on the first
@@ -232,9 +233,14 @@ class _StorySetupPageState extends State<StorySetupPage> {
   });
 
   Future<void> _leave() => _oneAtATime(() async {
-    // Nothing typed yet: nothing to keep.
+    // No story row until the first Next: what is typed here is only kept
+    // if the user goes on, so ask before dropping it.
     if (_projectId == null) {
-      Navigator.of(context).pop();
+      final typed =
+          _draft.titleController.text.trim().isNotEmpty ||
+          _draft.conceptController.text.trim().isNotEmpty;
+      if (typed && !await confirmDiscardChanges(context)) return;
+      if (mounted) Navigator.of(context).pop();
       return;
     }
     await _save(step: _step);

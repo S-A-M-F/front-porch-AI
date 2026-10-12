@@ -37,7 +37,6 @@ class _EditorPageState extends State<_EditorPage> {
   @override
   Widget build(BuildContext context) => UnsavedChangesGuard(
     isDirty: () => _text.text.isNotEmpty,
-    listenable: _text,
     child: Scaffold(
       appBar: AppBar(title: const Text('Editor')),
       body: Column(

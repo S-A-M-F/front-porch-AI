@@ -369,8 +369,15 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
     );
   }
 
+  /// The typed inputs are kept in preferences; a generated character is
+  /// not, until Save.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => UnsavedChangesGuard(
+    isDirty: () => creatorState.generatedCard != null,
+    child: _scaffold(context),
+  );
+
+  Widget _scaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
@@ -379,7 +386,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
           icon: const Icon(Icons.arrow_back),
           onPressed: creatorState.isGenerating
               ? null
-              : () => Navigator.of(context).pop(),
+              : () => Navigator.of(context).maybePop(),
         ),
         title: Row(
           children: [

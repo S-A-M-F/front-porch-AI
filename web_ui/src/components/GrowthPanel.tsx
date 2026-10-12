@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { GrowthReviewModal } from './GrowthReviewModal';
+import { confirmDiscard } from '../hooks/useUnsavedChanges';
 
 export interface GrowthRing {
   id: string;
@@ -53,16 +54,18 @@ function RingEditor({
   onSave: (text: string, category: string) => void;
   onClose: () => void;
 }) {
+  const startCategory = CATEGORIES.includes(initialCategory) ? initialCategory : 'trait';
   const [text, setText] = useState(initialText);
-  const [category, setCategory] = useState(
-    CATEGORIES.includes(initialCategory) ? initialCategory : 'trait',
-  );
+  const [category, setCategory] = useState(startCategory);
+  const dismiss = () => {
+    if (confirmDiscard(text !== initialText || category !== startCategory)) onClose();
+  };
   return (
-    <div className="drawer-backdrop center" onClick={onClose}>
+    <div className="drawer-backdrop center" onClick={dismiss}>
       <div className="modal growth-editor" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <span>{title}</span>
-          <button className="link-btn" onClick={onClose}>Close</button>
+          <button className="link-btn" onClick={dismiss}>Close</button>
         </div>
         <textarea
           rows={3}
@@ -84,7 +87,7 @@ function RingEditor({
           ))}
         </div>
         <div className="modal-actions">
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={dismiss}>Cancel</button>
           <button
             className="primary"
             disabled={!text.trim()}

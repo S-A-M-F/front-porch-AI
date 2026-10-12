@@ -84,11 +84,8 @@ Future<bool> confirmDiscardChanges(BuildContext context) async {
 /// Wrap a page or dialog whose edits are only written by an explicit Save.
 /// While [isDirty] is true, back (button, gesture, Escape, a barrier tap or
 /// any `maybePop`) asks before leaving, and so do the sidebar and the window
-/// close button through [UnsavedChanges].
-///
-/// [isDirty] is read on every build. When it can change without the owner
-/// calling `setState` (typing into a text controller), pass that controller
-/// (or a `Listenable.merge`) as [listenable] so the guard rebuilds.
+/// close button through [UnsavedChanges]. [isDirty] is read at the moment
+/// the user tries to leave, so edits that never call `setState` count too.
 ///
 /// A leave button must use `Navigator.maybePop`; `Navigator.pop` skips the
 /// guard on purpose, which is how Save leaves after it has written.
@@ -96,12 +93,10 @@ class UnsavedChangesGuard extends StatefulWidget {
   const UnsavedChangesGuard({
     super.key,
     required this.isDirty,
-    this.listenable,
     required this.child,
   });
 
   final ValueGetter<bool> isDirty;
-  final Listenable? listenable;
   final Widget child;
 
   @override
@@ -121,30 +116,24 @@ class _UnsavedChangesGuardState extends State<UnsavedChangesGuard> {
     super.dispose();
   }
 
-  Future<void> _onBlockedPop(bool didPop, Object? result) async {
+  /// Every pop is held here so dirtiness is checked live, not as of the last
+  /// build.
+  Future<void> _onPop(bool didPop, Object? result) async {
     if (didPop) return;
     final navigator = Navigator.of(context);
     final route = ModalRoute.of(context);
-    if (!await confirmDiscardChanges(context) || !mounted) return;
+    if (widget.isDirty() && !await confirmDiscardChanges(context)) return;
+    if (!mounted) return;
     // The root page has nowhere to go back to; the sidebar handles leaving it.
     if (route != null && route.isCurrent && navigator.canPop()) {
       navigator.pop(result);
     }
   }
 
-  Widget _scope(BuildContext context) => PopScope<Object?>(
-    canPop: !widget.isDirty(),
-    onPopInvokedWithResult: _onBlockedPop,
+  @override
+  Widget build(BuildContext context) => PopScope<Object?>(
+    canPop: false,
+    onPopInvokedWithResult: _onPop,
     child: widget.child,
   );
-
-  @override
-  Widget build(BuildContext context) {
-    final listenable = widget.listenable;
-    if (listenable == null) return _scope(context);
-    return ListenableBuilder(
-      listenable: listenable,
-      builder: (context, _) => _scope(context),
-    );
-  }
 }

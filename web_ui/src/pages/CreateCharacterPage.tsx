@@ -19,6 +19,7 @@ import { useAdultThemes } from '../components/realism/useAdultThemes';
 import { usePassageOfTime } from '../components/realism/usePassageOfTime';
 import { NeedsFormSection } from '../components/realism/NeedsFormSection';
 import { type RealismValues, REALISM_DEFAULTS, compactGreetingPairs, inventoryToChips } from '../components/realism/realismTypes';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 
 interface Draft extends RealismValues {
   name: string;
@@ -59,6 +60,9 @@ export function CreateCharacterPage() {
   const [d, setD] = useState<Draft>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const { prompt, leaveWithoutAsking } = useUnsavedChanges(
+    JSON.stringify(d) !== JSON.stringify(EMPTY),
+  );
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setD({ ...d, [key]: value });
   const patch = (p: Partial<RealismValues>) => setD({ ...d, ...p });
@@ -75,6 +79,7 @@ export function CreateCharacterPage() {
         alternateGreetings: paired.greetings,
         greetingSeeds: paired.seeds,
       });
+      leaveWithoutAsking();
       // Open the new character so creation is verifiable end-to-end.
       try {
         navigate('/chat?opening=1');
@@ -91,6 +96,7 @@ export function CreateCharacterPage() {
 
   return (
     <div className="page wizard">
+      {prompt}
       <div className="page-head">
         <h2>Create character</h2>
         <button className="ghost" onClick={() => navigate(-1)}>Cancel</button>
