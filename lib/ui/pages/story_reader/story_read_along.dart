@@ -142,7 +142,8 @@ class StoryReadAlong {
       }
 
       final audioFile = audioBuffer[currentPage()];
-      if (audioFile != null && audioFile.existsSync() /* io-ok: loop */ ) {
+      if (audioFile != null &&
+          audioFile.existsSync() /* io-ok: read-aloud loop, not build */ ) {
         final segPlayer = AudioPlayer();
         // Publish the ACTIVE player so the stop button can reach it.
         // Field-reported bug: the player was declared and .stop()ed
