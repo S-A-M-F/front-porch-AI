@@ -290,11 +290,15 @@ ComfyCreateRequest? resolveComfyCreateRequest({
   final api = ensureComfyApiGraph(source, objectInfo: objectInfo);
   if (api == null) return null;
   final adapted = adaptComfyApiWorkflow(api);
+  final own = workflowId == kComfyUploadedWorkflowId
+      ? comfyGraphOwnFiles(api, adapted)
+      : const <String, String>{};
   for (final slot in adapted.slots) {
     var file =
         modelChoices['$workflowId/${slot.token}'] ??
         modelChoices['${comfyTemplateNameFor(workflowId) ?? ''}/${slot.token}'] ??
         '';
+    if (file.isEmpty) file = own[slot.token] ?? '';
     if (file.isEmpty &&
         slot.token == kComfyCheckpointToken &&
         checkpointFallback.isNotEmpty) {
