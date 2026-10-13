@@ -71,6 +71,7 @@ class PersonaConversionFacade {
       'personaId': persona.id,
       'name': seed.name,
       'description': seed.description,
+      'personality': seed.personality,
       'birthday': seed.birthday,
       'aiConcept': seed.aiConcept,
       'hasPortrait': seed.portraitPath != null,

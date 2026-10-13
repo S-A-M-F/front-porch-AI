@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -64,6 +65,7 @@ class AvatarCreationController extends ChangeNotifier {
     required this.peekVisionSupport,
     required String initialPrompt,
     CharacterCard? card,
+    this.existingPortraitPath,
   }) : promptController = TextEditingController(text: initialPrompt),
        _packPromptRules = storage.expressionSettings.expressionPromptRules
            .copy() {
@@ -104,7 +106,9 @@ class AvatarCreationController extends ChangeNotifier {
       notify: notifyListeners,
     );
     final configured = imageGen.isConfigured;
-    source = configured ? PortraitSource.generate : PortraitSource.upload;
+    source = configured && existingPortraitPath == null
+        ? PortraitSource.generate
+        : PortraitSource.upload;
     packEnabled = configured && packPossible;
   }
 
@@ -112,6 +116,10 @@ class AvatarCreationController extends ChangeNotifier {
   /// The manual creator saved on step entry and returns it directly; the AI
   /// creator saves on first use (its Save & Finish then updates in place).
   final Future<CharacterCard?> Function() ensureCardSaved;
+
+  /// A picture the card already starts with (a persona's): shown as the
+  /// uploaded portrait instead of defaulting to Generate.
+  final String? existingPortraitPath;
 
   final CharacterRepository repository;
   final StorageService storage;
@@ -292,6 +300,7 @@ class AvatarCreationController extends ChangeNotifier {
   Future<void> init() async {
     unawaited(initQcGate());
     unawaited(refreshEngine());
+    await loadExistingPortrait();
     if (_anchor.card?.dbId != null) {
       await _anchor.loadExistingEmotions();
       if (!_disposed) notifyListeners();
@@ -301,6 +310,19 @@ class AvatarCreationController extends ChangeNotifier {
   /// Hidden/shown per the shipped VisionSupportResolver, WITHOUT probing:
   /// known-unsupported → the toggle doesn't exist; known-supported → shown
   /// (default off); unknown → shown, resolved on toggle.
+  Future<void> loadExistingPortrait() async {
+    final path = existingPortraitPath;
+    if (path == null || path.isEmpty) return;
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      portraitBytes = await file.readAsBytes();
+      if (!_disposed) notifyListeners();
+    } catch (e) {
+      debugPrint('[AvatarCreation] Starting portrait unreadable: $e');
+    }
+  }
+
   Future<void> initQcGate() => _qcGate.init();
 
   /// Connection test (local backends) + model catalog for the engine strip

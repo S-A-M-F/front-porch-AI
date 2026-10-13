@@ -70,6 +70,7 @@ export function CreateCharacterPage() {
           ...base,
           name: personaSeed.name,
           description: personaSeed.description,
+          personality: personaSeed.personality ?? '',
           birthday: personaSeed.birthday,
         }
       : base;
