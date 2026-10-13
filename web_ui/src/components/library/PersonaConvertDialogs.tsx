@@ -165,6 +165,31 @@ export interface PersonaSeed {
   hasPortrait: boolean;
 }
 
+/** The persona's picture as the relay serves it. */
+export function personaPortraitUrl(personaId: string) {
+  return `/api/persona-convert/persona/${encodeURIComponent(personaId)}/portrait`;
+}
+
+/** The wizards' "Starting from the persona…" line, with its picture. */
+export function PersonaSeedNote({ seed }: { seed: PersonaSeed }) {
+  return (
+    <div className="persona-seed-note" data-testid="persona-seed-note">
+      {seed.hasPortrait && (
+        <img
+          className="persona-seed-portrait"
+          src={personaPortraitUrl(seed.personaId)}
+          alt={`${seed.name}'s picture`}
+          data-testid="persona-seed-portrait"
+        />
+      )}
+      <p className="muted small">
+        Starting from the persona "{seed.name}"
+        {seed.hasPortrait ? '; its picture becomes the portrait.' : '.'}
+      </p>
+    </div>
+  );
+}
+
 export function usePersonaSeed(params: URLSearchParams): { seed: PersonaSeed | null; error: string } {
   const personaId = params.get('fromPersona') ?? '';
   const swap = params.get('swap') !== '0';

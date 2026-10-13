@@ -307,9 +307,8 @@ class AvatarCreationController extends ChangeNotifier {
     }
   }
 
-  /// Hidden/shown per the shipped VisionSupportResolver, WITHOUT probing:
-  /// known-unsupported → the toggle doesn't exist; known-supported → shown
-  /// (default off); unknown → shown, resolved on toggle.
+  /// Fills the portrait slot from [existingPortraitPath]. Nothing is written:
+  /// the card already carries that picture.
   Future<void> loadExistingPortrait() async {
     final path = existingPortraitPath;
     if (path == null || path.isEmpty) return;
@@ -323,6 +322,9 @@ class AvatarCreationController extends ChangeNotifier {
     }
   }
 
+  /// Hidden/shown per the shipped VisionSupportResolver, WITHOUT probing:
+  /// known-unsupported → the toggle doesn't exist; known-supported → shown
+  /// (default off); unknown → shown, resolved on toggle.
   Future<void> initQcGate() => _qcGate.init();
 
   /// Connection test (local backends) + model catalog for the engine strip
