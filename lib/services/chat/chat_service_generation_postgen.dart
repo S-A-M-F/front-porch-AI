@@ -274,19 +274,30 @@ extension ChatServiceGenerationPostGen on ChatService {
         );
       }
 
+      // Paused while this auto-chat turn was being written: it still counts.
+      if (!_autoPlayActive &&
+          _autoChatBudget.turnRunning &&
+          !t.streamTarget.isUser) {
+        _autoChatBudget.spendPaused();
+      }
       // Auto-play: if director mode is active, queue the next character
       // (unless this reply spoke to the absent user, or spent the run).
       if (_autoPlayActive &&
           _observerMode &&
           _activeGroup != null &&
           !(!t.streamTarget.isUser && _autoChatPausesAfter(t.streamTarget))) {
-        // If TTS is active, wait for it to finish before starting the delay
+        // If TTS is active, wait for it to finish before starting the delay.
+        // A pause and resume inside the wait starts its own turn; this one's
+        // wait then belongs to the old run and must not add a second.
+        final run = _autoChatBudget.run;
         if (_ttsService != null && _ttsService!.isSpeaking) {
-          _waitForTtsThenContinue();
+          _waitForTtsThenContinue(run);
         } else {
           final delayMs = (directorDelaySec * 1000).round();
           Future.delayed(Duration(milliseconds: delayMs), () {
-            if (_autoPlayActive && !_isGenerating) {
+            if (_autoPlayActive &&
+                !_isGenerating &&
+                _autoChatBudget.run == run) {
               _autoPlayNext();
             }
           });
