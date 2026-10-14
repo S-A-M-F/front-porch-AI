@@ -1,9 +1,6 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export 'expression_prompts.dart'
-    show originalExpressionPrompt, composeExpressionPrompt;
-
 class ExpressionPromptReplacement {
   ExpressionPromptReplacement({
     required this.find,

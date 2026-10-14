@@ -222,3 +222,9 @@
 .fp-desk-remote { margin: 0; padding: 0; border: none; min-width: 0; }
 .pack-intensity { display: flex; flex-direction: column; gap: .4rem; min-width: 0; width: 100%; }
 .pack-intensity select { max-width: 100%; }
+
+.fp-slot-tune { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.fp-slot-tune summary { cursor: pointer; padding-block: 4px; }
+.fp-slot-tune fieldset { border: 0; padding: 8px 0; min-width: 0; }
+.fp-slot-tune textarea { display: block; width: 100%; box-sizing: border-box; min-height: 80px; }
+.fp-slot-notice { min-height: 2.8em; color: var(--muted); margin-block: 8px; }

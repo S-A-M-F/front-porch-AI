@@ -102,19 +102,29 @@ Future<void> showPackRerollEditor(
                     useIntensityPrompt = true;
                     promptEdited = false;
                   }),
-                  child: const Text(
-                    'Use intensity wording (replaces custom prompt)',
+                  child: Text(
+                    promptEdited
+                        ? 'Use intensity wording (replaces custom prompt)'
+                        : 'Use intensity wording',
                   ),
                 ),
-                if (promptEdited && !useIntensityPrompt)
-                  const Text(
-                    'A custom prompt overrides intensity until you replace its wording.',
-                  ),
+                SizedBox(
+                  height: 44,
+                  child: promptEdited && !useIntensityPrompt
+                      ? Text(
+                          'A custom prompt overrides intensity until you replace its wording.',
+                          style: TextStyle(
+                            color: AppColors.textSecondary(context),
+                            fontSize: 12,
+                          ),
+                        )
+                      : null,
+                ),
                 TextField(
-                  onChanged: (_) {
+                  onChanged: (_) => setState(() {
                     useIntensityPrompt = false;
                     promptEdited = true;
-                  },
+                  }),
                   controller: controller,
                   autofocus: true,
                   maxLines: 6,
@@ -131,13 +141,14 @@ Future<void> showPackRerollEditor(
                         color: AppColors.borderOf(context),
                       ),
                     ),
-                    helperText:
-                        'Your wording sticks to this slot for future re-rolls.',
+                    helperText: promptEdited
+                        ? 'Your wording sticks to this slot for future re-rolls.'
+                        : ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Source variation',
+                  'Variation strength',
                   style: TextStyle(
                     color: AppColors.textSecondary(context),
                     fontSize: 11,

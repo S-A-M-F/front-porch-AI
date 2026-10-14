@@ -98,7 +98,7 @@ const _descriptions = <String, List<String>>{
   'excitement': [
     'small smile, slightly raised brows, bright eyes',
     'open smile, raised brows, bright wide eyes',
-    'broad open smile, high raised brows, wide shining eyes',
+    'broad closed-mouth smile, high raised brows, wide shining eyes',
   ],
   'fear': [
     'slightly raised inner brows, tense lips, alert eyes',
@@ -108,7 +108,7 @@ const _descriptions = <String, List<String>>{
   'gratitude': [
     'small warm smile, softened eyes',
     'warm smile, softened bright eyes, gently raised cheeks',
-    'broad warm smile, glistening eyes, strongly raised cheeks',
+    'broad warm closed-mouth smile, glistening eyes, strongly raised cheeks',
   ],
   'grief': [
     'gently raised inner brows, downturned lips, lowered gaze',
@@ -133,7 +133,7 @@ const _descriptions = <String, List<String>>{
   'optimism': [
     'small upturned smile, bright steady eyes',
     'upturned smile, lifted brows, bright eyes',
-    'broad upturned smile, high relaxed brows, shining eyes',
+    'broad upturned closed-mouth smile, high relaxed brows, shining eyes',
   ],
   'pride': [
     'small asymmetric smile, steady eyes',

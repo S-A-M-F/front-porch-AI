@@ -24,7 +24,6 @@
 library;
 
 import 'expression_intensity.dart';
-import 'expression_prompt_rules.dart';
 
 /// The 8-emotion starter set (all reachable by both classifiers).
 const List<String> kCuratedExpressionSet = [
@@ -208,19 +207,12 @@ String originalExpressionPrompt({
   ExpressionIntensity intensity = ExpressionIntensity.current,
 }) => editMode
     ? expressionEditInstruction(emotion, intensity: intensity)
-    : '${expressionIntensityDescription(emotion, intensity) ?? kExpressionModifiers[emotion] ?? emotion}, $basePrompt';
-
-String composeExpressionPrompt({
-  required String emotion,
-  required String basePrompt,
-  required bool editMode,
-  ExpressionIntensity intensity = ExpressionIntensity.current,
-  required ExpressionPromptRules rules,
-}) => rules.apply(
-  originalExpressionPrompt(
-    emotion: emotion,
-    basePrompt: basePrompt,
-    editMode: editMode,
-    intensity: intensity,
-  ),
-);
+    : (intensity == ExpressionIntensity.current
+          ? '${kExpressionModifiers[emotion] ?? emotion}, $basePrompt'
+          : [
+              expressionIntensityDescription(emotion, intensity) ?? emotion,
+              ...basePrompt
+                  .split(',')
+                  .map((part) => part.trim())
+                  .where((part) => part.isNotEmpty),
+            ].join(', '));

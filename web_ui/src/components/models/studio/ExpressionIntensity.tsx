@@ -48,7 +48,7 @@ export function SlotIntensityEditor({slot, pack, disabled, onBegin, onDone, onEn
     catch (e) { setProblem(e instanceof Error ? e.message : 'Could not retry expression.'); }
     finally { setBusy(false); onEnd(); }
   };
-  return <details><summary>Tune {slot.emotion}</summary><fieldset disabled={disabled || busy}>
+  return <details className="fp-slot-tune"><summary>Tune {slot.emotion}</summary><fieldset disabled={disabled || busy}>
     <label className="pack-intensity">Intensity for {slot.emotion}
       <select aria-label={`Intensity for ${slot.emotion}`} value={override ?? 'pack'} onChange={event => {
         const value = event.target.value === 'pack' ? null : event.target.value as ExpressionIntensity;
@@ -59,7 +59,7 @@ export function SlotIntensityEditor({slot, pack, disabled, onBegin, onDone, onEn
       </select>
     </label>
     <button type="button" onClick={() => void preview()}>Use intensity wording for {slot.emotion}</button>
-    {edited && !generated ? <p>A custom prompt overrides intensity until you replace its wording.</p> : null}
+    <p className="fp-slot-notice">{edited && !generated ? 'A custom prompt overrides intensity until you replace its wording.' : ''}</p>
     <label>Final prompt<textarea aria-label={`Prompt for ${slot.emotion}`} value={prompt}
       onChange={(e) => {setPrompt(e.target.value); setGenerated(false); setEdited(true);}} /></label>
     <label><input type="checkbox" checked={newSeed} onChange={(e) => setNewSeed(e.target.checked)} />New random seed</label>

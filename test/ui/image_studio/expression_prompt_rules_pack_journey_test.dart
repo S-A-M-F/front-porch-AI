@@ -146,6 +146,8 @@ void main() {
         find.byType(TextField).last,
         'my precise expression',
       );
+      await tester.pump();
+      expect(find.text('A custom prompt overrides intensity until you replace its wording.'), findsOneWidget);
       await tester.tap(find.text('Re-roll').last);
       await settleIo(tester, () => rig.image.prompts.length == 10);
       expect(session.slots[3].intensityOverride, isNull);
