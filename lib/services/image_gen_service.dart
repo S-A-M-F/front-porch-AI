@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/foundation.dart';
+import 'package:front_porch_ai/services/storage/settings/remote_api_key_vault.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/comfy_ui_service.dart';
@@ -112,6 +113,9 @@ class ImageGenService extends ChangeNotifier {
     editStrength: editStrength,
   );
 
+  /// The very list the last [fetchImageModels] read; a copy loses its mark.
+  List<ImageModelInfo> get cachedImageModels => _clients.remoteModels;
+
   /// Fetch available image models.
   ///
   /// Behavior depends on which API backend is configured:
@@ -137,10 +141,13 @@ class ImageGenService extends ChangeNotifier {
     // never a stand-in for having an account.
     if (apiUrl.isEmpty || apiKey.isEmpty) return const [];
 
-    if (isOpenRouterStyle(apiUrl)) {
-      return fetchOpenRouterImageModels(apiUrl, apiKey);
-    }
-    return fetchNanoImageModels(apiUrl, apiKey);
+    final models = remoteApiUrlIsXai(apiUrl)
+        ? await fetchXaiImageModels(apiUrl, apiKey)
+        : isOpenRouterStyle(apiUrl)
+        ? await fetchOpenRouterImageModels(apiUrl, apiKey)
+        : await fetchNanoImageModels(apiUrl, apiKey);
+    _clients.remoteModels = models;
+    return models;
   }
 
   /// Available style labels for UI display.
