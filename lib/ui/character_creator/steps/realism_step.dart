@@ -81,8 +81,9 @@ class RealismStep extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 'Wardrobe, likes, the story clock and Chaos work with or without '
-                'the Realism Engine. Turn the engine on only if you want bond, '
-                'trust, mood and Needs to seed the first chat.',
+                'the Realism Engine. This switch starts where Porch Life has '
+                'the engine; with it on, bond, trust, mood and Needs seed the '
+                'first chat.',
                 style: TextStyle(
                   fontSize: 14,
                   color: StudioColors.mutedOf(context),

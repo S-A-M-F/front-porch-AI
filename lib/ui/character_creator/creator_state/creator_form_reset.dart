@@ -88,6 +88,7 @@ void clearCreatorForm(CreatorState s) {
   s.realismVerificationMaxReprocesses = 1;
   s.realismVerificationStrictness = 3;
   s.realismNeedsDirectorAuthority = false;
+  s.realismStepEnabled = s.porchLifeRealism;
 
   // Appearance dropdowns
   s.race = '';

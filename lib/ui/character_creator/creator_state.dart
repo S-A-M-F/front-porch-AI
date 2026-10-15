@@ -221,7 +221,10 @@ class CreatorState extends ChangeNotifier {
   // Realism Engine seed values — written into the saved card's
   // FrontPorchExtensions when [realismStepEnabled] is true. The Realism step
   // edits these; save consumes them. (Verification fields already exist above.)
+  // The switch is not saved with the draft: every visit opens it on Porch
+  // Life's engine switch ([porchLifeRealism]); Clear Everything goes back.
   bool realismStepEnabled = false;
+  bool porchLifeRealism = false;
   int realismShortTermBond = 0;
   int realismLongTermBond = 0;
   int realismTrustLevel = 0;
@@ -413,6 +416,13 @@ class CreatorState extends ChangeNotifier {
 
   void initLocalSettingsControllers(StorageService storage) =>
       _models.initLocalSettingsControllers(storage);
+
+  /// Starts the Realism step's engine switch where Porch Life has it.
+  void seedRealismFromPorchLife(StorageService storage) {
+    porchLifeRealism = storage.realismSettings.realismDefault;
+    realismStepEnabled = porchLifeRealism;
+    notifyListeners();
+  }
 
   Future<void> reloadKoboldWithModel(
     String modelPath,

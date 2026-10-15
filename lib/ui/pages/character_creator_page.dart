@@ -70,6 +70,7 @@ class _CharacterCreatorPageState extends State<CharacterCreatorPage> {
       if (!mounted) return;
       try {
         final storage = Provider.of<StorageService>(context, listen: false);
+        creatorState.seedRealismFromPorchLife(storage);
         // The templates folder; the Mode step lists it (built-ins until then).
         creatorState.templates.library = ChargenTemplateLibrary.under(
           storage.rootPath,
