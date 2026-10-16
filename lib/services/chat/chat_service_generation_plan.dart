@@ -312,8 +312,10 @@ extension ChatServiceGenerationPlan on ChatService {
         final result = await _buildChatHistoryWithBudget(
           t.historyBudget,
           depthLore: t.loreDepth,
+          splitLatestTurn: true,
         );
         t.history = result.history;
+        t.latestTurn = result.latestTurn;
         t.droppedMessages = result.droppedCount;
 
         // ── THE RECAP ONLY EARNS ITS PLACE WHEN IT COVERS WHAT THE
@@ -361,8 +363,10 @@ extension ChatServiceGenerationPlan on ChatService {
       // Zero/negative budget: last user line + everything after it (think-
       // stripped). Raw lastMsg.text re-injects <think> (audit 2026-08-11).
       if (t.historyBudget <= 0 && _messages.isNotEmpty) {
+        // All of it is the latest beat, so all of it renders last.
         final overflow = _overflowContinuityHistory();
-        t.history = overflow.history;
+        t.history = '';
+        t.latestTurn = overflow.history;
         t.droppedMessages = overflow.droppedCount;
       }
     } finally {
