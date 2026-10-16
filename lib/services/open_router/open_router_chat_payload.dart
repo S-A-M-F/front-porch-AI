@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/open_router/omlx_samplers.dart';
 import 'package:front_porch_ai/services/reasoning_effort.dart';
 import 'package:front_porch_ai/services/storage/settings/remote_api_key_vault.dart';
 
@@ -72,6 +73,8 @@ Map<String, dynamic> openRouterChatPayload(
       'repetition_penalty': params.repeatPenalty,
       'min_p': params.minP,
       if (params.topK > 0) 'top_k': params.topK,
+      // Repeat Penalty Tokens and DRY Strength; no other host here reads them.
+      if (isOmlxApiUrl(apiUrl)) ...omlxRepeatFields(params),
     },
   };
 

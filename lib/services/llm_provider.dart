@@ -25,6 +25,7 @@ import 'package:front_porch_ai/services/capability/capability.dart';
 import 'package:front_porch_ai/services/live_gen_progress.dart';
 import 'package:front_porch_ai/services/llm_provider/llm_provider.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/open_router/open_router.dart';
 import 'package:front_porch_ai/services/kobold/kobold.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
@@ -275,7 +276,7 @@ class LLMProvider extends ChangeNotifier {
       // only by accident. Same literal LLMProvider configures on sync.
       return OpenRouterService(
         apiUrl: _activeBackend == BackendType.omlx
-            ? 'http://localhost:8000/v1'
+            ? kOmlxApiUrl
             : _storageService.backendSettings.remoteApiUrl,
         apiKey: _storageService.backendSettings.remoteApiKey,
         modelName: selectedModelId,
@@ -420,9 +421,7 @@ class LLMProvider extends ChangeNotifier {
   bool _configureMouth(BackendType type) {
     final b = _storageService.backendSettings;
     return _openRouterService.configure(
-      apiUrl: type == BackendType.omlx
-          ? 'http://localhost:8000/v1'
-          : b.remoteApiUrl,
+      apiUrl: type == BackendType.omlx ? kOmlxApiUrl : b.remoteApiUrl,
       apiKey: b.remoteApiKey,
       modelName: b.remoteModelName,
     );

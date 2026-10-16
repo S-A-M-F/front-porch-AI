@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/open_router/open_router.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
 import 'package:front_porch_ai/services/openai_chat_stream.dart';
 
@@ -156,6 +157,49 @@ void main() {
       expect(r.containsKey('repetition_penalty'), isFalse);
       expect(r.containsKey('min_p'), isFalse);
       expect(r.containsKey('top_k'), isFalse);
+    });
+  });
+
+  group('oMLX payload (Repeat Penalty Tokens + DRY Strength)', () {
+    // oMLX's repetition penalty looks back 20 tokens unless told otherwise,
+    // and it has no DRY, so both sliders were dead there: a local model
+    // copied a whole earlier paragraph thirty times in one reply. The
+    // builder now sends oMLX's own fields — and only to oMLX.
+    final params = GenerationParams(
+      prompt: 'hello',
+      repeatPenalty: 1.1,
+      repPenTokens: 1024,
+      dryMultiplier: 0.8,
+    );
+
+    test('the oMLX address gets the look-back and the repeat block', () {
+      final r = OpenRouterService(
+        apiUrl: kOmlxApiUrl,
+        modelName: 'mlx-model',
+      ).chatRequestPayload(params);
+      expect(r['repetition_penalty'], 1.1);
+      expect(r['repetition_context_size'], 1024);
+      expect(r['no_repeat_ngram_size'], 20);
+    });
+
+    test('DRY off sends no repeat block; stronger DRY allows shorter runs', () {
+      final off = OpenRouterService(
+        apiUrl: '$kOmlxApiUrl/',
+        modelName: 'mlx-model',
+      ).chatRequestPayload(GenerationParams(prompt: 'hello'));
+      expect(off.containsKey('no_repeat_ngram_size'), isFalse);
+      expect(omlxNoRepeatNgramSize(2.0), kOmlxNoRepeatNgramMin);
+      expect(omlxNoRepeatNgramSize(0.1), kOmlxNoRepeatNgramMax);
+    });
+
+    test('every other host keeps the payload it had', () {
+      final r = OpenRouterService(
+        apiUrl: 'http://127.0.0.1:${server.port}/v1',
+        modelName: 'test-model',
+      ).chatRequestPayload(params);
+      expect(r.containsKey('repetition_context_size'), isFalse);
+      expect(r.containsKey('no_repeat_ngram_size'), isFalse);
+      expect(r['repetition_penalty'], 1.1);
     });
   });
 }
