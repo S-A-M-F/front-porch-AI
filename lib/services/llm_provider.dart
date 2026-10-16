@@ -40,10 +40,12 @@ export 'package:front_porch_ai/services/llm_provider/llm_provider.dart'
         BackendType,
         LLMProviderLaneApi,
         LaneHost,
+        SamplerKnob,
         kKoboldChatRole,
         kKoboldTrialRole,
         kKoboldWorkerRole,
-        remoteProviderLabel;
+        remoteProviderLabel,
+        samplerKnobsFor;
 
 /// Manages switching between LLM backends (local KoboldCPP, remote APIs).
 ///

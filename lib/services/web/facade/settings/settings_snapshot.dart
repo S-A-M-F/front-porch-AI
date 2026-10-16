@@ -94,6 +94,16 @@ class SettingsSnapshot {
       'reasoningMandatory': reasoningEffortIsMandatory(_reasoning.modelKey),
       'reasoningEfforts': reasoningEffortChipsFor(_reasoning.modelKey),
       'reasoningLocalSupport': _reasoning.thinkingSupportName,
+      // The generation settings this backend's requests carry
+      // (samplerKnobsFor), so the phone shows the same sliders as the
+      // desktop. Additive: an older PWA ignores it and keeps its own rule.
+      'samplerKnobs': [
+        for (final k in samplerKnobsFor(
+          _llm.activeBackend,
+          remoteApiUrl: b.remoteApiUrl,
+        ))
+          k.name,
+      ],
       'generation': {
         'temperature': g.temperature,
         'minP': g.minP,

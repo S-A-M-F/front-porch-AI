@@ -33,7 +33,9 @@ bool isOmlxApiUrl(String apiUrl) {
 const int kOmlxNoRepeatNgramMin = 12;
 const int kOmlxNoRepeatNgramMax = 32;
 
-/// The oMLX request fields that carry the user's anti-repetition settings.
+/// The oMLX request fields for the settings only oMLX (of the
+/// OpenAI-compatible hosts) reads: XTC, sent while its probability is above
+/// 0 (oMLX's own default is off), and the two repetition settings below.
 ///
 /// oMLX's repetition penalty looks back only 20 tokens unless told
 /// otherwise, so a copy loop whose unit is a whole paragraph never meets its
@@ -47,7 +49,11 @@ const int kOmlxNoRepeatNgramMax = 32;
 /// 0.8 (the usual dose) allows 20 tokens, stronger allows fewer. The floor
 /// keeps names and short stock phrases free, since unlike DRY the ban has
 /// no sequence breakers.
-Map<String, Object> omlxRepeatFields(GenerationParams params) => {
+Map<String, Object> omlxSamplerFields(GenerationParams params) => {
+  if (params.xtcProbability > 0) ...{
+    'xtc_probability': params.xtcProbability,
+    'xtc_threshold': params.xtcThreshold,
+  },
   if (params.repPenTokens > 0) 'repetition_context_size': params.repPenTokens,
   if (params.dryMultiplier > 0)
     'no_repeat_ngram_size': omlxNoRepeatNgramSize(params.dryMultiplier),

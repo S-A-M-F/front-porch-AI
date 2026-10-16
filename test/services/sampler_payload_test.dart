@@ -16,6 +16,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:front_porch_ai/services/llm_provider/llm_provider.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/open_router/open_router.dart';
 import 'package:front_porch_ai/services/open_router_service.dart';
@@ -201,5 +202,79 @@ void main() {
       expect(r.containsKey('no_repeat_ngram_size'), isFalse);
       expect(r['repetition_penalty'], 1.1);
     });
+  });
+
+  group('the sampler table matches the wire', () {
+    // Settings shows a generation setting only where samplerKnobsFor says the
+    // backend's requests carry it. Here every knob is turned on and each
+    // real payload builder is read: a knob the table lists that the wire
+    // drops is a dead slider, and one the wire sends that the table hides is
+    // a setting the user cannot reach.
+    final everythingOn = GenerationParams(
+      prompt: 'hello',
+      minP: 0.05,
+      topK: 40,
+      repeatPenalty: 1.2,
+      repPenTokens: 512,
+      xtcThreshold: 0.1,
+      xtcProbability: 0.5,
+      dryMultiplier: 0.8,
+      dynatempRange: 0.5,
+      bannedPhrases: const ['shivers down'],
+    );
+    const wireKeys = {
+      SamplerKnob.minP: ['min_p'],
+      SamplerKnob.topK: ['top_k'],
+      SamplerKnob.repeatPenalty: [
+        'rep_pen',
+        'repetition_penalty',
+        'frequency_penalty',
+      ],
+      SamplerKnob.repeatPenaltyTokens: [
+        'rep_pen_range',
+        'repetition_context_size',
+      ],
+      SamplerKnob.xtc: ['xtc_probability'],
+      SamplerKnob.dry: ['dry_multiplier', 'no_repeat_ngram_size'],
+      SamplerKnob.dynamicTemp: ['dynatemp_range'],
+      SamplerKnob.bannedPhrases: ['banned_tokens'],
+    };
+    Set<SamplerKnob> onTheWire(Map<String, dynamic> body) => {
+      for (final MapEntry(key: knob, value: keys) in wireKeys.entries)
+        if (keys.any(body.containsKey)) knob,
+    };
+
+    test('KoboldCpp', () async {
+      await streamOpenAiChat(
+        'http://127.0.0.1:${server.port}',
+        everythingOn,
+      ).drain<void>();
+      expect(
+        onTheWire(lastRequest!),
+        samplerKnobsFor(BackendType.kobold, remoteApiUrl: ''),
+      );
+    });
+
+    for (final (host, backend, url) in [
+      ('oMLX', BackendType.omlx, kOmlxApiUrl),
+      ('a remote API', BackendType.openRouter, 'https://openrouter.ai/api/v1'),
+      ('api.openai.com', BackendType.openRouter, 'https://api.openai.com/v1'),
+      ('xAI', BackendType.openRouter, 'https://api.x.ai/v1'),
+    ]) {
+      test(host, () {
+        final body = OpenRouterService(
+          apiUrl: url,
+          apiKey: 'k',
+          modelName: 'm',
+        ).chatRequestPayload(everythingOn);
+        expect(
+          onTheWire(body),
+          samplerKnobsFor(
+            backend,
+            remoteApiUrl: backend == BackendType.omlx ? '' : url,
+          ),
+        );
+      });
+    }
   });
 }
