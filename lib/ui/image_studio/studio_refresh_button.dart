@@ -3,31 +3,34 @@
 
 import 'package:flutter/material.dart';
 
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
-
-/// Re-reads a Change sheet's list from the connected app. Shows a small
+/// Re-reads a Change sheet's list from the connected app. Labelled and
+/// styled like the Refresh Models button on the LLM backends. Shows a small
 /// spinner while it reads and ignores taps until it is done.
 class StudioRefreshButton extends StatelessWidget {
   const StudioRefreshButton({
     super.key,
+    required this.label,
     required this.refreshing,
     required this.onPressed,
   });
 
+  final String label;
   final bool refreshing;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: 'Refresh list',
+    return TextButton.icon(
       onPressed: refreshing ? null : onPressed,
       icon: refreshing
-          ? const SizedBox.square(
-              dimension: 18,
+          ? const SizedBox(
+              width: 14,
+              height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : Icon(Icons.refresh, color: AppColors.iconSecondary(context)),
+          : const Icon(Icons.refresh, size: 16),
+      label: Text(refreshing ? 'Loading...' : label),
+      style: TextButton.styleFrom(padding: EdgeInsets.zero),
     );
   }
 }

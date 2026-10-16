@@ -77,7 +77,7 @@ void main() {
     await tester.pump();
     expect(find.text('new_style.safetensors'), findsNothing);
 
-    await tester.tap(find.byTooltip('Refresh list'));
+    await tester.tap(find.text('Refresh LoRAs'));
     await tester.pump();
 
     expect(reads, 2);

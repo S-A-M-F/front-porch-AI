@@ -106,17 +106,9 @@ class _StudioModelSheetState extends State<StudioModelSheet> {
     ];
     return AlertDialog(
       backgroundColor: AppColors.surfaceOf(context),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              widget.edit ? 'Change model — Edit' : 'Change model — Create',
-              style: TextStyle(color: AppColors.textPrimary(context)),
-            ),
-          ),
-          if (widget.onRefresh != null)
-            StudioRefreshButton(refreshing: _refreshing, onPressed: _refresh),
-        ],
+      title: Text(
+        widget.edit ? 'Change model — Edit' : 'Change model — Create',
+        style: TextStyle(color: AppColors.textPrimary(context)),
       ),
       content: SizedBox(
         width: 520,
@@ -124,6 +116,15 @@ class _StudioModelSheetState extends State<StudioModelSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.onRefresh != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: StudioRefreshButton(
+                  label: 'Refresh models',
+                  refreshing: _refreshing,
+                  onPressed: _refresh,
+                ),
+              ),
             TextField(
               autofocus: true,
               decoration: const InputDecoration(

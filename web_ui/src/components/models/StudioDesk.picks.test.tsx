@@ -337,7 +337,7 @@ function act_change(selector: string, p: { save: unknown }) {
   el.click();
 }
 
-describe('Refresh list', () => {
+describe('Refresh models', () => {
   it('lists a model added to ComfyUI after the sheet opened', async () => {
     await boot();
     click('Change model');
@@ -352,12 +352,12 @@ describe('Refresh list', () => {
       },
     });
     const before = gets('/api/image/comfy-catalog').length;
-    click('Refresh list');
+    click('Refresh models');
     await settle();
 
     expect(gets('/api/image/comfy-catalog')).toHaveLength(before + 1);
     expect(sheetText()).toContain('qwen_image_2512_fp8.safetensors');
-    expect(button('Refresh list')?.disabled).toBe(false);
+    expect(button('Refresh models')?.disabled).toBe(false);
   });
 
   it('lists a LoRA added to ComfyUI after the sheet opened', async () => {
@@ -370,7 +370,7 @@ describe('Refresh list', () => {
       'GET /api/image/studio/ready': readyFacts,
       'GET /api/image/comfy-catalog': { ...catalog, loras: ['zit_style.safetensors', 'new_style.safetensors'] },
     });
-    click('Refresh list');
+    click('Refresh LoRAs');
     await settle();
 
     expect(sheetText()).toContain('new_style.safetensors');
@@ -385,7 +385,7 @@ describe('Refresh list', () => {
       'GET /api/image/studio/ready': readyFacts,
       'GET /api/image/comfy-catalog': refuse(502, 'down'),
     });
-    click('Refresh list');
+    click('Refresh models');
     await settle();
 
     expect(sheetText()).toContain('The list could not be read.');
@@ -406,7 +406,7 @@ describe('Refresh list on Draw Things', () => {
       'GET /api/image/studio/ready': readyFacts,
       'GET /api/image/local-catalog': { models: ['flux_dev.ckpt', 'qwen_image.ckpt'], loras: [] },
     });
-    click('Refresh list');
+    click('Refresh models');
     await settle();
 
     expect(sheetText()).toContain('qwen_image.ckpt');
@@ -421,7 +421,7 @@ describe('Refresh list on Draw Things', () => {
       'GET /api/image/studio/ready': readyFacts,
       'GET /api/image/local-catalog': { models: [], loras: [] },
     });
-    click('Refresh list');
+    click('Refresh models');
     await settle();
 
     expect(sheetText()).toContain('flux_dev.ckpt');

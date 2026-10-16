@@ -68,7 +68,7 @@ export function LoraSheet(props: {
       <h2>LoRA</h2>
       {listed ? (
         <button type="button" disabled={refreshing} onClick={() => setReads((n) => n + 1)}>
-          {refreshing ? 'Refreshing…' : 'Refresh list'}
+          {refreshing ? 'Loading...' : 'Refresh LoRAs'}
         </button>
       ) : null}
       <p>These are the LoRA files the connected app listed. A tap fills the first empty slot.</p>

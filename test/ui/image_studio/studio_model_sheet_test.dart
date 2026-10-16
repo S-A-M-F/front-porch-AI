@@ -141,7 +141,7 @@ void main() {
     await tester.pump();
     expect(find.text('later_model.safetensors'), findsNothing);
 
-    await tester.tap(find.byTooltip('Refresh list'));
+    await tester.tap(find.text('Refresh models'));
     await tester.pump();
 
     expect(reads, 2);

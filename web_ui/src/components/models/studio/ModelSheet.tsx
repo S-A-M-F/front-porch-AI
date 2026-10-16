@@ -78,7 +78,7 @@ export function ModelSheet(props: {
       </h2>
       {listed ? (
         <button type="button" disabled={refreshing} onClick={() => setReads((n) => n + 1)}>
-          {refreshing ? 'Refreshing…' : 'Refresh list'}
+          {refreshing ? 'Loading...' : 'Refresh models'}
         </button>
       ) : null}
       <input

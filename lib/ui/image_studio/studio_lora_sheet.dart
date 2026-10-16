@@ -214,17 +214,9 @@ class _StudioLoraSheetState extends State<StudioLoraSheet> {
     final full = _slots.every((slot) => slot.file.trim().isNotEmpty);
     return AlertDialog(
       backgroundColor: AppColors.surfaceOf(context),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'LoRA',
-              style: TextStyle(color: AppColors.textPrimary(context)),
-            ),
-          ),
-          if (widget.onRefresh != null)
-            StudioRefreshButton(refreshing: _refreshing, onPressed: _refresh),
-        ],
+      title: Text(
+        'LoRA',
+        style: TextStyle(color: AppColors.textPrimary(context)),
       ),
       content: SizedBox(
         width: 520,
@@ -232,6 +224,15 @@ class _StudioLoraSheetState extends State<StudioLoraSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.onRefresh != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: StudioRefreshButton(
+                  label: 'Refresh LoRAs',
+                  refreshing: _refreshing,
+                  onPressed: _refresh,
+                ),
+              ),
             Text(
               _files.isEmpty
                   ? 'No LoRA files were listed by the connected app.'
