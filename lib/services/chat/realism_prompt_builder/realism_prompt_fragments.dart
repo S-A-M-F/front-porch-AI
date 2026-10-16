@@ -202,8 +202,10 @@ class RealismPromptFragments {
     String charName,
     String userName,
     String? primaryObjective,
-    List<({String text, int progress})> ambitions,
-  ) {
+    List<({String text, int progress})> ambitions, {
+    List<String> openGoals = const [],
+    List<String> recentEnded = const [],
+  }) {
     final hasAmbitions = ambitionRoster(ambitions).isNotEmpty;
     final body = primaryObjective != null
         ? '- "proposed_objective": a meaningful, emotionally-driven goal $charName independently wants to '
@@ -219,7 +221,28 @@ class RealismPromptFragments {
               'into concrete steps. Triggered by a strong, specific event THIS turn.\n'
               '  Default to "none" — the overwhelming majority of turns produce "none". Only propose one if '
               '$charName would genuinely lose sleep over it.\n';
-    return '$body${ambitionSteer(charName, hasAmbitions)}${servesAmbitionField(hasAmbitions)}';
+    return '$body${knownGoals(openGoals, recentEnded)}${ambitionSteer(charName, hasAmbitions)}${servesAmbitionField(hasAmbitions)}';
+  }
+
+  /// What the character already wants and has lately finished or let go
+  /// (objectives-that-keep-up.md part 3), so a proposal is a new want and
+  /// not a rewording. Empty when there is nothing to list.
+  static String knownGoals(List<String> openGoals, List<String> recentEnded) {
+    if (openGoals.isEmpty && recentEnded.isEmpty) return '';
+    final sb = StringBuffer();
+    if (openGoals.isNotEmpty) {
+      sb.write(
+        '  Already wants: ${openGoals.map((g) => '"$g"').join('; ')}.\n',
+      );
+    }
+    if (recentEnded.isNotEmpty) {
+      sb.write('  Lately ${recentEnded.join('; ')}.\n');
+    }
+    sb.write(
+      '  Propose only a want that is NOT one of these and not a rewording of '
+      'one; otherwise "none".\n',
+    );
+    return sb.toString();
   }
 
   static String fixationSection(String charName) =>

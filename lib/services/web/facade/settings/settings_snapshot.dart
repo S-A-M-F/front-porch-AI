@@ -141,8 +141,6 @@ class SettingsSnapshot {
         'standaloneClockEnabled':
             _storage.realismSettings.standaloneClockEnabled,
         'objectivesEnabled': _storage.realismSettings.objectivesEnabled,
-        'objectiveStaleThreshold':
-            _storage.realismSettings.objectiveStaleThreshold,
         'pocketsEnabled': _storage.realismSettings.pocketsEnabled,
         'standingMoodEnabled': _storage.realismSettings.standingMoodEnabled,
         'pocketTransfersEnabled':

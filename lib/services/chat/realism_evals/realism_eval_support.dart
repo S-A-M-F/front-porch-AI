@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/services/chat/eval_json_merge.dart';
 import 'package:front_porch_ai/services/chat/mood_physics.dart';
+import 'package:front_porch_ai/services/chat/objective_proposal_gate.dart';
 import 'package:front_porch_ai/services/chat/pass_support.dart';
 import 'package:front_porch_ai/services/chat/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/realism_prompt_builder.dart';
@@ -160,46 +161,60 @@ class RealismEvalSupport {
       ).firstMatch(text);
       servesRaw = m3?.group(1)?.trim() ?? '';
     }
-    // Objectives off ⇒ the character does not get to start new quests. The
-    // eval already ran (it carries fixation too), so this costs nothing extra;
-    // it just declines to act on the proposal half of the answer.
-    final objectivesOn = evals.getObjectivesEnabled?.call() ?? true;
-    if (objectivesOn &&
-        objectiveRaw.toLowerCase() != 'none' &&
-        objectiveRaw.isNotEmpty) {
-      final active = evals.getActiveObjectives();
-      final isDuplicate = active.any(
-        (o) => o.objective.toLowerCase() == objectiveRaw.toLowerCase(),
-      );
-      if (!isDuplicate &&
-          !TodayLineTag.proposedCollidesWithToday(objectiveRaw, text)) {
-        // Claim the main-quest slot when it's free: the character's self-initiated
-        // goal becomes their driving primary quest with a full task arc. When a
-        // primary already exists (user-set or an earlier autonomous quest), the
-        // proposal stays a side quest — never displace an existing main quest.
-        final becomesPrimary = evals.getPrimaryObjective() == null;
+    await applyObjectiveProposal(objectiveRaw, servesRaw, text);
+  }
+
+  /// Whether the character takes up the goal the judge proposed, for the
+  /// narrative judge and one-shot alike (objectives-that-keep-up.md part 3).
+  /// A new want takes a free main slot, else a side slot; a rewording of an
+  /// open goal, a proposal at the side-quest cap, or one within the cooldown
+  /// is declined, and nothing is evicted to make room.
+  Future<void> applyObjectiveProposal(
+    String objectiveRaw,
+    String servesRaw,
+    String fullText,
+  ) async {
+    // Objectives off ⇒ the character does not get to start new goals. The
+    // eval already ran (it carries fixation too), so this costs nothing
+    // extra; it declines to act on the proposal half of the answer.
+    if (!(evals.getObjectivesEnabled?.call() ?? true)) return;
+    final raw = objectiveRaw.trim();
+    final active = evals.getActiveObjectives();
+    final verdict = decideObjectiveProposal(
+      raw: raw,
+      openGoalTexts: [for (final o in active) o.objective],
+      hasPrimary: evals.getPrimaryObjective() != null,
+      secondaryCount: active.where((o) => !o.isPrimary).length,
+      cap: evals.getSideQuestCap?.call() ?? 1 << 30,
+      cooldownActive: evals.isSideQuestCooldownActive?.call() ?? false,
+      todayCollision: TodayLineTag.proposedCollidesWithToday(raw, fullText),
+      ignore: evals.getObjectiveIgnoreTokens?.call() ?? const {},
+    );
+    if (!verdict.accepted) {
+      if (verdict.reason != ObjectiveProposalReason.none) {
         debugPrint(
-          '[Realism:Narrative] Autonomous objective proposed: $objectiveRaw '
-          '(${becomesPrimary ? "primary — main-quest slot free" : "secondary — primary exists"})',
-        );
-        // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-        // concrete subtasks (making autonomous objectives feel like real pursuits
-        // with steps the character can accomplish).
-        // (thin delegation to god setObjective per plan for step9; full proposal logic here)
-        await evals.setObjective(
-          objectiveRaw,
-          isPrimary: becomesPrimary,
-          autoGenerateTasks: true,
-          // Resolved against the SAME roster the prompt numbered, so "2" here
-          // and "2" there are the same ambition. Null when the model said
-          // none, answered junk, or was never asked (no ambitions).
-          servedAmbition: RealismPromptBuilder.resolveServedAmbition(
-            servesRaw,
-            evals.getAmbitions?.call() ?? const [],
-          ),
+          '[Realism] Proposed goal declined (${verdict.reason.name}): $raw',
         );
       }
+      return;
     }
+    debugPrint(
+      '[Realism] Goal taken up: $raw '
+      '(${verdict.primary ? "main — slot free" : "side"})',
+    );
+    await evals.setObjective(
+      raw,
+      isPrimary: verdict.primary,
+      // The character's own want gets concrete steps of its own.
+      autoGenerateTasks: true,
+      // Resolved against the SAME roster the prompt numbered, so "2" here and
+      // "2" there are the same ambition. Null when the model said none,
+      // answered junk, or was never asked (no ambitions).
+      servedAmbition: RealismPromptBuilder.resolveServedAmbition(
+        servesRaw,
+        evals.getAmbitions?.call() ?? const [],
+      ),
+    );
   }
 
   /// Pre-parse fire for the JSON evals — thin over the ONE shared

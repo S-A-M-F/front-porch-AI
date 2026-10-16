@@ -125,6 +125,7 @@ extension AppDatabaseMaintenance on AppDatabase {
         // which is a real answer and the only honest one for every objective
         // that predates the column.
         'served_ambition TEXT',
+        'origin TEXT', 'status TEXT', 'ended_at INTEGER', // v58
       ],
       'message_embeddings': [
         // Added to the MessageEmbeddings Table class during the Journal work

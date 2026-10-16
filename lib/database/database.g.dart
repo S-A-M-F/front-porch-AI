@@ -13076,6 +13076,35 @@ class $ObjectivesTable extends Objectives
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _originMeta = const VerificationMeta('origin');
+  @override
+  late final GeneratedColumn<String> origin = GeneratedColumn<String>(
+    'origin',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _endedAtMeta = const VerificationMeta(
+    'endedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> endedAt = GeneratedColumn<DateTime>(
+    'ended_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -13089,6 +13118,9 @@ class $ObjectivesTable extends Objectives
     injectionDepth,
     servedAmbition,
     createdAt,
+    origin,
+    status,
+    endedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -13183,6 +13215,24 @@ class $ObjectivesTable extends Objectives
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('origin')) {
+      context.handle(
+        _originMeta,
+        origin.isAcceptableOrUnknown(data['origin']!, _originMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('ended_at')) {
+      context.handle(
+        _endedAtMeta,
+        endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -13236,6 +13286,18 @@ class $ObjectivesTable extends Objectives
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      origin: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      ),
+      endedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}ended_at'],
+      ),
     );
   }
 
@@ -13273,6 +13335,19 @@ class Objective extends DataClass implements Insertable<Objective> {
   /// construction.
   final String? servedAmbition;
   final DateTime createdAt;
+
+  /// v58 (docs/design/objectives-that-keep-up.md): where the goal came from
+  /// — user, card, character or planner — which decides the voice it is
+  /// injected in. Read through objectiveOrigin(), which applies the
+  /// backfill rule to a NULL.
+  final String? origin;
+
+  /// v58: dormant (set aside, still theirs), done or overtaken. NULL is an
+  /// open goal on track.
+  final String? status;
+
+  /// v58: when a goal was finished or let go; feeds "recently finished".
+  final DateTime? endedAt;
   const Objective({
     required this.id,
     required this.characterId,
@@ -13285,6 +13360,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     required this.injectionDepth,
     this.servedAmbition,
     required this.createdAt,
+    this.origin,
+    this.status,
+    this.endedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -13304,6 +13382,15 @@ class Objective extends DataClass implements Insertable<Objective> {
       map['served_ambition'] = Variable<String>(servedAmbition);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || origin != null) {
+      map['origin'] = Variable<String>(origin);
+    }
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || endedAt != null) {
+      map['ended_at'] = Variable<DateTime>(endedAt);
+    }
     return map;
   }
 
@@ -13324,6 +13411,15 @@ class Objective extends DataClass implements Insertable<Objective> {
           ? const Value.absent()
           : Value(servedAmbition),
       createdAt: Value(createdAt),
+      origin: origin == null && nullToAbsent
+          ? const Value.absent()
+          : Value(origin),
+      status: status == null && nullToAbsent
+          ? const Value.absent()
+          : Value(status),
+      endedAt: endedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endedAt),
     );
   }
 
@@ -13344,6 +13440,9 @@ class Objective extends DataClass implements Insertable<Objective> {
       injectionDepth: serializer.fromJson<int>(json['injectionDepth']),
       servedAmbition: serializer.fromJson<String?>(json['servedAmbition']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      origin: serializer.fromJson<String?>(json['origin']),
+      status: serializer.fromJson<String?>(json['status']),
+      endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
     );
   }
   @override
@@ -13361,6 +13460,9 @@ class Objective extends DataClass implements Insertable<Objective> {
       'injectionDepth': serializer.toJson<int>(injectionDepth),
       'servedAmbition': serializer.toJson<String?>(servedAmbition),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'origin': serializer.toJson<String?>(origin),
+      'status': serializer.toJson<String?>(status),
+      'endedAt': serializer.toJson<DateTime?>(endedAt),
     };
   }
 
@@ -13376,6 +13478,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     int? injectionDepth,
     Value<String?> servedAmbition = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> origin = const Value.absent(),
+    Value<String?> status = const Value.absent(),
+    Value<DateTime?> endedAt = const Value.absent(),
   }) => Objective(
     id: id ?? this.id,
     characterId: characterId ?? this.characterId,
@@ -13390,6 +13495,9 @@ class Objective extends DataClass implements Insertable<Objective> {
         ? servedAmbition.value
         : this.servedAmbition,
     createdAt: createdAt ?? this.createdAt,
+    origin: origin.present ? origin.value : this.origin,
+    status: status.present ? status.value : this.status,
+    endedAt: endedAt.present ? endedAt.value : this.endedAt,
   );
   Objective copyWithCompanion(ObjectivesCompanion data) {
     return Objective(
@@ -13412,6 +13520,9 @@ class Objective extends DataClass implements Insertable<Objective> {
           ? data.servedAmbition.value
           : this.servedAmbition,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      origin: data.origin.present ? data.origin.value : this.origin,
+      status: data.status.present ? data.status.value : this.status,
+      endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
     );
   }
 
@@ -13428,7 +13539,10 @@ class Objective extends DataClass implements Insertable<Objective> {
           ..write('checkFrequency: $checkFrequency, ')
           ..write('injectionDepth: $injectionDepth, ')
           ..write('servedAmbition: $servedAmbition, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('origin: $origin, ')
+          ..write('status: $status, ')
+          ..write('endedAt: $endedAt')
           ..write(')'))
         .toString();
   }
@@ -13446,6 +13560,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     injectionDepth,
     servedAmbition,
     createdAt,
+    origin,
+    status,
+    endedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -13461,7 +13578,10 @@ class Objective extends DataClass implements Insertable<Objective> {
           other.checkFrequency == this.checkFrequency &&
           other.injectionDepth == this.injectionDepth &&
           other.servedAmbition == this.servedAmbition &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.origin == this.origin &&
+          other.status == this.status &&
+          other.endedAt == this.endedAt);
 }
 
 class ObjectivesCompanion extends UpdateCompanion<Objective> {
@@ -13476,6 +13596,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   final Value<int> injectionDepth;
   final Value<String?> servedAmbition;
   final Value<DateTime> createdAt;
+  final Value<String?> origin;
+  final Value<String?> status;
+  final Value<DateTime?> endedAt;
   final Value<int> rowid;
   const ObjectivesCompanion({
     this.id = const Value.absent(),
@@ -13489,6 +13612,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     this.injectionDepth = const Value.absent(),
     this.servedAmbition = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.origin = const Value.absent(),
+    this.status = const Value.absent(),
+    this.endedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ObjectivesCompanion.insert({
@@ -13503,6 +13629,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     this.injectionDepth = const Value.absent(),
     this.servedAmbition = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.origin = const Value.absent(),
+    this.status = const Value.absent(),
+    this.endedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        characterId = Value(characterId),
@@ -13519,6 +13648,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     Expression<int>? injectionDepth,
     Expression<String>? servedAmbition,
     Expression<DateTime>? createdAt,
+    Expression<String>? origin,
+    Expression<String>? status,
+    Expression<DateTime>? endedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -13533,6 +13665,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
       if (injectionDepth != null) 'injection_depth': injectionDepth,
       if (servedAmbition != null) 'served_ambition': servedAmbition,
       if (createdAt != null) 'created_at': createdAt,
+      if (origin != null) 'origin': origin,
+      if (status != null) 'status': status,
+      if (endedAt != null) 'ended_at': endedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -13549,6 +13684,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     Value<int>? injectionDepth,
     Value<String?>? servedAmbition,
     Value<DateTime>? createdAt,
+    Value<String?>? origin,
+    Value<String?>? status,
+    Value<DateTime?>? endedAt,
     Value<int>? rowid,
   }) {
     return ObjectivesCompanion(
@@ -13563,6 +13701,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
       injectionDepth: injectionDepth ?? this.injectionDepth,
       servedAmbition: servedAmbition ?? this.servedAmbition,
       createdAt: createdAt ?? this.createdAt,
+      origin: origin ?? this.origin,
+      status: status ?? this.status,
+      endedAt: endedAt ?? this.endedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -13603,6 +13744,15 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (origin.present) {
+      map['origin'] = Variable<String>(origin.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (endedAt.present) {
+      map['ended_at'] = Variable<DateTime>(endedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -13623,6 +13773,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
           ..write('injectionDepth: $injectionDepth, ')
           ..write('servedAmbition: $servedAmbition, ')
           ..write('createdAt: $createdAt, ')
+          ..write('origin: $origin, ')
+          ..write('status: $status, ')
+          ..write('endedAt: $endedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();

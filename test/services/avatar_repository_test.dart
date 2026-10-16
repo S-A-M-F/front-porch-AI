@@ -105,7 +105,9 @@ void main() {
       // v57: sessions.emotion_cause + emotion_held_turns — the mood's cause
       //      and hold count. Guarded by
       //      test/services/chat/session_scalar_parity_test.dart.
-      expect(db.schemaVersion, 57);
+      // v58: objectives.origin, status, ended_at — objectives that keep up.
+      //      Guarded by test/database/served_ambition_migration_test.dart.
+      expect(db.schemaVersion, 58);
     });
 
     test('journal_memories table exists and round-trips (v35)', () async {

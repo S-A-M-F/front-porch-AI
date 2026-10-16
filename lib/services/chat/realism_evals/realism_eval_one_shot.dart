@@ -27,7 +27,6 @@ import 'package:front_porch_ai/services/chat/realism_evals/realism_eval_support.
 import 'package:front_porch_ai/services/chat/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/realism_prompt_builder.dart';
 import 'package:front_porch_ai/services/chat/realism_tools.dart';
-import 'package:front_porch_ai/services/chat/today_line_tag.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 /// The fused one-shot realism eval call (Cluster E) for [RealismEvals].
@@ -96,6 +95,11 @@ class RealismEvalOneShot {
         ? EmotionLabels.all
         : const <String>[];
     final primary = evals.getPrimaryObjective();
+    final openGoals = [
+      for (final o in evals.getActiveObjectives()) o.objective,
+    ];
+    final recentEnded =
+        await evals.getRecentEndedObjectives?.call() ?? const <String>[];
 
     // Same shared fragments as the multi-call path (strict one-shot vs normal
     // parity by construction — the rubric text cannot drift between paths).
@@ -114,6 +118,8 @@ class RealismEvalOneShot {
           allowedEmotionLabels: labels,
           primaryObjective: primary?.objective,
           ambitions: evals.getAmbitions?.call() ?? const [],
+          openGoals: openGoals,
+          recentEnded: recentEnded,
           toolsMode: toolsMode,
         );
     final prompt = buildPrompt(toolsMode: false);
@@ -207,52 +213,17 @@ class RealismEvalOneShot {
       // (All parses below use textForOneShot — the Director-corrected text.
       // Parsing the raw pre-verification text silently discarded corrections
       // for everything except the relationship deltas.)
-      final proposed = evalJsonString(textForOneShot, 'proposed_objective');
-      // Objectives off ⇒ the character does not get to start new quests. Same
-      // gate, same source of truth as the four-call twin in
-      // realism_evals.support.dart — without it, one-shot (the DEFAULT fused
-      // mode on a tool-capable remote backend) kept growing quests behind the
-      // switch's back and fired an unrequested task-generation call.
-      final objectivesOn = evals.getObjectivesEnabled?.call() ?? true;
-      if (objectivesOn && proposed != null) {
-        final newObj = proposed.trim();
-        if (newObj.toLowerCase() != 'none' && newObj.isNotEmpty) {
-          // Avoid setting the exact same goal if it's already active
-          final active = evals.getActiveObjectives();
-          final isDuplicate = active.any(
-            (o) => o.objective.toLowerCase() == newObj.toLowerCase(),
-          );
-          if (!isDuplicate &&
-              !TodayLineTag.proposedCollidesWithToday(newObj, textForOneShot)) {
-            // Same decision as the narrative path (strict oneShot vs normal parity):
-            // claim the main-quest slot when it's free, stay a side quest when a
-            // primary already exists — never displace an existing main quest.
-            final becomesPrimary = evals.getPrimaryObjective() == null;
-            debugPrint(
-              '[Realism:OneShot] Autonomous objective proposed: $newObj '
-              '(${becomesPrimary ? "primary — main-quest slot free" : "secondary — primary exists"})',
-            );
-            // Pass autoGenerateTasks:true so the character's self-initiated goal gets
-            // concrete subtasks (making autonomous objectives feel like real pursuits
-            // with steps the character can accomplish).
-            // (thin delegation to god setObjective per plan for step9)
-            await evals.setObjective(
-              newObj,
-              isPrimary: becomesPrimary,
-              autoGenerateTasks: true,
-              // Same field, same resolver, same roster as the narrative path —
-              // one-shot must produce a 1:1 equivalent objective or the two
-              // modes disagree about which mountain the quest is on.
-              servedAmbition: RealismPromptBuilder.resolveServedAmbition(
-                RegExp(
-                  r'"serves_ambition"\s*:\s*"?([^",}]*)"?',
-                ).firstMatch(textForOneShot)?.group(1),
-                evals.getAmbitions?.call() ?? const [],
-              ),
-            );
-          }
-        }
-      }
+      // The ONE proposal path, shared with the narrative judge, so one-shot
+      // takes up exactly the goals the four-call path would (and the
+      // Objectives switch, the dedup, the cap and the cooldown hold here too).
+      await support.applyObjectiveProposal(
+        evalJsonString(textForOneShot, 'proposed_objective')?.trim() ?? '',
+        RegExp(
+              r'"serves_ambition"\s*:\s*"?([^",}]*)"?',
+            ).firstMatch(textForOneShot)?.group(1) ??
+            '',
+        textForOneShot,
+      );
 
       // ── Scene fields ──
       // The ONE mood apply (cause, hold, easing — mood-with-bite.md), shared

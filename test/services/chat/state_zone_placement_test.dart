@@ -243,27 +243,24 @@ void main() {
           getSecondaryObjectives: () => const [],
         );
 
-    test('a named step carries the "tracking lags the story" hedge once', () {
+    // 2026-10-16 (objectives that keep up): the hedge is gone on purpose.
+    // It existed because the tracker lagged the story; the goal sync now
+    // rewrites the next step to fit where the story is, so the block names
+    // the step plainly and never tells the model its own notes are stale.
+    test('a named step is said plainly, with no "tracking lags" hedge', () {
       final txt = builderFor([
         {'description': 'Kneel before the sentinel', 'completed': false},
       ]).buildObjectiveInjection();
-      expect(txt, contains('Current Task: Kneel before the sentinel'));
-      expect(
-        txt,
-        contains('Progress is tracked in the background and can lag'),
-      );
-      expect(txt, contains('carry on from there instead of staging it again'));
-      expect('Progress is tracked'.allMatches(txt).length, 1);
+      expect(txt, contains('Next: Kneel before the sentinel'));
+      expect(txt, isNot(contains('Progress is tracked')));
+      expect(txt, isNot(contains('actively drive')));
     });
 
-    test(
-      'an objective with no step at all gets no hedge (nothing to hedge)',
-      () {
-        final txt = builderFor(const []).buildObjectiveInjection();
-        expect(txt, contains('Current Primary Objective'));
-        expect(txt, isNot(contains('Progress is tracked')));
-      },
-    );
+    test('an objective with no step at all is still named', () {
+      final txt = builderFor(const []).buildObjectiveInjection();
+      expect(txt, contains('[Story direction: Reach the sentinel.]'));
+      expect(txt, isNot(contains('Progress is tracked')));
+    });
   });
 
   test('END TO END: the whole state zone rides the USER turn after the '

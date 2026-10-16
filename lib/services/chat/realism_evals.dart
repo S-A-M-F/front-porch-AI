@@ -283,6 +283,14 @@ class RealismEvals {
   /// When true, one-shot tools/prompt include `today_sentence`. Default off.
   final bool Function()? getPlannerEnabled;
 
+  /// The proposal gate's inputs (objectives-that-keep-up.md part 3), all
+  /// optional: unwired means no "lately" line, no cooldown, no cap and no
+  /// name tokens ignored, which is how a bare test host has always run.
+  final Future<List<String>> Function()? getRecentEndedObjectives;
+  final Set<String> Function()? getObjectiveIgnoreTokens;
+  final bool Function()? isSideQuestCooldownActive;
+  final int Function()? getSideQuestCap;
+
   final Future<void> Function(
     String objectiveText, {
     bool isPrimary,
@@ -325,6 +333,10 @@ class RealismEvals {
     required this.getExpressionEnabled,
     required this.getCharacterDossier,
     this.getObjectivesEnabled,
+    this.getRecentEndedObjectives,
+    this.getObjectiveIgnoreTokens,
+    this.isSideQuestCooldownActive,
+    this.getSideQuestCap,
     required this.getPrimaryObjective,
     required this.getActiveObjectives,
     this.getAmbitions,

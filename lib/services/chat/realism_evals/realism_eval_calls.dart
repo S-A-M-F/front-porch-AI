@@ -388,6 +388,14 @@ class RealismEvalCalls {
       emotionCause: evals.getEmotionCause?.call() ?? '',
       emotionHeldTurns: evals.getEmotionHeldTurns?.call() ?? 0,
     );
+    // What the character already wants and lately finished or let go, so a
+    // proposal is a new want (objectives-that-keep-up.md part 3). After the
+    // shared prefix, so the judges' cached prefix stays byte-identical.
+    final openGoals = [
+      for (final o in evals.getActiveObjectives()) o.objective,
+    ];
+    final recentEnded =
+        await evals.getRecentEndedObjectives?.call() ?? const <String>[];
     String buildPrompt({required bool toolsMode}) =>
         RealismPromptBuilder.narrativeEvalPrompt(
           charName: charName,
@@ -398,6 +406,8 @@ class RealismEvalCalls {
           recent: recent,
           primaryObjective: primary?.objective,
           ambitions: evals.getAmbitions?.call() ?? const [],
+          openGoals: openGoals,
+          recentEnded: recentEnded,
           toolsMode: toolsMode,
         );
     final prompt = buildPrompt(toolsMode: false);

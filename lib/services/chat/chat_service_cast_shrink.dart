@@ -366,6 +366,13 @@ extension ChatServiceCastShrink on ChatService {
             isPrimary: drift.Value(o.isPrimary),
             checkFrequency: drift.Value(o.checkFrequency),
             injectionDepth: drift.Value(o.injectionDepth),
+            // The rest of the goal comes too: who it is from, where it
+            // stands, which ambition it serves, and when it began and ended.
+            servedAmbition: drift.Value(o.servedAmbition),
+            origin: drift.Value(objectiveOrigin(o)),
+            status: drift.Value(o.status),
+            createdAt: drift.Value(o.createdAt),
+            endedAt: drift.Value(o.endedAt),
           ),
         );
       }

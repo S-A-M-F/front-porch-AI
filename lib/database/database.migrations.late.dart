@@ -306,6 +306,28 @@ extension _AppDatabaseMigrationLate on AppDatabase {
         }
       }
     }
+    if (from < 58) {
+      // v57→v58: objectives keep up (docs/design/objectives-that-keep-up.md).
+      // All nullable, so a downgrade keeps reading objectives. Origin is
+      // backfilled the way the rows were made: a quest that serves an
+      // ambition came from the judge, everything else from the user.
+      for (final ddl in const [
+        'ALTER TABLE objectives ADD COLUMN origin TEXT',
+        'ALTER TABLE objectives ADD COLUMN status TEXT',
+        'ALTER TABLE objectives ADD COLUMN ended_at INTEGER',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v58: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+      await customStatement(
+        "UPDATE objectives SET origin = CASE WHEN served_ambition IS NOT NULL "
+        "THEN 'character' ELSE 'user' END WHERE origin IS NULL",
+      );
+    }
   }
 
   /// True only when this pass actually created `chat_worlds.is_primary`.

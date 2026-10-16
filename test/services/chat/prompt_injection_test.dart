@@ -312,17 +312,61 @@ Map<String, int> satedVector() => {
 
 void main() {
   group('fragment builders (words-only)', () {
+    // 2026-10-16 (objectives that keep up): the goals block speaks in two
+    // voices instead of the depth tiers ("PRIMARY OBJECTIVE", "AUTONOMOUS
+    // GOAL", "Current Task"): a goal the user set is story direction, a goal
+    // the character chose is what they want. Same fixture; the words changed.
     test('author_note / objective: primary + secondary with tasks', () {
       final objs = [
         _mkObj('Main quest', depth: 1),
-        _mkObj('Side goal', depth: 5, primary: false),
+        {
+          ..._mkObj('Side goal', depth: 5, primary: false),
+          'origin': 'character',
+        },
       ];
       final b = createTestAuthorNote(activeObjectives: objs);
       final txt = b.buildObjectiveInjection();
-      expect(txt, contains('PRIMARY OBJECTIVE'));
-      expect(txt, contains('AUTONOMOUS GOAL'));
-      expect(txt, contains('Current Task'));
+      expect(txt, contains('[Story direction: Main quest. Next:'));
+      expect(txt, contains('{{char}} also wants: Side goal.'));
+      expect(txt, contains("What they'd do next:"));
     });
+
+    // 2026-10-16 (objectives that keep up): a goal set aside puts nothing in
+    // the prompt, and a goal that came with the card is story direction even
+    // though the character "has" it.
+    test(
+      'author_note / objective: set aside is silent, a card goal directs',
+      () {
+        final objs = <dynamic>[
+          {..._mkObj('Open the bakery', depth: 1), 'origin': 'card'},
+          {
+            ..._mkObj('Learn the fiddle', depth: 5, primary: false),
+            'origin': 'character',
+            'status': 'dormant',
+          },
+          {
+            ..._mkObj('Mend the porch', depth: 5, primary: false),
+            'origin': 'character',
+            'tasks': _mkTasks('paint it', completed: ['buy nails']),
+          },
+        ];
+        final txt = createTestAuthorNote(
+          activeObjectives: objs,
+        ).buildObjectiveInjection();
+        expect(
+          txt,
+          contains('[Story direction: Open the bakery. Next: step1.]'),
+        );
+        expect(txt, isNot(contains('Learn the fiddle')));
+        expect(
+          txt,
+          contains(
+            "{{char}} also wants: Mend the porch. Already done: buy nails. "
+            "What they'd do next: paint it.",
+          ),
+        );
+      },
+    );
 
     test(
       'relationship 1:1: words only — no scores, tiers, or mechanic labels',

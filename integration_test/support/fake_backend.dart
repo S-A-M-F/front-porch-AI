@@ -68,6 +68,9 @@ class FakeBackendServer {
   /// Goal-check (objective completion) requests received.
   int objectiveCheckRequests = 0;
 
+  /// Each goal-check prompt, in call order.
+  final List<String> objectiveCheckPrompts = [];
+
   /// The goal check's verdict text.
   String objectiveCheckVerdict = '1: NO';
 
@@ -475,8 +478,9 @@ class FakeBackendServer {
       return;
     }
     if (lastContent.contains('Evaluate EACH item below') ||
-        lastContent.contains('report_objective_verdicts')) {
+        lastContent.contains('report_objective_sync')) {
       objectiveCheckRequests++;
+      objectiveCheckPrompts.add(lastContent);
       final hold = holdObjectiveCheck;
       if (hold == null) {
         await _streamSse(req, [objectiveCheckVerdict]);

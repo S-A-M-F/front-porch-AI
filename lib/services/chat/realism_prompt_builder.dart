@@ -327,13 +327,15 @@ class RealismPromptBuilder {
     String preferences = '',
     String? primaryObjective,
     List<({String text, int progress})> ambitions = const [],
+    List<String> openGoals = const [],
+    List<String> recentEnded = const [],
     bool toolsMode = false,
   }) =>
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Judge what $charName now wants and what lingers with them — both must '
       'fit who they are (their ambitions, wounds, and style), '
       'not generic story beats. Evaluate:\n'
-      '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions)}'
+      '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions, openGoals: openGoals, recentEnded: recentEnded)}'
       '${RealismPromptFragments.fixationSection(charName)}'
       '\n'
       '${RealismPromptFragments.recentBlock(recent)}'
@@ -352,6 +354,8 @@ class RealismPromptBuilder {
     List<String> allowedEmotionLabels = const [],
     String? primaryObjective,
     List<({String text, int progress})> ambitions = const [],
+    List<String> openGoals = const [],
+    List<String> recentEnded = const [],
     String preferences = '',
     bool toolsMode = false,
   }) =>
@@ -362,7 +366,7 @@ class RealismPromptBuilder {
       '${RealismPromptFragments.trustSection(charName, userName)}'
       '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels)}'
       '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning) : ''}'
-      '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions)}'
+      '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions, openGoals: openGoals, recentEnded: recentEnded)}'
       '${RealismPromptFragments.fixationSection(charName)}'
       '${RealismPromptFragments.reasonSection()}'
       '\n'
