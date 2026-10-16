@@ -250,6 +250,27 @@ void main() {
       },
     );
 
+    // Live run 2026-10-16: the judge ticked a step and named that same step
+    // as next, so the open step after it was overwritten with a copy and the
+    // model was told to do the finished step again.
+    test('a next step already on the list is not written again', () {
+      final apply = decideObjectiveSync(
+        tasks: steps(),
+        verdict: const ObjectiveSyncVerdict(
+          status: 'on_track',
+          stepsDone: {1},
+          nextStep: 'Find the receipt',
+        ),
+        stepsAuthored: false,
+      );
+      expect(apply.newTasks!.map((t) => t['description']), [
+        'find the receipt',
+        'ask him about it',
+        'decide what to do',
+      ]);
+      expect(apply.newTasks![0]['completed'], isTrue);
+    });
+
     test('done is achieved even with steps open; ticking the last open step '
         'achieves it too', () {
       expect(

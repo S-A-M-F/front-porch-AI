@@ -107,7 +107,14 @@ ObjectiveSyncApply decideObjectiveSync({
   final next = verdict.nextStep?.trim() ?? '';
   if (next.isNotEmpty && !stepsAuthored && copy.isNotEmpty) {
     final open = copy.indexWhere(objectiveTaskIsOpen);
-    if (open >= 0 && copy[open]['description'] != next) {
+    // A "next step" that is already on the list (often one just ticked) is
+    // not new: writing it would tell the model to do it again (live run
+    // 2026-10-16).
+    final lower = next.toLowerCase();
+    final known = copy.any(
+      (t) => (t['description'] as String? ?? '').trim().toLowerCase() == lower,
+    );
+    if (open >= 0 && !known) {
       copy[open]['description'] = next;
       changed = true;
     }
