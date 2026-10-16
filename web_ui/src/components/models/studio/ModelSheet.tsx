@@ -23,18 +23,28 @@ export function ModelSheet(props: {
   const [files, setFiles] = useState<string[]>([]);
   const [unfit, setUnfit] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  // Bumped by Refresh list to read the connected app's files again.
+  const [reads, setReads] = useState(0);
+  const listed = props.backend === 'drawthings' || props.backend === 'comfyui';
 
   useEffect(() => {
     let live = true;
+    setFailed(false);
+    setRefreshing(true);
     const done = (list: string[], odd: string[] = []) => {
       if (!live) return;
       setFiles(list);
       setUnfit(odd);
     };
+    const settle = () => {
+      if (live) setRefreshing(false);
+    };
     if (props.backend === 'drawthings') {
       void fetchLocalCatalog('')
         .then((cat) => done(cat.models ?? []))
-        .catch(() => live && setFailed(true));
+        .catch(() => live && setFailed(true))
+        .finally(settle);
     } else if (props.backend === 'comfyui') {
       void fetchCatalog(props.mode, { token: props.token })
         .then((cat) =>
@@ -42,14 +52,17 @@ export function ModelSheet(props: {
             ? done(cat.slotFiles?.files ?? [], cat.slotFiles?.unfit ?? [])
             : done(cat.deskDiscovery ?? []),
         )
-        .catch(() => live && setFailed(true));
+        .catch(() => live && setFailed(true))
+        .finally(settle);
+    } else {
+      setRefreshing(false);
     }
     return () => {
       live = false;
     };
-    // Read once when the sheet opens.
+    // Read when the sheet opens and on each Refresh list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reads]);
 
   const q = query.trim().toLowerCase();
   const shown = files.filter((name) => !q || name.toLowerCase().includes(q));
@@ -61,6 +74,11 @@ export function ModelSheet(props: {
           ? `Change ${props.token.includes('VAE') ? 'VAE' : 'text encoder'}`
           : props.mode === 'edit' ? 'Change model — Edit' : 'Change model — Create'}
       </h2>
+      {listed ? (
+        <button type="button" disabled={refreshing} onClick={() => setReads((n) => n + 1)}>
+          {refreshing ? 'Refreshing…' : 'Refresh list'}
+        </button>
+      ) : null}
       <input
         aria-label="Search files"
         placeholder="Search families or files"

@@ -336,3 +336,59 @@ function act_change(selector: string, p: { save: unknown }) {
   const el = field(selector);
   el.click();
 }
+
+describe('Refresh list', () => {
+  it('lists a model added to ComfyUI after the sheet opened', async () => {
+    await boot();
+    click('Change model');
+    await settle();
+    expect(sheetText()).not.toContain('qwen_image_2512_fp8.safetensors');
+
+    serve({
+      'GET /api/image/studio/ready': readyFacts,
+      'GET /api/image/comfy-catalog': {
+        ...catalog,
+        deskDiscovery: [...catalog.deskDiscovery, 'qwen_image_2512_fp8.safetensors'],
+      },
+    });
+    const before = gets('/api/image/comfy-catalog').length;
+    click('Refresh list');
+    await settle();
+
+    expect(gets('/api/image/comfy-catalog')).toHaveLength(before + 1);
+    expect(sheetText()).toContain('qwen_image_2512_fp8.safetensors');
+    expect(button('Refresh list')?.disabled).toBe(false);
+  });
+
+  it('lists a LoRA added to ComfyUI after the sheet opened', async () => {
+    await boot({}, { 'GET /api/image/comfy-catalog': { ...catalog, loras: ['zit_style.safetensors'] } });
+    click('Add');
+    await settle();
+    expect(sheetText()).not.toContain('new_style.safetensors');
+
+    serve({
+      'GET /api/image/studio/ready': readyFacts,
+      'GET /api/image/comfy-catalog': { ...catalog, loras: ['zit_style.safetensors', 'new_style.safetensors'] },
+    });
+    click('Refresh list');
+    await settle();
+
+    expect(sheetText()).toContain('new_style.safetensors');
+  });
+
+  it('keeps the list and says so when the read fails', async () => {
+    await boot();
+    click('Change model');
+    await settle();
+
+    serve({
+      'GET /api/image/studio/ready': readyFacts,
+      'GET /api/image/comfy-catalog': refuse(502, 'down'),
+    });
+    click('Refresh list');
+    await settle();
+
+    expect(sheetText()).toContain('The list could not be read.');
+    expect(sheetText()).toContain('flux1-dev-fp8.safetensors');
+  });
+});
