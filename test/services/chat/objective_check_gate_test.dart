@@ -370,6 +370,24 @@ void main() {
       // A bare word for a single goal is read the way small models mean it.
       expect(parseObjectiveSync('YES', 1).items.single.legacyYes, isTrue);
     });
+
+    // Review finding 2026-10-16: an answer whose statuses are all unreadable
+    // changed no goal but still counted as a sync, which used up the
+    // re-plan a time skip had asked for.
+    test('JSON with no readable status is no answer at all', () {
+      expect(
+        parseObjectiveSync(
+          '{"goals":[{"goal":1,"status":"maybe","steps_done":[],'
+          '"next_step":"none"}]}',
+          1,
+        ).hadSignal,
+        isFalse,
+      );
+      expect(
+        parseObjectiveSync('{"status":["unclear"]}', 1).hadSignal,
+        isFalse,
+      );
+    });
   });
 
   group('a time skip re-plans (objectives-that-keep-up.md part 2)', () {

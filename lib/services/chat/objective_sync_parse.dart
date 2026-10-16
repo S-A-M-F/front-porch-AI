@@ -122,7 +122,9 @@ ObjectiveSyncParse parseObjectiveSync(String text, int itemCount) {
         stepsDone: _steps(g['steps_done']),
         nextStep: _nextStep(g['next_step']),
       );
-      saw = true;
+      // Only a readable status is an answer; an all-garbage reply must not
+      // count as a sync (it would use up a pending re-plan).
+      saw |= !items[idx].isUnsure;
     }
     return ObjectiveSyncParse(items: items, hadSignal: saw);
   }
@@ -138,7 +140,7 @@ ObjectiveSyncParse parseObjectiveSync(String text, int itemCount) {
             : const {},
         nextStep: next is List && i < next.length ? _nextStep(next[i]) : null,
       );
-      saw = true;
+      saw |= !items[i].isUnsure;
     }
     return ObjectiveSyncParse(items: items, hadSignal: saw);
   }
