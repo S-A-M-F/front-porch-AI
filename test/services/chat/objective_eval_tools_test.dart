@@ -259,23 +259,36 @@ void main() {
       expect(w.achieved, isEmpty);
     });
 
-    test('dormant sets a goal aside without retiring it', () async {
+    // Set aside is for the character's own wants; a goal the user set keeps
+    // its place in the prompt (live run 2026-10-16).
+    test('dormant sets the character\'s goal aside without retiring it, and '
+        'leaves the user\'s goal alone', () async {
       final w = _Writes();
       final p = _live(
         llm: _FakeLlm((_) => const Stream.empty()),
         w: w,
-        actives: [_mkObj('oD', 'visit the island', tasks: _twoSteps)],
+        actives: [
+          _mkObj(
+            'oD',
+            'visit the island',
+            tasks: _twoSteps,
+            origin: kObjectiveOriginCharacter,
+          ),
+          _mkObj('oU', 'learn why she left', tasks: _twoSteps),
+        ],
         onTool: (_) => _sync([
-          {
-            'goal': 1,
-            'status': 'dormant',
-            'steps_done': [],
-            'next_step': 'none',
-          },
+          for (final g in [1, 2])
+            {
+              'goal': g,
+              'status': 'dormant',
+              'steps_done': [],
+              'next_step': 'none',
+            },
         ]),
       );
       await p.checkTaskCompletionInBackground();
       expect(w.dormant['oD'], isTrue);
+      expect(w.dormant.containsKey('oU'), isFalse);
       expect(w.ends, isEmpty);
     });
   });

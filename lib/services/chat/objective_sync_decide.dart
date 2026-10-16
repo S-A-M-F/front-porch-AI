@@ -87,10 +87,13 @@ ObjectiveSyncApply decideObjectiveSync({
       );
     case 'dormant':
       // The held today line is the day's plan: setting it aside is the day
-      // itself, which the planner already handles.
+      // itself, which the planner already handles. A goal the user or the
+      // card set is story direction, not the character's want, so the judge
+      // does not get to mute it (live run 2026-10-16: a user goal was set
+      // aside on the first sync and never came back to the prompt).
       return ObjectiveSyncApply(
         newTasks: changed ? copy : null,
-        dormant: (isHeldToday || wasDormant) ? null : true,
+        dormant: (isHeldToday || wasDormant || stepsAuthored) ? null : true,
       );
   }
 

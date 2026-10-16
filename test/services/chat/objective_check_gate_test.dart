@@ -303,6 +303,18 @@ void main() {
       );
     });
 
+    // Live run 2026-10-16: a 4B judge set the user's goal aside on the first
+    // sync, which took it out of the prompt for the rest of the chat.
+    test('a goal the user or the card set is never set aside', () {
+      final apply = decideObjectiveSync(
+        tasks: steps(),
+        verdict: const ObjectiveSyncVerdict(status: 'dormant', stepsDone: {1}),
+        stepsAuthored: true,
+      );
+      expect(apply.dormant, isNull);
+      expect(apply.newTasks![0]['completed'], isTrue, reason: 'ticks stay');
+    });
+
     test('the old 1: YES answer still ticks the current step', () {
       final apply = decideObjectiveSync(
         tasks: steps(),
