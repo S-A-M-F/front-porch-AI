@@ -32,8 +32,10 @@ export function ModelSheet(props: {
     let live = true;
     setFailed(false);
     setRefreshing(true);
+    // A read that comes back empty (the app is not answering) leaves the files
+    // already listed, so a refresh never takes files away.
     const done = (list: string[], odd: string[] = []) => {
-      if (!live) return;
+      if (!live || list.length === 0) return;
       setFiles(list);
       setUnfit(odd);
     };

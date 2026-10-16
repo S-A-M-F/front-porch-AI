@@ -392,3 +392,38 @@ describe('Refresh list', () => {
     expect(sheetText()).toContain('flux1-dev-fp8.safetensors');
   });
 });
+
+describe('Refresh list on Draw Things', () => {
+  const drawThings = { ...baseConfig, backend: 'drawthings' };
+
+  it('lists a model added to Draw Things after the sheet opened', async () => {
+    await boot({ cfg: drawThings }, { 'GET /api/image/local-catalog': { models: ['flux_dev.ckpt'], loras: [] } });
+    click('Change model');
+    await settle();
+    expect(sheetText()).not.toContain('qwen_image.ckpt');
+
+    serve({
+      'GET /api/image/studio/ready': readyFacts,
+      'GET /api/image/local-catalog': { models: ['flux_dev.ckpt', 'qwen_image.ckpt'], loras: [] },
+    });
+    click('Refresh list');
+    await settle();
+
+    expect(sheetText()).toContain('qwen_image.ckpt');
+  });
+
+  it('keeps the files already listed when Draw Things answers with none', async () => {
+    await boot({ cfg: drawThings }, { 'GET /api/image/local-catalog': { models: ['flux_dev.ckpt'], loras: [] } });
+    click('Change model');
+    await settle();
+
+    serve({
+      'GET /api/image/studio/ready': readyFacts,
+      'GET /api/image/local-catalog': { models: [], loras: [] },
+    });
+    click('Refresh list');
+    await settle();
+
+    expect(sheetText()).toContain('flux_dev.ckpt');
+  });
+});

@@ -31,8 +31,10 @@ export function LoraSheet(props: {
       if (live) setRefreshing(false);
     };
     const done = (list: string[] | undefined, facts: LoraFact[] | undefined) => {
-      if (!live) return;
-      setFiles(list ?? []);
+      // An empty read (the app is not answering) keeps the files already
+      // listed, so a refresh never takes files away.
+      if (!live || !list?.length) return;
+      setFiles(list);
       const byFile = factsByFile(props.facts?.loraFacts, facts);
       setKnown(byFile);
       props.onFacts(byFile);

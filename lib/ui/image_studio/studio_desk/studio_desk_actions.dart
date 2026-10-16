@@ -169,7 +169,7 @@ class StudioDeskActions {
         items: first.items,
         unfit: first.unfit,
         onRefresh: () async {
-          await catalog.refresh(settings, force: true);
+          await catalog.refresh(settings, soft: true);
           if (_host.mounted) readiness.check(force: true);
           return listing();
         },
@@ -377,7 +377,7 @@ class StudioDeskActions {
         primaryFile: primary,
         facts: first.facts,
         onRefresh: () async {
-          await catalog.refresh(settings, force: true);
+          await catalog.refresh(settings, soft: true);
           return listing();
         },
         onPick: (index, file) =>
