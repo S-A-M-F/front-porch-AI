@@ -12,6 +12,7 @@ import { ChatInsight } from '../components/ChatInsight';
 import { ConversationsDrawer } from '../components/ConversationsDrawer';
 import { ChatThemeSettings } from '../components/ChatThemeSettings';
 import { ProcessingOverlay } from '../components/ProcessingOverlay';
+import { useEvaluationView } from '../components/useEvaluationView';
 import { type Realism } from '../components/chatTypes';
 import { useLayout } from '../hooks/useBreakpoint';
 import { ChatHeader } from './chat/ChatHeader';
@@ -31,6 +32,7 @@ export function ChatPage() {
   // for a panel nobody could see, twice over with the drawer open.
   const { isDesktop, isPhone } = useLayout();
   const followStreamingReplies = useFollowStreamingReplies();
+  const evaluationView = useEvaluationView();
   useUserMessageSide();
   const session = useChatSession();
   const send = useChatSend(session.refresh);
@@ -338,7 +340,8 @@ export function ChatPage() {
           onActionFailed={reportActionFailure}
         />
 
-        <ProcessingOverlay p={processing} onCancel={cancelRealism} onSkipObjective={skipObjectiveCheck} />
+        {evaluationView.error && <p role="alert">{evaluationView.error}</p>}
+        <ProcessingOverlay minimized={evaluationView.minimized} onMinimizedChange={evaluationView.change} saving={evaluationView.saving} p={processing} onCancel={cancelRealism} onSkipObjective={skipObjectiveCheck} />
 
         {imageProg && (
           <div className="image-progress-card">

@@ -282,19 +282,7 @@ List<Widget> buildChatPageOverlays(
       Positioned.fill(
         child: CallOverlay(character: character, onEndCall: onEndCall),
       ),
-    // Realism Engine processing overlays
-    if (chatService.isEvaluatingRealism ||
-        chatService.isProcessingGreeting ||
-        chatService.isVerifyingRealism)
-      RealismProcessingOverlay(
-        chatService: chatService,
-        isGreeting: chatService.isProcessingGreeting,
-      ),
-    // Objective completion check overlay (only when realism isn't already showing)
-    if (chatService.isCheckingCompletion &&
-        !chatService.isEvaluatingRealism &&
-        !chatService.isProcessingGreeting)
-      ObjectiveCheckOverlay(chatService: chatService),
+    ChatEvaluationProgress(chatService: chatService),
     // ONNX model download progress overlay
     Positioned.fill(
       child: Consumer<ExpressionClassifierService>(

@@ -82,6 +82,11 @@ class SettingsWriter {
     final g = _storage.generationSettings;
     final b = _storage.backendSettings;
 
+    final minimized = body['evaluationMinimized'];
+    if (minimized is bool) {
+      await _storage.uiSettings.setEvaluationMinimized(minimized);
+    }
+
     final follow = body['followStreamingReplies'];
     if (follow is bool) {
       await _storage.uiSettings.setFollowStreamingReplies(follow);

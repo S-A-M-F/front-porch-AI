@@ -344,6 +344,10 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                         if (chatService.isGenerating)
                           GenerationStatusBar(chatService: chatService),
+                        ChatEvaluationProgress(
+                          chatService: chatService,
+                          inline: true,
+                        ),
                         _buildInputArea(chatService),
                       ],
                     ),

@@ -228,6 +228,9 @@ void main() {
     final sandbox = Directory.systemTemp.createTempSync('fpai_webui_');
     PathProviderPlatform.instance = SandboxPathProvider(sandbox.path);
     final backend = await FakeBackendServer.start(replyPieces: _kReplyPieces);
+    // Keep a goal check visible until the browser uses Skip, so the progress
+    // journey can exercise the real app's controls without racing a fast eval.
+    backend.holdObjectiveCheck = Completer<void>();
     WebServerHost? host;
     Process? playwright;
     HttpClient? http;

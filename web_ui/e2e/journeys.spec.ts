@@ -1265,3 +1265,45 @@ test('image batches prepare full expressions with rules and persist across navig
     await page.request.post('/api/image/config',{data:{backend:original.backend,model:original.model,localUrl:original.localUrl,currentPassword:process.env.FPAI_PASSWORD}});
   }
 });
+
+
+test('evaluation view is remembered and synchronized between chat clients', async ({ page }) => {
+  const original = await (await page.request.get('/api/settings')).json() as { evaluationMinimized?: boolean };
+  let objectiveId = '';
+  const other = await page.context().newPage();
+  const objective = async (data: Record<string, unknown>) => {
+    const response = await page.request.post('/api/chat/tools/objective', { data });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  try {
+    expect((await page.request.post('/api/settings', { data: { evaluationMinimized: false } })).ok()).toBe(true);
+    await openPorchChat(page);
+    const created = await objective({ action: 'set', goal: 'Review the synthetic progress display' }) as { objectives: { primary: { id: string } } };
+    objectiveId = created.objectives.primary.id;
+    expect((await page.request.post('/api/chat/tools/task', { data: { action: 'add', id: objectiveId, description: 'Inspect the evaluation panel' } })).ok()).toBe(true);
+    await openRoute(other, '/chat');
+    await expect(other.locator('.chat-view')).toBeVisible();
+    await objective({ action: 'check' });
+    await page.getByRole('button', { name: 'Minimize evaluation', exact: true }).click();
+    await expect(other.getByRole('button', { name: 'Show evaluation details', exact: true })).toBeVisible();
+    await other.getByRole('button', { name: 'Show evaluation details', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Minimize evaluation', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Minimize evaluation', exact: true }).click();
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json() as { evaluationMinimized: boolean }).evaluationMinimized).toBe(true);
+    await page.getByRole('button', { name: 'Skip goal check', exact: true }).click();
+    await expect(page.locator('.proc-overlay')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('.chat-view')).toBeVisible();
+    await objective({ action: 'check' });
+    await expect(page.getByRole('button', { name: 'Show evaluation details', exact: true })).toBeVisible();
+    await expect(page.locator('.proc-stages')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Skip goal check', exact: true }).click();
+    await expect(page.locator('.proc-overlay')).toHaveCount(0);
+  } finally {
+    await page.request.post('/api/chat/skip-objective-check');
+    if (objectiveId) await objective({ action: 'clear', id: objectiveId });
+    expect((await page.request.post('/api/settings', { data: { evaluationMinimized: original.evaluationMinimized === true } })).ok()).toBe(true);
+    await other.close();
+  }
+});

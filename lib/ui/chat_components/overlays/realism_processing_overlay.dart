@@ -9,12 +9,14 @@ import '../widgets/eval_pill.dart';
 
 class RealismProcessingOverlay extends StatefulWidget {
   final ChatService chatService;
+  final VoidCallback? onMinimize;
   final bool isGreeting;
 
   const RealismProcessingOverlay({
     super.key,
     required this.chatService,
     required this.isGreeting,
+    this.onMinimize,
   });
 
   @override
@@ -157,6 +159,15 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (widget.onMinimize != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: widget.onMinimize,
+                              icon: const Icon(Icons.minimize),
+                              label: const Text('Minimize evaluation'),
+                            ),
+                          ),
                         // ── Header ───────────────────────────────────────────
                         Container(
                           padding: const EdgeInsets.fromLTRB(28, 26, 28, 20),

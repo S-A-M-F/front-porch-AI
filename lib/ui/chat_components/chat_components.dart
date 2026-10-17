@@ -62,3 +62,6 @@ export 'widgets/mention_autocomplete.dart';
 export 'widgets/message_jump.dart';
 export 'widgets/regen_critique_field.dart';
 export 'widgets/settings_menu_item.dart';
+export 'overlays/evaluation_progress_shell.dart';
+
+export 'overlays/chat_evaluation_progress.dart';

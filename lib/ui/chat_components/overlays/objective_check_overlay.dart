@@ -26,8 +26,13 @@ import '../widgets/eval_pill.dart';
 
 class ObjectiveCheckOverlay extends StatefulWidget {
   final ChatService chatService;
+  final VoidCallback? onMinimize;
 
-  const ObjectiveCheckOverlay({super.key, required this.chatService});
+  const ObjectiveCheckOverlay({
+    super.key,
+    required this.chatService,
+    this.onMinimize,
+  });
 
   @override
   State<ObjectiveCheckOverlay> createState() => ObjectiveCheckOverlayState();
@@ -123,6 +128,15 @@ class ObjectiveCheckOverlayState extends State<ObjectiveCheckOverlay>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (widget.onMinimize != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: widget.onMinimize,
+                              icon: const Icon(Icons.minimize),
+                              label: const Text('Minimize evaluation'),
+                            ),
+                          ),
                         // ── Header ───────────────────────────────────────────
                         Container(
                           padding: const EdgeInsets.fromLTRB(28, 26, 28, 20),

@@ -106,3 +106,8 @@
 .obj-checking { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ok); margin-bottom: 6px; }
 .obj-checking-tag { color: var(--ok); font-weight: 600; }
 
+
+.proc-progress-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.proc-progress-controls button { color: var(--porch-amber); cursor: pointer; }
+.proc-minimized .proc-sub { display: none; }
+.proc-minimized .proc-card { gap: 6px; }
