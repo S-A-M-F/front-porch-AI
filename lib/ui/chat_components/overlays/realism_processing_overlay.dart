@@ -131,14 +131,18 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
             child: Container(
               // A dark dim in both themes so the panel keeps the focus.
               color: Colors.black.withValues(alpha: 0.55),
-              child: Center(
+              // Top-anchored, not centred: the card grows when the live
+              // stream arrives, and a centred card would move its
+              // Minimize button out from under the pointer.
+              child: Align(
+                alignment: Alignment.topCenter,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: 680,
                     maxHeight: 580,
                   ),
                   child: Container(
-                    margin: const EdgeInsets.all(24),
+                    margin: const EdgeInsets.fromLTRB(24, 72, 24, 24),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceOf(context),
                       borderRadius: BorderRadius.circular(24),

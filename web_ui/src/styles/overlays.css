@@ -109,5 +109,16 @@
 
 .proc-progress-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .proc-progress-controls button { color: var(--porch-amber); cursor: pointer; }
+/* Minimized: one slim row that sits in the column above the composer
+   instead of floating over it, so the message box stays usable. */
+.proc-overlay.proc-minimized {
+  position: static; transform: none; width: auto; max-width: 560px;
+  margin: 0 auto 6px; padding: 0 12px; box-sizing: border-box; align-self: stretch;
+}
 .proc-minimized .proc-sub { display: none; }
-.proc-minimized .proc-card { gap: 6px; }
+.proc-minimized .proc-card {
+  flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  padding: 6px 12px; box-shadow: none;
+}
+.proc-minimized .proc-cancel,
+.proc-minimized .proc-skip { align-self: center; }
