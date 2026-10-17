@@ -103,7 +103,7 @@ export function PersonaManager({ onDirtyChange }: { onDirtyChange?: (dirty: bool
   const fallback = personas.find((p) => p.default);
 
   return (
-    <section className="card">
+    <section className="card" data-testid="persona-manager">
       <div className="card-head">
         <h3>User personas</h3>
         <button

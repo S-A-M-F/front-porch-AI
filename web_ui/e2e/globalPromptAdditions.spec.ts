@@ -4,14 +4,18 @@
 import { join } from 'node:path';
 import { test, expect, openRoute } from './support/fixtures';
 
-test('global prompt additions save, reload, and clear in Generation settings', async ({ page }) => {
+test('global prompt additions save, reload, and clear under General settings', async ({ page }) => {
   const original = await (await page.request.get('/api/settings')).json() as {
     additionalSystemPrompt?: string; additionalPostHistoryInstructions?: string;
   };
   const read = async () => (await (await page.request.get('/api/settings')).json()) as typeof original;
   try {
     await openRoute(page, '/settings');
-    await page.getByText('Global prompt additions', { exact: true }).click();
+    // Flat under the fallback prompt in General — no accordion to expand.
+    const additions = page.locator(
+      '[data-section="general"] [data-testid="global-prompt-additions"]',
+    );
+    await expect(additions).toBeVisible();
     const system = page.getByRole('textbox', { name: 'Additional system instructions', exact: true });
     const post = page.getByRole('textbox', { name: 'Additional post-history instructions', exact: true });
     await system.fill('Use concise scene descriptions for {{char}}.');
@@ -20,7 +24,7 @@ test('global prompt additions save, reload, and clear in Generation settings', a
     await expect.poll(async () => (await read()).additionalSystemPrompt).toBe('Use concise scene descriptions for {{char}}.');
     await expect.poll(async () => (await read()).additionalPostHistoryInstructions).toBe('Keep each reply focused on one action.');
     await page.reload();
-    await page.getByText('Global prompt additions', { exact: true }).click();
+    await expect(additions).toBeVisible();
     await expect(system).toHaveValue('Use concise scene descriptions for {{char}}.');
     await expect(post).toHaveValue('Keep each reply focused on one action.');
     if (process.env.FPAI_REVIEW_ARTIFACT_DIR) {

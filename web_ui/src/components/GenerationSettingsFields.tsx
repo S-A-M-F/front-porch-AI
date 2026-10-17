@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Generation card for web Settings: sampler sliders, thinking, AFK replies,
-// sanitiser, stop sequences, banned phrases, and the global system prompt.
-// Desktop Generation + General parity (audit P2.12).
+// sanitiser, stop sequences, and banned phrases. The prompt family lives in
+// PromptSettingsCard under General (prompt-picker SOW Phase 2).
+// Desktop Generation parity (audit P2.12).
 
 import {
   reasoningEffortBlurb,
@@ -146,9 +147,6 @@ export function GenerationSettingsFields({
   contextLocked,
   contextFloor = CONTEXT_FLOOR,
   generation,
-  systemPrompt,
-  additionalSystemPrompt,
-  additionalPostHistoryInstructions,
   bannedPhrases,
   spellCheckLanguage,
   spellCheckLanguages,
@@ -170,9 +168,6 @@ export function GenerationSettingsFields({
   /** Below this the context is warned about (the host's kKoboldContextFloor). */
   contextFloor?: number;
   generation: GenSettings;
-  systemPrompt?: string;
-  additionalSystemPrompt?: string;
-  additionalPostHistoryInstructions?: string;
   bannedPhrases?: string[];
   spellCheckLanguage?: string;
   spellCheckLanguages?: string[];
@@ -191,37 +186,8 @@ export function GenerationSettingsFields({
   // Only what this backend's requests carry; a hidden value is kept.
   const shown = (knob: SamplerKnob) => samplerKnobShown(knob, backend, samplerKnobs);
   return (
-    <section className="card">
+    <section className="card" data-testid="generation-fields">
       <h3>Generation</h3>
-      {systemPrompt !== undefined && (
-        <>
-          <label>
-            Fallback system prompt
-            <textarea
-              rows={6}
-              value={systemPrompt}
-              onChange={(e) => patch({ systemPrompt: e.target.value })}
-            />
-          </label>
-          <p className="muted small">Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.</p>
-        </>
-      )}
-      {additionalSystemPrompt !== undefined && additionalPostHistoryInstructions !== undefined && (
-        <details className="prompt-additions">
-          <summary>Global prompt additions</summary>
-          <p className="muted small">Extra instructions for every character and chat model. Leave blank to disable. Both fields support {'{{char}}'} and {'{{user}}'}. Use Save settings to apply changes.</p>
-          <label>Additional system instructions
-            <textarea rows={4} value={additionalSystemPrompt}
-              onChange={(e) => patch({ additionalSystemPrompt: e.target.value })} />
-          </label>
-          <p className="muted small">Appended to the selected system prompt, including character and group prompts.</p>
-          <label>Additional post-history instructions
-            <textarea rows={4} value={additionalPostHistoryInstructions}
-              onChange={(e) => patch({ additionalPostHistoryInstructions: e.target.value })} />
-          </label>
-          <p className="muted small">Appended after existing post-history instructions.</p>
-        </details>
-      )}
       <SliderField label="Temperature" value={g.temperature} min={0} max={2} step={0.05}
         onChange={(v) => patchGen({ temperature: v })} />
       {shown('minP') && (
