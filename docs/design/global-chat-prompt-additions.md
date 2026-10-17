@@ -5,6 +5,13 @@ Additional system prompt and Additional post-history instructions. They are
 shared across all characters, groups and chat models until changed or cleared.
 There is no automatic model selection or model-specific preset in this feature.
 
+The existing Model Instructions editor under desktop General (System prompt on
+web) supplies the fallback for one-to-one chats without a character system
+prompt. Groups select their own prompt or a group default. The new system
+addition follows that selection and applies even when the fallback is unused.
+Web Settings presents backend and Generation sections on one scrolling page;
+desktop Settings separates them into tabs.
+
 Desktop saves edits automatically. Web uses the existing Save settings flow and
 unsaved-changes protection. Both fields default to empty and use the existing
 channel-aware settings persistence. No character card or database schema changes.

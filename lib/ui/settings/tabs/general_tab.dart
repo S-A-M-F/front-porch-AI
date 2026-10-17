@@ -361,6 +361,11 @@ class GeneralTab extends StatelessWidget {
           const SizedBox(height: 24),
           const SectionHeader('Model Instructions'),
           const SizedBox(height: 8),
+          Text(
+            'Fallback system prompt for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. For instructions added across characters and groups, use Generation → Global prompt additions.',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
+          const SizedBox(height: 8),
           // Prompt library row simplified for smallest (full chips/load/save use the extracted dialogs)
           Row(
             children: [

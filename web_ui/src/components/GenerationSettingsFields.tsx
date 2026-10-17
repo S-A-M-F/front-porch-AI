@@ -194,6 +194,7 @@ export function GenerationSettingsFields({
     <section className="card">
       <h3>Generation</h3>
       {systemPrompt !== undefined && (
+        <>
         <label>
           System prompt
           <textarea
@@ -202,6 +203,8 @@ export function GenerationSettingsFields({
             onChange={(e) => patch({ systemPrompt: e.target.value })}
           />
         </label>
+        <p className="muted small">Fallback system prompt for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. This is Model Instructions under General in the desktop app. Use Global prompt additions below for instructions added across characters and groups.</p>
+        </>
       )}
       {additionalSystemPrompt !== undefined && additionalPostHistoryInstructions !== undefined && (
         <details className="prompt-additions">
@@ -211,7 +214,7 @@ export function GenerationSettingsFields({
             <textarea rows={4} value={additionalSystemPrompt}
               onChange={(e) => patch({ additionalSystemPrompt: e.target.value })} />
           </label>
-          <p className="muted small">Appended even when a character or group supplies its own system prompt.</p>
+          <p className="muted small">Added after the selected system prompt, including character and group prompts. The System prompt field above supplies only the fallback for one-to-one chats.</p>
           <label>Additional post-history instructions
             <textarea rows={4} value={additionalPostHistoryInstructions}
               onChange={(e) => patch({ additionalPostHistoryInstructions: e.target.value })} />

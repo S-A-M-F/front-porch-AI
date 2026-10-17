@@ -42,8 +42,8 @@ class GlobalPromptAdditions extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Additional system prompt',
             helperText:
-                'Appended even when a character or group supplies its own system prompt.',
-            helperMaxLines: 3,
+                'Added after the selected system prompt, including character and group prompts. General → Model Instructions supplies only the fallback for one-to-one chats.',
+            helperMaxLines: 5,
             border: OutlineInputBorder(),
           ),
           onChanged: (value) =>
