@@ -102,6 +102,10 @@ class _ChatPageState extends State<ChatPage> {
   /// Held so dispose removes the same handler initState added.
   late final KeyEventCallback _regenKeys = _onRegenShortcut;
 
+  /// Guards the prompt-source picker against stacking while its dialog is
+  /// open (every ChatService notify would otherwise re-offer it).
+  bool _promptPickerOpen = false;
+
   bool _onRegenShortcut(KeyEvent event) => handleChatRegenShortcut(event, this);
 
   @override
@@ -139,6 +143,10 @@ class _ChatPageState extends State<ChatPage> {
 
     // Resume timer if this is a pre-existing chat with history
     chat.resumeDynamicResponses();
+
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _maybeShowPromptPicker(),
+    );
   }
 
   // Lifecycle pausing intentionally omitted — the idle timer should fire when
@@ -149,6 +157,7 @@ class _ChatPageState extends State<ChatPage> {
     if (!mounted) return;
     final chat = _chatService;
     if (chat == null) return;
+    _maybeShowPromptPicker();
     _scenePrompts.onChatChanged(
       context,
       chat,
@@ -160,6 +169,36 @@ class _ChatPageState extends State<ChatPage> {
         });
       },
     );
+  }
+
+  /// Prompt-picker SOW trigger: a new 1:1 chat whose card ships its own
+  /// system prompt opens the picker once ChatService has armed it (or
+  /// applied the character's remembered choice and armed nothing).
+  Future<void> _maybeShowPromptPicker() async {
+    final chat = _chatService;
+    if (chat == null || !mounted || _promptPickerOpen) return;
+    if (chat.promptPickerPendingFor == null) return;
+    final card = chat.activeCharacter;
+    if (card == null) return;
+    _promptPickerOpen = true;
+    final storage = Provider.of<StorageService>(context, listen: false);
+    try {
+      final choice = await showPromptSourcePicker(
+        context,
+        characterName: card.name,
+        cardPrompt: card.systemPrompt,
+        userPrompt: storage.generationSettings.systemPrompt,
+        amendment: storage.generationSettings.additionalSystemPrompt,
+      );
+      if (!mounted) return;
+      await chat.applyPromptSourceChoice(
+        preset: choice?.preset.wireName,
+        remember: choice?.remember ?? false,
+        askEveryChat: choice?.askEveryChat ?? false,
+      );
+    } finally {
+      _promptPickerOpen = false;
+    }
   }
 
   void _onTtsChanged() {

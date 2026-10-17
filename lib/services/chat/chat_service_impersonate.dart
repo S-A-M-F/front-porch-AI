@@ -58,14 +58,10 @@ extension ChatServiceImpersonate on ChatService {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
             : defaultGroupSystemPrompt;
-      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-        systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
         // All backends speak the OpenAI chat protocol now (KoboldCpp via its
         // /v1/chat/completions door), so use the chat-style default prompt.
-        systemPrompt = defaultApiSystemPrompt;
+        systemPrompt = _resolveOneToOneBase(speakingCharacter);
       }
 
       if (_activeGroup != null) {
@@ -81,8 +77,10 @@ extension ChatServiceImpersonate on ChatService {
         }
       }
 
-      systemPrompt = _storageService.generationSettings
-          .withSystemPromptAddition(systemPrompt);
+      if (_amendmentsAllowed) {
+        systemPrompt = _storageService.generationSettings
+            .withSystemPromptAddition(systemPrompt);
+      }
 
       // Lorebook via the shared injector — the same positioned buckets the
       // main generation path uses. Read-only: impersonation never scans or
@@ -135,8 +133,9 @@ extension ChatServiceImpersonate on ChatService {
       // character's voice and often repeat "do not write for the user".
       final suffix = impersonateSuffix(userName: userName, prefix: prefix);
       const mesExampleBlock = '';
-      var postHistoryBlock = _storageService.generationSettings
-          .withPostHistoryAddition('');
+      var postHistoryBlock = _amendmentsAllowed
+          ? _storageService.generationSettings.withPostHistoryAddition('')
+          : '';
 
       String authorNoteBlock = '';
       if (_authorNote.isNotEmpty) {

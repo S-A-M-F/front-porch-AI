@@ -112,6 +112,7 @@ extension ChatServiceSessionLoad on ChatService {
           .clear(); // 0-session: no per-chat look selection (keep reset blocks in sync)
       _sessionGenSettings =
           ChatGenerationSettings(); // 0-session: no per-chat gen overrides — without this, character B's first chat ran (and could SAVE) character A's temp/stops/sanitizer (keep reset blocks in sync)
+      _armPromptPickerIfDue(); // prompt-picker SOW: opening a card with no saved session is a new chat
       _clearContextBudget();
       return;
     }

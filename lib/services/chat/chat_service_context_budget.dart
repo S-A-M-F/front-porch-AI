@@ -83,11 +83,7 @@ extension ChatServiceContextBudget on ChatService {
       }
     } else if (_activeCharacter != null) {
       final c = _activeCharacter!;
-      systemPrompt = c.systemPrompt.isNotEmpty
-          ? c.systemPrompt
-          : _storageService.generationSettings.systemPrompt.isNotEmpty
-          ? _storageService.generationSettings.systemPrompt
-          : defaultApiSystemPrompt;
+      systemPrompt = _resolveOneToOneBase(c);
       scenario = c.scenario;
       examples = c.mesExample;
       postHistory = c.postHistoryInstructions;
@@ -98,12 +94,13 @@ extension ChatServiceContextBudget on ChatService {
       if (block.isNotEmpty) identity.writeln('${c.name}: $block');
     }
 
-    systemPrompt = _storageService.generationSettings.withSystemPromptAddition(
-      systemPrompt,
-    );
-    postHistory = _storageService.generationSettings.withPostHistoryAddition(
-      postHistory,
-    );
+    if (_amendmentsAllowed) {
+      systemPrompt = _storageService.generationSettings
+          .withSystemPromptAddition(systemPrompt);
+      postHistory = _storageService.generationSettings.withPostHistoryAddition(
+        postHistory,
+      );
+    }
 
     final historyLines = <String>[];
     for (final m in _messages) {
@@ -145,6 +142,97 @@ extension ChatServiceContextBudget on ChatService {
     }
 
     _contextBudget.apply(snap);
+    notifyListeners();
+  }
+}
+
+/// Per-chat prompt source resolution (prompt-picker SOW Phase 1). Lives
+/// beside the budget estimate it must match; every ChatService prompt path
+/// (generation, impersonation, estimate) reads these members.
+extension ChatServicePromptSource on ChatService {
+  /// Per-chat prompt source (prompt-picker SOW Phase 1). 1:1 only — groups
+  /// keep the group-prompt hierarchy. `'user'` selects the global fallback
+  /// as the base; null/`'card'` keeps the card-first hierarchy byte-for-byte.
+  String? get _promptSourceOverride =>
+      _activeGroup == null ? _sessionGenSettings.systemPromptSource : null;
+
+  /// Whether #546's global additions append this turn. Only a 1:1 chat that
+  /// switched amendments off suppresses them; null/true append as today.
+  bool get _amendmentsAllowed =>
+      !(_activeGroup == null &&
+          _sessionGenSettings.promptAmendmentsEnabled == false);
+
+  /// The 1:1 base chain with the per-chat source applied. Shared by the
+  /// generation, impersonation, and budget-estimate paths so the live
+  /// estimate always matches the sent prompt.
+  String _resolveOneToOneBase(CharacterCard card) {
+    if (_promptSourceOverride == 'user') {
+      final fallback = _storageService.generationSettings.systemPrompt;
+      return fallback.isNotEmpty ? fallback : defaultApiSystemPrompt;
+    }
+    if (card.systemPrompt.isNotEmpty) return card.systemPrompt;
+    final fallback = _storageService.generationSettings.systemPrompt;
+    return fallback.isNotEmpty ? fallback : defaultApiSystemPrompt;
+  }
+
+  /// The character key whose new 1:1 chat is waiting on the picker, or
+  /// null when nothing is pending.
+  String? get promptPickerPendingFor => _promptPickerPendingFor;
+
+  /// Prompt-picker SOW trigger: a new 1:1 chat whose card ships its own
+  /// system prompt asks the user which base wins — unless a choice was
+  /// remembered for this character, which is applied instead.
+  void _armPromptPickerIfDue() {
+    _promptPickerPendingFor = null;
+    final card = _activeCharacter;
+    if (_activeGroup != null || card == null || card.systemPrompt.isEmpty) {
+      return;
+    }
+    final key = stableGroupIdFrom(card.imagePath, card.name);
+    final remembered =
+        _storageService.generationSettings.promptPickerChoices[key];
+    if (remembered != null) {
+      _applyPromptPreset(remembered);
+      return;
+    }
+    _promptPickerPendingFor = key;
+  }
+
+  /// Maps a picker preset onto the per-chat pair. 'card+amend' and 'card'
+  /// keep the card chain byte-identical to the inherited default.
+  void _applyPromptPreset(String preset) {
+    _sessionGenSettings.systemPromptSource = preset == 'user' ? 'user' : 'card';
+    _sessionGenSettings.promptAmendmentsEnabled = preset != 'card';
+  }
+
+  /// The picker's answer: write the per-chat pair, persist the remembered
+  /// choice ("Remember my choice"), or forget it so the next new chat asks
+  /// again ("Ask me every chat"). A null [preset] (dismissed dialog) keeps
+  /// this chat on today's inherited behavior.
+  Future<void> applyPromptSourceChoice({
+    String? preset,
+    bool remember = false,
+    bool askEveryChat = false,
+  }) async {
+    final card = _activeGroup == null ? _activeCharacter : null;
+    final key =
+        _promptPickerPendingFor ??
+        (card != null ? stableGroupIdFrom(card.imagePath, card.name) : null);
+    _promptPickerPendingFor = null;
+    if (preset != null) {
+      _applyPromptPreset(preset);
+      if (key != null) {
+        if (askEveryChat) {
+          await _storageService.generationSettings.clearPromptPickerChoice(key);
+        } else if (remember) {
+          await _storageService.generationSettings.setPromptPickerChoice(
+            key,
+            preset,
+          );
+        }
+      }
+      if (_currentSessionId != null) await _saveChat();
+    }
     notifyListeners();
   }
 }

@@ -35,6 +35,11 @@ class GenerationSettings with SettingsBase {
   String _systemPrompt = defaultSystemPrompt;
   String _additionalSystemPrompt = '';
   String _additionalPostHistoryInstructions = '';
+
+  /// Prompt-picker SOW: stableGroupId → preset ('card+amend' | 'card' |
+  /// 'user'). A character with an entry never gets asked again; the entry
+  /// is applied to each new chat instead.
+  Map<String, String> _promptPickerChoices = {};
   double _minP = 0.1;
   // 0.9 matches what the transport always hardcoded before Top-P became a
   // real setting, so existing chats feel identical until the slider moves.
@@ -106,6 +111,27 @@ class GenerationSettings with SettingsBase {
   String get additionalPostHistoryInstructions =>
       _additionalPostHistoryInstructions;
 
+  Map<String, String> get promptPickerChoices =>
+      Map.unmodifiable(_promptPickerChoices);
+
+  Future<void> setPromptPickerChoice(String characterKey, String preset) async {
+    _promptPickerChoices[characterKey] = preset;
+    await prefs?.setString(
+      k('prompt_picker_choices'),
+      jsonEncode(_promptPickerChoices),
+    );
+    notify();
+  }
+
+  Future<void> clearPromptPickerChoice(String characterKey) async {
+    if (_promptPickerChoices.remove(characterKey) == null) return;
+    await prefs?.setString(
+      k('prompt_picker_choices'),
+      jsonEncode(_promptPickerChoices),
+    );
+    notify();
+  }
+
   String withSystemPromptAddition(String base) =>
       _appendPrompt(base, _additionalSystemPrompt);
   String withPostHistoryAddition(String base) =>
@@ -148,6 +174,15 @@ class GenerationSettings with SettingsBase {
         prefs?.getString(k('additional_system_prompt')) ?? '';
     _additionalPostHistoryInstructions =
         prefs?.getString(k('additional_post_history_instructions')) ?? '';
+    final pickerJson = prefs?.getString(k('prompt_picker_choices'));
+    if (pickerJson != null) {
+      try {
+        _promptPickerChoices = (jsonDecode(pickerJson) as Map)
+            .cast<String, String>();
+      } catch (_) {
+        // Keep empty on corrupt data
+      }
+    }
 
     _systemPrompt = prefs?.getString(k('system_prompt')) ?? _systemPrompt;
     _minP = prefs?.getDouble(k('min_p')) ?? _minP;

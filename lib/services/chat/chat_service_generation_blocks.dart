@@ -37,19 +37,17 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.systemPrompt = _observerMode
           ? observerModeSystemPrompt
           : defaultGroupSystemPrompt;
-    } else if (t.speakingCharacter.systemPrompt.isNotEmpty) {
-      t.systemPrompt = t.speakingCharacter.systemPrompt;
-    } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
-      t.systemPrompt = _storageService.generationSettings.systemPrompt;
     } else {
       // Every backend now speaks the OpenAI chat protocol (local KoboldCpp
       // via its /v1/chat/completions door), so the server applies the model's
       // instruct template — use the chat-style default system prompt.
-      t.systemPrompt = defaultApiSystemPrompt;
+      t.systemPrompt = _resolveOneToOneBase(t.speakingCharacter);
     }
 
-    t.systemPrompt = _storageService.generationSettings
-        .withSystemPromptAddition(t.systemPrompt);
+    if (_amendmentsAllowed) {
+      t.systemPrompt = _storageService.generationSettings
+          .withSystemPromptAddition(t.systemPrompt);
+    }
 
     // Per-character group overlay used to append here and churn the system
     // prefix every speaker. It now rides [t.speakerCardBlock] after history.
@@ -176,8 +174,10 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.postHistoryBlock = '${t.speakingCharacter.postHistoryInstructions}\n';
     }
 
-    t.postHistoryBlock = _storageService.generationSettings
-        .withPostHistoryAddition(t.postHistoryBlock);
+    if (_amendmentsAllowed) {
+      t.postHistoryBlock = _storageService.generationSettings
+          .withPostHistoryAddition(t.postHistoryBlock);
+    }
 
     // Author's note — placed right before the character speaks for maximum influence
     if (_authorNote.isNotEmpty) {
