@@ -362,7 +362,7 @@ class GeneralTab extends StatelessWidget {
           const SectionHeader('Fallback system prompt'),
           const SizedBox(height: 8),
           Text(
-            'Fallback system prompt for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. For instructions added across characters and groups, use Generation → Global prompt additions.',
+            'Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.',
             style: TextStyle(color: AppColors.textSecondary(context)),
           ),
           const SizedBox(height: 8),

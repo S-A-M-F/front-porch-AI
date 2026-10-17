@@ -203,23 +203,23 @@ export function GenerationSettingsFields({
               onChange={(e) => patch({ systemPrompt: e.target.value })}
             />
           </label>
-          <p className="muted small">Used for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. On desktop, this field is under General. Use Additional system instructions below to append instructions across characters and groups.</p>
+          <p className="muted small">Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.</p>
         </>
       )}
       {additionalSystemPrompt !== undefined && additionalPostHistoryInstructions !== undefined && (
         <details className="prompt-additions">
           <summary>Global prompt additions</summary>
-          <p className="muted small">Extra instructions for every character and chat model. Applied to future chat generations, including Continue and impersonation. Existing card instructions stay intact. Auxiliary evaluators and tools are unchanged. Clear a field to disable it. Use Save settings to apply changes.</p>
+          <p className="muted small">Extra instructions for every character and chat model. Leave blank to disable. Both fields support {'{{char}}'} and {'{{user}}'}. Use Save settings to apply changes.</p>
           <label>Additional system instructions
             <textarea rows={4} value={additionalSystemPrompt}
               onChange={(e) => patch({ additionalSystemPrompt: e.target.value })} />
           </label>
-          <p className="muted small">Appended to the selected system prompt, including character and group prompts. The Fallback system prompt above is used only when a character has no system prompt.</p>
+          <p className="muted small">Appended to the selected system prompt, including character and group prompts.</p>
           <label>Additional post-history instructions
             <textarea rows={4} value={additionalPostHistoryInstructions}
               onChange={(e) => patch({ additionalPostHistoryInstructions: e.target.value })} />
           </label>
-          <p className="muted small">Appended in the post-history section. Supports {'{{char}}'} and {'{{user}}'}.</p>
+          <p className="muted small">Appended after existing post-history instructions.</p>
         </details>
       )}
       <SliderField label="Temperature" value={g.temperature} min={0} max={2} step={0.05}

@@ -31,7 +31,7 @@ class GlobalPromptAdditions extends StatelessWidget {
       ),
       children: [
         Text(
-          'Saved automatically. Applied to future chat generations, including Continue and impersonation. Existing card instructions stay intact. Auxiliary evaluators and tools are unchanged. Clear a field to disable it.',
+          'Saved automatically. Leave blank to disable. Both fields support {{char}} and {{user}}.',
           style: TextStyle(color: AppColors.textSecondary(context)),
         ),
         const SizedBox(height: 12),
@@ -42,8 +42,8 @@ class GlobalPromptAdditions extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Additional system instructions',
             helperText:
-                'Appended to the selected system prompt, including character and group prompts. The fallback under General is used only when a character has no system prompt.',
-            helperMaxLines: 5,
+                'Appended to the selected system prompt, including character and group prompts.',
+            helperMaxLines: 3,
             border: OutlineInputBorder(),
           ),
           onChanged: (value) =>
@@ -56,8 +56,7 @@ class GlobalPromptAdditions extends StatelessWidget {
           maxLines: 5,
           decoration: const InputDecoration(
             labelText: 'Additional post-history instructions',
-            helperText:
-                'Appended in the post-history section. Supports {{char}} and {{user}}.',
+            helperText: 'Appended after existing post-history instructions.',
             helperMaxLines: 3,
             border: OutlineInputBorder(),
           ),
