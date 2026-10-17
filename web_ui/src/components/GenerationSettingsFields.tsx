@@ -147,6 +147,8 @@ export function GenerationSettingsFields({
   contextFloor = CONTEXT_FLOOR,
   generation,
   systemPrompt,
+  additionalSystemPrompt,
+  additionalPostHistoryInstructions,
   bannedPhrases,
   spellCheckLanguage,
   spellCheckLanguages,
@@ -169,6 +171,8 @@ export function GenerationSettingsFields({
   contextFloor?: number;
   generation: GenSettings;
   systemPrompt?: string;
+  additionalSystemPrompt?: string;
+  additionalPostHistoryInstructions?: string;
   bannedPhrases?: string[];
   spellCheckLanguage?: string;
   spellCheckLanguages?: string[];
@@ -198,6 +202,22 @@ export function GenerationSettingsFields({
             onChange={(e) => patch({ systemPrompt: e.target.value })}
           />
         </label>
+      )}
+      {additionalSystemPrompt !== undefined && additionalPostHistoryInstructions !== undefined && (
+        <details className="prompt-additions">
+          <summary>Global prompt additions</summary>
+          <p className="muted small">Extra instructions for every character and chat model. Applied to future chat generations, including Continue and impersonation. Existing card instructions stay intact. Auxiliary evaluators and tools are unchanged. Clear a field to disable it. Use Save settings to apply changes.</p>
+          <label>Additional system prompt
+            <textarea rows={4} value={additionalSystemPrompt}
+              onChange={(e) => patch({ additionalSystemPrompt: e.target.value })} />
+          </label>
+          <p className="muted small">Appended even when a character or group supplies its own system prompt.</p>
+          <label>Additional post-history instructions
+            <textarea rows={4} value={additionalPostHistoryInstructions}
+              onChange={(e) => patch({ additionalPostHistoryInstructions: e.target.value })} />
+          </label>
+          <p className="muted small">Appended in the post-history section. Supports {'{{char}}'} and {'{{user}}'}.</p>
+        </details>
       )}
       <SliderField label="Temperature" value={g.temperature} min={0} max={2} step={0.05}
         onChange={(v) => patchGen({ temperature: v })} />

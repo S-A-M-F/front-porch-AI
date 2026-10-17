@@ -81,6 +81,9 @@ extension ChatServiceImpersonate on ChatService {
         }
       }
 
+      systemPrompt = _storageService.generationSettings
+          .withSystemPromptAddition(systemPrompt);
+
       // Lorebook via the shared injector — the same positioned buckets the
       // main generation path uses. Read-only: impersonation never scans or
       // mutates trigger state.
@@ -132,7 +135,8 @@ extension ChatServiceImpersonate on ChatService {
       // character's voice and often repeat "do not write for the user".
       final suffix = impersonateSuffix(userName: userName, prefix: prefix);
       const mesExampleBlock = '';
-      const postHistoryBlock = '';
+      var postHistoryBlock = _storageService.generationSettings
+          .withPostHistoryAddition('');
 
       String authorNoteBlock = '';
       if (_authorNote.isNotEmpty) {
@@ -172,6 +176,11 @@ extension ChatServiceImpersonate on ChatService {
         macroCtx,
         section: 'scenario',
       );
+      postHistoryBlock = _macroResolver.resolve(
+        postHistoryBlock,
+        macroCtx,
+        section: 'postHistory',
+      );
       final identity = impersonateIdentityBlock(
         userName: userName,
         characterName: speakingCharacter.name,
@@ -195,7 +204,7 @@ extension ChatServiceImpersonate on ChatService {
       // never the character's private feelings, needs or objectives — this
       // path has never registered those sections at all. Identity + card
       // frame ride the system message (they must outrank "do not write
-      // for {{user}}"). Character examples and post-history are omitted.
+      // for {{user}}"). Character examples and card post-history are omitted; global additions remain.
       final plan = PromptPlan();
       plan.add(id: 'system', inSystem: true, text: '$systemPrompt\n');
       plan.add(id: 'persona', inSystem: true, text: '$personaBlock\n');

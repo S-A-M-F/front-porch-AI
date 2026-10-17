@@ -75,6 +75,8 @@ interface Settings {
   /** Dictionary tags the host can check. Optional for the same reason. */
   spellCheckLanguages?: string[];
   systemPrompt?: string;
+  additionalSystemPrompt?: string;
+  additionalPostHistoryInstructions?: string;
   bannedPhrases?: string[];
   workerBackend?: string;
   workerRemoteApiUrl?: string;
@@ -113,6 +115,8 @@ const savedFields = (s: Settings) =>
     s.reasoningEffort,
     s.generation,
     s.systemPrompt,
+    s.additionalSystemPrompt,
+    s.additionalPostHistoryInstructions,
     s.bannedPhrases,
     s.workerBackend ?? '',
     s.workerRemoteApiUrl ?? '',
@@ -236,6 +240,8 @@ export function SettingsPage() {
         reasoningEffort: s.reasoningEffort,
         generation: s.generation,
         systemPrompt: s.systemPrompt,
+        additionalSystemPrompt: s.additionalSystemPrompt,
+        additionalPostHistoryInstructions: s.additionalPostHistoryInstructions,
         bannedPhrases: s.bannedPhrases,
         workerBackend: s.workerBackend ?? '',
         workerRemoteApiUrl: s.workerRemoteApiUrl ?? '',
@@ -532,6 +538,8 @@ export function SettingsPage() {
         contextLocked={presetOwnsContext(s.backend, s.activeKcppsPath)}
         generation={s.generation}
         systemPrompt={s.systemPrompt}
+        additionalSystemPrompt={s.additionalSystemPrompt}
+        additionalPostHistoryInstructions={s.additionalPostHistoryInstructions}
         bannedPhrases={s.bannedPhrases}
         spellCheckLanguage={s.spellCheckLanguage}
         spellCheckLanguages={s.spellCheckLanguages}

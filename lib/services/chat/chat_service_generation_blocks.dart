@@ -48,6 +48,9 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.systemPrompt = defaultApiSystemPrompt;
     }
 
+    t.systemPrompt = _storageService.generationSettings
+        .withSystemPromptAddition(t.systemPrompt);
+
     // Per-character group overlay used to append here and churn the system
     // prefix every speaker. It now rides [t.speakerCardBlock] after history.
 
@@ -172,6 +175,9 @@ extension ChatServiceGenerationBlocks on ChatService {
         t.speakingCharacter.postHistoryInstructions.isNotEmpty) {
       t.postHistoryBlock = '${t.speakingCharacter.postHistoryInstructions}\n';
     }
+
+    t.postHistoryBlock = _storageService.generationSettings
+        .withPostHistoryAddition(t.postHistoryBlock);
 
     // Author's note — placed right before the character speaks for maximum influence
     if (_authorNote.isNotEmpty) {

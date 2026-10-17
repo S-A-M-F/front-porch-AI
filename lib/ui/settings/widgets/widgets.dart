@@ -31,3 +31,5 @@ export 'wiki_url_field.dart';
 export 'wiki_url_list.dart';
 export 'tools_folder_note.dart';
 export 'skills_folder_note.dart';
+
+export 'global_prompt_additions.dart';

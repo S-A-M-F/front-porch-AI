@@ -53,7 +53,11 @@ extension ChatServiceContextBudget on ChatService {
     var speakerCard = '';
     if (_activeGroup != null) {
       final g = _activeGroup!;
-      systemPrompt = g.systemPrompt;
+      systemPrompt = g.systemPrompt.isNotEmpty
+          ? g.systemPrompt
+          : _observerMode
+          ? observerModeSystemPrompt
+          : defaultGroupSystemPrompt;
       scenario = g.scenario.isNotEmpty
           ? g.scenario
           : (_groupCharacters.isNotEmpty
@@ -79,7 +83,11 @@ extension ChatServiceContextBudget on ChatService {
       }
     } else if (_activeCharacter != null) {
       final c = _activeCharacter!;
-      systemPrompt = c.systemPrompt;
+      systemPrompt = c.systemPrompt.isNotEmpty
+          ? c.systemPrompt
+          : _storageService.generationSettings.systemPrompt.isNotEmpty
+          ? _storageService.generationSettings.systemPrompt
+          : defaultApiSystemPrompt;
       scenario = c.scenario;
       examples = c.mesExample;
       postHistory = c.postHistoryInstructions;
@@ -89,6 +97,13 @@ extension ChatServiceContextBudget on ChatService {
       ].join('\n');
       if (block.isNotEmpty) identity.writeln('${c.name}: $block');
     }
+
+    systemPrompt = _storageService.generationSettings.withSystemPromptAddition(
+      systemPrompt,
+    );
+    postHistory = _storageService.generationSettings.withPostHistoryAddition(
+      postHistory,
+    );
 
     final historyLines = <String>[];
     for (final m in _messages) {
