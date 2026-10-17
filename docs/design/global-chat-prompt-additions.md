@@ -1,6 +1,6 @@
 # Global chat prompt additions
 
-Settings → Generation → Global prompt additions provides two optional fields:
+Settings → General → Global prompt additions provides two optional fields:
 Additional system instructions and Additional post-history instructions. They are
 shared across all characters, groups and chat models until changed or cleared.
 There is no automatic model selection or model-specific preset in this feature.
@@ -65,10 +65,10 @@ The feature regression exercises real ChatService request assembly with the
 existing test transport, not a helper-shaped reconstruction. It checks custom
 card and group bases, both speakers, resolved macros, exactly-once additions,
 Continue/regeneration/impersonation, clearing, saved settings, and the actual
-Generation tab. Removing the production system-addition call must make it fail.
+General tab. Removing the production system-addition call must make it fail.
 The browser journey uses the real settings form and server to save/reload/clear.
 
-1. Enter short additions in Settings → Generation and return to an existing chat.
+1. Enter short additions in Settings → General and return to an existing chat.
 2. Send, regenerate and Continue; inspect the sent system and post-history text.
 3. Repeat with a group using its own system prompt and switch speakers.
 4. Restart/reload settings, confirm the fields persist, then clear them and verify

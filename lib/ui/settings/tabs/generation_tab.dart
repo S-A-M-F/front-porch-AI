@@ -53,8 +53,6 @@ class _GenerationTabState extends State<GenerationTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const GlobalPromptAdditions(),
-          const SizedBox(height: 24),
           // ── Reasoning (thinking models — local KoboldCpp & remote) ─────
           const SectionHeader('Thinking'),
           const SizedBox(height: 8),

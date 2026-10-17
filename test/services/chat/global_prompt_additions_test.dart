@@ -3,6 +3,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,7 +15,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/storage/settings/generation_settings.dart';
 import 'package:front_porch_ai/ui/settings/tabs/tabs.dart';
-import '../../golden/support/fakes.dart';
+
 import '../../../integration_test/support/fake_backend.dart';
 import '../../helpers/chat_db_teardown.dart';
 
@@ -70,98 +71,94 @@ void main() {
     },
   );
 
-  test(
-    'real chat assembly adds instructions once for send, regen, Continue and impersonation',
-    () async {
-      HttpOverrides.global = null;
-      final backend = await FakeBackendServer.start(
-        replyPieces: ['The garden is peaceful.'],
-      );
-      final db = AppDatabase.forTesting();
-      final storage = StorageService();
-      await storage.initialized;
-      final chat =
-          ChatService(
-              KoboldService(storage)..setBaseUrl(backend.baseUrl),
-              UserPersonaService(db),
-              storage,
-              WorldRepository(storage, db),
-            )
-            ..setDatabase(db)
-            ..testLlmServiceOverride = OpenRouterService(
-              apiUrl: '${backend.baseUrl}/v1',
-              modelName: 'smoke-model',
-            );
-      addTearDown(() async {
-        await disposeChatThenCloseDb(chat, db);
-        await backend.close();
-      });
-      await storage.generationSettings.setAdditionalSystemPrompt(
-        'GLOBAL_SYSTEM for {{char}}',
-      );
-      await storage.generationSettings.setAdditionalPostHistoryInstructions(
-        'GLOBAL_PHI for {{char}}',
-      );
-      final card = CharacterCard(
-        name: 'Wren',
-        firstMessage: 'Welcome.',
-        systemPrompt: 'CARD_SYSTEM',
-        postHistoryInstructions: 'CARD_PHI',
-        frontPorchExtensions: FrontPorchExtensions(
-          realismEnabled: false,
-          needsSimEnabled: false,
-          chaosModeEnabled: false,
-        ),
-      )..dbId = 'global-test';
-      await chat.setActiveCharacter(card);
-      void assertRequest({bool impersonating = false, bool cleared = false}) {
-        final body = jsonDecode(backend.lastChatBody) as Map;
-        final messages = body['messages'] as List;
-        final system = messages
-            .where((m) => m['role'] == 'system')
-            .map((m) => m['content'])
-            .join('\n');
-        final user = messages
-            .where((m) => m['role'] == 'user')
-            .map((m) => m['content'])
-            .join('\n');
-        expect(system, contains('CARD_SYSTEM'));
-        expect(system.contains('GLOBAL_SYSTEM for Wren'), !cleared);
-        expect(user.contains('GLOBAL_PHI for Wren'), !cleared);
-        if (!cleared) {
-          expect('GLOBAL_SYSTEM'.allMatches(system).length, 1);
-          expect('GLOBAL_PHI'.allMatches(user).length, 1);
-        }
-        if (!impersonating) {
-          expect(user, contains('CARD_PHI'));
-          if (!cleared) {
-            expect(
-              user.indexOf('GLOBAL_PHI'),
-              greaterThan(user.indexOf('CARD_PHI')),
-            );
-          }
-        } else {
-          expect(system, contains('IMPERSONATE'));
-        }
-        expect(card.systemPrompt, 'CARD_SYSTEM');
-        expect(card.postHistoryInstructions, 'CARD_PHI');
+  test('real chat assembly adds instructions once for send, regen, Continue and impersonation', () async {
+    HttpOverrides.global = null;
+    final backend = await FakeBackendServer.start(
+      replyPieces: ['The garden is peaceful.'],
+    );
+    final db = AppDatabase.forTesting();
+    final storage = StorageService();
+    await storage.initialized;
+    final chat =
+        ChatService(
+            KoboldService(storage)..setBaseUrl(backend.baseUrl),
+            UserPersonaService(db),
+            storage,
+            WorldRepository(storage, db),
+          )
+          ..setDatabase(db)
+          ..testLlmServiceOverride = OpenRouterService(
+            apiUrl: '${backend.baseUrl}/v1',
+            modelName: 'smoke-model',
+          );
+    addTearDown(() async {
+      await disposeChatThenCloseDb(chat, db);
+      await backend.close();
+    });
+    await storage.generationSettings.setAdditionalSystemPrompt(
+      'GLOBAL_SYSTEM for {{char}}',
+    );
+    await storage.generationSettings.setAdditionalPostHistoryInstructions(
+      'GLOBAL_PHI for {{char}}',
+    );
+    final card = CharacterCard(
+      name: 'Wren',
+      firstMessage: 'Welcome.',
+      systemPrompt: 'CARD_SYSTEM',
+      postHistoryInstructions: 'CARD_PHI',
+      frontPorchExtensions: FrontPorchExtensions(
+        realismEnabled: false,
+        needsSimEnabled: false,
+        chaosModeEnabled: false,
+      ),
+    )..dbId = 'global-test';
+    await chat.setActiveCharacter(card);
+    void assertRequest({bool impersonating = false, bool cleared = false}) {
+      final body = jsonDecode(backend.lastChatBody) as Map;
+      final messages = body['messages'] as List;
+      final system = messages
+          .where((m) => m['role'] == 'system')
+          .map((m) => m['content'])
+          .join('\n');
+      final user = messages
+          .where((m) => m['role'] == 'user')
+          .map((m) => m['content'])
+          .join('\n');
+      expect(system, contains('CARD_SYSTEM'));
+      expect(system.contains('GLOBAL_SYSTEM for Wren'), !cleared);
+      expect(user.contains('GLOBAL_PHI for Wren'), !cleared);
+      if (!cleared) {
+        expect('GLOBAL_SYSTEM'.allMatches(system).length, 1);
+        expect('GLOBAL_PHI'.allMatches(user).length, 1);
       }
+      if (!impersonating) {
+        expect(user, contains('CARD_PHI'));
+        if (!cleared) {
+          expect(
+            user.indexOf('GLOBAL_PHI'),
+            greaterThan(user.indexOf('CARD_PHI')),
+          );
+        }
+      } else {
+        expect(system, contains('IMPERSONATE'));
+      }
+      expect(card.systemPrompt, 'CARD_SYSTEM');
+      expect(card.postHistoryInstructions, 'CARD_PHI');
+    }
 
-      await chat.sendMessage('Look at the garden.');
-      assertRequest();
-      await chat.regenerateLastMessage();
-      assertRequest();
-      await chat.continueGeneration();
-      assertRequest();
-      await chat.impersonateUser(prefix: 'I look', onToken: (_) {});
-      assertRequest(impersonating: true);
-      await storage.generationSettings.setAdditionalSystemPrompt('');
-      await storage.generationSettings.setAdditionalPostHistoryInstructions('');
-      await chat.sendMessage('Another look.');
-      assertRequest(cleared: true);
-    },
-    timeout: const Timeout(Duration(minutes: 2)),
-  );
+    await chat.sendMessage('Look at the garden.');
+    assertRequest();
+    await chat.regenerateLastMessage();
+    assertRequest();
+    await chat.continueGeneration();
+    assertRequest();
+    await chat.impersonateUser(prefix: 'I look', onToken: (_) {});
+    assertRequest(impersonating: true);
+    await storage.generationSettings.setAdditionalSystemPrompt('');
+    await storage.generationSettings.setAdditionalPostHistoryInstructions('');
+    await chat.sendMessage('Another look.');
+    assertRequest(cleared: true);
+  }, timeout: const Timeout(Duration(minutes: 2)));
 
   test(
     'group speakers resolve global macros without changing group overrides',
@@ -264,31 +261,30 @@ void main() {
   testWidgets(
     'global prompt additions widget saves both fields without replacing the base',
     (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 2400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       final storage = (await tester.runAsync(() async {
         final value = StorageService();
         await value.initialized;
         return value;
       }))!;
       addTearDown(storage.dispose);
-      final phrases = TextEditingController();
-      addTearDown(phrases.dispose);
-      final llm = FakeLLMProvider(activeBackend: BackendType.openRouter);
-      addTearDown(llm.dispose);
+      final systemPrompt = TextEditingController(
+        text: storage.generationSettings.systemPrompt,
+      );
+      addTearDown(systemPrompt.dispose);
       await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider<StorageService>.value(value: storage),
-            ChangeNotifierProvider<LLMProvider>.value(value: llm),
-          ],
+        ChangeNotifierProvider<StorageService>.value(
+          value: storage,
           child: MaterialApp(
             home: Scaffold(
-              body: GenerationTab(bannedPhrasesController: phrases),
+              body: GeneralTab(systemPromptController: systemPrompt),
             ),
           ),
         ),
       );
-      await tester.tap(find.text('Global prompt additions'));
-      await tester.pumpAndSettle();
+      // NOT pumpAndSettle: the spell-check row's spinner never settles.
+      await tester.pump(const Duration(milliseconds: 100));
       final base = storage.generationSettings.systemPrompt;
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Additional system instructions'),

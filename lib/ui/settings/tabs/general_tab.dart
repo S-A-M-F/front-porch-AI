@@ -473,6 +473,8 @@ class GeneralTab extends StatelessWidget {
                 storageService.generationSettings.setSystemPrompt(val),
           ),
           const SizedBox(height: 24),
+          const GlobalPromptAdditions(),
+          const SizedBox(height: 24),
           const SectionHeader('About & License'),
           const SizedBox(height: 8),
           const AboutLicenseCard(),
