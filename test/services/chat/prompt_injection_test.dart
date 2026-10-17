@@ -368,6 +368,55 @@ void main() {
       },
     );
 
+    // 2026-10-16 (objectives that keep up part 6): a run of goals that went
+    // the same way reaches the model as one line in words, after the goals,
+    // and even when no goal is open right now.
+    test('author_note / objective: a streak is one line after the goals', () {
+      AuthorNoteBuilder note(List<dynamic> objs, String? streak) =>
+          AuthorNoteBuilder(
+            getActiveObjectives: () => objs,
+            getPrimaryObjective: () => objs.isEmpty ? null : objs.first,
+            tasksForObjective: (_) => _mkTasks('step1'),
+            getSecondaryObjectives: () => const [],
+            getStreakLine: () => streak,
+          );
+      const line = 'Lately, {{char}}\'s plans keep falling through.';
+      final withGoal = note([
+        {..._mkObj('Open the bakery'), 'origin': 'character'},
+      ], line).buildObjectiveInjection();
+      expect(
+        withGoal.indexOf('[$line]'),
+        greaterThan(withGoal.indexOf('Open the bakery')),
+      );
+      expect(note(const [], line).buildObjectiveInjection(), '[$line]\n\n');
+      expect(note(const [], null).buildObjectiveInjection(), isEmpty);
+    });
+
+    // Live run 2026-10-16: steps the task writer ends with a full stop read
+    // "...neighborhood.." in the prompt.
+    test(
+      'author_note / objective: a goal or step ending in a stop reads once',
+      () {
+        final txt = createTestAuthorNote(
+          activeObjectives: <dynamic>[
+            {
+              ..._mkObj('Open the bakery.'),
+              'origin': 'character',
+              'tasks': _mkTasks('Bake the bread.', completed: ['Buy flour.']),
+            },
+          ],
+        ).buildObjectiveInjection();
+        expect(txt, isNot(contains('..')));
+        expect(
+          txt,
+          contains(
+            'Most of all, {{char}} wants: Open the bakery. Already done: Buy '
+            "flour. What they'd do next: Bake the bread.]",
+          ),
+        );
+      },
+    );
+
     test(
       'relationship 1:1: words only — no scores, tiers, or mechanic labels',
       () {

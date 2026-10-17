@@ -31,11 +31,16 @@ class AuthorNoteBuilder {
   final List<Map<String, dynamic>> Function(dynamic obj) tasksForObjective;
   final List<dynamic> Function() getSecondaryObjectives;
 
+  /// One line, in words, when the character's last goals all went the same
+  /// way (objectives-that-keep-up.md part 6); null otherwise.
+  final String? Function()? getStreakLine;
+
   AuthorNoteBuilder({
     required this.getActiveObjectives,
     required this.getPrimaryObjective,
     required this.tasksForObjective,
     required this.getSecondaryObjectives,
+    this.getStreakLine,
   });
 
   // Objective rows in the app, plain maps in tests.
@@ -56,13 +61,20 @@ class AuthorNoteBuilder {
     return ((o['servedAmbition'] as String?)?.trim().isNotEmpty) ?? false;
   }
 
+  /// A goal or step as a clause: the builder adds the full stop, so one the
+  /// text already ends with would read ".." (seen live 2026-10-16).
+  static String? _clause(String? s) =>
+      s?.trim().replaceAll(RegExp(r'[.!?;:,\s]+$'), '');
+
   String _line(dynamic o, {required bool primary}) {
-    final goal = _goal(o);
+    final goal = _clause(_goal(o)) ?? '';
     if (goal.isEmpty || _status(o) == kObjectiveStatusDormant) return '';
     final tasks = tasksForObjective(o);
-    final next = currentOpenTaskDescription(tasks);
+    final next = _clause(currentOpenTaskDescription(tasks));
     final done = tasks.where(objectiveTaskIsCompleted).toList();
-    final last = done.isEmpty ? null : done.last['description'] as String?;
+    final last = _clause(
+      done.isEmpty ? null : done.last['description'] as String?,
+    );
     if (_ownWant(o)) {
       final head = primary
           ? 'Most of all, {{char}} wants: $goal.'
@@ -71,21 +83,26 @@ class AuthorNoteBuilder {
       if (last != null && last.trim().isNotEmpty) {
         sb.write(' Already done: ${last.trim()}.');
       }
-      if (next != null) sb.write(" What they'd do next: $next.");
+      if (next != null && next.isNotEmpty) {
+        sb.write(" What they'd do next: $next.");
+      }
       sb.write(']');
       return sb.toString();
     }
     final sb = StringBuffer('[Story direction: $goal.');
-    if (next != null) sb.write(' Next: $next.');
+    if (next != null && next.isNotEmpty) sb.write(' Next: $next.');
     sb.write(']');
     return sb.toString();
   }
 
   String buildObjectiveInjection() {
-    if (getActiveObjectives().isEmpty) return '';
+    final streak = getStreakLine?.call()?.trim() ?? '';
     final lines = <String>[
-      if (getPrimaryObjective() case final p?) _line(p, primary: true),
-      for (final s in getSecondaryObjectives()) _line(s, primary: false),
+      if (getActiveObjectives().isNotEmpty) ...[
+        if (getPrimaryObjective() case final p?) _line(p, primary: true),
+        for (final s in getSecondaryObjectives()) _line(s, primary: false),
+      ],
+      if (streak.isNotEmpty) '[$streak]',
     ].where((l) => l.isNotEmpty).toList();
     if (lines.isEmpty) return '';
     return '${lines.join('\n')}\n\n';
