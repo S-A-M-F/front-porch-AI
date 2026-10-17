@@ -5,16 +5,23 @@ promoted from follow-ups the same day). Revised the same day after a
 line-by-line check against the code** (file paths, test pins, persistence and
 file-size budgets corrected; four open points ruled by the maintainer:
 decisions 3, 4, 6 and 8 — the mode field, the peak math, the warm-again beat,
-a required `user_climaxed`). **Ready for implementation.** Written 2026-10-17
+a required `user_climaxed`). A second pass the same day verified every
+remaining "verify" claim and the research citations against their sources,
+and the maintainer ruled four more points: groups follow each member's own
+card (no per-member override), one peak per reply on Continue, one neutral
+warmth-tail line, and the mockup updated to match. **Ready for
+implementation.** Written 2026-10-17
 from a verified code + git audit of the "every character refracts ~6 turns"
 report and the follow-up design conversation (futanari handling, soft-gate
 mechanics, cuddle-time preservation). **UI reference:
 `~/Desktop/afterglow-ui-mockup.html`** — pixel-faithful renderings of the
 actual screens (sidebar, character editor, Porch Life) measured from
 `realism_progress_row.dart`, `bond_bars.dart`, and web `forms.css`; the
-implementing agent matches these frames, dark and light. The recovery
-dropdown gains one entry ("Lock, length by personality", decision 3); update
-that frame before building.
+implementing agent matches these frames, dark and light. The mockup's text was
+updated 2026-10-17 to match this plan (the "Lock, length by personality"
+dropdown entry, the warm-again beat, the required field, one tail line); where
+the two ever disagree on behaviour, this document wins and the mockup is
+fixed.
 
 This is chat/realism work: the executor fills
 [path-complete-chat-work.md](path-complete-chat-work.md) before code, and the
@@ -34,7 +41,7 @@ who they are. Root causes, each confirmed against code and git:
 | 3 | Fusion (`a2b4831b8`) made collapse near-certain: one low-temp forced-tool multi-question call per turn; small local models mode-collapse on a single small int. | `reply_facts_eval.dart` |
 | 4 | **Parser floor bug:** `parseRefractory` clamps to **1–10**, so a judge answer of 0 ("no cooldown needed") silently becomes 1 turn = 15 min. "No refractory" is inexpressible today. | `climax_eval.dart:133` |
 | 5 | `CharacterCard` has **no structured sex field** — sex exists only at chargen (`creator_template_schema.dart:60` `sex`, `narrative_voice.dart:278-314`) and evaporates into prose. Nothing downstream can know a character is female. | grep: no `sex`/`gender` on `character_card.dart` or `front_porch_extensions.dart` |
-| 6 | One mechanic for everyone: climax always zeroes arousal + hard lock (`nsfw_service.dart:189-192`), which mis-models female-typical recovery (often no capacity lock; multiple orgasms are common — Masters & Johnson 1966; Bohlen et al. 1982). | `applyClimaxEffects` |
+| 6 | One mechanic for everyone: climax always zeroes arousal + hard lock (`nsfw_service.dart:189-192`), which mis-models female-typical recovery (often no capacity lock; multiple orgasms are common — Masters & Johnson 1966 report a short or absent refractory period in women; Darling, Davidson & Jennings 1991, *Arch Sex Behav* 20:527-40, found 42.7% of 805 women surveyed had experienced multiple orgasms). | `applyClimaxEffects` |
 
 Arousal runs **−100…+100** (`nsfw_service.dart:205-210`); every number below is
 on that scale.
@@ -93,7 +100,11 @@ on that scale.
    Climax detection already runs every turn, lock or not
    (`afterglow_pass.dart:83` has no refractory gate), so a second climax
    during the window needs nothing re-enabled: it counts a peak and restarts
-   the window.
+   the window. **One peak per reply (ruled 2026-10-17):** on Continue the pass
+   reads only the new text (`chat_service_generation_postgen_engine.dart:145-149`);
+   if the reply already carries `climax_triggered`, a climax found in the
+   continuation restarts the tenderness window but adds no peak, so a misread
+   of the aftermath cannot stack peaks. The hard path stays absolute as today.
 5. **Peaks age on the minutes ledger.** Store up to three peak stamps as
    "story minutes since that peak" beside the refractory; `peaksLastHour` is
    the list's length. Each beat adds its elapsed minutes (clock on) or 15 per
@@ -108,7 +119,8 @@ on that scale.
    respond yet") with tenderness ("a flinch that turns into leaning in"):
    **glow** (opening turn) → **tender** (while the window runs) →
    **warm-again** (after the window, for as long as any peak is still counted,
-   i.e. up to one story hour; ruled 2026-10-17) → the normal arousal ladder.
+   i.e. up to one story hour; ruled 2026-10-17; no chip — the rose chip
+   shows only during the window) → the normal arousal ladder.
    Without warm-again, a soft body at ≥ 50 would drop straight into the
    "heavily aroused — chasing release" rung (`nsfw_injection.dart:145-150`)
    15 minutes after climax and cuddle time would be gone. **Pronoun-free
@@ -147,6 +159,20 @@ restore:
 
 Message-metadata stamps (`user_climaxed`, the PR 8 roll) need no schema change.
 
+**Regen undoes a climax separately from the receipts.**
+`chat_service_regen_revert.dart:150-160` reads `climax_triggered` /
+`pre_climax_arousal` off the rejected reply, restores the arousal and sets
+`Refractory.none`. That is right only when no afterglow state existed before
+the climax. With soft gate (peak 2 inside the window) or a climax during the
+warmth tail it would wipe the earlier state. PR 3 stamps the full pre-climax
+body (`pre_climax_refractory`: minutes, total, opened, soft flag, peak stamps,
+tail) beside `pre_climax_arousal`, under the same first-reading guard
+(`afterglow_pass.dart:115`), and the revert restores that snapshot instead of
+`none` (falling back to `none` for replies stamped before PR 3). Manual
+Reprocess keeps "a climax's reset stands"
+(`chat_service_reprocess_choice.dart:365`), which holds for the soft peak cost
+too.
+
 ## PR 1 — restore the personality judge (root cause, zero extra LLM calls)
 
 Keep the tool field name `refractory_turns` (renaming ripples through the
@@ -184,9 +210,11 @@ Touchpoints:
   call built by `ReplyFacts.prefetch` (`reply_facts.dart`, wired in
   `chat_service_wiring_evals.dart:111-145`). Group: the card of the
   **reply's speaker** — never the previous speaker (see the group-safety
-  contract in `nsfw_injection.dart:41-47`). Verify the speaker the pass uses
-  (`afterglow_pass.dart:87`) against `resolveGroupSpeakerForMessage`
-  (`afterglow_pass.dart:62`) in a group before relying on it.
+  contract in `nsfw_injection.dart:41-47`). Verified: post-generation sets
+  the active character to the turn's speaker
+  (`chat_service_generation_postgen_engine.dart:59`) before both passes run,
+  and both read it (`afterglow_pass.dart:87`, `reply_facts.dart:61`), so the
+  active character's card is the right source in groups too.
 - `lib/services/chat/realism_tools/realism_tool_schemas.dart:371` — schema
   description "Cooldown turns (3-7)…" → "(0-12…)".
 
@@ -244,9 +272,17 @@ Data:
 - Codec + round-trip: `toJson`/`fromJson`, `porch_exporter.dart`, both
   importers (`lib/services/character_store/character_importer.dart` and the
   web facade's `lib/services/web/facade/character/character_importer.dart`),
-  and the web character save path (`CharacterEditPage.tsx` /
-  `CreateCharacterPage.tsx` → relay facade) must carry the new keys — a card
-  shared on the Stoop must not lose its profile. Add a round-trip test.
+  and the web character save path — a card shared on the Stoop must not lose
+  its profile. Add a round-trip test.
+- **Web save bridge (data-loss trap, verified):** the phone's card editor
+  saves through `frontPorchFromFields` / `frontPorchToJson`
+  (`lib/services/web/util/realism_extensions_json.dart:40`, `:242`), which
+  rebuild `FrontPorchExtensions` from an explicit field list. A field missing
+  from that constructor call silently takes its default on every web save —
+  the file records exactly this wiping starting inventory. `sex` and the
+  recovery profile must be read there with the base as fallback (the profile
+  nested, the way `inventory` is) and written back in `frontPorchToJson`.
+  Test: a web edit that does not touch them keeps them.
 
 Behavior:
 
@@ -264,18 +300,19 @@ UI (desktop **and** web — parity is law):
 
 - Desktop: `lib/ui/widgets/realism_form_section/realism_optional_features_card.dart`
   — "Recovery after intimacy" block under the Afterglow toggle: the preset
-  dropdown (decision 3's table) + 0–180 slider (shown when the preset is a
-  hard lock with minutes) + live "≈ N replies with the clock off" hint + a
-  plain-English "resolves to" line naming the kind and the length (e.g. "Auto
-  → soft gate (card says female)").
+  dropdown (decision 3's table) + 0–180 "Recovery minutes" slider (always
+  shown, as in the mockup; moving it selects Custom) + live "≈ N replies with
+  the clock off" hint + a plain-English "resolves to" line naming the kind and
+  the length (e.g. "Auto → soft gate (card says female)"). The block shows
+  only when Afterglow and 18+ themes are on.
 - Web: `web_ui/src/components/realism/RealismFormSection.tsx` +
   `realismTypes.ts` mirror the same block (this also covers web character
   creation, which uses the same section).
-- Group: per-member override — UI in `lib/ui/widgets/group_member_realism_editor.dart`,
-  `lib/ui/dialogs/group_settings/realism_needs_tab/member_realism_card.dart`
-  and `lib/ui/pages/create_group_chat_page/group_member_realism_card.dart`;
-  the refractory already keys per body (`group_member_realism.dart`), so the
-  override slots in beside it.
+- Group: **no per-member override (ruled 2026-10-17).** Each member follows
+  the recovery setting on their own card, which travels with the card; the
+  refractory already keys per body (`group_member_realism.dart`). (The web
+  app has no per-member realism settings, so a group override would have
+  shipped desktop-only.)
 - Chargen: persists `sex`, and **suggests** a preset from the intimacy answer
   (`interview_questions.dart:177-180`) — the author confirms, never silent.
   Auto stays the default; the suggestion says plainly that any preset other
@@ -308,8 +345,13 @@ UI (desktop **and** web — parity is law):
   `_moveRefractory` returns early when no lock is running
   (`afterglow_pass.dart:241`); peaks (and PR 4's tail) outlive the lock, so
   that guard becomes "nothing left to age" (no lock, no peaks, no tail).
-- `describeRefractory` (`refractory.dart:130`): soft copy — "Tender about
-  N min · peak K" (rose chip) vs "Refractory: …" (frost chip).
+- `describeRefractory` (`refractory.dart:130`): soft copy — "Tender for about
+  N min · peak K" (rose chip, the mockup's wording) vs "Refractory: …" (frost
+  chip). The web reads the same text as `refractoryLabel`
+  (`ChatToolsShared.tsx:78-85`), so copy lands once.
+- `afterglow_pass.dart` + `chat_service_regen_revert.dart:150-160`: stamp and
+  restore `pre_climax_refractory` (see "Regen undoes a climax" under
+  Persistence), and apply decision 4's one-peak-per-reply rule on Continue.
 - Fix the "just climaxed" wording in the **eval note**
   (`realism_prompt_fragments.dart:156`, "NOTE: $charName just climaxed and is
   in the post-orgasm refractory"): it rides every turn of the lock and reads
@@ -331,12 +373,14 @@ UI (desktop **and** web — parity is law):
   the app's mechanics on a given verdict, not the model's judgement); new
   end-to-end test that a multiorgasmic card climaxes twice in one scene,
   keeps arousal ≥ 50, takes a bigger drop on the second peak, and rewinds
-  exactly on regen.
+  exactly on regen — regenerating peak 2 leaves peak 1 and its window in
+  place. A Continue on the peak-1 reply adds no peak.
 
 ## PR 4 — warmth tail (maintainer-approved 2026-10-17; rides PR 1–3)
 
 Research basis: sexual satisfaction stays measurably raised for about 48
-hours after sex (Meltzer et al. 2017, *Psychological Science*) — effects fade
+hours after sex (Meltzer et al. 2017, *Psychological Science*; two samples of
+newlywed couples keeping 14-day diaries) — effects fade
 on a curve, not at a counter boundary. Today the character snaps to baseline
 the instant the refractory expires; the ladder jumps from "deep in the
 afterglow" straight to silence.
@@ -353,9 +397,12 @@ afterglow" straight to silence.
   the started tail instead. Ages in `tickAfterClock` / `tickPerReply` past the
   PR 3 guard change.
 - **Injection:** one new ladder rung, both modes, pronoun-free (guarded). It
-  speaks of warmth, not desire: at lock end arousal is near 0 (zeroed at
-  climax, gentle −3…+5 deltas during the lock), and prose claiming desire
-  under a Lust bar at 0 is the bar-vs-prose break PR 6 exists to prevent.
+  speaks of warmth, not desire: at lock end arousal is usually low (zeroed at
+  climax, then halved, gentle −3…+5 deltas during the lock), and prose
+  claiming desire under a low Lust bar is the bar-vs-prose break PR 6 exists
+  to prevent. **One line for everyone (ruled 2026-10-17)** — nothing records
+  whether a climax was wanted, so the tail does not pick between a "wanted"
+  and a "duty" line; the wanted/duty condition lives in PR 7's eval sentence.
   Copy: "Body: $name is still riding a warm afterglow — ordinary warmth runs
   deeper than usual today; small kindnesses land harder, and any desire that
   has come back cools slowly."
@@ -428,9 +475,17 @@ surgical:
   pool's events are plain strings turned into `ChaosEvent`s by a loop
   (`chaos_pool_adult.dart:112-115`), so move the four into their own lists
   built with `desireAsserting: true`.
-- **Filter:** the wheel takes a `hardLockActive` bool for the responding
-  character (`{{char}}`; the chaos service reads that body's refractory from
-  chat context) and drops desire-asserting candidates while it is true. The
+- **Filter:** `buildChaosWheel` (`chaos_pools.dart:51`) takes a
+  `hardLockActive` bool and drops desire-asserting candidates while it is
+  true. Wiring (verified): `ChaosModeService` cannot see the refractory, so
+  it gets an injected closure like its existing `isAdultAllowed`
+  (`chaos_mode_service.dart:52`), supplied by ChatService. The event is
+  attributed to `chanceTimeSpeakerName` — the upcoming group speaker, else
+  the 1:1 host (`chat_service_turn_flow.dart:235-239`; it is a name, so map it back to that card). In a group, read
+  that member's stored refractory (`group_member_realism.dart`), not the live
+  scalars, which may still hold the previous speaker's. Every wheel goes
+  through `ChatService.spinWheelEvents` (`chat_service_controls.dart:276-281`:
+  desktop overlay, web, manual spin), so one change covers all three. The
   wheel keeps spinning — the other 78 adult events and all SFW events fire as
   before (they're funnier against an afterglow: the state colors the
   reaction, it doesn't contradict it). **Soft gate needs no gate** — its
@@ -471,14 +526,18 @@ the surge tracks *wanted* intimacy + existing warmth, not orgasm itself.
 ## PR 8 — post-coital dysphoria (opt-in flavor)
 
 Real and transient (minutes to about two hours), occurs after wanted sex and
-is not about the partner. About 46% of women (Schweitzer, O'Loughlin & Brotto
-2015) and 41% of men (Maczkowiack & Schweitzer 2019) report it at least once;
-recurring episodes are much rarer (about 5% of women in the previous four
-weeks). The per-climax rates below are **flavor dials, not prevalence**.
+is not about the partner. About 46% of women report it at least once and
+5.1% a few times in the previous four weeks (Schweitzer, O'Brien & Burri,
+*Sexual Medicine* 2015; 230 university women). About 41% of men report it at
+least once, 20% in the previous four weeks and about 4% regularly
+(Maczkowiack & Schweitzer, *Journal of Sex & Marital Therapy*; 1,208 men,
+self-selected online survey). The per-climax rates below are **flavor dials,
+not prevalence**.
 
 - **Field:** `pcdMood` tri-state in the PR 2 `RecoveryProfile` — `off`
-  (default) / `rare` (~15% per climax) / `sometimes` (~35%) — per group
-  member, additive card round-trip key.
+  (default) / `rare` (~15% per climax) / `sometimes` (~35%) — per card (a
+  group member uses their own card's), additive card round-trip key, carried
+  by the web save bridge like the rest of the profile.
 - **UI:** third control in the PR 2 Recovery block (desktop + web parity),
   shown when 18+ and Afterglow are on.
 - **Mechanics:** roll at climax detection through an injectable random source
@@ -504,7 +563,10 @@ weeks). The per-climax rates below are **flavor dials, not prevalence**.
 - Fusing the needs-impact eval into reply-facts (settled: not yet, capability
   gate first).
 - Renaming `refractory_turns` in the tool schema.
-- Per-chat (vs per-card) recovery overrides beyond the group member slot.
+- Per-chat or per-group-member recovery overrides — the card's setting is the
+  only one (ruled 2026-10-17).
+- A stored "was this climax wanted" verdict (ruled 2026-10-17; the eval
+  judges it each turn instead).
 - Changes to the hard-lock mechanics beyond what this plan names: its length
   input (PR 1, PR 2), the tail hand-off when it ends (PR 4), and chaos reading
   it (PR 6).
@@ -515,9 +577,10 @@ weeks). The per-climax rates below are **flavor dials, not prevalence**.
    each to climax in similar prose → sidebar chips show clearly different
    cooldowns.
 2. Set a card to `None / multiorgasmic`; climax → arousal stays ≥ 50, rose
-   "Tender ~15 min · peak 1" chip; flirt inside the window → gain visibly
-   halved; climax again inside the window → peak 2, a **bigger** drop than the
-   first, still ≥ 50.
+   "Tender for about 15 min · peak 1" chip; flirt inside the window → gain
+   visibly halved; Continue that reply → still peak 1; climax again in a new
+   reply inside the window → peak 2, a **bigger** drop than the first, still
+   ≥ 50. Regen that reply → back to peak 1 with its window, not to nothing.
 3. Let the tender window end with a peak still counted → the warm-again beat
    (affectionate, not chasing), not "heavily aroused"; an hour after the last
    peak the normal arousal text returns.
@@ -545,7 +608,11 @@ weeks). The per-climax rates below are **flavor dials, not prevalence**.
     fades after at most three replies, bond bar unmoved by it; a card left on
     `Off` never shows it, even after fifty climaxes (PR 8).
 12. Group chat with a soft-gate member and a hard-lock member → each follows
-    their own profile, and each one's chip and lines survive a speaker switch.
+    their own card's profile, and each one's chip and lines survive a speaker
+    switch; a Chance Time spin for the locked member skips the four desire
+    events while the soft member's spin can still land them.
+13. Edit a card's description on the phone without touching recovery → back
+    on the desktop, sex, recovery mode and minutes are unchanged.
 
 ## Labels / process notes for the executor
 
