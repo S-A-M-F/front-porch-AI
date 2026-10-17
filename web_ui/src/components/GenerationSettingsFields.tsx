@@ -195,26 +195,26 @@ export function GenerationSettingsFields({
       <h3>Generation</h3>
       {systemPrompt !== undefined && (
         <>
-        <label>
-          System prompt
-          <textarea
-            rows={6}
-            value={systemPrompt}
-            onChange={(e) => patch({ systemPrompt: e.target.value })}
-          />
-        </label>
-        <p className="muted small">Fallback system prompt for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. This is Model Instructions under General in the desktop app. Use Global prompt additions below for instructions added across characters and groups.</p>
+          <label>
+            Fallback system prompt
+            <textarea
+              rows={6}
+              value={systemPrompt}
+              onChange={(e) => patch({ systemPrompt: e.target.value })}
+            />
+          </label>
+          <p className="muted small">Used for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. On desktop, this field is under General. Use Additional system instructions below to append instructions across characters and groups.</p>
         </>
       )}
       {additionalSystemPrompt !== undefined && additionalPostHistoryInstructions !== undefined && (
         <details className="prompt-additions">
           <summary>Global prompt additions</summary>
           <p className="muted small">Extra instructions for every character and chat model. Applied to future chat generations, including Continue and impersonation. Existing card instructions stay intact. Auxiliary evaluators and tools are unchanged. Clear a field to disable it. Use Save settings to apply changes.</p>
-          <label>Additional system prompt
+          <label>Additional system instructions
             <textarea rows={4} value={additionalSystemPrompt}
               onChange={(e) => patch({ additionalSystemPrompt: e.target.value })} />
           </label>
-          <p className="muted small">Added after the selected system prompt, including character and group prompts. The System prompt field above supplies only the fallback for one-to-one chats.</p>
+          <p className="muted small">Appended to the selected system prompt, including character and group prompts. The Fallback system prompt above is used only when a character has no system prompt.</p>
           <label>Additional post-history instructions
             <textarea rows={4} value={additionalPostHistoryInstructions}
               onChange={(e) => patch({ additionalPostHistoryInstructions: e.target.value })} />

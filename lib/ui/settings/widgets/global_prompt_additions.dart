@@ -40,9 +40,9 @@ class GlobalPromptAdditions extends StatelessWidget {
           minLines: 2,
           maxLines: 5,
           decoration: const InputDecoration(
-            labelText: 'Additional system prompt',
+            labelText: 'Additional system instructions',
             helperText:
-                'Added after the selected system prompt, including character and group prompts. General → Model Instructions supplies only the fallback for one-to-one chats.',
+                'Appended to the selected system prompt, including character and group prompts. The fallback under General is used only when a character has no system prompt.',
             helperMaxLines: 5,
             border: OutlineInputBorder(),
           ),

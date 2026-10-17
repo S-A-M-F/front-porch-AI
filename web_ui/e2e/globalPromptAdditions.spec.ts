@@ -12,7 +12,7 @@ test('global prompt additions save, reload, and clear in Generation settings', a
   try {
     await openRoute(page, '/settings');
     await page.getByText('Global prompt additions', { exact: true }).click();
-    const system = page.getByRole('textbox', { name: 'Additional system prompt', exact: true });
+    const system = page.getByRole('textbox', { name: 'Additional system instructions', exact: true });
     const post = page.getByRole('textbox', { name: 'Additional post-history instructions', exact: true });
     await system.fill('Use concise scene descriptions for {{char}}.');
     await post.fill('Keep each reply focused on one action.');

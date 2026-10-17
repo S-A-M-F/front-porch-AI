@@ -1,12 +1,13 @@
 # Global chat prompt additions
 
 Settings → Generation → Global prompt additions provides two optional fields:
-Additional system prompt and Additional post-history instructions. They are
+Additional system instructions and Additional post-history instructions. They are
 shared across all characters, groups and chat models until changed or cleared.
 There is no automatic model selection or model-specific preset in this feature.
 
-The existing Model Instructions editor under desktop General (System prompt on
-web) supplies the fallback for one-to-one chats without a character system
+The existing editor is labeled Fallback system prompt on both surfaces (formerly
+Model Instructions under desktop General and System prompt on web). It supplies
+the fallback for one-to-one chats without a character system
 prompt. Groups select their own prompt or a group default. The new system
 addition follows that selection and applies even when the fallback is unused.
 Web Settings presents backend and Generation sections on one scrolling page;

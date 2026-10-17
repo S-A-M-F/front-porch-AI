@@ -291,7 +291,7 @@ void main() {
       await tester.pumpAndSettle();
       final base = storage.generationSettings.systemPrompt;
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Additional system prompt'),
+        find.widgetWithText(TextFormField, 'Additional system instructions'),
         'System addition',
       );
       await tester.enterText(

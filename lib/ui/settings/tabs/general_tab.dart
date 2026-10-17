@@ -359,7 +359,7 @@ class GeneralTab extends StatelessWidget {
           const SizedBox(height: 8),
           const PorchLifePointerCard(),
           const SizedBox(height: 24),
-          const SectionHeader('Model Instructions'),
+          const SectionHeader('Fallback system prompt'),
           const SizedBox(height: 8),
           Text(
             'Fallback system prompt for one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default. For instructions added across characters and groups, use Generation → Global prompt additions.',
@@ -460,7 +460,8 @@ class GeneralTab extends StatelessWidget {
             maxLines: 5,
             style: theme.textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: 'System Prompt...',
+              labelText: 'Fallback system prompt',
+              hintText: 'Used when a character has no system prompt...',
               hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
               filled: true,
               fillColor: AppColors.cardOf(context),
