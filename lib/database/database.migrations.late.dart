@@ -347,6 +347,23 @@ extension _AppDatabaseMigrationLate on AppDatabase {
         }
       }
     }
+    if (from < 60) {
+      // v59→v60: the warmth tail (recovery overhaul PR 4). Minutes owed
+      // and the seeded length ride the sessions row. NULL for every
+      // existing row is right — a pre-tail body has no tail. Additive, so
+      // a downgrade to v59 keeps reading sessions; the columns are ignored.
+      for (final ddl in const [
+        'ALTER TABLE sessions ADD COLUMN refractory_tail_minutes INTEGER',
+        'ALTER TABLE sessions ADD COLUMN refractory_tail_total INTEGER',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v60: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+    }
   }
 
   /// True only when this pass actually created `chat_worlds.is_primary`.

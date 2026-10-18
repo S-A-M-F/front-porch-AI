@@ -1350,4 +1350,120 @@ void main() {
       );
     });
   });
+
+  group('warmth tail (PR 4)', () {
+    NsfwService tailSvc({required Refractory r, int? arousal}) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      if (arousal != null) n.setArousalLevel(arousal);
+      return n;
+    }
+
+    String tailText(Refractory r, {int? arousal}) => createTestNsfw(
+      nsfwSvc: tailSvc(r: r, arousal: arousal),
+      activeChar: CharacterCard(name: 'Nia'),
+    ).buildNsfwCooldownInjection();
+
+    const cleared = Refractory(tail: Refractory(minutes: 45, total: 45));
+
+    test('the tail rung replaces neutral silence — warmth words only', () {
+      final t = tailText(cleared, arousal: 10);
+      expect(t, contains('still riding a warm afterglow'));
+      expect(t, contains('small kindnesses land harder'));
+      expect(t, contains('any desire that has come back cools slowly'));
+      expect(t, isNot(contains('chasing release')));
+      // The same body with no tail says nothing at 10 — the tail rung is
+      // the only difference.
+      expect(
+        tailText(Refractory.none, arousal: 10),
+        isEmpty,
+        reason: 'without the seeded warmth the ladder stays silent',
+      );
+    });
+
+    test('the tail yields to strong desire and to a soured body', () {
+      expect(
+        tailText(cleared, arousal: 55),
+        contains('chasing release'),
+        reason: 'a body that is genuinely hungry again speaks the real rung',
+      );
+      expect(
+        tailText(cleared, arousal: -30),
+        contains('physically closed-off'),
+        reason: 'the tail never overrules aversion',
+      );
+      expect(
+        tailText(
+          const Refractory(
+            minutes: 30,
+            total: 60,
+            opened: true,
+            tail: Refractory(minutes: 45, total: 45),
+          ),
+          arousal: 10,
+        ),
+        isNot(contains('still riding a warm afterglow')),
+        reason: 'the lock rung speaks while the lock runs — tail is frozen',
+      );
+    });
+
+    test('the tail rung speaks for a hard body too, and says no pronoun', () {
+      final t = tailText(cleared, arousal: 0);
+      expect(t, contains('still riding a warm afterglow'));
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      final rungs = [
+        tailText(cleared, arousal: -5),
+        tailText(cleared, arousal: 5),
+        tailText(cleared, arousal: 20),
+        tailText(cleared, arousal: 35),
+        for (final a in [-80, -40, 10, 30, 55, 80, 100])
+          tailText(
+            const Refractory(
+              minutes: 40,
+              total: 60,
+              opened: true,
+              tail: Refractory(minutes: 20, total: 20),
+            ),
+            arousal: a,
+          ),
+      ];
+      for (final rung in rungs) {
+        expect(genders.hasMatch(rung), isFalse, reason: 'sloppy: $rung');
+      }
+    });
+
+    test('the eval note holds arousal through the tail instead of cooling', () {
+      final tailed = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        20,
+        0,
+        true,
+        warmthTailMinutes: 40,
+      );
+      expect(tailed, contains('still riding a warm afterglow after climax'));
+      expect(tailed, contains('HOLD arousal where it is (return 0)'));
+      expect(
+        tailed,
+        isNot(contains('post-orgasm refractory')),
+        reason: 'the lock note belongs to the lock, the tail note to the tail',
+      );
+      final plain = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        20,
+        0,
+        true,
+      );
+      expect(
+        plain,
+        isNot(contains('still riding a warm afterglow')),
+        reason: 'no tail, no note',
+      );
+    });
+  });
 }

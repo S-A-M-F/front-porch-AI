@@ -227,6 +227,13 @@ extension ChatServiceSessionHydrate on ChatService {
             // v59 — NULL soft / absent peaks read today's defaults.
             RefractoryKeys.soft: s.refractorySoft,
             RefractoryKeys.peaks: _peakStampsFromColumn(s.refractoryPeaks),
+            // v60 — the tail reads as a nested body; NULL is no tail.
+            if (s.refractoryTailMinutes != null)
+              RefractoryKeys.tail: {
+                RefractoryKeys.minutes: s.refractoryTailMinutes,
+                RefractoryKeys.total:
+                    s.refractoryTailTotal ?? s.refractoryTailMinutes,
+              },
             RefractoryKeys.legacyTurns: s.cooldownTurnsRemaining,
             RefractoryKeys.legacyTotal: s.cooldownTurnsTotal,
           }) ??

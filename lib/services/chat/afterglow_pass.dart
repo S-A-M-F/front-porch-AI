@@ -153,11 +153,23 @@ class AfterglowPass {
     final fixed = recovery.recoveryMinutes;
     final kind = recovery.resolvedMode(ext?.sex ?? '');
     final soft = kind == kRecoveryModeSoft;
+    // PR 4's warmth tail: half the would-be lock, floor 15, cap 120. A
+    // hard card judged to 0 gets neither lock nor tail. A soft card's
+    // would-be lock is the JUDGE's number — `fixed` is a hard-lock length
+    // and means nothing under a soft mode (a hand-edited card can carry
+    // both; the mode wins).
+    final tailMinutes = warmthTailMinutes(
+      soft
+          ? turns * kRefractoryMinutesPerTurn
+          : (fixed ?? turns * kRefractoryMinutesPerTurn),
+      soft: soft,
+    );
     _nsfwService.applyClimaxEffects(
       turns: turns,
       fixedMinutes: fixed,
       soft: soft,
       newPeak: newPeak,
+      tailMinutes: tailMinutes,
     );
 
     debugPrint(
@@ -171,6 +183,9 @@ class AfterglowPass {
                 'refractory ${_nsfwService.refractoryMinutesRemaining} min '
                 '($kind, ${fixed != null ? 'card-fixed' : 'judge'})',
     );
+    if (tailMinutes > 0 && newPeak) {
+      debugPrint('[Afterglow] warmth tail seeded: $tailMinutes min to follow');
+    }
     _scope.notify();
   }
 
@@ -281,7 +296,11 @@ class AfterglowPass {
     // The gate is "nothing left to age", not "no lock running": a soft
     // body's peak stamps (and PR 4's warmth tail) outlive the window, and
     // they age on this same beat (decision 5).
-    if (!before.refractory.running && before.refractory.peaks.isEmpty) return;
+    if (!before.refractory.running &&
+        before.refractory.peaks.isEmpty &&
+        !before.refractory.tailRunning) {
+      return;
+    }
     final after = step(before);
     if (after == before) return;
     _setRefractoryBody(id, after, live: live);

@@ -136,6 +136,12 @@ class RealismPromptFragments {
     int refractoryMinutesLeft,
     bool clockRunning, {
     bool refractorySoft = false,
+
+    /// PR 4: minutes owed on the warmth tail (frozen or live). Nonzero with
+    /// `refractoryMinutesLeft == 0` puts the hold-not-raise note on the
+    /// arousal section — the same "gentle band" job the refractory note
+    /// does, one rung-late.
+    int warmthTailMinutes = 0,
   }) =>
       '- "arousal_delta": physical desire shift this turn ($kMinArousalDelta to +$kMaxArousalDelta). '
       'Current arousal: $currentArousal/100.\n'
@@ -154,7 +160,23 @@ class RealismPromptFragments {
       'breathing, focus, flushed skin, body language.\n'
       '  A non-sexual, non-romantic turn (food, work, errands, small talk, plain comfort) is 0 — and if '
       'current arousal is above 0 on such a turn, return roughly -5 to -10 so it cools back toward neutral.\n'
-      '${refractoryMinutesLeft > 0 ? _refractoryNote(charName, refractoryMinutesLeft, clockRunning, refractorySoft) : ''}';
+      '${refractoryMinutesLeft > 0
+          ? _refractoryNote(charName, refractoryMinutesLeft, clockRunning, refractorySoft)
+          : warmthTailMinutes > 0
+          ? _warmthTailNote(charName)
+          : ''}';
+
+  /// The warmth tail note (PR 4): the lock/window ended but the seeded
+  /// warmth is owed. Its law is HOLD, never raise: a non-romantic turn
+  /// above +10 returns 0 instead of the -5…-10 cool above — the curve
+  /// fades, it does not fall. (Design settles the bond side of the tail in
+  /// PR 7; this note is arousal rubric only.)
+  static String _warmthTailNote(String charName) =>
+      '  NOTE: $charName is still riding a warm afterglow after climax. '
+      'Small kindnesses land a little deeper than usual today, and desire '
+      'that has come back cools slowly: on a non-romantic turn with '
+      'arousal above 10, HOLD arousal where it is (return 0) instead of '
+      'cooling it toward neutral, and do not raise it on your own.\n';
 
   /// The per-mode refractory note on the arousal section (PR 3). The hard
   /// note no longer says "just climaxed" — it rides every turn of a lock

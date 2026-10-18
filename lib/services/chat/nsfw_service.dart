@@ -111,6 +111,15 @@ class NsfwService {
   /// Climaxes counted this story hour (soft gate) — 0 for every hard body.
   int get refractoryPeaksLastHour => _refractory.peaksLastHour;
 
+  /// The warmth tail (PR 4): the seeded minutes still owed, frozen or not.
+  int get refractoryTailMinutes => _refractory.tail?.minutes ?? 0;
+
+  /// The beat the tail rung speaks on: body fully clear, warmth still owed.
+  bool get warmthTailActive =>
+      !_refractory.running &&
+      _refractory.peaksLastHour == 0 &&
+      refractoryTailMinutes > 0;
+
   /// First Afterglow reply after the climax reply — the only turn that may
   /// force limp / tired / exhausted body language. Later Afterglow turns
   /// keep the sexual "not yet" and closeness, but energy and comfort
@@ -208,8 +217,12 @@ class NsfwService {
     int? fixedMinutes,
     bool soft = false,
     bool newPeak = true,
+    int tailMinutes = 0,
   }) {
     if (soft) {
+      // A fresh climax re-seeds the tail (one tail at a time — the newest
+      // warmth wins); a Continue re-verdict keeps the tail the body already
+      // carries, because it adds no body's worth of anything.
       if (newPeak) {
         final peak = (_refractory.peaksLastHour + 1).clamp(1, kPeakCap);
         _arousalLevel = (_arousalLevel - softPeakCost(_arousalLevel, peak))
@@ -219,15 +232,19 @@ class NsfwService {
           stamps.length <= kPeakCap
               ? stamps
               : stamps.sublist(stamps.length - kPeakCap),
+          tailMinutes: tailMinutes,
         );
       } else {
-        _refractory = Refractory.tenderness(_refractory.peaks);
+        _refractory = Refractory.tenderness(
+          _refractory.peaks,
+          keepTail: _refractory.tail,
+        );
       }
       return;
     }
     _refractory = fixedMinutes != null
-        ? Refractory.fromMinutes(fixedMinutes)
-        : Refractory.fromJudgeTurns(turns);
+        ? Refractory.fromMinutes(fixedMinutes, tailMinutes: tailMinutes)
+        : Refractory.fromJudgeTurns(turns, tailMinutes: tailMinutes);
     _arousalLevel = 0;
   }
 
@@ -345,11 +362,24 @@ class NsfwService {
   /// _groupRealism entry after an impersonated post-gen / check round.
   /// Extends prior arousal-only to include cooldown + enabled for parity.
   void saveNsfwScalarsToGroup(String charId) {
-    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel'
+    // for compat.
     setGroupValue(charId, 'arousal', _arousalLevel);
     setGroupValue(charId, 'nsfwCooldownEnabled', _nsfwCooldownEnabled);
-    for (final e in _refractory.toSnapshot().entries) {
+    final snap = _refractory.toSnapshot();
+    for (final e in snap.entries) {
       setGroupValue(charId, e.key, e.value);
+    }
+    // Absence is meaningful (PR 4 hostile review): a finished tail, expired
+    // peaks, or a hard body replacing a soft one must clear the member's
+    // stored key, or the old body ghosts back on the next load and the
+    // warmth prose never ends for that speaker.
+    for (final k in const [
+      RefractoryKeys.soft,
+      RefractoryKeys.peaks,
+      RefractoryKeys.tail,
+    ]) {
+      if (!snap.containsKey(k)) setGroupValue(charId, k, null);
     }
   }
 }

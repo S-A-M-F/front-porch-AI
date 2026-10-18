@@ -144,6 +144,19 @@ class NsfwInjection {
     }
 
     final a = nsfwService.arousalLevel;
+
+    // Warmth tail (PR 4): the body is fully clear but seeded warmth is still
+    // owed, in EITHER mode — satisfaction fades on a curve, not at a counter
+    // boundary, so the ladder must not snap from afterglow to silence.
+    // Warmth words only (arousal is low here; claim appetite under a low bar
+    // and the bar-vs-prose break returns). A soured or newly-hungry body
+    // speaks the normal ladder instead — the tail never overrules desire.
+    if (nsfwService.warmthTailActive && a >= 0 && a <= 35) {
+      return 'Body: $name is still riding a warm afterglow — ordinary '
+          'warmth runs deeper than usual today; small kindnesses land '
+          'harder, and any desire that has come back cools slowly.';
+    }
+
     if (a > -16 && a <= 15) return ''; // neutral band — silent
 
     if (a <= -60) {

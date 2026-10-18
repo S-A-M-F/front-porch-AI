@@ -211,6 +211,10 @@ extension ChatServiceImportSeed on ChatService {
       if (_nsfwService.refractory.soft) 'refractory_soft': true,
       if (_nsfwService.refractory.peaks.isNotEmpty)
         'refractory_peaks': _nsfwService.refractory.peaks,
+      if (_nsfwService.refractory.tail case final tail?) ...{
+        'refractory_tail_minutes': tail.minutes,
+        'refractory_tail_total': tail.total,
+      },
       'time_of_day': _timeService.timeOfDay,
       'day_count': _timeService.dayCount,
       'start_day_of_week': _timeService.startDayOfWeekAnchor,
@@ -290,6 +294,14 @@ extension ChatServiceImportSeed on ChatService {
         RefractoryKeys.soft: head['refractory_soft'],
       if (head['refractory_peaks'] != null)
         RefractoryKeys.peaks: head['refractory_peaks'],
+      // PR 4 warmth tail: the two head keys rebuild the nested body;
+      // absent means no tail, so pre-tail files restore exactly as before.
+      if (head['refractory_tail_minutes'] != null)
+        RefractoryKeys.tail: {
+          RefractoryKeys.minutes: head['refractory_tail_minutes'],
+          RefractoryKeys.total:
+              head['refractory_tail_total'] ?? head['refractory_tail_minutes'],
+        },
       // Files saved before minutes: turns, read once as turns × 15.
       if (head['cooldown_turns_remaining'] != null)
         RefractoryKeys.legacyTurns: head['cooldown_turns_remaining'],

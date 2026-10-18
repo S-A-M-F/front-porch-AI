@@ -41,6 +41,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:front_porch_ai/services/chat/group_member_realism.dart';
+import 'package:front_porch_ai/services/chat/refractory.dart';
 
 /// The shape the wiring E2E observed on a real scored slot (values varied).
 const _fullSlot = <String, dynamic>{
@@ -232,6 +233,85 @@ void main() {
             'the wrapper must own its data — writes leaking back into '
             'the decoded JSON would corrupt sibling readers',
       );
+    });
+
+    test('the warmth tail (PR 4) round-trips nested, deep-copied', () {
+      final tail = {
+        RefractoryKeys.minutes: 22,
+        RefractoryKeys.total: 45,
+        RefractoryKeys.opened: false,
+      };
+      final source =
+          jsonDecode(jsonEncode({'arousal': 10, RefractoryKeys.tail: tail}))
+              as Map;
+      final m = GroupMemberRealism.fromJson(source);
+      final nested =
+          m.valueFor(GroupRealismKeys.refractoryTail) as Map<String, dynamic>;
+      expect(
+        Refractory.read(nested)?.minutes,
+        22,
+        reason: 'the tail reads back as a nested body off the member map',
+      );
+      // Deep copy: mutating the wrapper's nested tail must not leak back
+      // into the decoded JSON the sibling readers share.
+      nested[RefractoryKeys.minutes] = 999;
+      expect(
+        (source[RefractoryKeys.tail] as Map)[RefractoryKeys.minutes],
+        22,
+        reason: 'the nested tail was aliased, not copied',
+      );
+    });
+
+    test('an absent tail reads as none, so pre-PR-4 members are unchanged', () {
+      final m = GroupMemberRealism.fromJson(
+        jsonDecode('{"arousal": 10}') as Map,
+      );
+      expect(m.valueFor(GroupRealismKeys.refractoryTail), isNull);
+    });
+
+    test('setValue clears on null so the bridge can erase a finished body '
+        '(PR 4)', () {
+      final m = GroupMemberRealism()
+        ..setValue(GroupRealismKeys.refractoryTail, {
+          RefractoryKeys.minutes: 22,
+          RefractoryKeys.total: 45,
+        });
+      m.setValue(GroupRealismKeys.refractoryTail, null);
+      expect(
+        m.valueFor(GroupRealismKeys.refractoryTail),
+        isNull,
+        reason:
+            'NsfwService.saveNsfwScalarsToGroup sends null for the keys '
+            'a finished body omits — storing the null would keep the ghost',
+      );
+    });
+
+    test('a completed body REPLACES: no ghost tail, no ghost soft, no ghost '
+        'peaks (PR 4 hostile review)', () {
+      final m = GroupMemberRealism()
+        ..refractory = const Refractory(
+          minutes: 5,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10],
+          tail: Refractory(minutes: 22, total: 45),
+        );
+      expect(m.refractory.tailRunning, isTrue);
+      m.refractory = Refractory.none;
+      expect(
+        m.refractory,
+        Refractory.none,
+        reason:
+            'absence is the terminal state — a bare addAll left the '
+            'stale tail/soft/peaks keys in the slot and the warmth prose '
+            'spoke forever ("a ghost tail never ends")',
+      );
+      // And through JSON — the ghost rode groupRealismState across saves.
+      final back = GroupMemberRealism.fromJson(
+        jsonDecode(jsonEncode(m.toJson())) as Map<String, dynamic>,
+      );
+      expect(back.refractory, Refractory.none);
     });
   });
 }

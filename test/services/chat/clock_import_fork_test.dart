@@ -154,6 +154,22 @@ void main() {
     expect(chat.timeService.clock, DateTime.utc(2020, 1, 4, 19, 0));
   });
 
+  test('B4: .fpchat import carries the warmth tail (PR 4)', () async {
+    await chat.startFreshChatWith(character: _misty(), personaId: personaId);
+    final decoded = decodeFpchatBytes(_livedInFpchat(realismOn: true));
+    final session = decoded.chatJson['fpai']['session'] as Map<String, dynamic>;
+    session['refractory_minutes_remaining'] = 0;
+    session['refractory_tail_minutes'] = 40;
+    session['refractory_tail_total'] = 45;
+    final outcome = await chat.importChatPackage(
+      encodeFpchatZip(chatJson: decoded.chatJson),
+    );
+    expect(outcome.fullRestore, isTrue);
+    expect(chat.nsfwService.refractoryTailMinutes, 40);
+    expect(chat.nsfwService.refractory.tail?.total, 45);
+    expect(chat.nsfwService.warmthTailActive, isTrue);
+  });
+
   test('B4: .fpchat import carries a soft body and its peaks', () async {
     await chat.startFreshChatWith(character: _misty(), personaId: personaId);
     final decoded = decodeFpchatBytes(_livedInFpchat(realismOn: true));

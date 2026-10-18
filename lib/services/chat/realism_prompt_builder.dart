@@ -306,6 +306,7 @@ class RealismPromptBuilder {
     int refractoryMinutesLeft = 0,
     bool clockRunning = true,
     bool refractorySoft = false,
+    int warmthTailMinutes = 0,
     List<String> allowedEmotionLabels = const [],
     String preferences = '',
     List<({String text, int progress})> ambitions = const [],
@@ -314,7 +315,7 @@ class RealismPromptBuilder {
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Name what $charName truly feels right now. Evaluate:\n'
       '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels)}'
-      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft) : ''}'
+      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes) : ''}'
       '\n'
       '${RealismPromptFragments.recentBlock(recent)}'
       '${toolsMode ? RealismPromptFragments.toolInstruction('report_emotional_state') : RealismPromptFragments.jsonInstruction(['emotion', 'emotion_intensity', 'emotion_cause', 'emotion_change', if (arousalEnabled) 'arousal_delta'])}';
@@ -353,6 +354,7 @@ class RealismPromptBuilder {
     int refractoryMinutesLeft = 0,
     bool clockRunning = true,
     bool refractorySoft = false,
+    int warmthTailMinutes = 0,
     List<String> allowedEmotionLabels = const [],
     String? primaryObjective,
     List<({String text, int progress})> ambitions = const [],
@@ -367,7 +369,7 @@ class RealismPromptBuilder {
       '${RealismPromptFragments.bondSection(charName, userName)}'
       '${RealismPromptFragments.trustSection(charName, userName)}'
       '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels)}'
-      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft) : ''}'
+      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes) : ''}'
       '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions, openGoals: openGoals, recentEnded: recentEnded)}'
       '${RealismPromptFragments.fixationSection(charName)}'
       '${RealismPromptFragments.reasonSection()}'

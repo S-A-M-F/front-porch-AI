@@ -610,6 +610,9 @@ void main() {
             total: kTendernessWindowMinutes,
             soft: true,
             peaks: [0],
+            // PR 4: the judge's number still seeds the warmth tail — half
+            // of the lock a hard body would have taken (6 × 15 → 45).
+            tail: Refractory(minutes: 45, total: 45),
           ),
           reason:
               'the judge\'s 6 × 15 never applies to a soft body — the window '

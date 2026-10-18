@@ -556,4 +556,95 @@ void main() {
       },
     );
   });
+
+  group('warmth tail (PR 4)', () {
+    test('the seed is half the would-be lock, floored 15 and capped 120', () {
+      expect(warmthTailMinutes(90, soft: false), 45);
+      expect(warmthTailMinutes(240, soft: false), 120, reason: 'cap');
+      expect(warmthTailMinutes(20, soft: false), 15, reason: 'floor');
+      expect(warmthTailMinutes(0, soft: false), 0, reason: 'no lock, no tail');
+      expect(
+        warmthTailMinutes(0, soft: true),
+        15,
+        reason:
+            'a soft body always had a window — the floor is the research '
+            'baseline, not the lock',
+      );
+    });
+
+    test('a hard climax seeds its tail frozen beside the lock', () {
+      final svc = createTestNsfw();
+      svc.setArousalLevel(80);
+      svc.applyClimaxEffects(turns: 6, fixedMinutes: 60, tailMinutes: 30);
+      expect(svc.arousalLevel, 0, reason: 'hard is still absolute');
+      expect(svc.refractoryMinutesRemaining, 60);
+      expect(svc.refractoryTailMinutes, 30);
+      expect(svc.warmthTailActive, isFalse, reason: 'frozen under the lock');
+      expect(svc.refractory.tail?.running, isTrue);
+    });
+
+    test('judge 0 on a hard card seeds neither lock nor tail', () {
+      final svc = createTestNsfw();
+      svc.applyClimaxEffects(turns: 0);
+      expect(svc.refractory, Refractory.none);
+      expect(svc.refractoryTailMinutes, 0);
+    });
+
+    test('a new climax re-seeds the tail; a Continue keeps it', () {
+      final svc = createTestNsfw();
+      svc.setArousalLevel(90);
+      svc.applyClimaxEffects(turns: 6, soft: true, tailMinutes: 45);
+      expect(svc.refractoryTailMinutes, 45);
+
+      // Second climax (a new peak): the fresh body takes the NEW seed —
+      // one tail at a time, oldest warmth wins nothing.
+      svc.applyClimaxEffects(turns: 2, soft: true, tailMinutes: 20);
+      expect(svc.refractoryTailMinutes, 20);
+      expect(svc.refractoryPeaksLastHour, 2);
+
+      // Continue re-verdict (newPeak false): window restarts, tail holds —
+      // it adds no body's worth of anything.
+      svc.applyClimaxEffects(
+        turns: 9,
+        soft: true,
+        newPeak: false,
+        tailMinutes: 99,
+      );
+      expect(
+        svc.refractoryTailMinutes,
+        20,
+        reason: 'the Continue carries the existing tail, not the passed seed',
+      );
+      expect(svc.refractoryMinutesRemaining, kTendernessWindowMinutes);
+    });
+
+    test('toSnapshot carries the tail nested and read returns it', () {
+      const body = Refractory(
+        minutes: 30,
+        total: 60,
+        opened: true,
+        tail: Refractory(minutes: 22, total: 37),
+      );
+      final snap = body.toSnapshot();
+      expect(snap[RefractoryKeys.tail], {
+        RefractoryKeys.minutes: 22,
+        RefractoryKeys.total: 37,
+        RefractoryKeys.opened: false,
+      });
+      expect(Refractory.read(snap), body);
+      // Absent by default: a pre-PR-4 snapshot reads tail-free, and the
+      // default hard body stays byte-for-byte what it was.
+      expect(
+        const Refractory(minutes: 10, total: 10).toSnapshot(),
+        isNot(contains(RefractoryKeys.tail)),
+      );
+      expect(
+        Refractory.read({
+          RefractoryKeys.minutes: 10,
+          RefractoryKeys.total: 10,
+        })?.tail,
+        isNull,
+      );
+    });
+  });
 }

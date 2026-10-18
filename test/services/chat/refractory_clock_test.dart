@@ -32,7 +32,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/services/chat/chat.dart' show NsfwService;
+import 'package:front_porch_ai/services/chat/chat.dart'
+    show NsfwService, Refractory;
 import '../../helpers/chat_db_teardown.dart';
 import '../../helpers/refractory_judges.dart';
 
@@ -512,6 +513,142 @@ void main() {
         nsfw().arousalLevel,
         100,
         reason: 'the arousal restore is old news',
+      );
+    });
+  });
+
+  group('warmth tail (PR 4)', () {
+    Future<void> useCard({required String mode}) async {
+      chat.setPassageOfTimeEnabled(true);
+      await chat.setActiveCharacter(
+        CharacterCard(
+          name: 'Tess',
+          description: 'Exists only inside the refractory clock test.',
+          firstMessage: 'The porch light hums.',
+          imagePath: 'refr-tess.png',
+          frontPorchExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            needsSimEnabled: false,
+            chaosModeEnabled: false,
+            recovery: RecoveryProfile(recoveryMode: mode),
+          ),
+        )..dbId = 'char-refr-tess',
+      );
+      await chat.setRealismEnabled(true);
+      await chat.setNsfwCooldownEnabled(true);
+    }
+
+    test(
+      'a hard tail freezes under the lock and ages from its first clear beat',
+      () async {
+        await useCard(mode: kRecoveryModeHard);
+        llm.refractoryTurns = 4; // lock 60, tail 30
+        nsfw().setArousalLevel(80);
+        await send('The wave crests over us both.', climax: true);
+        expect(nsfw().refractoryMinutesRemaining, 60);
+        expect(nsfw().refractoryTailMinutes, 30);
+        expect(nsfw().warmthTailActive, isFalse, reason: 'frozen under lock');
+
+        await send('Stars, quiet ones.', minutes: 40);
+        expect(nsfw().refractoryMinutesRemaining, 20);
+        expect(
+          nsfw().refractoryTailMinutes,
+          30,
+          reason: 'the tail does not age while the lock runs',
+        );
+
+        await send('Closer.', minutes: 20);
+        expect(
+          nsfw().refractoryTailMinutes,
+          30,
+          reason: 'the lock ends THIS beat — the tail starts frozen at seed',
+        );
+        expect(nsfw().warmthTailActive, isTrue);
+
+        await send('Quieter still.', minutes: 10);
+        expect(nsfw().refractoryTailMinutes, 20);
+
+        await send('The hour turns.', minutes: 20);
+        expect(nsfw().refractoryTailMinutes, 0);
+        expect(nsfw().refractory, Refractory.none);
+      },
+    );
+
+    test(
+      'a soft tail waits for the last peak, then ages on the same ledger',
+      () async {
+        await useCard(mode: kRecoveryModeSoft);
+        llm.refractoryTurns = 6; // would-be 90 → tail 45
+        nsfw().setArousalLevel(100);
+        await send('The wave crests over us both.', climax: true);
+        expect(nsfw().refractoryMinutesRemaining, 15);
+        expect(nsfw().refractoryTailMinutes, 45);
+
+        await send('Humming still.', minutes: 20); // window over, peak 20
+        expect(nsfw().refractoryPeaksLastHour, 1);
+        expect(nsfw().refractoryTailMinutes, 45, reason: 'warm-again: frozen');
+
+        await send('Slow breath.', minutes: 45); // peak 65 prunes
+        expect(nsfw().refractoryPeaksLastHour, 0);
+        expect(
+          nsfw().refractoryTailMinutes,
+          45,
+          reason: 'the peak ages out THIS beat — aging starts next beat',
+        );
+
+        await send('Deeper in the evening.', minutes: 30);
+        expect(nsfw().refractoryTailMinutes, 15);
+        expect(nsfw().warmthTailActive, isTrue);
+
+        await send('The lamp flickers.', minutes: 20);
+        expect(nsfw().refractoryTailMinutes, 0);
+      },
+    );
+
+    test(
+      'clock off: two replies of 15 age a 30-minute tail to none',
+      () async {
+        await useCard(mode: kRecoveryModeHard);
+        chat.setPassageOfTimeEnabled(false);
+        llm.refractoryTurns = 4; // lock 60 (4 replies), tail 30 (2 replies)
+        nsfw().setArousalLevel(80);
+        await send('The wave crests over us both.', climax: true);
+        expect(nsfw().refractoryMinutesRemaining, 60);
+        await send('One.'); // tick at send: 45
+        await send('Two.'); // 30
+        await send('Three.'); // 15
+        await send('Four.'); // 0 — the lock ends THIS beat, tail starts frozen
+        expect(nsfw().refractoryMinutesRemaining, 0);
+        expect(nsfw().refractoryTailMinutes, 30, reason: 'frozen at seed');
+        await send('Five.'); // tail 15
+        expect(nsfw().refractoryTailMinutes, 15);
+        await send('Six.'); // tail 0
+        expect(nsfw().refractoryTailMinutes, 0);
+        expect(nsfw().refractory, Refractory.none);
+      },
+    );
+
+    test('regen of a tailed beat rewinds the tail minutes exactly', () async {
+      await useCard(mode: kRecoveryModeHard);
+      llm.refractoryTurns = 4; // lock 60, tail 30
+      nsfw().setArousalLevel(80);
+      await send('The wave crests over us both.', climax: true);
+      await send('Stars, quiet ones.', minutes: 70); // lock ends → tail 30
+      await send('Quieter still.', minutes: 10); // tail 20
+      expect(nsfw().refractoryTailMinutes, 20);
+
+      llm
+        ..climax =
+            false // the regen itself does not climax
+        ..minutes = 0; // and the regen beat spans no story time
+      await chat.regenerateLastMessage();
+      await settle();
+      expect(
+        nsfw().refractoryTailMinutes,
+        30,
+        reason:
+            'the pre-beat receipt put the body back as it found it — '
+            'a receipt that dropped the nested tail would read 20 or 0',
       );
     });
   });
