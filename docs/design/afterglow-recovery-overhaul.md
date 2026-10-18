@@ -23,6 +23,20 @@ dropdown entry, the warm-again beat, the required field, one tail line); where
 the two ever disagree on behaviour, this document wins and the mockup is
 fixed.
 
+**PR 1 SHIPPED 2026-10-18** — merged to Rawhide as `521bf6055` (PR #553).
+Live acceptance ran on the Linux media server against llama-server
+Qwen3-14B-Instruct, driven through the real app (wizard-created cards, real
+climax turns): the insatiable card judged `refractory 0 min` — no refractory
+started, no sidebar line — and the reserved card `refractory 180 min` with
+the user-visible chip "Refractory: about 180 min". Same model, same message,
+personality alone moved the number. Full method and numbers recorded in the PR.
+**Maintainer ruling 2026-10-18 — stacking:** PRs 2–8 land as one **stacked
+chain**: each PR branch is cut from the previous PR's branch (PR 3 bases on
+PR 2's branch, PR 4 on PR 3's, …), so the tip of the stack is the single
+end-to-end testable branch where the whole poke script runs. PR 2 bases on
+`Rawhide` as of `521bf6055`. Merges go bottom-up into `Rawhide`, one per
+maintainer green light; a PR's CI runs against its stack base.
+
 This is chat/realism work: the executor fills
 [path-complete-chat-work.md](path-complete-chat-work.md) before code, and the
 Needs-on-the-clock dual-mode precedent
@@ -173,7 +187,7 @@ Reprocess keeps "a climax's reset stands"
 (`chat_service_reprocess_choice.dart:365`), which holds for the soft peak cost
 too.
 
-## PR 1 — restore the personality judge (root cause, zero extra LLM calls)
+## PR 1 — restore the personality judge (root cause, zero extra LLM calls) — ✅ SHIPPED 2026-10-18 (`521bf6055`)
 
 Keep the tool field name `refractory_turns` (renaming ripples through the
 converter registry, fused schema, and five test files for no user gain).
@@ -617,7 +631,8 @@ not prevalence**.
 ## Labels / process notes for the executor
 
 - Existing-test edits needing `approved-test-change`: PR 1 —
-  `afterglow_independence_test.dart:124-128` (clamp ceiling 10 → 12). PR 5
+  `afterglow_independence_test.dart:124-128` (clamp ceiling 10 → 12) — done,
+  labeled, merged. PR 5
   should need none (the required-field pins use `contains`/`containsAll`);
   confirm. Anything else that turns red is a finding to explain, not a pin to
   edit. Appending new `test(`/`group(` calls is unbounded.
