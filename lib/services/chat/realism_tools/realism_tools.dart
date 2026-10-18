@@ -18,3 +18,4 @@
 
 export 'realism_tool_names.dart';
 export 'realism_tool_schemas.dart';
+export 'afterglow_tool_schemas.dart';

@@ -119,8 +119,13 @@ class BondBars extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
+                // Rose chip with a thermometer while a soft window runs
+                // (the mockup's 🌡️ "Tender for… · peak K"); the frost-
+                // colored hourglass stays for a hard lock.
                 Icon(
-                  Icons.hourglass_bottom,
+                  nsfw.refractory.soft
+                      ? Icons.device_thermostat
+                      : Icons.hourglass_bottom,
                   size: 12,
                   color: AppColors.lustAccentOf(context),
                 ),

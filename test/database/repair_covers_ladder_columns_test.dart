@@ -38,7 +38,8 @@ Map<String, Set<String>> _parseRepairList(String source) {
   }
   final block = source.substring(start, end);
   final tableLine = RegExp(r"^\s*'(\w+)':\s*\[");
-  final colLine = RegExp("^\\s*['\"]([a-z_]+) ");
+  // A line may carry several entries ('origin TEXT', 'status TEXT', …).
+  final colEntry = RegExp("['\"]([a-z_]+) [A-Z]");
   final out = <String, Set<String>>{};
   String? current;
   for (final line in block.split('\n')) {
@@ -48,8 +49,10 @@ Map<String, Set<String>> _parseRepairList(String source) {
       out[current!] = <String>{};
       continue;
     }
-    final c = colLine.firstMatch(line);
-    if (c != null && current != null) out[current]!.add(c.group(1)!);
+    if (current == null) continue;
+    for (final c in colEntry.allMatches(line)) {
+      out[current]!.add(c.group(1)!);
+    }
   }
   return out;
 }
@@ -57,44 +60,58 @@ Map<String, Set<String>> _parseRepairList(String source) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('every ladder-added column of a repaired table is in the repair list',
-      () async {
-    final ladder =
-        await File('lib/database/database.migrations.dart').readAsString() +
-            await File(
-              'lib/database/database.migrations.data.dart',
-            ).readAsString();
-    final repairSource =
-        await File('lib/database/database.repair.dart').readAsString();
+  test(
+    'every ladder-added column of a repaired table is in the repair list',
+    () async {
+      // Every ladder part, not a fixed list: the ladder has been split across
+      // database.migrations.*.dart files and a pinned pair silently skipped
+      // the early/mid/late steps.
+      final ladderFiles = Directory('lib/database')
+          .listSync()
+          .whereType<File>()
+          .where(
+            (f) =>
+                RegExp(r'database\.migrations(\.\w+)?\.dart$').hasMatch(f.path),
+          )
+          .toList();
+      expect(ladderFiles.length, greaterThan(1));
+      final ladder = [
+        for (final f in ladderFiles) await f.readAsString(),
+      ].join('\n');
+      final repairSource = await File(
+        'lib/database/database.repair.dart',
+      ).readAsString();
 
-    final repaired = _parseRepairList(repairSource);
-    expect(repaired.keys, contains('sessions'));
-    expect(repaired.keys, contains('characters'));
+      final repaired = _parseRepairList(repairSource);
+      expect(repaired.keys, contains('sessions'));
+      expect(repaired.keys, contains('characters'));
 
-    // The live schema, straight from Drift — not a second text parse.
-    final db = AppDatabase.forTesting();
-    final live = <String, Set<String>>{
-      for (final t in db.allTables)
-        t.actualTableName: t.$columns.map((c) => c.name).toSet(),
-    };
-    await db.close();
+      // The live schema, straight from Drift — not a second text parse.
+      final db = AppDatabase.forTesting();
+      final live = <String, Set<String>>{
+        for (final t in db.allTables)
+          t.actualTableName: t.$columns.map((c) => c.name).toSet(),
+      };
+      await db.close();
 
-    final missing = <String>[];
-    for (final m in RegExp(
-      r'ALTER TABLE (\w+) ADD COLUMN (\w+)',
-    ).allMatches(ladder)) {
-      final table = m.group(1)!;
-      final column = m.group(2)!;
-      final covered = repaired[table];
-      if (covered == null) continue; // repair does not claim this table
-      if (!(live[table]?.contains(column) ?? false)) continue; // column dropped
-      if (!covered.contains(column)) missing.add('$table.$column');
-    }
+      final missing = <String>[];
+      for (final m in RegExp(
+        r'ALTER TABLE (\w+) ADD COLUMN (\w+)',
+      ).allMatches(ladder)) {
+        final table = m.group(1)!;
+        final column = m.group(2)!;
+        final covered = repaired[table];
+        if (covered == null) continue; // repair does not claim this table
+        // The column was dropped from the live schema later.
+        if (!(live[table]?.contains(column) ?? false)) continue;
+        if (!covered.contains(column)) missing.add('$table.$column');
+      }
 
-    expect(
-      missing,
-      isEmpty,
-      reason: 'these columns can never be healed after a swallowed ALTER',
-    );
-  });
+      expect(
+        missing,
+        isEmpty,
+        reason: 'these columns can never be healed after a swallowed ALTER',
+      );
+    },
+  );
 }

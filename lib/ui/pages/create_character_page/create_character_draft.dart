@@ -72,6 +72,7 @@ class CreateCharacterDraft {
     realismDislikes,
     realismIntimateInto,
     realismIntimateNotInto,
+    realismRecovery.toJson(),
     realismWorn,
     realismCarrying,
     realismVerificationEnabled,
@@ -160,6 +161,10 @@ class CreateCharacterDraft {
   List<String> realismDislikes = const [];
   List<String> realismIntimateInto = const [];
   List<String> realismIntimateNotInto = const [];
+
+  /// Recovery profile authored on the Realism step (recovery overhaul PR 2).
+  /// `auto` — the judge and the (here unset) structured sex — is the default.
+  RecoveryProfile realismRecovery = const RecoveryProfile();
 
   /// Starting Pockets & Wardrobe as chip text (`sundress (rain-soaked)`).
   /// `Pockets` owns the conversion to and from the card's `{name, state}` map.
@@ -297,6 +302,7 @@ class CreateCharacterDraft {
     realismDislikes = const [];
     realismIntimateInto = const [];
     realismIntimateNotInto = const [];
+    realismRecovery = const RecoveryProfile();
     realismWorn = const [];
     realismCarrying = const [];
     realismVerificationEnabled = false;

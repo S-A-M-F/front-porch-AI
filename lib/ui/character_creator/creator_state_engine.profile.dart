@@ -55,6 +55,7 @@ CharacterCard profileCardNow(CreatorState s) {
     dislikes: s.realismDislikes,
     intimateInto: s.realismIntimateInto,
     intimateNotInto: s.realismIntimateNotInto,
+    recovery: s.realismRecovery,
   );
   return card;
 }

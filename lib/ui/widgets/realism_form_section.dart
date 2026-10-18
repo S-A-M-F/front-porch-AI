@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/theme/creator_palette.dart';
 import 'package:front_porch_ai/ui/widgets/identity_chip_lists.dart';
@@ -98,6 +99,18 @@ class RealismFormSection extends StatelessWidget {
   final List<String>? intimateNotInto;
   final ValueChanged<List<String>>? onIntimateNotIntoChanged;
   final bool showIntimate;
+
+  /// Recovery profile (recovery overhaul PR 2). Optional pair — the two
+  /// group-member editors pass neither, which is also the ruling made
+  /// visible: a member follows their own card, so an override control there
+  /// would lie. `sex` is read-only feed for the "resolves to" line.
+  final RecoveryProfile? recovery;
+  final ValueChanged<RecoveryProfile>? onRecoveryChanged;
+  final String sex;
+
+  /// Creation flows only: suggests a preset from the authored intimacy
+  /// notes, confirmed by the author, never applied silently.
+  final bool showChargenSuggestion;
 
   /// Starting Pockets & Wardrobe, as chip text (`sundress (rain-soaked)`).
   /// Same optional-pair convention again — the two group-member editors call
@@ -188,6 +201,10 @@ class RealismFormSection extends StatelessWidget {
     this.intimateNotInto,
     this.onIntimateNotIntoChanged,
     this.showIntimate = false,
+    this.recovery,
+    this.onRecoveryChanged,
+    this.sex = '',
+    this.showChargenSuggestion = false,
     this.worn,
     this.onWornChanged,
     this.carrying,
@@ -349,6 +366,12 @@ class RealismFormSection extends StatelessWidget {
             showNsfwCooldownToggle: showNsfwCooldownToggle,
             showChaosToggle: showChaosToggle,
             showVerificationToggle: showVerificationToggle,
+            recovery: recovery,
+            onRecoveryChanged: onRecoveryChanged,
+            sex: sex,
+            intimateInto: intimateInto ?? const [],
+            intimateNotInto: intimateNotInto ?? const [],
+            showChargenSuggestion: showChargenSuggestion,
           ),
         ],
         if (showChaosToggle && !enabled) ...[

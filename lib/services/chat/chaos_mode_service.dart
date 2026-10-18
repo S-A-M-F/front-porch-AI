@@ -54,6 +54,13 @@ class ChaosModeService {
   /// The Porch Life Chaos frequency. Absent means [ChaosFrequency.normal].
   final ChaosFrequency Function()? getFrequency;
 
+  /// Whether the Chance Time speaker — the next group speaker, else the 1:1
+  /// host, the body `{{char}}` will resolve to — is mid a HARD refractory
+  /// lock. While true, desire-asserting adult events leave the wheel
+  /// (recovery overhaul PR 6); a soft-gate body keeps desire up and stays
+  /// legal. Absent means the wheel never gates.
+  final bool Function()? isHardLockActive;
+
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false; // the chat's spicy switch
   int _chaosPressure = 0; // 0–100; grows each turn without a trigger
@@ -71,6 +78,7 @@ class ChaosModeService {
     required this.onSetPendingRealismMetadata,
     this.isAdultAllowed,
     this.getFrequency,
+    this.isHardLockActive,
   });
 
   // ── Public surface (for shims in ChatService + direct test/UI callers) ──────
@@ -209,6 +217,7 @@ class ChaosModeService {
       includeAdult: spicyActive,
       allowPair: allowPair,
       allowUser: allowUser,
+      hardLockActive: isHardLockActive?.call() ?? false,
       recent: _recentEvents,
       random: _random,
     );

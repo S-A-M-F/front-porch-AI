@@ -221,6 +221,10 @@ extension AppDatabaseMaintenance on AppDatabase {
         'refractory_minutes_remaining INTEGER',
         'refractory_minutes_total INTEGER',
         'refractory_opened INTEGER',
+        'refractory_soft INTEGER', // v59
+        'refractory_peaks TEXT', // v59
+        'refractory_tail_minutes INTEGER', // v60
+        'refractory_tail_total INTEGER', // v60
         'selected_look_avatar_id TEXT', // v37 gallery look
         'theme_overrides TEXT', // per-chat theme
         'context_budget_json TEXT', // v44 Context Viewer snapshot

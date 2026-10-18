@@ -151,6 +151,21 @@ class Sessions extends Table {
   /// v55 — the opening afterglow turn has been spoken. NULL as above.
   BoolColumn get refractoryOpened => boolean().nullable()();
 
+  /// v59 — the soft gate (recovery overhaul PR 3): this body recovers
+  /// through a tenderness window. NULL reads a hard lock, so every existing
+  /// row means exactly what it means today.
+  BoolColumn get refractorySoft => boolean().nullable()();
+
+  /// v59 — peak stamps as JSON text ("[5,0]": story minutes since each
+  /// peak, oldest first). NULL or empty means no peaks inside the hour.
+  TextColumn get refractoryPeaks => text().nullable()();
+
+  /// v60 — the warmth tail (PR 4): minutes still owed and the length it
+  /// was seeded at, frozen while a body runs. NULL = no tail, so a row
+  /// saved before it stays byte-identical.
+  IntColumn get refractoryTailMinutes => integer().nullable()();
+  IntColumn get refractoryTailTotal => integer().nullable()();
+
   // Realism Engine v3.0 Behavioral Mechanics
   IntColumn get trustLevel =>
       integer().withDefault(const Constant(0))(); // -100 to 100 paranoia/trust

@@ -281,6 +281,26 @@ extension ChatServiceControls on ChatService {
     );
   }
 
+  /// PR 6: is the body Chance Time names mid a HARD refractory lock? 1:1
+  /// reads the live scalars (they hold the host, who is the attribution);
+  /// groups map the NAME back to its card and read that member's STORED
+  /// refractory — never the live scalars, which may still hold the
+  /// previous speaker's. No match answers false: chaos fails open and
+  /// spins today's wheel. Soft bodies answer false by decision — their
+  /// desire is honest.
+  bool _hardLockForSpeakerNamed(String name) {
+    if (_activeGroup == null) {
+      final r = _nsfwService.refractory;
+      return r.running && !r.soft;
+    }
+    final card = _groupCharacters.where((c) => c.name == name).firstOrNull;
+    if (card == null) return false;
+    final r =
+        _groupStore.members[_getCharacterIdFromCard(card)]?.refractory ??
+        Refractory.none;
+    return r.running && !r.soft;
+  }
+
   List<String> _chanceTimePartners(String speakerName) => [
     for (final c in groupCharacters)
       if (c.name != speakerName) c.name,
@@ -317,8 +337,27 @@ extension ChatServiceControls on ChatService {
     // already-completed completer (which would throw a StateError).
     final completer = _chanceTimeCompleter;
     if (completer != null && completer.isCompleted) return;
-    final display = resolveChanceTimeEvent(event, charName);
-    _chaosModeService.rememberEvent(event);
+    // PR 6 re-gate at ACCEPT (review M1): a manual SPIN NOW parks without
+    // halting generation, so between spin and accept a group pointer can
+    // rotate onto a body that was locked the whole window, and an
+    // intervening climax can lock the 1:1 host. A desire-asserting event
+    // whose named body is locked NOW must not land: swap in the first
+    // desire-free event from a fresh gated spin. Legality beats fidelity
+    // to the card that was shown — `Lust: 0` with aroused prose is the
+    // exact trust break this PR exists to close.
+    var applied = event;
+    if (chaosEventFor(event)?.desireAsserting == true &&
+        _hardLockForSpeakerNamed(charName)) {
+      final wheel = spinWheelEvents();
+      applied = wheel.firstWhere(
+        (t) => chaosEventFor(t)?.desireAsserting != true,
+        // A wheel always carries SFW events (adults take only
+        // kAdultWheelSlots of eight), so this orElse is a formality.
+        orElse: () => wheel.first,
+      );
+    }
+    final display = resolveChanceTimeEvent(applied, charName);
+    _chaosModeService.rememberEvent(applied);
     await _chaosModeService.applyPreparedEvent(display);
     _webChanceTimeEvent = null;
     // Resume a parked send if one is waiting. Manual SPIN NOW has no

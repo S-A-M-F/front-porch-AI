@@ -23,6 +23,8 @@ import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
+import 'package:front_porch_ai/services/chat/realism_prompt_builder.dart';
+import 'package:front_porch_ai/services/chat/realism_prompt_builder/realism_prompt_fragments.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/author_note_builder.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/relationship_injection.dart';
@@ -1188,6 +1190,787 @@ void main() {
       );
       expect(mood(emotion: 'neutral').buildEmotionInjection(), isEmpty);
       expect(mood(emotion: '').buildEmotionInjection(), isEmpty);
+    });
+  });
+
+  // Recovery overhaul PR 3: the soft ladder. Hard rungs ship unchanged; a
+  // soft body gets glow → tender → warm-again (decision 6, copy pinned to
+  // the mockup), and the pronoun-free contract holds for EVERY rung — whole
+  // words, case-insensitive, because a bare she|he|her|his matches inside
+  // "the", "other" and "there" and would fail on the shipped ladder.
+  group('soft-gate ladder (PR 3)', () {
+    NsfwService softSvc(Refractory r, {int? arousal}) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      if (arousal != null) n.setArousalLevel(arousal);
+      return n;
+    }
+
+    String text(Refractory r, {int? arousal}) => createTestNsfw(
+      nsfwSvc: softSvc(r, arousal: arousal),
+      activeChar: CharacterCard(name: 'Nia'),
+    ).buildNsfwCooldownInjection();
+
+    test('the glow rung replaces incapacity with tender overwhelm', () {
+      final t = text(Refractory.tenderness([0]));
+      expect(t, contains('just climaxed — trembling and flushed'));
+      expect(t, contains('oversensitive in the best way'));
+      expect(t, contains('a flinch that turns into pulling closer'));
+      expect(t, isNot(contains('cannot respond yet')));
+    });
+
+    test('the tender rung keeps closeness and halves stimulation', () {
+      final t = text(
+        const Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10, 0],
+        ),
+      );
+      expect(t, contains('still humming from it'));
+      expect(t, contains('a flinch that turns into leaning in'));
+      expect(t, contains('lands at half weight'));
+      expect(t, isNot(contains('cannot respond yet')));
+      expect(t, isNot(contains('"not yet"')));
+    });
+
+    test(
+      'warm-again holds the hour after the window — arousal band or not',
+      () {
+        // Window gone, a peak still counted: this beat outranks even the
+        // "heavily aroused" rung, so cuddle time does not snap to chasing.
+        final t = text(const Refractory(soft: true, peaks: [30]), arousal: 55);
+        expect(t, contains('is warm again'));
+        expect(t, contains('nothing is being chased yet'));
+        expect(t, isNot(contains('chasing release')));
+        // Past the hour the normal ladder returns.
+        expect(
+          text(const Refractory(soft: true), arousal: 55),
+          contains('chasing release'),
+        );
+      },
+    );
+
+    test('a hard body keeps its ladder while old peak stamps age out', () {
+      // Mid-window soft→hard flip (path-complete §5): the body still
+      // carries peak stamps, but every reader branches on the mode — the
+      // soft warmth words belong to a soft body only.
+      final t = text(const Refractory(peaks: [10]), arousal: 55);
+      expect(t, isNot(contains('is warm again')));
+      expect(t, contains('chasing release'));
+    });
+
+    test('no rung of any ladder speaks a gendered pronoun', () {
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      final ladders = [
+        text(Refractory.fromJudgeTurns(5)), // hard opening
+        text(const Refractory(minutes: 50, total: 60, opened: true)), // deep
+        text(const Refractory(minutes: 10, total: 60, opened: true)), // late
+        text(Refractory.none, arousal: -70),
+        text(Refractory.none, arousal: -30),
+        text(Refractory.none, arousal: 20),
+        text(Refractory.none, arousal: 55),
+        text(Refractory.none, arousal: 75),
+        text(Refractory.none, arousal: 95),
+        text(Refractory.tenderness([0])), // glow
+        text(
+          const Refractory(
+            minutes: 10,
+            total: 15,
+            opened: true,
+            soft: true,
+            peaks: [10, 0],
+          ),
+        ), // tender
+        text(const Refractory(soft: true, peaks: [30])), // warm-again
+      ];
+      for (final t in ladders) {
+        expect(t, isNotEmpty);
+        expect(
+          genders.hasMatch(t),
+          isFalse,
+          reason:
+              'the ladder interpolates \$name and speaks of the body — '
+              'never a gendered pronoun: $t',
+        );
+      }
+    });
+
+    test('the eval refractory note branches on mode — and stops lying about '
+        '"just climaxed" late in a lock', () {
+      final hard = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        0,
+        44,
+        true,
+      );
+      expect(
+        hard,
+        contains(
+          'is in the post-orgasm refractory (about 45 min '
+          'left)',
+        ),
+      );
+      expect(hard, contains('(-3 to +5)'));
+      expect(
+        hard,
+        isNot(contains('just climaxed')),
+        reason:
+            'the note rides every turn of a three-hour lock; "just" '
+            'read wrong after the first reply',
+      );
+      final soft = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        70,
+        12,
+        true,
+        refractorySoft: true,
+      );
+      expect(soft, contains('oversensitive after climax'));
+      expect(soft, contains('desire stays up'));
+      expect(soft, contains('tenderness, not rejection'));
+      expect(
+        soft,
+        contains('(-3 to +5)'),
+        reason:
+            'both modes keep the '
+            'gentle band',
+      );
+      expect(soft, isNot(contains('low desire')));
+      expect(
+        RealismPromptFragments.arousalSection('Nia', 'You', 30, 0, true),
+        isNot(contains('NOTE')),
+      );
+    });
+  });
+
+  group('warmth tail (PR 4)', () {
+    NsfwService tailSvc({required Refractory r, int? arousal}) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      if (arousal != null) n.setArousalLevel(arousal);
+      return n;
+    }
+
+    String tailText(Refractory r, {int? arousal}) => createTestNsfw(
+      nsfwSvc: tailSvc(r: r, arousal: arousal),
+      activeChar: CharacterCard(name: 'Nia'),
+    ).buildNsfwCooldownInjection();
+
+    const cleared = Refractory(tail: Refractory(minutes: 45, total: 45));
+
+    test('the tail rung replaces neutral silence — warmth words only', () {
+      final t = tailText(cleared, arousal: 10);
+      expect(t, contains('still riding a warm afterglow'));
+      expect(t, contains('small kindnesses land harder'));
+      expect(t, contains('any desire that has come back cools slowly'));
+      expect(t, isNot(contains('chasing release')));
+      // The same body with no tail says nothing at 10 — the tail rung is
+      // the only difference.
+      expect(
+        tailText(Refractory.none, arousal: 10),
+        isEmpty,
+        reason: 'without the seeded warmth the ladder stays silent',
+      );
+    });
+
+    test('the tail yields to strong desire and to a soured body', () {
+      expect(
+        tailText(cleared, arousal: 55),
+        contains('chasing release'),
+        reason: 'a body that is genuinely hungry again speaks the real rung',
+      );
+      expect(
+        tailText(cleared, arousal: -30),
+        contains('physically closed-off'),
+        reason: 'the tail never overrules aversion',
+      );
+      expect(
+        tailText(
+          const Refractory(
+            minutes: 30,
+            total: 60,
+            opened: true,
+            tail: Refractory(minutes: 45, total: 45),
+          ),
+          arousal: 10,
+        ),
+        isNot(contains('still riding a warm afterglow')),
+        reason: 'the lock rung speaks while the lock runs — tail is frozen',
+      );
+    });
+
+    test('the tail rung speaks for a hard body too, and says no pronoun', () {
+      final t = tailText(cleared, arousal: 0);
+      expect(t, contains('still riding a warm afterglow'));
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      final rungs = [
+        tailText(cleared, arousal: -5),
+        tailText(cleared, arousal: 5),
+        tailText(cleared, arousal: 20),
+        tailText(cleared, arousal: 35),
+        for (final a in [-80, -40, 10, 30, 55, 80, 100])
+          tailText(
+            const Refractory(
+              minutes: 40,
+              total: 60,
+              opened: true,
+              tail: Refractory(minutes: 20, total: 20),
+            ),
+            arousal: a,
+          ),
+      ];
+      for (final rung in rungs) {
+        expect(genders.hasMatch(rung), isFalse, reason: 'sloppy: $rung');
+      }
+    });
+
+    test('the eval note holds arousal through the tail instead of cooling', () {
+      final tailed = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        20,
+        0,
+        true,
+        warmthTailMinutes: 40,
+      );
+      expect(tailed, contains('still riding a warm afterglow after climax'));
+      expect(tailed, contains('HOLD arousal where it is (return 0)'));
+      expect(
+        tailed,
+        isNot(contains('post-orgasm refractory')),
+        reason: 'the lock note belongs to the lock, the tail note to the tail',
+      );
+      final plain = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        20,
+        0,
+        true,
+      );
+      expect(
+        plain,
+        isNot(contains('still riding a warm afterglow')),
+        reason: 'no tail, no note',
+      );
+    });
+  });
+
+  // Recovery overhaul PR 5: the mutual opening. One variant per mode,
+  // replacing the partner-facing clause only while the beat's climax
+  // verdict stamped {{user}} came too — everywhere else today's copy
+  // ships verbatim, and the pronoun-free contract still holds.
+  group('mutual opening (PR 5)', () {
+    String mutualText(
+      Refractory r, {
+      required bool mutual,
+      String name = 'Nia',
+    }) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      return NsfwInjection(
+        nsfwService: n,
+        getRealismEnabled: () => true,
+        getActiveCharacter: () => CharacterCard(name: name),
+        getIsGroupNonObserverMode: () => false,
+        getCurrentSpeakerIdForRealism: () => 'c1',
+        getGroupCharacters: () => const [],
+        getCharacterIdFromCard: (c) => c.dbId?.toString() ?? c.name,
+        getMutualOpening: () => mutual,
+      ).buildNsfwCooldownInjection();
+    }
+
+    test('a mutual hard opening trades isolation for shared wreck', () {
+      final t = mutualText(Refractory.fromJudgeTurns(6), mutual: true);
+      expect(t, contains('just climaxed — still trembling, flushed'));
+      expect(t, contains('came undone together'));
+      expect(t, contains('neither willing to move first'));
+      expect(t, isNot(contains('If {{user}} starts something sexual again')));
+      expect(
+        t,
+        contains('cannot be answered'),
+        reason: 'the hard lock stays true even when it is shared',
+      );
+    });
+
+    test('the hard opening without the stamp ships today\'s copy verbatim', () {
+      expect(
+        mutualText(Refractory.fromJudgeTurns(6), mutual: false),
+        contains('If {{user}} starts something sexual again'),
+      );
+    });
+
+    test('a mutual soft opening shares the wind-down', () {
+      final t = mutualText(Refractory.tenderness([0]), mutual: true);
+      expect(t, contains('oversensitive in the best way'));
+      expect(t, contains('came undone together'));
+      expect(t, contains('the wind-down is shared'));
+      expect(t, isNot(contains('a flinch that turns into pulling closer')));
+    });
+
+    test('the soft opening without the stamp ships today\'s copy verbatim', () {
+      expect(
+        mutualText(Refractory.tenderness([0]), mutual: false),
+        contains('a flinch that turns into pulling closer'),
+      );
+    });
+
+    test('a mid-window body never speaks the mutual opening', () {
+      // The stamp is opening-turn-only: past the first reply the normal
+      // tender rung ships even if the closure wrongly says mutual.
+      final t = mutualText(
+        const Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10, 0],
+        ),
+        mutual: true,
+      );
+      expect(t, contains('still humming from it'));
+      expect(t, isNot(contains('came undone together')));
+    });
+
+    test('the mutual rungs speak no gendered pronoun', () {
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      for (final t in [
+        mutualText(Refractory.fromJudgeTurns(6), mutual: true),
+        mutualText(Refractory.tenderness([0]), mutual: true),
+      ]) {
+        expect(
+          t,
+          isNot(contains(genders)),
+          reason:
+              'the mutual rungs interpolate \$name and speak of the '
+              'body — never a gendered pronoun: $t',
+        );
+      }
+    });
+
+    test('the refractory note colors shared wind-down only when told', () {
+      final mutual = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        30,
+        45,
+        true,
+        mutualOpening: true,
+      );
+      expect(mutual, contains('came undone together'));
+      expect(mutual, contains('shared recovery, not distance'));
+      expect(
+        mutual,
+        contains('(-3 to +5)'),
+        reason:
+            'the sentence colors how low desire reads — the band is '
+            'the same law',
+      );
+      final plain = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        30,
+        45,
+        true,
+      );
+      expect(plain, isNot(contains('came undone together')));
+      final softMutual = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        30,
+        45,
+        true,
+        refractorySoft: true,
+        mutualOpening: true,
+      );
+      expect(softMutual, contains('came undone together'));
+      expect(softMutual, contains('oversensitive after climax'));
+    });
+
+    test('the prompt-builder chain carries the flag to the note', () {
+      // The eval call sites reach the fragment through the builder —
+      // silently dropping the param mid-chain must fail something.
+      final p = RealismPromptBuilder.emotionalEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+        mutualOpening: true,
+      );
+      expect(p, contains('came undone together'));
+    });
+  });
+
+  // Recovery overhaul PR 7: the bonding surge is ONE conditional clause
+  // speaking through every afterglow window (hard note, soft note, tail
+  // note, bond section) — conditioned on wanted intimacy plus warmth, with
+  // the duty clause (the dissociation pin) every time.
+  group('the bond surge is one conditional (PR 7)', () {
+    const duty =
+        'if it was duty, transaction, or skill on autopilot, the body '
+        'cools on schedule and the heart may not follow — a flat or '
+        'dipped bond is the honest score there';
+
+    String hardNote() => RealismPromptFragments.arousalSection(
+      'Nia',
+      'You',
+      30,
+      45,
+      true,
+      bondScoredHere: true,
+    );
+    String softNote() => RealismPromptFragments.arousalSection(
+      'Nia',
+      'You',
+      30,
+      45,
+      true,
+      refractorySoft: true,
+      bondScoredHere: true,
+    );
+    String tailNote() => RealismPromptFragments.arousalSection(
+      'Nia',
+      'You',
+      20,
+      0,
+      true,
+      warmthTailMinutes: 40,
+      bondScoredHere: true,
+    );
+    String bond() => RealismPromptFragments.bondSection('Nia', 'You');
+
+    test('every window speaks the conditional', () {
+      for (final (name, text) in [
+        ('hard refractory note', hardNote()),
+        ('soft refractory note', softNote()),
+        ('warmth tail note', tailNote()),
+        ('bond section', bond()),
+      ]) {
+        expect(
+          text,
+          contains(
+            'If the climax was wanted and Nia holds real warmth toward '
+            'You, affectionate contact during the afterglow counts more '
+            'toward short-term bond',
+          ),
+          reason: '$name lost the surge — the copy drifted',
+        );
+        expect(
+          text,
+          contains(duty),
+          reason:
+              '$name lost the duty clause — the dissociation archetype '
+              'must have a legal "the heart did not follow" reading',
+        );
+        expect(
+          text,
+          isNot(contains('{{user}}')),
+          reason: 'judge lanes resolve no macros — $name leaks the token',
+        );
+        // Notes join the clause after a single space; the bond rubric
+        // indents it two like its siblings. The artifact is one extra
+        // space MORE than that (clause keeps no leading space itself).
+        expect(
+          text,
+          isNot(
+            contains(
+              name == 'bond section' ? '   If the climax' : '  If the climax',
+            ),
+          ),
+          reason: '$name double-spaces before the clause',
+        );
+      }
+    });
+
+    test('one copy: all four emit the identical sentence', () {
+      // The drift pin, structural: extract the clause each surface
+      // actually emitted and require byte equality. A paraphrase in any
+      // one window fails here even if a loose contains() would pass.
+      String? extracted;
+      for (final (name, text) in [
+        ('hard', hardNote()),
+        ('soft', softNote()),
+        ('tail', tailNote()),
+        ('bond', bond()),
+      ]) {
+        final start = text.indexOf('If the climax was wanted');
+        expect(start, greaterThan(-1), reason: '$name lacks the clause');
+        final end = text.indexOf('.', start + duty.length) + 1;
+        final clause = text.substring(start, end);
+        extracted ??= clause;
+        expect(clause, extracted, reason: '$name paraphrased the surge');
+      }
+    });
+
+    test('no windows off, no clause on the bare arousal path', () {
+      // The clause rides afterglow surfaces, not every arousal line: a
+      // plain turn with no refractory and no tail must not read about
+      // someone else's afterglow. (The bond section keeps it always —
+      // it is conditional prose, inert outside a scene.)
+      final bare = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        10,
+        0,
+        true,
+      );
+      expect(bare, isNot(contains('the climax was wanted')));
+    });
+
+    test('the emotional judge gets no dangling surge (review M1)', () {
+      // The multi-call lane serves every local backend, and its emotional
+      // judge scores emotion + arousal_delta only — bond advice on that
+      // prompt has no field, and small models pour it into the number
+      // that IS there. The notes carry the clause only when the same
+      // prompt scores bond; the trio's advice rides bondSection instead.
+      final emotional = RealismPromptBuilder.emotionalEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+      );
+      expect(emotional, isNot(contains('the climax was wanted')));
+      expect(emotional, contains('post-orgasm refractory'));
+      final relationship = RealismPromptFragments.bondSection('Nia', 'You');
+      expect(
+        relationship,
+        contains('the climax was wanted'),
+        reason: 'the trio must still get the surge where the field lives',
+      );
+    });
+
+    test('the fused prompt speaks the surge twice — bond line + note', () {
+      final fused = RealismPromptBuilder.oneShotEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+      );
+      expect(
+        RegExp('the climax was wanted').allMatches(fused).length,
+        2,
+        reason:
+            'bond section line + the refractory note, one copy each '
+            '(double-emphasis is accepted cost, path-complete §2)',
+      );
+      expect(fused, contains(duty));
+    });
+  });
+
+  // Recovery overhaul PR 8: the grey drift. Opt-in per card, stamped at
+  // the first reading, and every surface it touches keeps the old copy
+  // verbatim when the window is closed.
+  group('grey-drift opening (PR 8)', () {
+    String pcdText(
+      Refractory r, {
+      required bool pcd,
+      bool mutual = false,
+      String name = 'Nia',
+    }) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      return NsfwInjection(
+        nsfwService: n,
+        getRealismEnabled: () => true,
+        getActiveCharacter: () => CharacterCard(name: name),
+        getIsGroupNonObserverMode: () => false,
+        getCurrentSpeakerIdForRealism: () => 'c1',
+        getGroupCharacters: () => const [],
+        getCharacterIdFromCard: (c) => c.dbId?.toString() ?? c.name,
+        getMutualOpening: () => mutual,
+        getPcdActive: () => pcd,
+      ).buildNsfwCooldownInjection();
+    }
+
+    test('a grey hard opening keeps the lock truth and names the drift', () {
+      final t = pcdText(Refractory.fromJudgeTurns(6), pcd: true);
+      expect(t, contains('just climaxed — still trembling, flushed'));
+      expect(t, contains('sudden grey drift'));
+      expect(t, contains('not sad about anything, and nothing {{user}} did'));
+      expect(
+        t,
+        contains('cannot be answered'),
+        reason: 'the drift is mood — the hard lock stays a hard lock',
+      );
+    });
+
+    test('a grey soft opening lets the drift pass through', () {
+      final t = pcdText(Refractory.tenderness([0]), pcd: true);
+      expect(t, contains('sudden grey drift'));
+      expect(t, contains('closeness is still wanted'));
+      expect(t, contains('passes through on its own'));
+    });
+
+    test('the grey drift outranks the mutual clause on the opening', () {
+      final t = pcdText(Refractory.fromJudgeTurns(6), pcd: true, mutual: true);
+      expect(t, contains('sudden grey drift'));
+      expect(
+        t,
+        isNot(contains('came undone together')),
+        reason: 'one rung per beat — the opt-in specific mood wins the slot',
+      );
+    });
+
+    test('the grey drift outranks the mutual clause on the SOFT rung too', () {
+      // The hard rung's ordering has a guard; a refactor that flips only
+      // the soft branch's order must trip one as well.
+      final t = pcdText(Refractory.tenderness([0]), pcd: true, mutual: true);
+      expect(t, contains('sudden grey drift'));
+      expect(t, isNot(contains('the wind-down is shared')));
+    });
+
+    test('a closed window ships the mutual and default copy untouched', () {
+      expect(
+        pcdText(Refractory.fromJudgeTurns(6), pcd: false, mutual: true),
+        contains('came undone together'),
+      );
+      final plain = pcdText(Refractory.fromJudgeTurns(6), pcd: false);
+      expect(plain, isNot(contains('grey drift')));
+      expect(
+        plain,
+        contains('the body simply cannot respond yet'),
+        reason: 'the PR 3 hard rung, byte for byte',
+      );
+    });
+
+    test('a mid-window body never speaks the grey opening', () {
+      // The rung is opening-turn-only even while the window runs — the
+      // window's later turns color the EMOTION eval, not the ladder.
+      final t = pcdText(
+        const Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10, 0],
+        ),
+        pcd: true,
+      );
+      expect(t, contains('still humming from it'));
+      expect(t, isNot(contains('grey drift')));
+    });
+
+    test('the grey rungs speak no gendered pronoun', () {
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      for (final t in [
+        pcdText(Refractory.fromJudgeTurns(6), pcd: true),
+        pcdText(Refractory.tenderness([0]), pcd: true),
+      ]) {
+        expect(
+          t,
+          isNot(contains(genders)),
+          reason:
+              'the grey rungs interpolate \$name and speak of the '
+              'body — never a gendered pronoun: $t',
+        );
+      }
+    });
+
+    test('the emotion note invites the grey read and pins bond untouched', () {
+      final note = RealismPromptFragments.emotionSection(
+        'Nia',
+        const [],
+        userName: 'You',
+        pcdActive: true,
+      );
+      expect(note, contains('"wistful" or "tearful" is an honest read'));
+      expect(note, contains('something unnameable after the peak'));
+      expect(note, contains('NOT a reaction to You'));
+      expect(
+        note,
+        contains('bond and trust stay exactly as they were'),
+        reason:
+            'the hard guard: dysphoria is weather, not a verdict on '
+            'the bond — and the fused prompt must say so',
+      );
+      expect(
+        RealismPromptFragments.emotionSection('Nia', const []),
+        isNot(contains('grey')),
+        reason: 'default reads are today\'s emotion rubric verbatim',
+      );
+    });
+
+    test('both eval lanes carry the note only when the window is open', () {
+      final emotional = RealismPromptBuilder.emotionalEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+        pcdActive: true,
+      );
+      expect(emotional, contains('something unnameable after the peak'));
+      expect(
+        RealismPromptBuilder.emotionalEvalPrompt(
+          charName: 'Nia',
+          userName: 'You',
+          dossier: '',
+          standing: '',
+          recent: '',
+          arousalEnabled: true,
+          arousalLevel: 30,
+          refractoryMinutesLeft: 45,
+        ),
+        isNot(contains('unnameable after the peak')),
+      );
+      final fused = RealismPromptBuilder.oneShotEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        pcdActive: true,
+      );
+      expect(fused, contains('bond and trust stay exactly as they were'));
+      expect(
+        RealismPromptBuilder.oneShotEvalPrompt(
+          charName: 'Nia',
+          userName: 'You',
+          dossier: '',
+          standing: '',
+          recent: '',
+          arousalEnabled: true,
+          arousalLevel: 30,
+        ),
+        isNot(contains('unnameable after the peak')),
+      );
     });
   });
 }

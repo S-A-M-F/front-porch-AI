@@ -255,6 +255,8 @@ class GenEnhancer {
           FrontPorchExtensions(needsSimEnabled: true);
       // The proposal starts with no lists: Review shows only what this
       // pass proposed and merges it over the original at "Use this".
+      // Structured sex carries from the source; an enhance-resolved one
+      // (params or the stamped voice) updates it (recovery prior, PR 2).
       final proposal = sourceExt.copyWith(
         ambitions: const [],
         likes: const [],
@@ -262,6 +264,10 @@ class GenEnhancer {
         intimateInto: const [],
         intimateNotInto: const [],
         inventory: const {},
+        sex: () {
+          final v = normalizeCharacterSex(resolved.sex);
+          return v.isEmpty ? null : v;
+        }(),
       );
       if (selection.greetings) {
         card.frontPorchExtensions = proposal.copyWith(

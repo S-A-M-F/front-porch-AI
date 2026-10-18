@@ -8,6 +8,8 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/climax_eval.dart';
@@ -20,6 +22,54 @@ import 'package:front_porch_ai/services/chat/realism_scope.dart';
 import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat/story_clock_writer.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
+
+/// PR 8 (post-coital dysphoria): is the reply about to be generated still
+/// inside the grey-drift window seeded by a `pcd`-stamped climax by
+/// [speakerId]? The window is the opening turn plus that speaker's NEXT TWO
+/// replies, counted from message history (their replies strictly after the
+/// stamped climax), so regen and delete rewind it for free — no new state.
+/// Only [speakerId]'s replies advance the clock, so in a group another
+/// member's turns do not burn the window; a null [speakerId] (1:1) counts
+/// every non-user reply. [climaxStamped] decides which reply seeded it and
+/// [speakerOf] attributes one — both injected so this leaf stays testable
+/// and knows nothing about groups or guests.
+bool pcdWindowActive({
+  required List<ChatMessage> messages,
+  required String? speakerId,
+  required bool Function(ChatMessage) isUser,
+  required bool Function(ChatMessage) climaxStamped,
+  required bool Function(ChatMessage) pcdStamped,
+  required String? Function(ChatMessage) speakerOf,
+}) {
+  bool mine(ChatMessage m) => speakerId == null || speakerOf(m) == speakerId;
+  // Status banners are not story (`_refractoryBeatMinutes` below lives by
+  // the same law): in 1:1 they carry no speaker to attribute, so they
+  // must never spend a reply tick of the window. Guests arrive through
+  // [isUser] at the closure.
+  bool story(ChatMessage m) => !isUser(m) && m.sender != 'System';
+  ChatMessage? beat;
+  for (var i = messages.length - 1; i >= 0; i--) {
+    final m = messages[i];
+    if (!story(m) || !mine(m)) continue;
+    if (!climaxStamped(m)) continue;
+    // This body's NEWEST climax decides: a fresh solo beat closes an older
+    // grey one rather than reviving it. Another member's climax is not
+    // this body's business — each window runs on its own history.
+    beat = pcdStamped(m) ? m : null;
+    break;
+  }
+  final climaxAt = beat == null ? -1 : messages.indexOf(beat);
+  if (climaxAt < 0) return false;
+  var since = 0;
+  for (var i = climaxAt + 1; i < messages.length; i++) {
+    final m = messages[i];
+    if (!story(m)) continue;
+    if (speakerId != null && !mine(m)) continue;
+    since++;
+  }
+  // Opening (0 since) + two more (1, 2); the third onward is normal ladder.
+  return since <= 2;
+}
 
 /// Afterglow's post-generation climax check — the one place it is gated, fired
 /// and applied — and the refractory it starts, run down on the story clock.
@@ -35,10 +85,15 @@ class AfterglowPass {
     required this.fusedReply,
     required this.isGuestAuthoredMessage,
     required this.resolveGroupSpeakerForMessage,
-  });
+    double Function()? randomSource,
+  }) : _random = randomSource ?? _defaultRandom;
 
   final RealismScope _scope;
   final ClimaxEval _eval;
+  final double Function() _random;
+
+  static final Random _defaultRng = Random();
+  static double _defaultRandom() => _defaultRng.nextDouble();
 
   /// The fused reply-facts carrier (`ReplyFacts.raw`).
   final String? Function() fusedReply;
@@ -69,17 +124,19 @@ class AfterglowPass {
   /// cards while its row showed green.
   bool get active => _realismEnabled && _nsfwService.nsfwCooldownEnabled;
 
-  /// Ask whether the reply narrated the character's own climax, and start the
-  /// refractory if it did.
+  /// Ask whether the reply narrated the character's own climax, and start
+  /// the recovery the card's profile resolves to — a hard lock, or a soft
+  /// body's tenderness window and peak (PR 3).
   ///
   /// On Continue the caller passes the NEW text only (2026-08-12; the pass
   /// used to be skipped outright): a climax the first half already registered
   /// is not re-claimed by its aftermath, and one the continuation adds
-  /// finally starts its refractory. `applyClimaxEffects` is absolute
-  /// (turns × 15 story minutes, opening turn unspoken, arousal = 0), so even
-  /// a re-affirmation cannot stack; the metadata guard below keeps the FIRST
-  /// reading's pre-climax arousal, because by the second reading it is
-  /// already 0.
+  /// finally lands. The hard path stays absolute (fixed minutes, else turns
+  /// × 15, opening turn unspoken, arousal 0), so a re-affirmation cannot
+  /// stack. The soft path reads the reply's `climax_triggered` stamp: on its
+  /// continuation a climax restarts the window but adds no peak (decision
+  /// 4). The metadata guard below keeps the FIRST reading's pre-climax body,
+  /// because by the second reading it has already moved.
   Future<void> runClimaxPass(String reply) async {
     if (!active) return;
     if (reply.trim().isEmpty) return;
@@ -92,32 +149,82 @@ class AfterglowPass {
     // SAME parser the standalone call feeds. A fused answer without a
     // verdict skips, exactly as a failed standalone call does.
     final fused = fusedReply();
-    final turns = fused != null
-        ? ClimaxEval.parseRefractory(fused)
-        : await _eval.detect(
-            charName: speaker.name,
-            // Clamped like every judge window (eval diet, hostile
-            // review 2026-08-11).
-            reply: clampEvalMessage(reply),
-            // The same window the needs eval uses, from the one shared helper —
-            // this was a hand-rolled copy until Pockets needed a third.
-            recentExchange: recentExchange(_messages),
-            // The speaker's own card — post-gen has already made the active
-            // character this turn's speaker, so groups judge the right body.
-            physiology: ClimaxEval.physiologyFor(speaker),
-          );
-    if (turns == null) return;
+    final ({int turns, bool userClimaxed})? verdict;
+    if (fused != null) {
+      final fusedTurns = ClimaxEval.parseRefractory(fused);
+      verdict = fusedTurns == null
+          ? null
+          : (
+              turns: fusedTurns,
+              // PR 5: the SAME verdict's mutual flag through the SAME
+              // lenient parser on both transports — no second call, no
+              // inference.
+              userClimaxed: ClimaxEval.parseUserClimaxed(fused),
+            );
+    } else {
+      verdict = await _eval.detect(
+        charName: speaker.name,
+        // Clamped like every judge window (eval diet, hostile
+        // review 2026-08-11).
+        reply: clampEvalMessage(reply),
+        // The same window the needs eval uses, from the one shared helper —
+        // this was a hand-rolled copy until Pockets needed a third.
+        recentExchange: recentExchange(_messages),
+        // The speaker's own card — post-gen has already made the active
+        // character this turn's speaker, so groups judge the right body.
+        physiology: ClimaxEval.physiologyFor(speaker),
+      );
+    }
+    if (verdict == null) return;
+    final turns = verdict.turns;
+    final userClimaxed = verdict.userClimaxed;
 
-    // Metadata first, then the effect — applyClimaxEffects zeroes arousal, so
-    // reading it afterwards would record 0 as the pre-climax level and the
-    // chip would say the character peaked from nothing.
+    // Metadata first, then the effect — applyClimaxEffects zeroes arousal
+    // (hard) or trims it by the peak cost (soft), so reading it afterwards
+    // would record the post-climax body: the chip would say the character
+    // peaked from nothing, and a regen revert would restore the wrong state.
     final preClimaxArousal = _nsfwService.arousalLevel;
+    final preClimaxBody = _nsfwService.refractory;
+    var newPeak = true;
     if (_messages.isNotEmpty && !_messages.last.isUser) {
       final msg = _messages.last;
       final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
-      if (meta['climax_triggered'] != true) {
+      if (meta['climax_triggered'] == true) {
+        // Continue of the climax reply (the pass reads only the new text):
+        // a climax the continuation adds restarts the soft window but adds
+        // no peak (decision 4), so a misread of the aftermath cannot stack
+        // peaks. Hard bodies re-apply absolutely, exactly as before.
+        newPeak = false;
+        // PR 5 review (M1): the continuation's verdict still COUNTS for the
+        // mutual flag — the lock re-arms on this branch, so an opening turn
+        // the judge just declared mutual must not speak the solitary rung.
+        // Merge monotonically: a continuation can raise mutual, never
+        // un-stamp it (the first reading still owns everything else).
+        if (userClimaxed && meta['user_climaxed'] != true) {
+          meta['user_climaxed'] = true;
+          msg.activeMetadata = meta;
+        }
+      } else {
         meta['climax_triggered'] = true;
         meta['pre_climax_arousal'] = preClimaxArousal;
+        // PR 5: the mutual beat rides the same verdict — stamped only when
+        // true (absence is the default the whole stack already reads), read
+        // once on the opening turn, and re-rolled by regen with its
+        // timeline. The receipt body is unchanged.
+        if (userClimaxed) meta['user_climaxed'] = true;
+        // PR 8: the grey-drift roll rides the SAME first reading, off the
+        // speaker's own card dial through the injectable source. Stamped
+        // only on a hit; absence is the default. Regen re-rolls because
+        // regen re-runs this pass with fresh history — no extra state.
+        final pcdProfile =
+            speaker.frontPorchExtensions?.recovery ?? RecoveryProfile.auto;
+        if (pcdProfile.pcdRollHit(_random)) meta['pcd'] = true;
+        // The full pre-climax body — minutes, opened flag, soft flag, peak
+        // stamps — beside the arousal. The regen revert restores THIS
+        // instead of `none`, so regenerating a soft peak 2 leaves peak 1
+        // and its window in place (replies stamped before PR 3 carry no
+        // body key and keep falling back to `none`).
+        meta['pre_climax_refractory'] = preClimaxBody.toSnapshot();
         // Through the setter, never `swipeMetadata[swipeIndex] = ...`: the
         // list is persisted only when some entry is non-null, so a reloaded
         // (or imported) message that has 4 swipes and no metadata comes back
@@ -128,12 +235,47 @@ class AfterglowPass {
         msg.activeMetadata = meta;
       }
     }
-    _nsfwService.applyClimaxEffects(turns: turns);
+    // The speaker's recovery profile (their card — the same one the judge
+    // saw): a fixed hard-lock length replaces the judge's number, and the
+    // resolved kind decides which body physics the climax lands with.
+    final ext = speaker.frontPorchExtensions;
+    final recovery = ext?.recovery ?? RecoveryProfile.auto;
+    final fixed = recovery.recoveryMinutes;
+    final kind = recovery.resolvedMode(ext?.sex ?? '');
+    final soft = kind == kRecoveryModeSoft;
+    // PR 4's warmth tail: half the would-be lock, floor 15, cap 120. A
+    // hard card judged to 0 gets neither lock nor tail. A soft card's
+    // would-be lock is the JUDGE's number — `fixed` is a hard-lock length
+    // and means nothing under a soft mode (a hand-edited card can carry
+    // both; the mode wins).
+    final tailMinutes = warmthTailMinutes(
+      soft
+          ? turns * kRefractoryMinutesPerTurn
+          : (fixed ?? turns * kRefractoryMinutesPerTurn),
+      soft: soft,
+    );
+    _nsfwService.applyClimaxEffects(
+      turns: turns,
+      fixedMinutes: fixed,
+      soft: soft,
+      newPeak: newPeak,
+      tailMinutes: tailMinutes,
+    );
 
     debugPrint(
-      '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
-      'refractory ${_nsfwService.refractoryMinutesRemaining} min',
+      soft
+          ? '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
+                'tenderness window '
+                '${_nsfwService.refractoryMinutesRemaining} min, peak '
+                '${_nsfwService.refractoryPeaksLastHour} '
+                '(${newPeak ? 'stamped' : 'continue, no new peak'})'
+          : '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
+                'refractory ${_nsfwService.refractoryMinutesRemaining} min '
+                '($kind, ${fixed != null ? 'card-fixed' : 'judge'})',
     );
+    if (tailMinutes > 0 && newPeak) {
+      debugPrint('[Afterglow] warmth tail seeded: $tailMinutes min to follow');
+    }
     _scope.notify();
   }
 
@@ -241,7 +383,14 @@ class AfterglowPass {
     if (_activeGroup != null && id.isEmpty) return;
     final live = _activeGroup == null || id == loadedId;
     final before = _refractoryBody(id, live: live);
-    if (!before.refractory.running) return;
+    // The gate is "nothing left to age", not "no lock running": a soft
+    // body's peak stamps (and PR 4's warmth tail) outlive the window, and
+    // they age on this same beat (decision 5).
+    if (!before.refractory.running &&
+        before.refractory.peaks.isEmpty &&
+        !before.refractory.tailRunning) {
+      return;
+    }
     final after = step(before);
     if (after == before) return;
     _setRefractoryBody(id, after, live: live);

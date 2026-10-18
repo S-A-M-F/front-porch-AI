@@ -41,11 +41,24 @@ enum ChaosCategory {
 /// group chats only). [adult] events only reach the wheel when the chat's
 /// spicy switch is on AND the app-wide 18+ themes switch is on.
 class ChaosEvent {
-  const ChaosEvent(this.category, this.text, {this.adult = false});
+  const ChaosEvent(
+    this.category,
+    this.text, {
+    this.adult = false,
+    this.desireAsserting = false,
+  });
 
   final ChaosCategory category;
   final String text;
   final bool adult;
+
+  /// The event ASSERTS the character's own desire or arousal ("visibly
+  /// aroused", "in the mood"). A body mid a hard refractory lock cannot
+  /// honestly speak that (recovery overhaul PR 6: prose-arousal under
+  /// `Lust: 0` makes players stop trusting the bar), so the wheel drops
+  /// these while the lock runs. Soft-gate bodies keep desire up — legal
+  /// for them; every other event stays legal for everyone.
+  final bool desireAsserting;
 
   /// Whether the event names a second cast member and so needs a group.
   bool get needsPartner => text.contains('{{other}}');

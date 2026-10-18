@@ -66,6 +66,7 @@ class CreateCharacterSaver {
       dislikes: draft.realismDislikes,
       intimateInto: draft.realismIntimateInto,
       intimateNotInto: draft.realismIntimateNotInto,
+      recovery: draft.realismRecovery,
       // Through the shared normalizer, so a wardrobe typed here and the same
       // wardrobe typed in the edit page land on the card identically. The
       // neighbouring lists deliberately stay raw and are tidied at parse

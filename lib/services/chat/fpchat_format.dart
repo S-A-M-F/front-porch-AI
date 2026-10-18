@@ -53,6 +53,12 @@ const Set<String> kFpchatRealismStateCoreKeys = {
   'refractoryMinutesRemaining',
   'refractoryMinutesTotal',
   'refractoryOpened',
+  // PR 3 soft gate — only present on bodies that have one (toSnapshot
+  // omits defaults), and absent reads hard lock / no peaks.
+  'refractorySoft',
+  'refractoryPeakMinutes',
+  // PR 4 warmth tail — the nested body, only present when one was seeded.
+  'refractoryTail',
   // No longer written; files from before minutes carry them, and the
   // restore reads them once as turns × 15.
   'cooldownTurnsRemaining',

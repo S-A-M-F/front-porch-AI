@@ -78,6 +78,13 @@ abstract final class GroupRealismKeys {
   static const refractoryMinutesTotal = RefractoryKeys.total;
   static const refractoryOpened = RefractoryKeys.opened;
 
+  /// PR 3 soft gate — the window kind and this hour's peak stamps.
+  static const refractorySoft = RefractoryKeys.soft;
+  static const refractoryPeaks = RefractoryKeys.peaks;
+
+  /// PR 4 warmth tail — the nested body, frozen until the outer one ends.
+  static const refractoryTail = RefractoryKeys.tail;
+
   /// Saved before the refractory counted minutes; read once as turns × 15.
   static const legacyCooldownTurnsRemaining = RefractoryKeys.legacyTurns;
   static const legacyCooldownTurnsTotal = RefractoryKeys.legacyTotal;
@@ -124,6 +131,9 @@ abstract final class GroupRealismKeys {
     refractoryMinutesRemaining,
     refractoryMinutesTotal,
     refractoryOpened,
+    refractorySoft,
+    refractoryPeaks,
+    refractoryTail,
     legacyCooldownTurnsRemaining,
     legacyCooldownTurnsTotal,
     emotion,
@@ -218,10 +228,24 @@ class GroupMemberRealism {
   set nsfwCooldownEnabled(bool? v) =>
       _data[GroupRealismKeys.nsfwCooldownEnabled] = v;
 
-  /// Story minutes; a member saved before minutes reads its turns × 15. The
-  /// setter writes the minute keys and leaves any old turn keys untouched.
+  /// Story minutes; a member saved before minutes reads its turns × 15.
+  /// Absence is MEANINGFUL on the replaceable keys (PR 4 hostile review): a
+  /// finished tail, expired peaks, or a hard body replacing a soft one must
+  /// clear the stored value, so it is removed here before the new snapshot
+  /// is merged — a bare addAll left the old key ghosting back on every later
+  /// read and the warmth never ended.
   Refractory get refractory => Refractory.read(_data) ?? Refractory.none;
-  set refractory(Refractory v) => _data.addAll(v.toSnapshot());
+  set refractory(Refractory v) {
+    final snap = v.toSnapshot();
+    for (final k in const [
+      RefractoryKeys.soft,
+      RefractoryKeys.peaks,
+      RefractoryKeys.tail,
+    ]) {
+      if (!snap.containsKey(k)) _data.remove(k);
+    }
+    _data.addAll(snap);
+  }
 
   // ── Emotion ───────────────────────────────────────────────────────────
   String? get emotion => _string(GroupRealismKeys.emotion);
@@ -319,6 +343,14 @@ class GroupMemberRealism {
       'unknown group-realism key "$key" — add it to GroupRealismKeys '
       'instead of reviving stringly access',
     );
-    _data[key] = v;
+    // Clears on null, like `withUser` above: the reader already treats a
+    // missing key as null, and the refractory keys (PR 4) need absence to
+    // be writable — an omitted tail/peaks/soft must be removable, not
+    // stuck under its last value.
+    if (v == null) {
+      _data.remove(key);
+    } else {
+      _data[key] = v;
+    }
   }
 }

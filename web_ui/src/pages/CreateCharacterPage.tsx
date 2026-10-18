@@ -192,7 +192,7 @@ export function CreateCharacterPage() {
 
         {step === 4 && (
           <>
-            <RealismFormSection v={d} set={patch} showIntimate={adultThemes} />
+            <RealismFormSection v={d} set={patch} showIntimate={adultThemes} showChargenSuggestion />
             {d.realismEnabled && <NeedsFormSection v={d} set={patch} clockOn={clockOn} />}
           </>
         )}

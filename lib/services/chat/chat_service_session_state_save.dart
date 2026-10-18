@@ -280,6 +280,20 @@ extension ChatServiceSessionStateSave on ChatService {
           _nsfwService.refractoryMinutesTotal,
         ),
         refractoryOpened: drift.Value(_nsfwService.refractoryOpened),
+        // v59 — the soft gate and its peak stamps (PR 3). Defaults stay
+        // NULL so a hard body's row is byte-identical to a v58 row.
+        refractorySoft: drift.Value(_nsfwService.refractory.soft ? true : null),
+        refractoryPeaks: drift.Value(
+          _nsfwService.refractory.peaks.isEmpty
+              ? null
+              : jsonEncode(_nsfwService.refractory.peaks),
+        ),
+        // v60 — the warmth tail (PR 4). Written while it exists, frozen or
+        // live: a tail asleep under a lock must survive a restart.
+        refractoryTailMinutes: drift.Value(
+          _nsfwService.refractory.tail?.minutes,
+        ),
+        refractoryTailTotal: drift.Value(_nsfwService.refractory.tail?.total),
         trustLevel: drift.Value(_relationshipService.trustLevel),
         activeFixation: drift.Value(_relationshipService.activeFixation),
         fixationLifespan: drift.Value(_relationshipService.fixationLifespan),

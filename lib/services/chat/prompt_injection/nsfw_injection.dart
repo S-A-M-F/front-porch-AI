@@ -52,6 +52,8 @@ const _afterglowNeedsDrive =
 /// finish naturally without an OOC order (otherwise arousal pins at max and
 /// the refractory never fires, since the post-gen climax check only triggers
 /// when the reply depicts release).
+bool _noMutualOpening() => false;
+
 class NsfwInjection {
   final NsfwService nsfwService;
   final bool Function() getRealismEnabled;
@@ -61,6 +63,20 @@ class NsfwInjection {
   final List<CharacterCard> Function() getGroupCharacters;
   final String Function(CharacterCard) getCharacterIdFromCard;
 
+  /// PR 5: whether THIS beat's climax verdict said {{user}} came too. The
+  /// mutual opening rungs fire only when this reads true on the opening
+  /// turn; everywhere else (and every pre-PR-5 chat) reads false and today's
+  /// copy ships verbatim.
+  final bool Function() getMutualOpening;
+
+  /// PR 8: whether the reply being generated sits inside a grey-drift
+  /// (post-coital dysphoria) window seeded by this speaker's `pcd`-stamped
+  /// climax. Inside the opening branch the ladder uses it to swap in the
+  /// grey rung (opt-in; off cards and pre-PR-8 chats read false and today's
+  /// copy ships verbatim). RealismEvals reads the SAME closure for the
+  /// emotion note, whose window runs two replies longer than the opening.
+  final bool Function() getPcdActive;
+
   NsfwInjection({
     required this.nsfwService,
     required this.getRealismEnabled,
@@ -69,6 +85,8 @@ class NsfwInjection {
     required this.getCurrentSpeakerIdForRealism,
     required this.getGroupCharacters,
     required this.getCharacterIdFromCard,
+    this.getMutualOpening = _noMutualOpening,
+    this.getPcdActive = _noMutualOpening,
   });
 
   String _speakerName() {
@@ -95,7 +113,63 @@ class NsfwInjection {
       final total = nsfwService.refractoryMinutesTotal > 0
           ? nsfwService.refractoryMinutesTotal
           : remaining;
+      if (nsfwService.refractory.soft) {
+        // The soft ladder (PR 3, decision 6): capacity never closes, so the
+        // two hard-lock lies ("the body simply cannot respond yet", the
+        // "not yet") become tenderness beats. Pronoun-free contract: these
+        // strings interpolate $name and speak of the body — never a
+        // gendered pronoun (whole-word guard in prompt_injection_test).
+        if (nsfwService.isOpeningAfterglowTurn) {
+          if (getPcdActive()) {
+            // PR 8: the grey drift outranks the mutual clause on the
+            // opening — an opt-in, specific mood beats a general one; the
+            // mutual stamp survives underneath for the eval note's lane.
+            return 'Body: $name just climaxed — trembling and flushed, '
+                'oversensitive in the best way, buzzing rather than wrecked. '
+                'And under the warmth, a sudden grey drift — not sad about '
+                'anything, and nothing {{user}} did; closeness is still '
+                'wanted, and the grey passes through on its own.';
+          }
+          if (getMutualOpening()) {
+            return 'Body: $name just climaxed — trembling and flushed, '
+                'oversensitive in the best way, buzzing rather than wrecked. '
+                '$name and {{user}} came undone together — the wind-down is '
+                'shared: every slow touch goes both ways and closeness is '
+                'answered with closeness; direct attention may still land a '
+                'beat too intense.';
+          }
+          return 'Body: $name just climaxed — trembling and flushed, '
+              'oversensitive in the best way, buzzing rather than wrecked. '
+              'Closeness is wanted now; direct attention may land a beat '
+              'too intense — a flinch that turns into pulling closer.';
+        }
+        return 'Body: $name is still humming from it — touch lands a little '
+            'too intense, a flinch that turns into leaning in. Cuddling, '
+            'slow contact, warm talk: all welcome; direct stimulation '
+            'lands at half weight.';
+      }
       if (nsfwService.isOpeningAfterglowTurn) {
+        if (getPcdActive()) {
+          // PR 8: grey drift first (see the soft branch for the law); the
+          // hard lock's incapacity truth rides along — the drift is mood,
+          // not capacity, and capacity is already out.
+          return 'Body: $name just climaxed — still trembling, flushed, '
+              'oversensitive, blissfully wrecked, with other physical needs '
+              'feeling far away. And under the warmth, a sudden grey drift '
+              '— not sad about anything, and nothing {{user}} did. A new '
+              'advance still cannot be answered, and the drift makes even '
+              'naming wanting closeness hard — let it pass through, it '
+              'will.';
+        }
+        if (getMutualOpening()) {
+          return 'Body: $name just climaxed — still trembling, flushed, '
+              'oversensitive, blissfully wrecked, with other physical needs '
+              'feeling far away. $name and {{user}} came undone together — '
+              'the room went soft at the edges, both wrecked, neither '
+              'willing to move first. A new advance still cannot be answered '
+              'yet: a shared breathless laugh, a hand held instead of '
+              'pushed away, closeness without capacity.';
+        }
         return 'Body: $name just climaxed — still trembling, flushed, '
             'oversensitive, blissfully wrecked, with other physical needs '
             'feeling far away. If {{user}} starts something sexual again the '
@@ -115,7 +189,31 @@ class NsfwInjection {
           '$_afterglowNeedsDrive';
     }
 
+    // Warm again (PR 3, decision 6): the soft body's window ended, but a
+    // peak is still counted this hour, so cuddle time does not snap to the
+    // "chasing release" rung fifteen minutes after climax. No chip for this
+    // beat — the rose chip shows only during the window.
+    if (nsfwService.refractory.soft &&
+        nsfwService.refractoryPeaksLastHour > 0) {
+      return 'Body: $name is warm again — affectionate and open to more, '
+          'easy to reach, but nothing is being chased yet; closeness still '
+          'comes first.';
+    }
+
     final a = nsfwService.arousalLevel;
+
+    // Warmth tail (PR 4): the body is fully clear but seeded warmth is still
+    // owed, in EITHER mode — satisfaction fades on a curve, not at a counter
+    // boundary, so the ladder must not snap from afterglow to silence.
+    // Warmth words only (arousal is low here; claim appetite under a low bar
+    // and the bar-vs-prose break returns). A soured or newly-hungry body
+    // speaks the normal ladder instead — the tail never overrules desire.
+    if (nsfwService.warmthTailActive && a >= 0 && a <= 35) {
+      return 'Body: $name is still riding a warm afterglow — ordinary '
+          'warmth runs deeper than usual today; small kindnesses land '
+          'harder, and any desire that has come back cools slowly.';
+    }
+
     if (a > -16 && a <= 15) return ''; // neutral band — silent
 
     if (a <= -60) {

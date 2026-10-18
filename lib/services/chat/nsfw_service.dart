@@ -101,8 +101,24 @@ class NsfwService {
 
   /// The chip and prompt words for the live refractory (see
   /// [describeRefractory]); empty when none is running.
-  ({String chip, String prompt}) get refractoryWords =>
-      describeRefractory(_refractory.minutes, clockRunning: _isClockRunning());
+  ({String chip, String prompt}) get refractoryWords => describeRefractory(
+    _refractory.minutes,
+    clockRunning: _isClockRunning(),
+    soft: _refractory.soft,
+    peaks: _refractory.peaksLastHour,
+  );
+
+  /// Climaxes counted this story hour (soft gate) — 0 for every hard body.
+  int get refractoryPeaksLastHour => _refractory.peaksLastHour;
+
+  /// The warmth tail (PR 4): the seeded minutes still owed, frozen or not.
+  int get refractoryTailMinutes => _refractory.tail?.minutes ?? 0;
+
+  /// The beat the tail rung speaks on: body fully clear, warmth still owed.
+  bool get warmthTailActive =>
+      !_refractory.running &&
+      _refractory.peaksLastHour == 0 &&
+      refractoryTailMinutes > 0;
 
   /// First Afterglow reply after the climax reply — the only turn that may
   /// force limp / tired / exhausted body language. Later Afterglow turns
@@ -178,16 +194,57 @@ class NsfwService {
     _refractory = r;
   }
 
-  /// The climax pass's one effect on this body: the refractory starts at the
-  /// judge's turns × 15 story minutes with its opening turn unspoken.
+  /// The climax pass's one effect on this body, per the card's resolved
+  /// recovery kind ([soft]).
   ///
-  /// Arousal lands at 0, not negative: post-climax satedness is contentment,
-  /// not aversion — the refractory cooldown carries the "not right now"
-  /// semantics. (The old -3 put the character into the injection ladder's
-  /// negative branches the moment the cooldown expired, reading as repulsion
-  /// right after wanted sex.)
-  void applyClimaxEffects({required int turns}) {
-    _refractory = Refractory.fromJudgeTurns(turns);
+  /// **Hard** (today, untouched): arousal lands at 0 — post-climax
+  /// satedness is contentment, not aversion (the old -3 put the character
+  /// into the injection ladder's negative branches the moment the cooldown
+  /// expired, reading as repulsion right after wanted sex) — and the lock
+  /// starts with its opening turn unspoken. Length: a card's fixed recovery
+  /// minutes ([fixedMinutes], PR 2) replace the judge's number; without them
+  /// the judge's turns × 15 stands. A hard lock of 0 (either source) starts
+  /// no refractory.
+  ///
+  /// **Soft** (PR 3, decision 4): arousal is never zeroed. A new peak costs
+  /// [softPeakCost] and stamps the hour's peak list (cap [kPeakCap]); the
+  /// tenderness window starts (or restarts) fresh. On a Continue of the
+  /// climax reply ([newPeak] false) the window restarts but the body takes
+  /// no second peak and pays no second cost — a misread of the aftermath
+  /// cannot stack peaks.
+  void applyClimaxEffects({
+    required int turns,
+    int? fixedMinutes,
+    bool soft = false,
+    bool newPeak = true,
+    int tailMinutes = 0,
+  }) {
+    if (soft) {
+      // A fresh climax re-seeds the tail (one tail at a time — the newest
+      // warmth wins); a Continue re-verdict keeps the tail the body already
+      // carries, because it adds no body's worth of anything.
+      if (newPeak) {
+        final peak = (_refractory.peaksLastHour + 1).clamp(1, kPeakCap);
+        _arousalLevel = (_arousalLevel - softPeakCost(_arousalLevel, peak))
+            .clamp(-100, 100);
+        final stamps = [..._refractory.peaks, 0];
+        _refractory = Refractory.tenderness(
+          stamps.length <= kPeakCap
+              ? stamps
+              : stamps.sublist(stamps.length - kPeakCap),
+          tailMinutes: tailMinutes,
+        );
+      } else {
+        _refractory = Refractory.tenderness(
+          _refractory.peaks,
+          keepTail: _refractory.tail,
+        );
+      }
+      return;
+    }
+    _refractory = fixedMinutes != null
+        ? Refractory.fromMinutes(fixedMinutes, tailMinutes: tailMinutes)
+        : Refractory.fromJudgeTurns(turns, tailMinutes: tailMinutes);
     _arousalLevel = 0;
   }
 
@@ -196,16 +253,23 @@ class NsfwService {
   /// that actually landed after clamping and refractory physiology, which is
   /// what chips/metadata must record so regen revert stays exact.
   ///
-  /// During the refractory, desire physiology applies: swings are halved (a
+  /// During a **hard** lock, desire physiology applies: swings are halved (a
   /// spent body is slow to stir either way) and the result never digs below
   /// mild disinterest (-10) — satedness is not aversion, so recovering from a
   /// wanted climax must not walk the character into the repelled tiers.
+  /// During a **soft** window (PR 3, decision 4) only gains halve — touch
+  /// lands at half weight — and negatives pass whole: a soft body's desire
+  /// stays up, so a real letdown still reads true.
   int applyEvalArousalDelta(int delta) {
     var effective = delta;
     var floor = -100;
     if (_refractory.running) {
-      effective = (effective / 2).round();
-      floor = _arousalLevel < -10 ? _arousalLevel : -10;
+      if (_refractory.soft) {
+        if (effective > 0) effective = (effective / 2).round();
+      } else {
+        effective = (effective / 2).round();
+        floor = _arousalLevel < -10 ? _arousalLevel : -10;
+      }
     }
     final next = (_arousalLevel + effective).clamp(floor, 100);
     effective = next - _arousalLevel;
@@ -298,11 +362,24 @@ class NsfwService {
   /// _groupRealism entry after an impersonated post-gen / check round.
   /// Extends prior arousal-only to include cooldown + enabled for parity.
   void saveNsfwScalarsToGroup(String charId) {
-    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel'
+    // for compat.
     setGroupValue(charId, 'arousal', _arousalLevel);
     setGroupValue(charId, 'nsfwCooldownEnabled', _nsfwCooldownEnabled);
-    for (final e in _refractory.toSnapshot().entries) {
+    final snap = _refractory.toSnapshot();
+    for (final e in snap.entries) {
       setGroupValue(charId, e.key, e.value);
+    }
+    // Absence is meaningful (PR 4 hostile review): a finished tail, expired
+    // peaks, or a hard body replacing a soft one must clear the member's
+    // stored key, or the old body ghosts back on the next load and the
+    // warmth prose never ends for that speaker.
+    for (final k in const [
+      RefractoryKeys.soft,
+      RefractoryKeys.peaks,
+      RefractoryKeys.tail,
+    ]) {
+      if (!snap.containsKey(k)) setGroupValue(charId, k, null);
     }
   }
 }

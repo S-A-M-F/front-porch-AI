@@ -79,6 +79,28 @@ class RealismPromptFragments {
       'respect on their terms, competence, wit, backbone, obedience, patience, or being challenged.\n'
       '$preferences';
 
+  /// PR 7 (bonding surge): the ONE conditional the afterglow windows speak
+  /// with — the hard and soft refractory notes, the warmth-tail note, and
+  /// the bond section — so the copy cannot drift between them. Conditioned
+  /// on WANTED intimacy plus existing warmth, never on orgasm itself: the
+  /// duty / dissociation archetype must have a legal reading, and the duty
+  /// branch names the honest score (review M2 — a hedged "may not" under
+  /// two unconditional warmth sentences reads as permission to climb).
+  /// The notes only carry it when the SAME prompt scores bond
+  /// ([arousalSection] `bondScoredHere`): dangling bond advice on the
+  /// multi-call emotional judge — whose only lever is `arousal_delta`,
+  /// capped gentle by the very note — hands small models a number to
+  /// inflate (review M1). The trio lane gets the conditional from
+  /// [bondSection] on the relationship judge instead, where the field is.
+  /// Prompt-only — existing bands and authored tastes are the levers; no
+  /// state, no new fields, no scoring code.
+  static String bondSurgeClause(String charName, String userName) =>
+      'If the climax was wanted and $charName holds real warmth toward '
+      '$userName, affectionate contact during the afterglow counts more '
+      'toward short-term bond; if it was duty, transaction, or skill on '
+      'autopilot, the body cools on schedule and the heart may not follow '
+      '— a flat or dipped bond is the honest score there';
+
   static String bondSection(String charName, String userName) =>
       '- "relationship_delta": how this exchange shifted $charName\'s genuine warmth toward $userName '
       '($kMinRelationshipDelta to +$kMaxRelationshipDelta).\n'
@@ -88,6 +110,7 @@ class RealismPromptFragments {
       '±6-9 strongly felt, stays with them | ±10-15 rare, relationship-redefining.\n'
       '  Most ordinary exchanges land between -2 and +2. 0 is the honest score when the turn simply '
       'didn\'t move $charName either way.\n'
+      '  ${bondSurgeClause(charName, userName)}.\n'
       '- "bond_reason": one brief in-character thought from $charName explaining the shift '
       '(e.g. "They actually listened." or "Too much, too fast."), or "none" if the delta is 0.\n';
 
@@ -114,7 +137,12 @@ class RealismPromptFragments {
       '- "trust_reason": one brief in-character thought from $charName about why (e.g. "They kept their '
       'word." or "Nobody is this generous without wanting something."), or "none" if the delta is 0.\n';
 
-  static String emotionSection(String charName, List<String> allowedLabels) =>
+  static String emotionSection(
+    String charName,
+    List<String> allowedLabels, {
+    String userName = 'them',
+    bool pcdActive = false,
+  }) =>
       '- "emotion": $charName\'s dominant emotional state right now (one nuanced word).\n'
       '  Not generic — find the texture: wistful not sad, flustered not happy, prickly not angry. Filter '
       'it through who $charName is: a stoic in deep pain reads "guarded", not "devastated"; a harsh '
@@ -127,15 +155,37 @@ class RealismPromptFragments {
       '- "emotion_change": "held" if this is the mood going in, carrying on; '
       '"stoked" if it is the same feeling but this turn fed it afresh; "moved" '
       'if $charName feels something else now. A feeling that holds eases on '
-      'its own; do not name it stronger just to keep it.\n';
+      'its own; do not name it stronger just to keep it.\n'
+      '${pcdActive ? '  NOTE: just after the peak, $charName may drift grey — "wistful" or '
+                '"tearful" is an honest read right now, cause: something unnameable '
+                'after the peak, NOT a reaction to $userName. The drift is weather, '
+                'not judgment: bond and trust stay exactly as they were.\n' : ''}';
 
   static String arousalSection(
     String charName,
     String userName,
     int currentArousal,
     int refractoryMinutesLeft,
-    bool clockRunning,
-  ) =>
+    bool clockRunning, {
+    bool refractorySoft = false,
+
+    /// PR 4: minutes owed on the warmth tail (frozen or live). Nonzero with
+    /// `refractoryMinutesLeft == 0` puts the hold-not-raise note on the
+    /// arousal section — the same "gentle band" job the refractory note
+    /// does, one rung-late.
+    int warmthTailMinutes = 0,
+
+    /// PR 5: the opening turn of a beat whose climax verdict said {{user}}
+    /// came too. Adds one shared-wind-down sentence to the refractory note
+    /// — opening turn only, never a standing state.
+    bool mutualOpening = false,
+
+    /// PR 7 (review M1): the surge clause joins the notes only when THIS
+    /// prompt also scores bond. The multi-call emotional judge has no
+    /// bond field — advice with no field flows into arousal_delta, the
+    /// number the note caps.
+    bool bondScoredHere = false,
+  }) =>
       '- "arousal_delta": physical desire shift this turn ($kMinArousalDelta to +$kMaxArousalDelta). '
       'Current arousal: $currentArousal/100.\n'
       '  Desire is as subjective as everything else — it rises only if what happened would genuinely stir '
@@ -153,11 +203,69 @@ class RealismPromptFragments {
       'breathing, focus, flushed skin, body language.\n'
       '  A non-sexual, non-romantic turn (food, work, errands, small talk, plain comfort) is 0 — and if '
       'current arousal is above 0 on such a turn, return roughly -5 to -10 so it cools back toward neutral.\n'
-      '${refractoryMinutesLeft > 0 ? '  NOTE: $charName just climaxed and is in the post-orgasm refractory '
-                '${describeRefractory(refractoryMinutesLeft, clockRunning: clockRunning).prompt}. Their low desire right now is contented satedness, NOT '
-                'aversion — an affectionate afterglow. Score gentle deltas (-3 to +5); a soft "not yet" to '
-                'another advance is normal recovery, not a rejection, so do not score it negative unless '
-                'something genuinely upsetting happened.\n' : ''}';
+      '${refractoryMinutesLeft > 0
+          ? _refractoryNote(charName, userName, refractoryMinutesLeft, clockRunning, refractorySoft, mutualOpening: mutualOpening, surge: bondScoredHere)
+          : warmthTailMinutes > 0
+          ? _warmthTailNote(charName, userName, surge: bondScoredHere)
+          : ''}';
+
+  /// The warmth tail note (PR 4): the lock/window ended but the seeded
+  /// warmth is owed. Its law is HOLD, never raise: a non-romantic turn
+  /// above +10 returns 0 instead of the -5…-10 cool above — the curve
+  /// fades, it does not fall. Since PR 7 it also carries the shared bond
+  /// surge conditional (one clause, every window — see [bondSurgeClause]);
+  /// the scoring law itself is still arousal only.
+  static String _warmthTailNote(
+    String charName,
+    String userName, {
+    bool surge = false,
+  }) =>
+      '  NOTE: $charName is still riding a warm afterglow after climax. '
+      'Small kindnesses land a little deeper than usual today, and desire '
+      'that has come back cools slowly: on a non-romantic turn with '
+      'arousal above 10, HOLD arousal where it is (return 0) instead of '
+      'cooling it toward neutral, and do not raise it on your own.'
+      '${surge ? ' ${bondSurgeClause(charName, userName)}.' : ''}\n';
+
+  /// The per-mode refractory note on the arousal section (PR 3). The hard
+  /// note no longer says "just climaxed" — it rides every turn of a lock
+  /// that can run three hours, and "just" read wrong late in one. Both
+  /// modes keep the same gentle -3…+5 scoring band.
+  static String _refractoryNote(
+    String charName,
+    String userName,
+    int minutesLeft,
+    bool clockRunning,
+    bool soft, {
+    bool mutualOpening = false,
+    bool surge = false,
+  }) {
+    final left = describeRefractory(
+      minutesLeft,
+      clockRunning: clockRunning,
+      soft: soft,
+    ).prompt;
+    // PR 5: one sentence, opening turn only — the shared wind-down colors
+    // how low desire reads, never the scoring band.
+    final shared = mutualOpening
+        ? ' $charName and $userName came undone together, so the quiet '
+              'after is shared recovery, not distance.'
+        : '';
+    // PR 7: the surge joins when this prompt scores bond (same clause,
+    // one copy — [bondSurgeClause]'s doc owns the lane law).
+    final surgeText = surge ? ' ${bondSurgeClause(charName, userName)}.' : '';
+    return soft
+        ? '  NOTE: $charName is oversensitive after climax $left but '
+              'desire stays up; touch may read as too much — tenderness, '
+              'not rejection. Score gentle deltas (-3 to +5); an advance '
+              'that needs slowing down is a flinch, not a no.$shared$surgeText\n'
+        : '  NOTE: $charName is in the post-orgasm refractory $left. '
+              'Their low desire right now is contented satedness, NOT '
+              'aversion — an affectionate afterglow. Score gentle deltas '
+              '(-3 to +5); a soft "not yet" to another advance is normal '
+              'recovery, not a rejection, so do not score it negative '
+              'unless something genuinely upsetting happened.$shared$surgeText\n';
+  }
 
   // (There is no posture section here any more. Posture left the fused
   // one-shot call on 2026-08-08 along with the four-call path's copy: it is a

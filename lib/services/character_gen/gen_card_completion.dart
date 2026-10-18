@@ -206,6 +206,17 @@ class GenCardCompletion {
       voice: _state.narrativeVoice,
       sex: _state.narrativeSex,
     );
+    // Structured sex onto the Realism extensions beside the voice stamp
+    // (recovery overhaul PR 2: "persisted at chargen"), so the recovery
+    // `auto` prior can tell a female card from a male one after the PNG
+    // round-trip instead of the fact evaporating into prose.
+    final structuredSex = normalizeCharacterSex(_state.narrativeSex);
+    if (structuredSex.isNotEmpty) {
+      card.frontPorchExtensions =
+          (card.frontPorchExtensions ?? FrontPorchExtensions()).copyWith(
+            sex: structuredSex,
+          );
+    }
     // Beside the voice: how the greetings were written, and from which
     // profile, so a rewrite after a reload or a restart matches them and a
     // later profile rewrite can say the greetings are out of date.

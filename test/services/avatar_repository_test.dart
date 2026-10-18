@@ -107,7 +107,13 @@ void main() {
       //      test/services/chat/session_scalar_parity_test.dart.
       // v58: objectives.origin, status, ended_at — objectives that keep up.
       //      Guarded by test/database/served_ambition_migration_test.dart.
-      expect(db.schemaVersion, 58);
+      // v59: sessions.refractory_soft + refractory_peaks — the soft gate's
+      //      tenderness window and its peak ledger (Afterglow PR 3). Guarded
+      //      by test/services/chat/refractory_legacy_load_test.dart.
+      // v60: sessions.refractory_tail_minutes + refractory_tail_total — the
+      //      warmth tail (Afterglow PR 4). Guarded by the v60 round-trip in
+      //      test/services/chat/refractory_legacy_load_test.dart.
+      expect(db.schemaVersion, 60);
     });
 
     test('journal_memories table exists and round-trips (v35)', () async {

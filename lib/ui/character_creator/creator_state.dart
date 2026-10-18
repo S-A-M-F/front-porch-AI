@@ -263,6 +263,9 @@ class CreatorState extends ChangeNotifier {
   List<String> realismIntimateInto = const [];
   List<String> realismIntimateNotInto = const [];
 
+  /// Recovery profile from the realism step (Afterglow PR 2); notify-only.
+  RecoveryProfile realismRecovery = const RecoveryProfile();
+
   /// Starting Pockets & Wardrobe as chip text (`sundress (rain-soaked)`).
   /// Notify-only like the identity lists above — saveState() persists none of
   /// them, and a half-persisted wardrobe would be worse than none.

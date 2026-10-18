@@ -10,22 +10,94 @@
 /// One judge turn of refractory, and one reply with the clock off.
 const int kRefractoryMinutesPerTurn = 15;
 
+/// The soft gate's tenderness window (decision 4): a fixed stretch of story
+/// minutes in which touch lands at half weight. Capacity never closes, so
+/// this is not a lock — the chip says "Tender", the ladder says "flinch that
+/// turns into leaning in", and a second climax inside it is legal.
+const int kTendernessWindowMinutes = 15;
+
+/// A peak stops counting one story hour after it (decision 5) — the same
+/// ledger every other beat ages on, no reply counters.
+const int kPeakHourMinutes = 60;
+
+/// Soft-gate peak math (decision 4): a climax keeps at least 40% of the
+/// distance above [kPeakFloor], and the peak count is capped at [kPeakCap],
+/// which is what keeps a body that starts at or above the floor from ever
+/// dropping below it. A climax that starts below the floor costs nothing.
+const int kPeakFloor = 50;
+const int kPeakCap = 3;
+
+/// Decision 4's bite: `round(0.2 × max(arousal − 50, 0) × peaks)`. [peaks]
+/// counts this story hour's peaks including this one.
+int softPeakCost(int arousal, int peaks) {
+  final above = arousal > kPeakFloor ? arousal - kPeakFloor : 0;
+  return (0.2 * above * peaks.clamp(1, kPeakCap)).round();
+}
+
+/// The warmth tail (PR 4): satisfaction research says warmth fades on a
+/// curve, not at a counter boundary, so a climax seeds a tail of HALF the
+/// would-be lock — never under [kWarmthTailFloorMinutes], never over
+/// [kWarmthTailCapMinutes]. A hard lock of 0 seeds nothing; a soft card's
+/// would-be lock is the judge's number (the floor is the research baseline,
+/// the decision's own words). Frozen until the body is fully clear, then it
+/// ages on the same ledger — clock off, 15 minutes per reply.
+const int kWarmthTailFloorMinutes = 15;
+const int kWarmthTailCapMinutes = 120;
+
+/// The seed: half the lock, floored and capped. Zero (or a missing judge
+/// number on a HARD body) means no tail — "a hard lock of 0 starts neither".
+int warmthTailMinutes(int wouldBeLockMinutes, {required bool soft}) {
+  if (wouldBeLockMinutes <= 0 && !soft) return 0;
+  return (wouldBeLockMinutes ~/ 2).clamp(
+    kWarmthTailFloorMinutes,
+    kWarmthTailCapMinutes,
+  );
+}
+
 /// Snapshot, member-map and receipt keys. The two turn keys are what chats
-/// saved before minutes; they are read once, as turns × 15.
+/// saved before minutes; they are read once, as turns × 15. The soft and
+/// peak keys (PR 3) are only written when set — a body that reads today's
+/// defaults means exactly what it meant before this PR.
 abstract final class RefractoryKeys {
   static const minutes = 'refractoryMinutesRemaining';
   static const total = 'refractoryMinutesTotal';
   static const opened = 'refractoryOpened';
+  static const soft = 'refractorySoft';
+
+  /// "Story minutes since that peak", oldest first, under [kPeakHourMinutes].
+  static const peaks = 'refractoryPeakMinutes';
+
+  /// The warmth tail (PR 4): a nested body that starts when this one fully
+  /// ends — the lock for a hard body, the last peak aging out for a soft one.
+  static const tail = 'refractoryTail';
   static const legacyTurns = 'cooldownTurnsRemaining';
   static const legacyTotal = 'cooldownTurnsTotal';
-  static const all = [minutes, total, opened, legacyTurns, legacyTotal];
+  static const all = [
+    minutes,
+    total,
+    opened,
+    soft,
+    peaks,
+    tail,
+    legacyTurns,
+    legacyTotal,
+  ];
 }
 
-/// One body's refractory: story minutes left, the length it started at, and
+/// One body's refractory: story minutes left, the length it started at,
 /// whether its opening afterglow turn (the one reply that may show a limp,
-/// spent body) has been spoken.
+/// spent body) has been spoken, and — the soft gate (PR 3) — whether this
+/// body recovers through a tenderness window instead of a capacity lock,
+/// with this hour's peak stamps beside them.
 class Refractory {
-  const Refractory({this.minutes = 0, this.total = 0, this.opened = false});
+  const Refractory({
+    this.minutes = 0,
+    this.total = 0,
+    this.opened = false,
+    this.soft = false,
+    this.peaks = const [],
+    this.tail,
+  });
 
   static const none = Refractory();
 
@@ -33,16 +105,75 @@ class Refractory {
   final int total;
   final bool opened;
 
+  /// Soft gate: the minutes count a tenderness window, not a lock. Arousal
+  /// stays up; gains halve while the window runs; peaks cost per decision 4.
+  final bool soft;
+
+  /// Story minutes since each peak, oldest first, capped at [kPeakCap] and
+  /// pruned at [kPeakHourMinutes] (decision 5). The soft body's warm-again
+  /// beat holds while this list is non-empty.
+  final List<int> peaks;
+
+  /// The warmth tail (PR 4): a locked length that waits frozen for this body
+  /// to fully end, then ages on the same beat. Null when no tail was seeded.
+  final Refractory? tail;
+
   bool get running => minutes > 0;
+
+  /// Whether a seeded tail still has warmth left (it may still be frozen).
+  bool get tailRunning => (tail?.minutes ?? 0) > 0;
+
+  /// Peaks counted this story hour — the chip's "· peak K" and the peak
+  /// cost's multiplier source.
+  int get peaksLastHour => peaks.length;
 
   /// The first reply after the climax reply, and only that one.
   bool get isOpeningTurn => running && !opened;
 
-  /// Set at climax from the judge's `refractory_turns`.
-  factory Refractory.fromJudgeTurns(int turns) {
-    final m = turns * kRefractoryMinutesPerTurn;
-    return m > 0 ? Refractory(minutes: m, total: m) : none;
-  }
+  /// Canonical constructor: the length in story minutes — a card's fixed
+  /// recovery minutes (recovery overhaul PR 2) or any ledger-computed value.
+  /// Zero or less starts no refractory; that is a real answer, not an error.
+  /// [tailMinutes] (PR 4) rides along frozen until this body ends.
+  factory Refractory.fromMinutes(
+    int minutes, {
+    bool soft = false,
+    int tailMinutes = 0,
+  }) => minutes > 0
+      ? Refractory(
+          minutes: minutes,
+          total: minutes,
+          soft: soft,
+          tail: tailMinutes > 0
+              ? Refractory(minutes: tailMinutes, total: tailMinutes)
+              : null,
+        )
+      : none;
+
+  /// A soft climax's window, carrying this hour's peak stamps forward.
+  factory Refractory.tenderness(
+    List<int> peaks, {
+    int tailMinutes = 0,
+    Refractory? keepTail,
+  }) => Refractory(
+    minutes: kTendernessWindowMinutes,
+    total: kTendernessWindowMinutes,
+    soft: true,
+    peaks: peaks,
+    tail:
+        keepTail ??
+        (tailMinutes > 0
+            ? Refractory(minutes: tailMinutes, total: tailMinutes)
+            : null),
+  );
+
+  /// Set at climax from the judge's `refractory_turns` (each ≈ 15 story
+  /// minutes). A wrapper over [fromMinutes] — the judge number is one
+  /// possible length, and a card's fixed profile minutes bypass it.
+  factory Refractory.fromJudgeTurns(int turns, {int tailMinutes = 0}) =>
+      Refractory.fromMinutes(
+        turns * kRefractoryMinutesPerTurn,
+        tailMinutes: tailMinutes,
+      );
 
   /// A count saved in replies before minutes existed. The opening turn was
   /// already spoken once a reply had ticked it (remaining below total).
@@ -58,56 +189,152 @@ class Refractory {
 
   /// Reads [RefractoryKeys] from a snapshot, a member map or a session row.
   /// Minutes win; turns are read only where minutes were never written.
-  /// Null when neither is there, so a restore keeps what it has.
+  /// Null when neither is there, so a restore keeps what it has. Soft and
+  /// peaks are lenient: absent or junk reads today's defaults (a hard lock,
+  /// no peaks), so every body saved before PR 3 means what it meant then.
   static Refractory? read(Map<dynamic, dynamic> src) {
+    final tailSrc = src[RefractoryKeys.tail];
+    final inner = tailSrc is Map ? Refractory.read(tailSrc) : null;
+    // A finished (minutes ≤ 0) or junk tail reads as no tail at all, not a
+    // resident empty body — otherwise toSnapshot re-echoes an empty
+    // refractoryTail forever and "absent = no tail" stops holding.
+    final tail = inner != null && inner.running ? inner : null;
     final m = src[RefractoryKeys.minutes];
     if (m is num) {
       final minutes = m.toInt();
-      if (minutes <= 0) return none;
+      final soft = src[RefractoryKeys.soft] == true;
+      final peaks = readPeakStamps(src[RefractoryKeys.peaks]);
+      if (minutes <= 0) {
+        if (!soft && peaks.isEmpty && tail == null) return none;
+        return Refractory(soft: soft, peaks: peaks, tail: tail);
+      }
       final t = src[RefractoryKeys.total];
       final total = t is num ? t.toInt() : 0;
       return Refractory(
         minutes: minutes,
         total: total > minutes ? total : minutes,
         opened: src[RefractoryKeys.opened] == true,
+        soft: soft,
+        peaks: peaks,
+        tail: tail,
       );
     }
     final turns = src[RefractoryKeys.legacyTurns];
     if (turns is! num) return null;
     final total = src[RefractoryKeys.legacyTotal];
-    return Refractory.fromLegacyTurns(
+    final legacy = Refractory.fromLegacyTurns(
       turns.toInt(),
       total is num ? total.toInt() : 0,
     );
+    if (tail == null) return legacy;
+    return Refractory(
+      minutes: legacy.minutes,
+      total: legacy.total,
+      opened: legacy.opened,
+      tail: tail,
+    );
+  }
+
+  /// Lenient read of peak stamps off untyped JSON: numbers only, in range,
+  /// newest kept when a hand-edited file overflows the cap.
+  static List<int> readPeakStamps(Object? raw) {
+    if (raw is! Iterable) return const [];
+    final stamps = raw
+        .whereType<num>()
+        .map((e) => e.toInt())
+        .where((m) => m >= 0 && m < kPeakHourMinutes)
+        .toList(growable: false);
+    return stamps.length <= kPeakCap
+        ? stamps
+        : stamps.sublist(stamps.length - kPeakCap);
   }
 
   Map<String, Object> toSnapshot() => {
     RefractoryKeys.minutes: minutes,
     RefractoryKeys.total: total,
     RefractoryKeys.opened: opened,
+    if (soft) RefractoryKeys.soft: true,
+    if (peaks.isNotEmpty) RefractoryKeys.peaks: peaks,
+    // Absent by default: a body saved before the tail reads tail-free,
+    // exactly as it meant then.
+    if (tail != null) RefractoryKeys.tail: tail!.toSnapshot(),
   };
 
-  /// [elapsed] story minutes on a body whose arousal is [arousal]. When the
+  /// [elapsed] story minutes on a body whose arousal is [arousal]. The
+  /// window and every peak stamp age on the same beat. When a hard
   /// refractory ends the total clears and a negative arousal halves toward
-  /// neutral, so nobody leaves it reading as cold or repelled.
+  /// neutral, so nobody leaves it reading as cold or repelled; a soft window
+  /// simply expires (decision 4 — a soft body's arousal was never crashed,
+  /// so there is nothing to thaw).
   ({Refractory refractory, int arousal}) elapse(
     int elapsed, {
     required int arousal,
   }) {
-    if (!running || elapsed <= 0) return (refractory: this, arousal: arousal);
-    final left = minutes - elapsed;
-    if (left > 0) {
+    if (elapsed <= 0) return (refractory: this, arousal: arousal);
+    final aged = peaks
+        .map((m) => m + elapsed)
+        .where((m) => m < kPeakHourMinutes)
+        .toList(growable: false);
+    if (!running) {
+      if (peaks.isEmpty) {
+        // Only a body fully clear ages its tail (PR 4): the tail starts at
+        // lock end — or, soft, when the last peak ages out — never earlier.
+        final t = tail;
+        if (t == null) return (refractory: this, arousal: arousal);
+        final left = t.minutes - elapsed;
+        return (
+          refractory: Refractory(
+            soft: soft,
+            tail: left > 0 ? Refractory(minutes: left, total: t.total) : null,
+          ),
+          arousal: arousal,
+        );
+      }
       return (
-        refractory: Refractory(minutes: left, total: total, opened: opened),
+        refractory: Refractory(soft: soft, peaks: aged, tail: tail),
         arousal: arousal,
       );
     }
-    return (refractory: none, arousal: arousal < 0 ? arousal ~/ 2 : arousal);
+    final left = minutes - elapsed;
+    if (left > 0) {
+      return (
+        refractory: Refractory(
+          minutes: left,
+          total: total,
+          opened: opened,
+          soft: soft,
+          peaks: aged,
+          tail: tail,
+        ),
+        arousal: arousal,
+      );
+    }
+    if (soft) {
+      return (
+        refractory: Refractory(soft: true, peaks: aged, tail: tail),
+        arousal: arousal,
+      );
+    }
+    // Hard lock ends: the tail takes the body instead of nothing (PR 4),
+    // frozen at its seed until the next beat ages it. A negative arousal
+    // still halves toward neutral — the warmth does not cancel the thaw.
+    final empties = aged.isEmpty && tail == null;
+    return (
+      refractory: empties ? none : Refractory(peaks: aged, tail: tail),
+      arousal: arousal < 0 ? arousal ~/ 2 : arousal,
+    );
   }
 
   /// The opening turn has been spoken.
   Refractory markOpened() => isOpeningTurn
-      ? Refractory(minutes: minutes, total: total, opened: true)
+      ? Refractory(
+          minutes: minutes,
+          total: total,
+          opened: true,
+          soft: soft,
+          peaks: peaks,
+          tail: tail,
+        )
       : this;
 
   @override
@@ -115,21 +342,31 @@ class Refractory {
       other is Refractory &&
       other.minutes == minutes &&
       other.total == total &&
-      other.opened == opened;
+      other.opened == opened &&
+      other.soft == soft &&
+      other.peaks.length == peaks.length &&
+      other.peaks.asMap().entries.every((e) => e.value == peaks[e.key]) &&
+      other.tail == tail;
 
   @override
-  int get hashCode => Object.hash(minutes, total, opened);
+  int get hashCode =>
+      Object.hash(minutes, total, opened, soft, Object.hashAll(peaks), tail);
 
   @override
-  String toString() => 'Refractory($minutes/$total, opened: $opened)';
+  String toString() =>
+      'Refractory($minutes/$total, opened: $opened, soft: $soft, '
+      'peaks: $peaks${tail == null ? '' : ', tail: $tail'})';
 }
 
 /// The countdown in the words the sidebar chip, the eval prompt and the phone
 /// share. Clock on: story minutes, to the nearest 5. Clock off: replies, each
-/// a quarter hour, rounded up.
+/// a quarter hour, rounded up. A soft window says "Tender" and names the
+/// peak count (the mockup's rose chip); a hard lock keeps "Refractory".
 ({String chip, String prompt}) describeRefractory(
   int minutes, {
   required bool clockRunning,
+  bool soft = false,
+  int peaks = 0,
 }) {
   if (minutes <= 0) return (chip: '', prompt: '');
   final String left;
@@ -141,7 +378,12 @@ class Refractory {
         (minutes + kRefractoryMinutesPerTurn - 1) ~/ kRefractoryMinutesPerTurn;
     left = replies == 1 ? '1 reply' : '$replies replies';
   }
-  return (chip: 'Refractory: $left', prompt: '($left left)');
+  return soft
+      ? (
+          chip: 'Tender for $left · peak ${peaks < 1 ? 1 : peaks}',
+          prompt: '($left left)',
+        )
+      : (chip: 'Refractory: $left', prompt: '($left left)');
 }
 
 /// Stamped on a reply: each body the beat moved, as the beat found it (regen

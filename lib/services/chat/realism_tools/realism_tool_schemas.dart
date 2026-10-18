@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/services/chat/realism_tools/realism_tool_names.dart';
+import 'package:front_porch_ai/services/chat/realism_tools/afterglow_tool_schemas.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 Map<String, dynamic> _intField(String description) => {
@@ -357,22 +358,6 @@ final List<Map<String, dynamic>> kCastDetectEvalTools = [
   ),
 ];
 
-/// Afterglow's climax check (ClimaxEval). Declared HERE rather than in the
-/// leaf because [realismToolFieldsByTool] below is what makes the tools transport work
-/// at all — an unregistered tool makes [realismToolCallToJson] return null,
-/// so the call silently falls back to text on every backend, forever. One
-/// definition, registered by construction.
-final Map<String, Map<String, dynamic>> kClimaxFields = {
-  'is_climax': {
-    'type': 'boolean',
-    'description': 'True ONLY when the character themselves reached climax.',
-  },
-  'refractory_turns': _intField(
-    'Cooldown turns (0-12, 0 = no cooldown needed) when is_climax is '
-    'true, else 0.',
-  ),
-};
-
 /// Own pass — not fused with posture. See [WithUserEval].
 final Map<String, Map<String, dynamic>> kWithUserFields = {
   'with_user': {
@@ -392,19 +377,6 @@ final List<Map<String, dynamic>> kWithUserEvalTools = [
   ),
 ];
 
-final List<Map<String, dynamic>> kClimaxEvalTools = [
-  _tool(
-    kClimaxToolName,
-    'Report whether the character reached climax.',
-    kClimaxFields,
-    // BOTH required — the lesson from the needs tool: a model fills in what
-    // the schema demands and skips what it does not, so an optional is_climax
-    // was never emitted and detection was silently off on every tools-capable
-    // backend.
-    const ['is_climax', 'refractory_turns'],
-  ),
-];
-
 /// Pockets & Wardrobe (PocketsEval). Declared here for the same reason the
 /// climax fields are: [realismToolFieldsByTool] is what makes the tools transport work,
 /// and an unregistered tool converts to null and falls back to text forever,
@@ -416,43 +388,6 @@ final Map<String, Map<String, dynamic>> kPocketsFields = {
     'description': 'Every change this reply made to worn/carried items.',
   },
 };
-
-/// The fused post-generation reply-facts call (ReplyFactsEval): climax +
-/// inventory + posture in ONE tool. Field definitions are REUSED from the
-/// standalone tools above so the fused and standalone lanes cannot drift;
-/// which fields are REQUIRED is computed per call from which features are
-/// live ([kReplyFactsToolsFor]) — the is_climax lesson applied to a composed
-/// schema: a model fills in what the schema demands and skips what it does
-/// not, so a live feature's fields must be demanded and a disabled feature's
-/// must not.
-final Map<String, Map<String, dynamic>> kReplyFactsFields = {
-  ...kClimaxFields,
-  ...kPocketsFields,
-  'posture': _strField(
-    'Current physical position and location (brief phrase), or "none".',
-  ),
-};
-
-/// The reply-facts schema for THIS turn's live feature set. Every field is
-/// always DEFINED (the registry below is a fixed contract); only the
-/// `required` list varies.
-List<Map<String, dynamic>> kReplyFactsToolsFor({
-  required bool askClimax,
-  required bool askPockets,
-  required bool askPosture,
-}) => [
-  _tool(
-    kReplyFactsToolName,
-    'Report the scene facts this reply changed (climax / inventory / '
-    'posture).',
-    kReplyFactsFields,
-    [
-      if (askClimax) ...['is_climax', 'refractory_turns'],
-      if (askPockets) 'inventory_ops',
-      if (askPosture) 'posture',
-    ],
-  ),
-];
 
 /// The char→char judge (CastFeelingsJudge): how one group member's reply
 /// moved their feelings toward the others it involved.

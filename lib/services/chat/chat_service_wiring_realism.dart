@@ -261,8 +261,13 @@ extension ChatServiceWiringRealism on ChatService {
       },
       isAdultAllowed: () => _storageService.realismSettings.adultThemesEnabled,
       getFrequency: () => _storageService.realismSettings.chaosFrequency,
+      isHardLockActive: () => _hardLockForSpeakerNamed(chanceTimeSpeakerName),
     );
   }
+
+  // PR 6: the hard-lock truth lives in _hardLockForSpeakerNamed (next to
+  // applyChanceTimeResult in the controls part — spin AND accept re-gate
+  // through the same lookup, so the two chokepoints cannot drift).
 
   // ── NSFW cooldown & arousal (extracted to NsfwService) ─────────────────────
   // State (cooldown enabled, refractory minutes, arousalLevel), tier calc, reset/seed/load/restore,

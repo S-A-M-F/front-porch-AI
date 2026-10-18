@@ -91,6 +91,12 @@ class EditCharacterDraft {
   bool realismNsfwCooldown = false;
   bool realismPassageOfTime = true;
   bool realismChaosMode = false;
+
+  /// Structured sex (read/keep — no editor for it on this page; the AI
+  /// creators persist it) + the recovery profile the Realism section's
+  /// Recovery block authors (recovery overhaul PR 2).
+  String sex = '';
+  RecoveryProfile recovery = const RecoveryProfile();
   bool realismNeedsSim = false;
 
   /// For a card that says nothing about Needs: the Porch Life value the
@@ -262,6 +268,8 @@ class EditCharacterDraft {
     realismNsfwCooldown,
     realismPassageOfTime,
     realismChaosMode,
+    sex,
+    recovery.toJson(),
     realismNeedsSim,
     realismPocketsEnabled,
     realismEnjoysLowHygiene,
@@ -297,6 +305,8 @@ class EditCharacterDraft {
     realismNsfwCooldown = ext.nsfwCooldownEnabled;
     realismPassageOfTime = ext.passageOfTimeEnabled;
     realismChaosMode = ext.chaosModeEnabled;
+    sex = ext.sex;
+    recovery = ext.recovery;
     if (ext.needsSimChoice == null) {
       realismNeedsSim = needsSimShownForSilent = porchLifeNeedsDefault();
     } else {
