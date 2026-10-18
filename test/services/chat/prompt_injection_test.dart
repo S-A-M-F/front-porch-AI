@@ -1620,4 +1620,100 @@ void main() {
       expect(p, contains('came undone together'));
     });
   });
+
+  // Recovery overhaul PR 7: the bonding surge is ONE conditional clause
+  // speaking through every afterglow window (hard note, soft note, tail
+  // note, bond section) — conditioned on wanted intimacy plus warmth, with
+  // the duty clause (the dissociation pin) every time.
+  group('the bond surge is one conditional (PR 7)', () {
+    const duty =
+        'if it was duty, transaction, or skill on autopilot, the body '
+        'cools on schedule and the heart may not follow';
+
+    String hardNote() =>
+        RealismPromptFragments.arousalSection('Nia', 'You', 30, 45, true);
+    String softNote() => RealismPromptFragments.arousalSection(
+      'Nia',
+      'You',
+      30,
+      45,
+      true,
+      refractorySoft: true,
+    );
+    String tailNote() => RealismPromptFragments.arousalSection(
+      'Nia',
+      'You',
+      20,
+      0,
+      true,
+      warmthTailMinutes: 40,
+    );
+    String bond() => RealismPromptFragments.bondSection('Nia', 'You');
+
+    test('every window speaks the conditional', () {
+      for (final (name, text) in [
+        ('hard refractory note', hardNote()),
+        ('soft refractory note', softNote()),
+        ('warmth tail note', tailNote()),
+        ('bond section', bond()),
+      ]) {
+        expect(
+          text,
+          contains(
+            'If the climax was wanted and Nia holds real warmth toward '
+            'You, affectionate contact during the afterglow counts more '
+            'toward short-term bond',
+          ),
+          reason: '$name lost the surge — the copy drifted',
+        );
+        expect(
+          text,
+          contains(duty),
+          reason:
+              '$name lost the duty clause — the dissociation archetype '
+              'must have a legal "the heart did not follow" reading',
+        );
+        expect(
+          text,
+          isNot(contains('{{user}}')),
+          reason: 'judge lanes resolve no macros — $name leaks the token',
+        );
+      }
+    });
+
+    test('one copy: all four emit the identical sentence', () {
+      // The drift pin, structural: extract the clause each surface
+      // actually emitted and require byte equality. A paraphrase in any
+      // one window fails here even if a loose contains() would pass.
+      String? extracted;
+      for (final (name, text) in [
+        ('hard', hardNote()),
+        ('soft', softNote()),
+        ('tail', tailNote()),
+        ('bond', bond()),
+      ]) {
+        final start = text.indexOf('If the climax was wanted');
+        expect(start, greaterThan(-1), reason: '$name lacks the clause');
+        final end = text.indexOf('.', start + duty.length) + 1;
+        final clause = text.substring(start, end);
+        extracted ??= clause;
+        expect(clause, extracted, reason: '$name paraphrased the surge');
+      }
+    });
+
+    test('no windows off, no clause on the bare arousal path', () {
+      // The clause rides afterglow surfaces, not every arousal line: a
+      // plain turn with no refractory and no tail must not read about
+      // someone else's afterglow. (The bond section keeps it always —
+      // it is conditional prose, inert outside a scene.)
+      final bare = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        10,
+        0,
+        true,
+      );
+      expect(bare, isNot(contains('the climax was wanted')));
+    });
+  });
 }
