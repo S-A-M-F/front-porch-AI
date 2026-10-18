@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
+import 'package:front_porch_ai/services/chat/realism_prompt_builder/realism_prompt_fragments.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/author_note_builder.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/relationship_injection.dart';
@@ -1188,6 +1189,165 @@ void main() {
       );
       expect(mood(emotion: 'neutral').buildEmotionInjection(), isEmpty);
       expect(mood(emotion: '').buildEmotionInjection(), isEmpty);
+    });
+  });
+
+  // Recovery overhaul PR 3: the soft ladder. Hard rungs ship unchanged; a
+  // soft body gets glow → tender → warm-again (decision 6, copy pinned to
+  // the mockup), and the pronoun-free contract holds for EVERY rung — whole
+  // words, case-insensitive, because a bare she|he|her|his matches inside
+  // "the", "other" and "there" and would fail on the shipped ladder.
+  group('soft-gate ladder (PR 3)', () {
+    NsfwService softSvc(Refractory r, {int? arousal}) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      if (arousal != null) n.setArousalLevel(arousal);
+      return n;
+    }
+
+    String text(Refractory r, {int? arousal}) => createTestNsfw(
+      nsfwSvc: softSvc(r, arousal: arousal),
+      activeChar: CharacterCard(name: 'Nia'),
+    ).buildNsfwCooldownInjection();
+
+    test('the glow rung replaces incapacity with tender overwhelm', () {
+      final t = text(Refractory.tenderness([0]));
+      expect(t, contains('just climaxed — trembling and flushed'));
+      expect(t, contains('oversensitive in the best way'));
+      expect(t, contains('a flinch that turns into pulling closer'));
+      expect(t, isNot(contains('cannot respond yet')));
+    });
+
+    test('the tender rung keeps closeness and halves stimulation', () {
+      final t = text(
+        const Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10, 0],
+        ),
+      );
+      expect(t, contains('still humming from it'));
+      expect(t, contains('a flinch that turns into leaning in'));
+      expect(t, contains('lands at half weight'));
+      expect(t, isNot(contains('cannot respond yet')));
+      expect(t, isNot(contains('"not yet"')));
+    });
+
+    test(
+      'warm-again holds the hour after the window — arousal band or not',
+      () {
+        // Window gone, a peak still counted: this beat outranks even the
+        // "heavily aroused" rung, so cuddle time does not snap to chasing.
+        final t = text(const Refractory(soft: true, peaks: [30]), arousal: 55);
+        expect(t, contains('is warm again'));
+        expect(t, contains('nothing is being chased yet'));
+        expect(t, isNot(contains('chasing release')));
+        // Past the hour the normal ladder returns.
+        expect(
+          text(const Refractory(soft: true), arousal: 55),
+          contains('chasing release'),
+        );
+      },
+    );
+
+    test('a hard body keeps its ladder while old peak stamps age out', () {
+      // Mid-window soft→hard flip (path-complete §5): the body still
+      // carries peak stamps, but every reader branches on the mode — the
+      // soft warmth words belong to a soft body only.
+      final t = text(const Refractory(peaks: [10]), arousal: 55);
+      expect(t, isNot(contains('is warm again')));
+      expect(t, contains('chasing release'));
+    });
+
+    test('no rung of any ladder speaks a gendered pronoun', () {
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      final ladders = [
+        text(Refractory.fromJudgeTurns(5)), // hard opening
+        text(const Refractory(minutes: 50, total: 60, opened: true)), // deep
+        text(const Refractory(minutes: 10, total: 60, opened: true)), // late
+        text(Refractory.none, arousal: -70),
+        text(Refractory.none, arousal: -30),
+        text(Refractory.none, arousal: 20),
+        text(Refractory.none, arousal: 55),
+        text(Refractory.none, arousal: 75),
+        text(Refractory.none, arousal: 95),
+        text(Refractory.tenderness([0])), // glow
+        text(
+          const Refractory(
+            minutes: 10,
+            total: 15,
+            opened: true,
+            soft: true,
+            peaks: [10, 0],
+          ),
+        ), // tender
+        text(const Refractory(soft: true, peaks: [30])), // warm-again
+      ];
+      for (final t in ladders) {
+        expect(t, isNotEmpty);
+        expect(
+          genders.hasMatch(t),
+          isFalse,
+          reason:
+              'the ladder interpolates \$name and speaks of the body — '
+              'never a gendered pronoun: $t',
+        );
+      }
+    });
+
+    test('the eval refractory note branches on mode — and stops lying about '
+        '"just climaxed" late in a lock', () {
+      final hard = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        0,
+        44,
+        true,
+      );
+      expect(
+        hard,
+        contains(
+          'is in the post-orgasm refractory (about 45 min '
+          'left)',
+        ),
+      );
+      expect(hard, contains('(-3 to +5)'));
+      expect(
+        hard,
+        isNot(contains('just climaxed')),
+        reason:
+            'the note rides every turn of a three-hour lock; "just" '
+            'read wrong after the first reply',
+      );
+      final soft = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        70,
+        12,
+        true,
+        refractorySoft: true,
+      );
+      expect(soft, contains('oversensitive after climax'));
+      expect(soft, contains('desire stays up'));
+      expect(soft, contains('tenderness, not rejection'));
+      expect(
+        soft,
+        contains('(-3 to +5)'),
+        reason:
+            'both modes keep the '
+            'gentle band',
+      );
+      expect(soft, isNot(contains('low desire')));
+      expect(
+        RealismPromptFragments.arousalSection('Nia', 'You', 30, 0, true),
+        isNot(contains('NOTE')),
+      );
     });
   });
 }

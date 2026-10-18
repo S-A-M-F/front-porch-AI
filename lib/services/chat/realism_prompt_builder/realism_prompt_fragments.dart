@@ -134,8 +134,9 @@ class RealismPromptFragments {
     String userName,
     int currentArousal,
     int refractoryMinutesLeft,
-    bool clockRunning,
-  ) =>
+    bool clockRunning, {
+    bool refractorySoft = false,
+  }) =>
       '- "arousal_delta": physical desire shift this turn ($kMinArousalDelta to +$kMaxArousalDelta). '
       'Current arousal: $currentArousal/100.\n'
       '  Desire is as subjective as everything else — it rises only if what happened would genuinely stir '
@@ -153,11 +154,35 @@ class RealismPromptFragments {
       'breathing, focus, flushed skin, body language.\n'
       '  A non-sexual, non-romantic turn (food, work, errands, small talk, plain comfort) is 0 — and if '
       'current arousal is above 0 on such a turn, return roughly -5 to -10 so it cools back toward neutral.\n'
-      '${refractoryMinutesLeft > 0 ? '  NOTE: $charName just climaxed and is in the post-orgasm refractory '
-                '${describeRefractory(refractoryMinutesLeft, clockRunning: clockRunning).prompt}. Their low desire right now is contented satedness, NOT '
-                'aversion — an affectionate afterglow. Score gentle deltas (-3 to +5); a soft "not yet" to '
-                'another advance is normal recovery, not a rejection, so do not score it negative unless '
-                'something genuinely upsetting happened.\n' : ''}';
+      '${refractoryMinutesLeft > 0 ? _refractoryNote(charName, refractoryMinutesLeft, clockRunning, refractorySoft) : ''}';
+
+  /// The per-mode refractory note on the arousal section (PR 3). The hard
+  /// note no longer says "just climaxed" — it rides every turn of a lock
+  /// that can run three hours, and "just" read wrong late in one. Both
+  /// modes keep the same gentle -3…+5 scoring band.
+  static String _refractoryNote(
+    String charName,
+    int minutesLeft,
+    bool clockRunning,
+    bool soft,
+  ) {
+    final left = describeRefractory(
+      minutesLeft,
+      clockRunning: clockRunning,
+      soft: soft,
+    ).prompt;
+    return soft
+        ? '  NOTE: $charName is oversensitive after climax $left but '
+              'desire stays up; touch may read as too much — tenderness, '
+              'not rejection. Score gentle deltas (-3 to +5); an advance '
+              'that needs slowing down is a flinch, not a no.\n'
+        : '  NOTE: $charName is in the post-orgasm refractory $left. '
+              'Their low desire right now is contented satedness, NOT '
+              'aversion — an affectionate afterglow. Score gentle deltas '
+              '(-3 to +5); a soft "not yet" to another advance is normal '
+              'recovery, not a rejection, so do not score it negative '
+              'unless something genuinely upsetting happened.\n';
+  }
 
   // (There is no posture section here any more. Posture left the fused
   // one-shot call on 2026-08-08 along with the four-call path's copy: it is a

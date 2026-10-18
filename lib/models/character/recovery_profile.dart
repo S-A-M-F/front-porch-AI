@@ -27,7 +27,9 @@
 //
 // Held by ONE field on FrontPorchExtensions (`recovery`) so the extensions
 // class stays under the 500-line ratchet while later fields (PR 8's
-// `pcdMood`) join here instead of inline.
+// `pcdMood`) join here instead of inline. Since PR 3 the soft gate runs its
+// own physics: peak costs, a tenderness window, and peak stamps on the
+// story-minute ledger.
 
 /// The preset values a card may store. `auto` = the structured sex decides
 /// the kind and the judge the length (decision 2's prior; anything but a
@@ -385,10 +387,10 @@ String? recoverySuggestionLine(String? suggestionKey) {
 }
 
 /// The plain-English "resolves to" line under the block: the kind AND the
-/// length this card's settings actually produce (plan PR 2 UI). Honest
-/// about the transition state — until PR 3 ships soft-gate mechanics, a
-/// soft gate behaves as today's hard lock, and the line says so rather
-/// than promising physics the engine does not have yet.
+/// length this card's settings actually produce (plan PR 2 UI). Since PR 3
+/// the soft gate is real physics — arousal stays up, a tenderness window
+/// halves touch gains, peaks cost more within the hour — and the line says
+/// what the engine does, nothing it does not.
 String recoveryResolvesLine(RecoveryProfile profile, String sex) {
   final kind = profile.resolvedMode(sex);
   final minutes = profile.recoveryMinutes;
@@ -403,8 +405,8 @@ String recoveryResolvesLine(RecoveryProfile profile, String sex) {
     kindLine = 'Auto → $by';
   } else if (kind == kRecoveryModeSoft) {
     kindLine =
-        'Soft gate — no capacity lock (until soft-gate mechanics '
-        'ship, it behaves as today\'s hard lock)';
+        'Soft gate — arousal stays up; a ~15 min tenderness window '
+        'halves touch gains, and each peak within the hour costs more';
   } else {
     kindLine = 'Hard lock';
   }

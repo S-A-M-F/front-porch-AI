@@ -320,4 +320,199 @@ void main() {
       },
     );
   });
+
+  // Recovery overhaul PR 3: the soft gate, through real 1:1 turns with the
+  // clock off — each reply of the speaker's is exactly 15 minutes, so the
+  // window and the peak aging have exact numbers (quantization floor: the
+  // 15-minute window lasts one reply; Needs precedent, decision 1).
+  group('soft gate (PR 3)', () {
+    setUp(() async {
+      chat.setPassageOfTimeEnabled(false);
+      await chat.setActiveCharacter(
+        CharacterCard(
+          name: 'Mara',
+          description: 'Exists only inside the refractory clock test.',
+          firstMessage: 'The porch light hums.',
+          imagePath: 'refr-mara.png',
+          frontPorchExtensions: FrontPorchExtensions(
+            realismEnabled: true,
+            needsSimEnabled: false,
+            chaosModeEnabled: false,
+            recovery: const RecoveryProfile(recoveryMode: kRecoveryModeSoft),
+          ),
+        )..dbId = 'char-refr-mara',
+      );
+      await chat.setRealismEnabled(true);
+      await chat.setNsfwCooldownEnabled(true);
+    });
+
+    test(
+      'a soft card takes the 15-min window, not the judge\'s lock',
+      () async {
+        llm.refractoryTurns = 5; // a hard body would lock 75 — ignored here
+        nsfw().setArousalLevel(100);
+        await send('The wave crests over us both.', climax: true);
+        expect(
+          nsfw().refractoryMinutesRemaining,
+          15,
+          reason:
+              'the tenderness window is fixed (decision 4) — 75 here '
+              'means the soft card still took the judge\'s hard length',
+        );
+        expect(nsfw().refractory.soft, isTrue);
+        expect(
+          nsfw().arousalLevel,
+          90,
+          reason: 'peak 1 costs round(0.2 × (100−50) × 1) — never zero',
+        );
+        expect(nsfw().refractoryPeaksLastHour, 1);
+        expect(nsfw().refractoryWords.chip, 'Tender for 1 reply · peak 1');
+        expect(
+          chat.messages.last.activeMetadata?['pre_climax_refractory'],
+          isA<Map>(),
+          reason: 'PR 3 stamps the whole pre-climax body beside the arousal',
+        );
+      },
+    );
+
+    test(
+      'the ladder speaks glow and tender across the clock-on hour',
+      () async {
+        chat.setPassageOfTimeEnabled(true); // the fake advances 5 min a beat
+        nsfw().setArousalLevel(100);
+        await send('The wave crests over us both.', climax: true);
+
+        await send('Stay right here.'); // prompt assembled before this beat
+        expect(
+          llm.replyPrompts.last,
+          contains('oversensitive in the best way'),
+          reason: 'the first reply after a soft climax reads the glow rung',
+        );
+
+        await send('Nothing to add, just company.'); // window 10, opened
+        expect(
+          llm.replyPrompts.last,
+          contains('still humming from it'),
+          reason: 'while the window runs, the tender rung carries closeness',
+        );
+        expect(llm.replyPrompts.last, isNot(contains('cannot respond yet')));
+
+        await send('The fireflies are out.', minutes: 15); // window spent
+        await send('Getting late.', minutes: 15); // peak 30
+        expect(
+          llm.replyPrompts.last,
+          contains('is warm again'),
+          reason:
+              'the window is gone but the hour is not — the cuddle beat '
+              'holds',
+        );
+
+        await send('Half past eight.', minutes: 15); // 40 → 55
+        await send('Time flies.', minutes: 15); // 55 — still counted
+        await send('Almost dark.', minutes: 15); // 70 past the hour: it drops
+        expect(nsfw().refractoryPeaksLastHour, 0);
+        expect(
+          llm.replyPrompts.last,
+          isNot(contains('warm again')),
+          reason: 'a story hour after the peak, the normal ladder returns',
+        );
+        expect(
+          llm.replyPrompts.last,
+          contains('peak of arousal'),
+          reason: 'arousal never dropped — 90 reads the top arousal rung now',
+        );
+      },
+    );
+
+    test(
+      'clock off: the window is one reply, so warm-again takes it at once',
+      () async {
+        // The quantization floor, Needs precedent (decision 1): with the
+        // clock off, the speaker's next reply burns the whole 15-minute
+        // window in its own handoff tick — that prompt already reads the
+        // warm-again rung, and the half-weight damping covered the climax
+        // turn itself.
+        nsfw().setArousalLevel(100);
+        await send('The wave crests over us both.', climax: true);
+        expect(nsfw().refractoryMinutesRemaining, 15);
+
+        await send('Stay right here.');
+        expect(
+          llm.replyPrompts.last,
+          contains('is warm again'),
+          reason:
+              'the handoff tick spent the window before this prompt was '
+              'assembled — the ordering the hard-lock chip already counts on',
+        );
+        expect(nsfw().refractoryPeaksLastHour, 1, reason: 'peak 15 min old');
+      },
+    );
+
+    test('a soft window expiring does not thaw a negative arousal', () async {
+      nsfw().setArousalLevel(-20); // below the floor: the peak costs nothing
+      await send('It passes quietly.', climax: true);
+      expect(nsfw().arousalLevel, -20);
+      await send('A beat of quiet.');
+      expect(
+        nsfw().arousalLevel,
+        -20,
+        reason:
+            'the end-of-lock halving is hard-lock semantics; a soft '
+            'window simply expires',
+      );
+    });
+
+    test(
+      'regen of peak 2 restores peak 1 and its body, not an empty one',
+      () async {
+        nsfw().setArousalLevel(100);
+        await send('The wave crests over us both.', climax: true); // peak 1
+        llm.refractoryTurns = 1;
+        nsfw().setArousalLevel(95);
+        await send('Again — let it crest once more.', climax: true); // peak 2
+        expect(nsfw().refractoryPeaksLastHour, 2);
+        expect(nsfw().arousalLevel, 77);
+
+        llm.climax = false; // the regen itself does not climax
+        await chat.regenerateLastMessage();
+        await settle();
+        expect(
+          nsfw().arousalLevel,
+          90,
+          reason:
+              'the pre-climax stamp restores 95, then the realism-snapshot '
+              "replay — which owns the speaker's arousal (0453f71d) — lands "
+              'the body as peak 1 recorded it',
+        );
+        expect(
+          nsfw().refractoryPeaksLastHour,
+          1,
+          reason: 'peak 1 survives the rewind — a wipe to none would read 0',
+        );
+        expect(nsfw().refractoryMinutesRemaining, 0);
+      },
+    );
+
+    test('a pre-PR-3 stamp (no body key) still clears to none', () async {
+      // The installed base: replies written before PR 3 stamped only the
+      // arousal. Regenerating one must behave exactly as it did yesterday.
+      nsfw().setArousalLevel(100);
+      await send('The wave crests over us both.', climax: true);
+      final msg = chat.messages.last;
+      final oldMeta = Map<String, dynamic>.from(msg.activeMetadata ?? {})
+        ..remove('pre_climax_refractory');
+      msg.activeMetadata = oldMeta;
+
+      llm.climax = false;
+      await chat.regenerateLastMessage();
+      await settle();
+      expect(nsfw().refractoryPeaksLastHour, 0);
+      expect(nsfw().refractoryMinutesRemaining, 0);
+      expect(
+        nsfw().arousalLevel,
+        100,
+        reason: 'the arousal restore is old news',
+      );
+    });
+  });
 }

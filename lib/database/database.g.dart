@@ -1791,6 +1791,31 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
       'CHECK ("refractory_opened" IN (0, 1))',
     ),
   );
+  static const VerificationMeta _refractorySoftMeta = const VerificationMeta(
+    'refractorySoft',
+  );
+  @override
+  late final GeneratedColumn<bool> refractorySoft = GeneratedColumn<bool>(
+    'refractory_soft',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("refractory_soft" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _refractoryPeaksMeta = const VerificationMeta(
+    'refractoryPeaks',
+  );
+  @override
+  late final GeneratedColumn<String> refractoryPeaks = GeneratedColumn<String>(
+    'refractory_peaks',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _trustLevelMeta = const VerificationMeta(
     'trustLevel',
   );
@@ -2177,6 +2202,8 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     refractoryMinutesRemaining,
     refractoryMinutesTotal,
     refractoryOpened,
+    refractorySoft,
+    refractoryPeaks,
     trustLevel,
     activeFixation,
     fixationLifespan,
@@ -2538,6 +2565,24 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         refractoryOpened.isAcceptableOrUnknown(
           data['refractory_opened']!,
           _refractoryOpenedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refractory_soft')) {
+      context.handle(
+        _refractorySoftMeta,
+        refractorySoft.isAcceptableOrUnknown(
+          data['refractory_soft']!,
+          _refractorySoftMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refractory_peaks')) {
+      context.handle(
+        _refractoryPeaksMeta,
+        refractoryPeaks.isAcceptableOrUnknown(
+          data['refractory_peaks']!,
+          _refractoryPeaksMeta,
         ),
       );
     }
@@ -2940,6 +2985,14 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.bool,
         data['${effectivePrefix}refractory_opened'],
       ),
+      refractorySoft: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}refractory_soft'],
+      ),
+      refractoryPeaks: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refractory_peaks'],
+      ),
       trustLevel: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}trust_level'],
@@ -3118,6 +3171,15 @@ class Session extends DataClass implements Insertable<Session> {
 
   /// v55 — the opening afterglow turn has been spoken. NULL as above.
   final bool? refractoryOpened;
+
+  /// v59 — the soft gate (recovery overhaul PR 3): this body recovers
+  /// through a tenderness window. NULL reads a hard lock, so every existing
+  /// row means exactly what it means today.
+  final bool? refractorySoft;
+
+  /// v59 — peak stamps as JSON text ("[5,0]": story minutes since each
+  /// peak, oldest first). NULL or empty means no peaks inside the hour.
+  final String? refractoryPeaks;
   final int trustLevel;
   final String activeFixation;
   final int fixationLifespan;
@@ -3230,6 +3292,8 @@ class Session extends DataClass implements Insertable<Session> {
     this.refractoryMinutesRemaining,
     this.refractoryMinutesTotal,
     this.refractoryOpened,
+    this.refractorySoft,
+    this.refractoryPeaks,
     required this.trustLevel,
     required this.activeFixation,
     required this.fixationLifespan,
@@ -3330,6 +3394,12 @@ class Session extends DataClass implements Insertable<Session> {
     }
     if (!nullToAbsent || refractoryOpened != null) {
       map['refractory_opened'] = Variable<bool>(refractoryOpened);
+    }
+    if (!nullToAbsent || refractorySoft != null) {
+      map['refractory_soft'] = Variable<bool>(refractorySoft);
+    }
+    if (!nullToAbsent || refractoryPeaks != null) {
+      map['refractory_peaks'] = Variable<String>(refractoryPeaks);
     }
     map['trust_level'] = Variable<int>(trustLevel);
     map['active_fixation'] = Variable<String>(activeFixation);
@@ -3450,6 +3520,12 @@ class Session extends DataClass implements Insertable<Session> {
       refractoryOpened: refractoryOpened == null && nullToAbsent
           ? const Value.absent()
           : Value(refractoryOpened),
+      refractorySoft: refractorySoft == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refractorySoft),
+      refractoryPeaks: refractoryPeaks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refractoryPeaks),
       trustLevel: Value(trustLevel),
       activeFixation: Value(activeFixation),
       fixationLifespan: Value(fixationLifespan),
@@ -3562,6 +3638,8 @@ class Session extends DataClass implements Insertable<Session> {
         json['refractoryMinutesTotal'],
       ),
       refractoryOpened: serializer.fromJson<bool?>(json['refractoryOpened']),
+      refractorySoft: serializer.fromJson<bool?>(json['refractorySoft']),
+      refractoryPeaks: serializer.fromJson<String?>(json['refractoryPeaks']),
       trustLevel: serializer.fromJson<int>(json['trustLevel']),
       activeFixation: serializer.fromJson<String>(json['activeFixation']),
       fixationLifespan: serializer.fromJson<int>(json['fixationLifespan']),
@@ -3653,6 +3731,8 @@ class Session extends DataClass implements Insertable<Session> {
       ),
       'refractoryMinutesTotal': serializer.toJson<int?>(refractoryMinutesTotal),
       'refractoryOpened': serializer.toJson<bool?>(refractoryOpened),
+      'refractorySoft': serializer.toJson<bool?>(refractorySoft),
+      'refractoryPeaks': serializer.toJson<String?>(refractoryPeaks),
       'trustLevel': serializer.toJson<int>(trustLevel),
       'activeFixation': serializer.toJson<String>(activeFixation),
       'fixationLifespan': serializer.toJson<int>(fixationLifespan),
@@ -3726,6 +3806,8 @@ class Session extends DataClass implements Insertable<Session> {
     Value<int?> refractoryMinutesRemaining = const Value.absent(),
     Value<int?> refractoryMinutesTotal = const Value.absent(),
     Value<bool?> refractoryOpened = const Value.absent(),
+    Value<bool?> refractorySoft = const Value.absent(),
+    Value<String?> refractoryPeaks = const Value.absent(),
     int? trustLevel,
     String? activeFixation,
     int? fixationLifespan,
@@ -3810,6 +3892,12 @@ class Session extends DataClass implements Insertable<Session> {
     refractoryOpened: refractoryOpened.present
         ? refractoryOpened.value
         : this.refractoryOpened,
+    refractorySoft: refractorySoft.present
+        ? refractorySoft.value
+        : this.refractorySoft,
+    refractoryPeaks: refractoryPeaks.present
+        ? refractoryPeaks.value
+        : this.refractoryPeaks,
     trustLevel: trustLevel ?? this.trustLevel,
     activeFixation: activeFixation ?? this.activeFixation,
     fixationLifespan: fixationLifespan ?? this.fixationLifespan,
@@ -3957,6 +4045,12 @@ class Session extends DataClass implements Insertable<Session> {
       refractoryOpened: data.refractoryOpened.present
           ? data.refractoryOpened.value
           : this.refractoryOpened,
+      refractorySoft: data.refractorySoft.present
+          ? data.refractorySoft.value
+          : this.refractorySoft,
+      refractoryPeaks: data.refractoryPeaks.present
+          ? data.refractoryPeaks.value
+          : this.refractoryPeaks,
       trustLevel: data.trustLevel.present
           ? data.trustLevel.value
           : this.trustLevel,
@@ -4076,6 +4170,8 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('refractoryMinutesRemaining: $refractoryMinutesRemaining, ')
           ..write('refractoryMinutesTotal: $refractoryMinutesTotal, ')
           ..write('refractoryOpened: $refractoryOpened, ')
+          ..write('refractorySoft: $refractorySoft, ')
+          ..write('refractoryPeaks: $refractoryPeaks, ')
           ..write('trustLevel: $trustLevel, ')
           ..write('activeFixation: $activeFixation, ')
           ..write('fixationLifespan: $fixationLifespan, ')
@@ -4149,6 +4245,8 @@ class Session extends DataClass implements Insertable<Session> {
     refractoryMinutesRemaining,
     refractoryMinutesTotal,
     refractoryOpened,
+    refractorySoft,
+    refractoryPeaks,
     trustLevel,
     activeFixation,
     fixationLifespan,
@@ -4221,6 +4319,8 @@ class Session extends DataClass implements Insertable<Session> {
           other.refractoryMinutesRemaining == this.refractoryMinutesRemaining &&
           other.refractoryMinutesTotal == this.refractoryMinutesTotal &&
           other.refractoryOpened == this.refractoryOpened &&
+          other.refractorySoft == this.refractorySoft &&
+          other.refractoryPeaks == this.refractoryPeaks &&
           other.trustLevel == this.trustLevel &&
           other.activeFixation == this.activeFixation &&
           other.fixationLifespan == this.fixationLifespan &&
@@ -4291,6 +4391,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<int?> refractoryMinutesRemaining;
   final Value<int?> refractoryMinutesTotal;
   final Value<bool?> refractoryOpened;
+  final Value<bool?> refractorySoft;
+  final Value<String?> refractoryPeaks;
   final Value<int> trustLevel;
   final Value<String> activeFixation;
   final Value<int> fixationLifespan;
@@ -4360,6 +4462,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.refractoryMinutesRemaining = const Value.absent(),
     this.refractoryMinutesTotal = const Value.absent(),
     this.refractoryOpened = const Value.absent(),
+    this.refractorySoft = const Value.absent(),
+    this.refractoryPeaks = const Value.absent(),
     this.trustLevel = const Value.absent(),
     this.activeFixation = const Value.absent(),
     this.fixationLifespan = const Value.absent(),
@@ -4430,6 +4534,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.refractoryMinutesRemaining = const Value.absent(),
     this.refractoryMinutesTotal = const Value.absent(),
     this.refractoryOpened = const Value.absent(),
+    this.refractorySoft = const Value.absent(),
+    this.refractoryPeaks = const Value.absent(),
     this.trustLevel = const Value.absent(),
     this.activeFixation = const Value.absent(),
     this.fixationLifespan = const Value.absent(),
@@ -4500,6 +4606,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<int>? refractoryMinutesRemaining,
     Expression<int>? refractoryMinutesTotal,
     Expression<bool>? refractoryOpened,
+    Expression<bool>? refractorySoft,
+    Expression<String>? refractoryPeaks,
     Expression<int>? trustLevel,
     Expression<String>? activeFixation,
     Expression<int>? fixationLifespan,
@@ -4579,6 +4687,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (refractoryMinutesTotal != null)
         'refractory_minutes_total': refractoryMinutesTotal,
       if (refractoryOpened != null) 'refractory_opened': refractoryOpened,
+      if (refractorySoft != null) 'refractory_soft': refractorySoft,
+      if (refractoryPeaks != null) 'refractory_peaks': refractoryPeaks,
       if (trustLevel != null) 'trust_level': trustLevel,
       if (activeFixation != null) 'active_fixation': activeFixation,
       if (fixationLifespan != null) 'fixation_lifespan': fixationLifespan,
@@ -4655,6 +4765,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<int?>? refractoryMinutesRemaining,
     Value<int?>? refractoryMinutesTotal,
     Value<bool?>? refractoryOpened,
+    Value<bool?>? refractorySoft,
+    Value<String?>? refractoryPeaks,
     Value<int>? trustLevel,
     Value<String>? activeFixation,
     Value<int>? fixationLifespan,
@@ -4731,6 +4843,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       refractoryMinutesTotal:
           refractoryMinutesTotal ?? this.refractoryMinutesTotal,
       refractoryOpened: refractoryOpened ?? this.refractoryOpened,
+      refractorySoft: refractorySoft ?? this.refractorySoft,
+      refractoryPeaks: refractoryPeaks ?? this.refractoryPeaks,
       trustLevel: trustLevel ?? this.trustLevel,
       activeFixation: activeFixation ?? this.activeFixation,
       fixationLifespan: fixationLifespan ?? this.fixationLifespan,
@@ -4899,6 +5013,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (refractoryOpened.present) {
       map['refractory_opened'] = Variable<bool>(refractoryOpened.value);
     }
+    if (refractorySoft.present) {
+      map['refractory_soft'] = Variable<bool>(refractorySoft.value);
+    }
+    if (refractoryPeaks.present) {
+      map['refractory_peaks'] = Variable<String>(refractoryPeaks.value);
+    }
     if (trustLevel.present) {
       map['trust_level'] = Variable<int>(trustLevel.value);
     }
@@ -5037,6 +5157,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('refractoryMinutesRemaining: $refractoryMinutesRemaining, ')
           ..write('refractoryMinutesTotal: $refractoryMinutesTotal, ')
           ..write('refractoryOpened: $refractoryOpened, ')
+          ..write('refractorySoft: $refractorySoft, ')
+          ..write('refractoryPeaks: $refractoryPeaks, ')
           ..write('trustLevel: $trustLevel, ')
           ..write('activeFixation: $activeFixation, ')
           ..write('fixationLifespan: $fixationLifespan, ')

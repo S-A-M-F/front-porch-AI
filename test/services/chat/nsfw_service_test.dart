@@ -408,4 +408,152 @@ void main() {
       expect(svc.refractoryMinutesRemaining, 60);
     });
   });
+
+  // Recovery overhaul PR 3: the soft gate's mechanics — peak costs, the
+  // Continue re-verdict rule, and the window's gains-only halving
+  // (decisions 4 + 6). The numbers mirror the mockup's June simulator:
+  // 100→90, 95→77, 90→66.
+  group('soft gate (PR 3)', () {
+    test('each peak bites harder and arousal never crashes', () {
+      final svc = createTestNsfw();
+      svc.setArousalLevel(100);
+      svc.applyClimaxEffects(turns: 6, soft: true);
+      expect(svc.arousalLevel, 90, reason: '100 − round(0.2×50×1) = 90');
+      expect(svc.refractoryMinutesRemaining, kTendernessWindowMinutes);
+      expect(svc.refractory.soft, isTrue);
+      expect(svc.refractoryPeaksLastHour, 1);
+
+      svc.setArousalLevel(95);
+      svc.applyClimaxEffects(turns: 6, soft: true);
+      expect(svc.arousalLevel, 77, reason: '95 − round(0.2×45×2) = 77');
+      expect(svc.refractoryPeaksLastHour, 2);
+
+      svc.setArousalLevel(90);
+      svc.applyClimaxEffects(turns: 6, soft: true);
+      expect(svc.arousalLevel, 66, reason: '90 − round(0.2×40×3) = 66');
+
+      // The cap is what keeps the floor: a fourth peak inside the hour is
+      // still counted as 3, and the stamp list holds three, oldest dropped.
+      svc.setArousalLevel(80);
+      svc.applyClimaxEffects(turns: 6, soft: true);
+      expect(svc.arousalLevel, 62, reason: '80 − round(0.2×30×3) = 62');
+      expect(svc.refractoryPeaksLastHour, 3);
+    });
+
+    test('a climax below the floor costs nothing', () {
+      final svc = createTestNsfw();
+      svc.setArousalLevel(50);
+      svc.applyClimaxEffects(turns: 4, soft: true);
+      expect(svc.arousalLevel, 50);
+      svc.setArousalLevel(35);
+      svc.applyClimaxEffects(turns: 4, soft: true);
+      expect(svc.arousalLevel, 35);
+      expect(svc.refractoryPeaksLastHour, 2, reason: 'it still counts');
+    });
+
+    test(
+      'a Continue re-verdict restarts the window without a peak or cost',
+      () {
+        final svc = createTestNsfw();
+        svc.setArousalLevel(100);
+        svc.applyClimaxEffects(turns: 6, soft: true); // peak 1 → 90
+        final firstPeaks = svc.refractory.peaks;
+        svc.setArousalLevel(95);
+        svc.applyClimaxEffects(turns: 6, soft: true, newPeak: false);
+        expect(
+          svc.arousalLevel,
+          95,
+          reason: 'a re-verdict charges no second cost',
+        );
+        expect(svc.refractoryPeaksLastHour, 1, reason: 'peaks cannot stack');
+        expect(svc.refractoryMinutesRemaining, kTendernessWindowMinutes);
+        expect(svc.refractory.peaks, firstPeaks);
+      },
+    );
+
+    test('soft damping halves gains only — negatives whole, no −10 floor', () {
+      final svc = createTestNsfw();
+      svc.setArousalLevel(60);
+      svc.applyClimaxEffects(turns: 4, soft: true); // peak 1: 60 − 2 = 58
+      expect(svc.applyEvalArousalDelta(21), 11, reason: '+21 lands halved');
+      expect(
+        svc.applyEvalArousalDelta(-20),
+        -20,
+        reason: 'negatives pass whole',
+      );
+      svc.setArousalLevel(-30);
+      expect(
+        svc.applyEvalArousalDelta(-25),
+        -25,
+        reason:
+            'the −10 satedness floor is hard-lock semantics; a soft body\'s '
+            'desire stays up, so a real letdown must read true',
+      );
+    });
+
+    test('the soft chip names the tenderness and the peak count', () {
+      expect(
+        describeRefractory(15, clockRunning: true, soft: true, peaks: 1).chip,
+        'Tender for about 15 min · peak 1',
+      );
+      expect(
+        describeRefractory(30, clockRunning: false, soft: true, peaks: 3).chip,
+        'Tender for 2 replies · peak 3',
+      );
+      expect(
+        describeRefractory(30, clockRunning: true).chip,
+        'Refractory: about 30 min',
+        reason: 'the hard copy is unchanged',
+      );
+    });
+
+    test('soft state round-trips the snapshot; defaults stay byte-stable', () {
+      const soft = Refractory(
+        minutes: 12,
+        total: 15,
+        soft: true,
+        peaks: [20, 0],
+      );
+      final snap = soft.toSnapshot();
+      expect(snap[RefractoryKeys.soft], true);
+      expect(snap[RefractoryKeys.peaks], [20, 0]);
+      expect(Refractory.read(snap), soft);
+
+      // A hard body's snapshot grows no new keys — receipts, rows, and
+      // member maps from before PR 3 stay byte-identical.
+      final hardSnap = const Refractory(minutes: 30, total: 30).toSnapshot();
+      expect(hardSnap.keys, isNot(contains(RefractoryKeys.soft)));
+      expect(hardSnap.keys, isNot(contains(RefractoryKeys.peaks)));
+
+      // Junk stamps read leniently, never throw: only in-range numbers
+      // count, and the newest three survive an overflow.
+      expect(
+        Refractory.read({
+          RefractoryKeys.minutes: 10,
+          RefractoryKeys.peaks: ['x', 70, 12.0, 99, 5, 1, 0],
+        })!.peaks,
+        [5, 1, 0],
+      );
+    });
+
+    test(
+      'elapse ages the peaks with the window and drops them at the hour',
+      () {
+        const soft = Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [40, 10],
+        );
+        final first = soft.elapse(15, arousal: 70);
+        expect(first.refractory, const Refractory(soft: true, peaks: [55, 25]));
+        expect(first.arousal, 70, reason: 'a soft window just expires');
+        final second = first.refractory.elapse(10, arousal: 70);
+        expect(second.refractory.peaks, [
+          35,
+        ], reason: '65 aged past the hour and dropped; 35 is still counted');
+      },
+    );
+  });
 }

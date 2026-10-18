@@ -98,6 +98,13 @@ class FakeBackendServer {
   /// Tool-transport probes refused (forces the text eval fallback).
   int toolProbeRequests = 0;
 
+  /// Soft-gate climax mode (PR 3): the climax judge answers is_climax=true
+  /// on EVERY ask while set — a sustained scene keeps narrating the
+  /// afterglow — so the soft-mechanics suite gets repeatable verdicts.
+  /// Climax verdicts served, in order to the suites that count them.
+  bool softClimaxRepeats = false;
+  int climaxVerdictsServed = 0;
+
   /// Manual needs-reprocess hook. A completion whose prompt carries
   /// [reprocessMarker] is answered with [reprocessDeltas] instead of the
   /// standard canned needs set. Set the deltas to something DIFFERENT on every
@@ -553,9 +560,17 @@ class FakeBackendServer {
     // the climax and the character answers with aftermath, which is the common
     // shape in roleplay and the reason that context is in the prompt at all.
     if (lastContent.contains('"is_climax"')) {
-      final climax = lastContent.contains('the wave crests');
+      // Soft-gate mode (PR 3): with [softClimaxRepeats] set the judge
+      // answers true on every ask — a sustained scene keeps narrating the
+      // afterglow — so the soft-mechanics suite gets repeatable verdicts.
+      // The number stays a canned constant: the fake never varies it by
+      // personality, so those suites test the app's MECHANICS on a given
+      // verdict, not the model's judgement (CLAUDE.md "No stub tests").
+      final climax =
+          softClimaxRepeats || lastContent.contains('the wave crests');
       eval['is_climax'] = climax;
       eval['refractory_turns'] = climax ? 6 : 0;
+      if (climax) climaxVerdictsServed++;
     }
     if (lastContent.contains('emotion_intensity')) {
       eval['emotion'] = 'happy';

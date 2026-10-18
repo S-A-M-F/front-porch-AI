@@ -95,6 +95,23 @@ class NsfwInjection {
       final total = nsfwService.refractoryMinutesTotal > 0
           ? nsfwService.refractoryMinutesTotal
           : remaining;
+      if (nsfwService.refractory.soft) {
+        // The soft ladder (PR 3, decision 6): capacity never closes, so the
+        // two hard-lock lies ("the body simply cannot respond yet", the
+        // "not yet") become tenderness beats. Pronoun-free contract: these
+        // strings interpolate $name and speak of the body — never a
+        // gendered pronoun (whole-word guard in prompt_injection_test).
+        if (nsfwService.isOpeningAfterglowTurn) {
+          return 'Body: $name just climaxed — trembling and flushed, '
+              'oversensitive in the best way, buzzing rather than wrecked. '
+              'Closeness is wanted now; direct attention may land a beat '
+              'too intense — a flinch that turns into pulling closer.';
+        }
+        return 'Body: $name is still humming from it — touch lands a little '
+            'too intense, a flinch that turns into leaning in. Cuddling, '
+            'slow contact, warm talk: all welcome; direct stimulation '
+            'lands at half weight.';
+      }
       if (nsfwService.isOpeningAfterglowTurn) {
         return 'Body: $name just climaxed — still trembling, flushed, '
             'oversensitive, blissfully wrecked, with other physical needs '
@@ -113,6 +130,17 @@ class NsfwInjection {
           'still, but the body is waking back up; temptation is possible if '
           '{{user}} plays it right, though nothing is being chased. '
           '$_afterglowNeedsDrive';
+    }
+
+    // Warm again (PR 3, decision 6): the soft body's window ended, but a
+    // peak is still counted this hour, so cuddle time does not snap to the
+    // "chasing release" rung fifteen minutes after climax. No chip for this
+    // beat — the rose chip shows only during the window.
+    if (nsfwService.refractory.soft &&
+        nsfwService.refractoryPeaksLastHour > 0) {
+      return 'Body: $name is warm again — affectionate and open to more, '
+          'easy to reach, but nothing is being chased yet; closeness still '
+          'comes first.';
     }
 
     final a = nsfwService.arousalLevel;

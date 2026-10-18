@@ -69,17 +69,19 @@ class AfterglowPass {
   /// cards while its row showed green.
   bool get active => _realismEnabled && _nsfwService.nsfwCooldownEnabled;
 
-  /// Ask whether the reply narrated the character's own climax, and start the
-  /// refractory if it did.
+  /// Ask whether the reply narrated the character's own climax, and start
+  /// the recovery the card's profile resolves to — a hard lock, or a soft
+  /// body's tenderness window and peak (PR 3).
   ///
   /// On Continue the caller passes the NEW text only (2026-08-12; the pass
   /// used to be skipped outright): a climax the first half already registered
   /// is not re-claimed by its aftermath, and one the continuation adds
-  /// finally starts its refractory. `applyClimaxEffects` is absolute (the
-  /// card's fixed recovery minutes, else turns × 15 story minutes, opening
-  /// turn unspoken, arousal = 0), so even a re-affirmation cannot stack; the
-  /// metadata guard below keeps the FIRST reading's pre-climax arousal,
-  /// because by the second reading it is already 0.
+  /// finally lands. The hard path stays absolute (fixed minutes, else turns
+  /// × 15, opening turn unspoken, arousal 0), so a re-affirmation cannot
+  /// stack. The soft path reads the reply's `climax_triggered` stamp: on its
+  /// continuation a climax restarts the window but adds no peak (decision
+  /// 4). The metadata guard below keeps the FIRST reading's pre-climax body,
+  /// because by the second reading it has already moved.
   Future<void> runClimaxPass(String reply) async {
     if (!active) return;
     if (reply.trim().isEmpty) return;
@@ -108,16 +110,31 @@ class AfterglowPass {
           );
     if (turns == null) return;
 
-    // Metadata first, then the effect — applyClimaxEffects zeroes arousal, so
-    // reading it afterwards would record 0 as the pre-climax level and the
-    // chip would say the character peaked from nothing.
+    // Metadata first, then the effect — applyClimaxEffects zeroes arousal
+    // (hard) or trims it by the peak cost (soft), so reading it afterwards
+    // would record the post-climax body: the chip would say the character
+    // peaked from nothing, and a regen revert would restore the wrong state.
     final preClimaxArousal = _nsfwService.arousalLevel;
+    final preClimaxBody = _nsfwService.refractory;
+    var newPeak = true;
     if (_messages.isNotEmpty && !_messages.last.isUser) {
       final msg = _messages.last;
       final meta = Map<String, dynamic>.from(msg.activeMetadata ?? {});
-      if (meta['climax_triggered'] != true) {
+      if (meta['climax_triggered'] == true) {
+        // Continue of the climax reply (the pass reads only the new text):
+        // a climax the continuation adds restarts the soft window but adds
+        // no peak (decision 4), so a misread of the aftermath cannot stack
+        // peaks. Hard bodies re-apply absolutely, exactly as before.
+        newPeak = false;
+      } else {
         meta['climax_triggered'] = true;
         meta['pre_climax_arousal'] = preClimaxArousal;
+        // The full pre-climax body — minutes, opened flag, soft flag, peak
+        // stamps — beside the arousal. The regen revert restores THIS
+        // instead of `none`, so regenerating a soft peak 2 leaves peak 1
+        // and its window in place (replies stamped before PR 3 carry no
+        // body key and keep falling back to `none`).
+        meta['pre_climax_refractory'] = preClimaxBody.toSnapshot();
         // Through the setter, never `swipeMetadata[swipeIndex] = ...`: the
         // list is persisted only when some entry is non-null, so a reloaded
         // (or imported) message that has 4 swipes and no metadata comes back
@@ -129,19 +146,30 @@ class AfterglowPass {
       }
     }
     // The speaker's recovery profile (their card — the same one the judge
-    // saw): a fixed hard-lock length replaces the judge's number, nothing
-    // else. `soft` is stored but takes this path until PR 3 lands, so the
-    // observable change is only fixed-length cards.
+    // saw): a fixed hard-lock length replaces the judge's number, and the
+    // resolved kind decides which body physics the climax lands with.
     final ext = speaker.frontPorchExtensions;
     final recovery = ext?.recovery ?? RecoveryProfile.auto;
     final fixed = recovery.recoveryMinutes;
-    _nsfwService.applyClimaxEffects(turns: turns, fixedMinutes: fixed);
-
     final kind = recovery.resolvedMode(ext?.sex ?? '');
+    final soft = kind == kRecoveryModeSoft;
+    _nsfwService.applyClimaxEffects(
+      turns: turns,
+      fixedMinutes: fixed,
+      soft: soft,
+      newPeak: newPeak,
+    );
+
     debugPrint(
-      '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
-      'refractory ${_nsfwService.refractoryMinutesRemaining} min '
-      '($kind, ${fixed != null ? 'card-fixed' : 'judge'})',
+      soft
+          ? '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
+                'tenderness window '
+                '${_nsfwService.refractoryMinutesRemaining} min, peak '
+                '${_nsfwService.refractoryPeaksLastHour} '
+                '(${newPeak ? 'stamped' : 'continue, no new peak'})'
+          : '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
+                'refractory ${_nsfwService.refractoryMinutesRemaining} min '
+                '($kind, ${fixed != null ? 'card-fixed' : 'judge'})',
     );
     _scope.notify();
   }
@@ -250,7 +278,10 @@ class AfterglowPass {
     if (_activeGroup != null && id.isEmpty) return;
     final live = _activeGroup == null || id == loadedId;
     final before = _refractoryBody(id, live: live);
-    if (!before.refractory.running) return;
+    // The gate is "nothing left to age", not "no lock running": a soft
+    // body's peak stamps (and PR 4's warmth tail) outlive the window, and
+    // they age on this same beat (decision 5).
+    if (!before.refractory.running && before.refractory.peaks.isEmpty) return;
     final after = step(before);
     if (after == before) return;
     _setRefractoryBody(id, after, live: live);

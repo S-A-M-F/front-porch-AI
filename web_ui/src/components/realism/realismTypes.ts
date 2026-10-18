@@ -123,7 +123,7 @@ export function recoveryResolvesLine(p: RecoveryProfileValue, sex: string): stri
                 : "hard lock (no structured sex — today's behavior)"
         }`
       : p.recoveryMode === 'soft'
-        ? "Soft gate — no capacity lock (until soft-gate mechanics ship, it behaves as today's hard lock)"
+        ? 'Soft gate — arousal stays up; a ~15 min tenderness window halves touch gains, and each peak within the hour costs more'
         : 'Hard lock';
   const length =
     p.recoveryMinutes != null

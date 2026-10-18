@@ -101,8 +101,15 @@ class NsfwService {
 
   /// The chip and prompt words for the live refractory (see
   /// [describeRefractory]); empty when none is running.
-  ({String chip, String prompt}) get refractoryWords =>
-      describeRefractory(_refractory.minutes, clockRunning: _isClockRunning());
+  ({String chip, String prompt}) get refractoryWords => describeRefractory(
+    _refractory.minutes,
+    clockRunning: _isClockRunning(),
+    soft: _refractory.soft,
+    peaks: _refractory.peaksLastHour,
+  );
+
+  /// Climaxes counted this story hour (soft gate) — 0 for every hard body.
+  int get refractoryPeaksLastHour => _refractory.peaksLastHour;
 
   /// First Afterglow reply after the climax reply — the only turn that may
   /// force limp / tired / exhausted body language. Later Afterglow turns
@@ -178,18 +185,46 @@ class NsfwService {
     _refractory = r;
   }
 
-  /// The climax pass's one effect on this body: the refractory starts with
-  /// its opening turn unspoken and arousal lands at 0, not negative —
-  /// post-climax satedness is contentment, not aversion (the old -3 put the
-  /// character into the injection ladder's negative branches the moment the
-  /// cooldown expired, reading as repulsion right after wanted sex).
+  /// The climax pass's one effect on this body, per the card's resolved
+  /// recovery kind ([soft]).
   ///
-  /// Length: a card's fixed recovery minutes ([fixedMinutes], recovery
-  /// overhaul PR 2) replace the judge's number; without them the judge's
-  /// turns × 15 stands. A hard lock of 0 (either source) starts no
-  /// refractory — arousal still resets as today. `soft` resolves to this
-  /// same path until PR 3 gives it its own mechanics.
-  void applyClimaxEffects({required int turns, int? fixedMinutes}) {
+  /// **Hard** (today, untouched): arousal lands at 0 — post-climax
+  /// satedness is contentment, not aversion (the old -3 put the character
+  /// into the injection ladder's negative branches the moment the cooldown
+  /// expired, reading as repulsion right after wanted sex) — and the lock
+  /// starts with its opening turn unspoken. Length: a card's fixed recovery
+  /// minutes ([fixedMinutes], PR 2) replace the judge's number; without them
+  /// the judge's turns × 15 stands. A hard lock of 0 (either source) starts
+  /// no refractory.
+  ///
+  /// **Soft** (PR 3, decision 4): arousal is never zeroed. A new peak costs
+  /// [softPeakCost] and stamps the hour's peak list (cap [kPeakCap]); the
+  /// tenderness window starts (or restarts) fresh. On a Continue of the
+  /// climax reply ([newPeak] false) the window restarts but the body takes
+  /// no second peak and pays no second cost — a misread of the aftermath
+  /// cannot stack peaks.
+  void applyClimaxEffects({
+    required int turns,
+    int? fixedMinutes,
+    bool soft = false,
+    bool newPeak = true,
+  }) {
+    if (soft) {
+      if (newPeak) {
+        final peak = (_refractory.peaksLastHour + 1).clamp(1, kPeakCap);
+        _arousalLevel = (_arousalLevel - softPeakCost(_arousalLevel, peak))
+            .clamp(-100, 100);
+        final stamps = [..._refractory.peaks, 0];
+        _refractory = Refractory.tenderness(
+          stamps.length <= kPeakCap
+              ? stamps
+              : stamps.sublist(stamps.length - kPeakCap),
+        );
+      } else {
+        _refractory = Refractory.tenderness(_refractory.peaks);
+      }
+      return;
+    }
     _refractory = fixedMinutes != null
         ? Refractory.fromMinutes(fixedMinutes)
         : Refractory.fromJudgeTurns(turns);
@@ -201,16 +236,23 @@ class NsfwService {
   /// that actually landed after clamping and refractory physiology, which is
   /// what chips/metadata must record so regen revert stays exact.
   ///
-  /// During the refractory, desire physiology applies: swings are halved (a
+  /// During a **hard** lock, desire physiology applies: swings are halved (a
   /// spent body is slow to stir either way) and the result never digs below
   /// mild disinterest (-10) — satedness is not aversion, so recovering from a
   /// wanted climax must not walk the character into the repelled tiers.
+  /// During a **soft** window (PR 3, decision 4) only gains halve — touch
+  /// lands at half weight — and negatives pass whole: a soft body's desire
+  /// stays up, so a real letdown still reads true.
   int applyEvalArousalDelta(int delta) {
     var effective = delta;
     var floor = -100;
     if (_refractory.running) {
-      effective = (effective / 2).round();
-      floor = _arousalLevel < -10 ? _arousalLevel : -10;
+      if (_refractory.soft) {
+        if (effective > 0) effective = (effective / 2).round();
+      } else {
+        effective = (effective / 2).round();
+        floor = _arousalLevel < -10 ? _arousalLevel : -10;
+      }
     }
     final next = (_arousalLevel + effective).clamp(floor, 100);
     effective = next - _arousalLevel;

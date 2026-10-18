@@ -328,6 +328,25 @@ extension _AppDatabaseMigrationLate on AppDatabase {
         "THEN 'character' ELSE 'user' END WHERE origin IS NULL",
       );
     }
+    if (from < 59) {
+      // v58→v59: the soft gate (recovery overhaul PR 3). A tenderness-
+      // window flag and this hour's peak stamps (JSON minutes, oldest
+      // first) ride the sessions row beside the minute columns. NULL for
+      // every existing row is right — it reads a hard lock with no peaks,
+      // exactly what those chats mean today. Additive, so a downgrade to
+      // v58 keeps reading sessions; the columns are ignored.
+      for (final ddl in const [
+        'ALTER TABLE sessions ADD COLUMN refractory_soft INTEGER',
+        'ALTER TABLE sessions ADD COLUMN refractory_peaks TEXT',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v59: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+    }
   }
 
   /// True only when this pass actually created `chat_worlds.is_primary`.

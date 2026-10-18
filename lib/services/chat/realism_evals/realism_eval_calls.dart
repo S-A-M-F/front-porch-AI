@@ -217,6 +217,7 @@ class RealismEvalCalls {
           arousalLevel: evals.nsfwService.arousalLevel,
           refractoryMinutesLeft: evals.nsfwService.refractoryMinutesRemaining,
           clockRunning: evals.nsfwService.clockRunning,
+          refractorySoft: evals.nsfwService.refractory.soft,
           allowedEmotionLabels: labels,
           toolsMode: toolsMode,
         );

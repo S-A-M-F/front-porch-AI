@@ -396,7 +396,8 @@ class PorchLifeTab extends StatelessWidget {
                     'again. The engine is what scores desire, so this cannot '
                     'run without it. Uses one short extra AI request per reply '
                     'to notice a climax, so it costs a little more on a paid '
-                    'API.',
+                    'API. Multiorgasmic characters feel a tenderness window '
+                    'instead of a lock.',
                 value: storage.realismSettings.nsfwCooldownDefault,
                 onChanged: storage.realismSettings.setNsfwCooldownDefault,
               ),

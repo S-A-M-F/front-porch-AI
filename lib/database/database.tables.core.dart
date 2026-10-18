@@ -151,6 +151,15 @@ class Sessions extends Table {
   /// v55 — the opening afterglow turn has been spoken. NULL as above.
   BoolColumn get refractoryOpened => boolean().nullable()();
 
+  /// v59 — the soft gate (recovery overhaul PR 3): this body recovers
+  /// through a tenderness window. NULL reads a hard lock, so every existing
+  /// row means exactly what it means today.
+  BoolColumn get refractorySoft => boolean().nullable()();
+
+  /// v59 — peak stamps as JSON text ("[5,0]": story minutes since each
+  /// peak, oldest first). NULL or empty means no peaks inside the hour.
+  TextColumn get refractoryPeaks => text().nullable()();
+
   // Realism Engine v3.0 Behavioral Mechanics
   IntColumn get trustLevel =>
       integer().withDefault(const Constant(0))(); // -100 to 100 paranoia/trust

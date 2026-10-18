@@ -154,6 +154,22 @@ void main() {
     expect(chat.timeService.clock, DateTime.utc(2020, 1, 4, 19, 0));
   });
 
+  test('B4: .fpchat import carries a soft body and its peaks', () async {
+    await chat.startFreshChatWith(character: _misty(), personaId: personaId);
+    final decoded = decodeFpchatBytes(_livedInFpchat(realismOn: true));
+    final session = decoded.chatJson['fpai']['session'] as Map<String, dynamic>;
+    session['refractory_minutes_remaining'] = 0;
+    session['refractory_soft'] = true;
+    session['refractory_peaks'] = [20, 0];
+    final outcome = await chat.importChatPackage(
+      encodeFpchatZip(chatJson: decoded.chatJson),
+    );
+    expect(outcome.fullRestore, isTrue);
+    expect(chat.nsfwService.refractory.soft, isTrue);
+    expect(chat.nsfwService.refractory.peaks, [20, 0]);
+    expect(chat.nsfwService.refractoryMinutesRemaining, 0);
+  });
+
   test(
     'reload-then-fork of stamp-less ST does not inherit parent trust',
     () async {

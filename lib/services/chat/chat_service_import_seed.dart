@@ -208,6 +208,9 @@ extension ChatServiceImportSeed on ChatService {
       'refractory_minutes_remaining': _nsfwService.refractoryMinutesRemaining,
       'refractory_minutes_total': _nsfwService.refractoryMinutesTotal,
       'refractory_opened': _nsfwService.refractoryOpened,
+      if (_nsfwService.refractory.soft) 'refractory_soft': true,
+      if (_nsfwService.refractory.peaks.isNotEmpty)
+        'refractory_peaks': _nsfwService.refractory.peaks,
       'time_of_day': _timeService.timeOfDay,
       'day_count': _timeService.dayCount,
       'start_day_of_week': _timeService.startDayOfWeekAnchor,
@@ -281,6 +284,12 @@ extension ChatServiceImportSeed on ChatService {
         RefractoryKeys.total: head['refractory_minutes_total'],
       if (head['refractory_opened'] != null)
         RefractoryKeys.opened: head['refractory_opened'],
+      // PR 3 soft gate: absent reads hard lock / no peaks, so files saved
+      // before it restore exactly as they did.
+      if (head['refractory_soft'] != null)
+        RefractoryKeys.soft: head['refractory_soft'],
+      if (head['refractory_peaks'] != null)
+        RefractoryKeys.peaks: head['refractory_peaks'],
       // Files saved before minutes: turns, read once as turns × 15.
       if (head['cooldown_turns_remaining'] != null)
         RefractoryKeys.legacyTurns: head['cooldown_turns_remaining'],

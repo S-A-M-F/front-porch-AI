@@ -148,16 +148,27 @@ extension ChatServiceRegenRevert on ChatService {
         }
 
         // Revert climax state if this response triggered refractory cooldown.
-        // The climax checker stores the pre-climax arousal so we can restore it.
+        // The climax checker stores the pre-climax arousal so we can restore
+        // it. Since PR 3 it also stamps the full pre-climax BODY (window,
+        // soft flag, peak stamps) — regenerating a soft peak 2 rewinds to a
+        // body that still holds peak 1 and its window, not to an empty one.
+        // Replies stamped before PR 3 carry no body key and clear the
+        // refractory exactly as they always did.
         final climaxTriggered =
             lastMsg.activeMetadata!['climax_triggered'] as bool? ?? false;
         if (climaxTriggered && _nsfwService.nsfwCooldownEnabled) {
-          final preClimaxArousal =
-              lastMsg.activeMetadata!['pre_climax_arousal'] as int? ?? 0;
+          final meta = lastMsg.activeMetadata!;
+          final preClimaxArousal = meta['pre_climax_arousal'] as int? ?? 0;
+          final stamped = meta['pre_climax_refractory'];
+          final preBody = stamped is Map
+              ? Refractory.read(Map<dynamic, dynamic>.from(stamped))
+              : null;
           _nsfwService.setArousalLevel(preClimaxArousal);
-          _nsfwService.setRefractory(Refractory.none);
+          _nsfwService.setRefractory(preBody ?? Refractory.none);
           debugPrint(
-            '[Realism:Regen] Reverted climax state: arousal restored to $preClimaxArousal, cooldown cleared',
+            '[Realism:Regen] Reverted climax state: arousal restored to '
+            '$preClimaxArousal, cooldown '
+            '${preBody == null ? 'cleared' : 'restored to $preBody'}',
           );
         } else if (arousalDelta != 0 && _nsfwService.nsfwCooldownEnabled) {
           // Normal arousal delta revert (no climax involved)

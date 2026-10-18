@@ -78,6 +78,10 @@ abstract final class GroupRealismKeys {
   static const refractoryMinutesTotal = RefractoryKeys.total;
   static const refractoryOpened = RefractoryKeys.opened;
 
+  /// PR 3 soft gate — the window kind and this hour's peak stamps.
+  static const refractorySoft = RefractoryKeys.soft;
+  static const refractoryPeaks = RefractoryKeys.peaks;
+
   /// Saved before the refractory counted minutes; read once as turns × 15.
   static const legacyCooldownTurnsRemaining = RefractoryKeys.legacyTurns;
   static const legacyCooldownTurnsTotal = RefractoryKeys.legacyTotal;
@@ -124,6 +128,8 @@ abstract final class GroupRealismKeys {
     refractoryMinutesRemaining,
     refractoryMinutesTotal,
     refractoryOpened,
+    refractorySoft,
+    refractoryPeaks,
     legacyCooldownTurnsRemaining,
     legacyCooldownTurnsTotal,
     emotion,

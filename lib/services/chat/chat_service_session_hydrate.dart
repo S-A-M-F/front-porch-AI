@@ -224,6 +224,9 @@ extension ChatServiceSessionHydrate on ChatService {
             RefractoryKeys.minutes: s.refractoryMinutesRemaining,
             RefractoryKeys.total: s.refractoryMinutesTotal,
             RefractoryKeys.opened: s.refractoryOpened,
+            // v59 — NULL soft / absent peaks read today's defaults.
+            RefractoryKeys.soft: s.refractorySoft,
+            RefractoryKeys.peaks: _peakStampsFromColumn(s.refractoryPeaks),
             RefractoryKeys.legacyTurns: s.cooldownTurnsRemaining,
             RefractoryKeys.legacyTotal: s.cooldownTurnsTotal,
           }) ??
@@ -419,5 +422,16 @@ extension ChatServiceSessionHydrate on ChatService {
     } catch (e) {
       debugPrint('[PorchMemories] session hook failed: $e');
     }
+  }
+}
+
+/// Reads the v59 peak-stamp column: JSON text written by this app; NULL or
+/// junk decodes to "no peaks", matching every body saved before PR 3.
+List<int> _peakStampsFromColumn(String? raw) {
+  if (raw == null || raw.isEmpty) return const [];
+  try {
+    return Refractory.readPeakStamps(jsonDecode(raw));
+  } catch (_) {
+    return const [];
   }
 }

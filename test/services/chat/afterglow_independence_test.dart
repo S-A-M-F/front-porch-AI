@@ -502,4 +502,173 @@ void main() {
       expect(nsfw.refractoryMinutesRemaining, 30);
     });
   });
+
+  // Recovery overhaul PR 3: the resolved kind now picks the PHYSICS. A soft
+  // card — explicit or the `auto` prior on a female card — gets the fixed
+  // tenderness window and a peak instead of a lock, the reply is stamped
+  // with the whole pre-climax body, and a Continue of that reply adds no
+  // peak. The roster-mate rule still holds: only the speaker's card moves.
+  group('the soft gate lands at climax (PR 3)', () {
+    Future<({NsfwService nsfw, List<ChatMessage> messages})> softClimaxWith({
+      required FrontPorchExtensions? speakerExt,
+      int judgeTurns = 6,
+      bool replyAlreadyStamped = false,
+    }) async {
+      final nsfw = NsfwService(
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
+      );
+      nsfw.loadNsfwScalars(arousalLevel: 100, nsfwCooldownEnabled: true);
+
+      final messages = [
+        ChatMessage(
+          text: 'she shuddered and went limp',
+          sender: 'Vera',
+          isUser: false,
+          metadata: replyAlreadyStamped
+              ? {
+                  'climax_triggered': true,
+                  'pre_climax_arousal': 100,
+                  'pre_climax_refractory': Refractory.none.toSnapshot(),
+                }
+              : null,
+        ),
+      ];
+      final vera = CharacterCard(name: 'Vera', frontPorchExtensions: speakerExt)
+        ..dbId = 'vera';
+
+      final eval = ClimaxEval(
+        fire:
+            ({
+              required debugLabel,
+              required tools,
+              required buildPrompt,
+            }) async => '{"is_climax":true,"refractory_turns":$judgeTurns}',
+      );
+      final scope = RealismScope(
+        messages: messages,
+        activeCharacter: () => vera,
+        setActiveCharacter: (_) {},
+        activeGroup: () => null,
+        groupCharacters: () => [vera],
+        observerMode: () => false,
+        realismEnabled: () => true,
+        needsSimEnabled: () => false,
+        realismSettings: () => throw UnimplementedError(),
+        clockRunning: () => false,
+        characterIdFor: (c) => c.dbId ?? '',
+        groups: GroupRealismStore(
+          isGroup: () => false,
+          groupCharacters: () => [vera],
+          characterIdFor: (c) => c.dbId ?? '',
+          hostId: () => 'vera',
+          activeCharacter: () => vera,
+          isGenerating: () => false,
+          nextCharacter: () => null,
+          workFieldsFor: (_) => throw UnimplementedError(),
+        ),
+        needs: () => throw UnimplementedError(),
+        relationship: () => throw UnimplementedError(),
+        nsfw: () => nsfw,
+        time: () => throw UnimplementedError(),
+        pending: () => null,
+        setPending: (_) {},
+        emotion: () => '',
+        setEmotion: (_) {},
+        intensity: () => '',
+        setIntensity: (_) {},
+        cause: () => '',
+        setCause: (_) {},
+        heldTurns: () => 0,
+        setHeldTurns: (_) {},
+        saveChat: () async {},
+        notify: () {},
+      );
+      await AfterglowPass(
+        scope,
+        eval,
+        fusedReply: () => null,
+        isGuestAuthoredMessage: (_) => false,
+        resolveGroupSpeakerForMessage: (_) => null,
+      ).runClimaxPass('she shuddered and went limp');
+      return (nsfw: nsfw, messages: messages);
+    }
+
+    test(
+      'an explicit soft card lands the window and one peak, not a lock',
+      () async {
+        final r = await softClimaxWith(
+          speakerExt: FrontPorchExtensions(
+            recovery: const RecoveryProfile(recoveryMode: kRecoveryModeSoft),
+          ),
+        );
+        expect(
+          r.nsfw.refractory,
+          const Refractory(
+            minutes: kTendernessWindowMinutes,
+            total: kTendernessWindowMinutes,
+            soft: true,
+            peaks: [0],
+          ),
+          reason:
+              'the judge\'s 6 × 15 never applies to a soft body — the window '
+              'is fixed and the peak is stamped (decision 4)',
+        );
+        expect(
+          r.nsfw.arousalLevel,
+          90,
+          reason: 'peak 1 from 100 costs 10 — arousal stays up',
+        );
+        final meta = r.messages.last.activeMetadata!;
+        expect(meta['climax_triggered'], isTrue);
+        expect(
+          meta['pre_climax_refractory'],
+          isA<Map>(),
+          reason: 'the whole pre-climax body rides beside the arousal',
+        );
+      },
+    );
+
+    test('auto + a female card resolves to the same soft landing', () async {
+      final r = await softClimaxWith(
+        speakerExt: FrontPorchExtensions(sex: 'female'),
+      );
+      expect(r.nsfw.refractory.soft, isTrue);
+      expect(r.nsfw.refractoryMinutesRemaining, kTendernessWindowMinutes);
+    });
+
+    test('auto + a male card keeps the hard lock and the zero', () async {
+      final r = await softClimaxWith(
+        speakerExt: FrontPorchExtensions(sex: 'man'),
+        judgeTurns: 2,
+      );
+      expect(r.nsfw.refractory.soft, isFalse);
+      expect(r.nsfw.refractoryMinutesRemaining, 30);
+      expect(r.nsfw.arousalLevel, 0);
+    });
+
+    test(
+      'a Continue of the climax reply restarts the window, no new peak',
+      () async {
+        final r = await softClimaxWith(
+          speakerExt: FrontPorchExtensions(
+            recovery: const RecoveryProfile(recoveryMode: kRecoveryModeSoft),
+          ),
+          replyAlreadyStamped: true,
+        );
+        expect(
+          r.nsfw.arousalLevel,
+          100,
+          reason: 'the re-verdict charges no second peak cost',
+        );
+        expect(r.nsfw.refractoryPeaksLastHour, 0, reason: 'no peak was added');
+        expect(
+          r.nsfw.refractoryMinutesRemaining,
+          kTendernessWindowMinutes,
+          reason: 'the window still restarts',
+        );
+      },
+    );
+  });
 }

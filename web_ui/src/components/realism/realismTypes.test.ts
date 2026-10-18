@@ -287,7 +287,7 @@ describe('the recovery mirror matches the Dart source of truth', () => {
       recoveryResolvesLine({ recoveryMode: 'hard', recoveryMinutes: 90 }, 'male'),
     ).toContain("90 min fixed (replaces the judge's number)");
     expect(recoveryResolvesLine({ recoveryMode: 'soft', recoveryMinutes: null }, 'female')).toContain(
-      'until soft-gate mechanics',
+      'tenderness window halves touch gains',
     );
     expect(recoveryClockOffHint(90)).toContain('90 min ≈ 6 replies');
     expect(recoveryClockOffHint(30)).toContain('2 replies');
