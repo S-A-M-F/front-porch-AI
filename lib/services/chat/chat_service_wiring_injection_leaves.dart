@@ -227,6 +227,27 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
       getMutualOpening: _mutualAfterglowOpening,
+      getPcdActive: _pcdActive,
+    );
+  }
+
+  /// PR 8: is this body's grey-drift window open — the opening turn plus
+  /// their next two replies, counted from message history so regen and
+  /// delete rewind it for free. One stamp-backed truth feeds both the
+  /// ladder rung (opening branch only) and the emotion-eval note (the
+  /// full window). Guests and roster-mates are excluded the way the
+  /// mutual scan already excludes them.
+  bool _pcdActive() {
+    return pcdWindowActive(
+      messages: _messages,
+      speakerId: _activeGroup != null ? _groupStore.currentSpeakerId() : null,
+      isUser: (m) => m.isUser || _isGuestAuthoredMessage(m),
+      climaxStamped: (m) => m.activeMetadata?['climax_triggered'] == true,
+      pcdStamped: (m) => m.activeMetadata?['pcd'] == true,
+      speakerOf: (m) {
+        final card = _resolveGroupSpeakerForMessage(m);
+        return card == null ? null : _getCharacterIdFromCard(card);
+      },
     );
   }
 

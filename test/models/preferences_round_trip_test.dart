@@ -35,7 +35,6 @@
 // the whole import.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/web/util/realism_extensions_json.dart';
 

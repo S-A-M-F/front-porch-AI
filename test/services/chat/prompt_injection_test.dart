@@ -1628,10 +1628,17 @@ void main() {
   group('the bond surge is one conditional (PR 7)', () {
     const duty =
         'if it was duty, transaction, or skill on autopilot, the body '
-        'cools on schedule and the heart may not follow';
+        'cools on schedule and the heart may not follow — a flat or '
+        'dipped bond is the honest score there';
 
-    String hardNote() =>
-        RealismPromptFragments.arousalSection('Nia', 'You', 30, 45, true);
+    String hardNote() => RealismPromptFragments.arousalSection(
+      'Nia',
+      'You',
+      30,
+      45,
+      true,
+      bondScoredHere: true,
+    );
     String softNote() => RealismPromptFragments.arousalSection(
       'Nia',
       'You',
@@ -1639,6 +1646,7 @@ void main() {
       45,
       true,
       refractorySoft: true,
+      bondScoredHere: true,
     );
     String tailNote() => RealismPromptFragments.arousalSection(
       'Nia',
@@ -1647,6 +1655,7 @@ void main() {
       0,
       true,
       warmthTailMinutes: 40,
+      bondScoredHere: true,
     );
     String bond() => RealismPromptFragments.bondSection('Nia', 'You');
 
@@ -1677,6 +1686,18 @@ void main() {
           text,
           isNot(contains('{{user}}')),
           reason: 'judge lanes resolve no macros — $name leaks the token',
+        );
+        // Notes join the clause after a single space; the bond rubric
+        // indents it two like its siblings. The artifact is one extra
+        // space MORE than that (clause keeps no leading space itself).
+        expect(
+          text,
+          isNot(
+            contains(
+              name == 'bond section' ? '   If the climax' : '  If the climax',
+            ),
+          ),
+          reason: '$name double-spaces before the clause',
         );
       }
     });
@@ -1714,6 +1735,242 @@ void main() {
         true,
       );
       expect(bare, isNot(contains('the climax was wanted')));
+    });
+
+    test('the emotional judge gets no dangling surge (review M1)', () {
+      // The multi-call lane serves every local backend, and its emotional
+      // judge scores emotion + arousal_delta only — bond advice on that
+      // prompt has no field, and small models pour it into the number
+      // that IS there. The notes carry the clause only when the same
+      // prompt scores bond; the trio's advice rides bondSection instead.
+      final emotional = RealismPromptBuilder.emotionalEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+      );
+      expect(emotional, isNot(contains('the climax was wanted')));
+      expect(emotional, contains('post-orgasm refractory'));
+      final relationship = RealismPromptFragments.bondSection('Nia', 'You');
+      expect(
+        relationship,
+        contains('the climax was wanted'),
+        reason: 'the trio must still get the surge where the field lives',
+      );
+    });
+
+    test('the fused prompt speaks the surge twice — bond line + note', () {
+      final fused = RealismPromptBuilder.oneShotEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+      );
+      expect(
+        RegExp('the climax was wanted').allMatches(fused).length,
+        2,
+        reason:
+            'bond section line + the refractory note, one copy each '
+            '(double-emphasis is accepted cost, path-complete §2)',
+      );
+      expect(fused, contains(duty));
+    });
+  });
+
+  // Recovery overhaul PR 8: the grey drift. Opt-in per card, stamped at
+  // the first reading, and every surface it touches keeps the old copy
+  // verbatim when the window is closed.
+  group('grey-drift opening (PR 8)', () {
+    String pcdText(
+      Refractory r, {
+      required bool pcd,
+      bool mutual = false,
+      String name = 'Nia',
+    }) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      return NsfwInjection(
+        nsfwService: n,
+        getRealismEnabled: () => true,
+        getActiveCharacter: () => CharacterCard(name: name),
+        getIsGroupNonObserverMode: () => false,
+        getCurrentSpeakerIdForRealism: () => 'c1',
+        getGroupCharacters: () => const [],
+        getCharacterIdFromCard: (c) => c.dbId?.toString() ?? c.name,
+        getMutualOpening: () => mutual,
+        getPcdActive: () => pcd,
+      ).buildNsfwCooldownInjection();
+    }
+
+    test('a grey hard opening keeps the lock truth and names the drift', () {
+      final t = pcdText(Refractory.fromJudgeTurns(6), pcd: true);
+      expect(t, contains('just climaxed — still trembling, flushed'));
+      expect(t, contains('sudden grey drift'));
+      expect(t, contains('not sad about anything, and nothing {{user}} did'));
+      expect(
+        t,
+        contains('cannot be answered'),
+        reason: 'the drift is mood — the hard lock stays a hard lock',
+      );
+    });
+
+    test('a grey soft opening lets the drift pass through', () {
+      final t = pcdText(Refractory.tenderness([0]), pcd: true);
+      expect(t, contains('sudden grey drift'));
+      expect(t, contains('closeness is still wanted'));
+      expect(t, contains('passes through on its own'));
+    });
+
+    test('the grey drift outranks the mutual clause on the opening', () {
+      final t = pcdText(Refractory.fromJudgeTurns(6), pcd: true, mutual: true);
+      expect(t, contains('sudden grey drift'));
+      expect(
+        t,
+        isNot(contains('came undone together')),
+        reason: 'one rung per beat — the opt-in specific mood wins the slot',
+      );
+    });
+
+    test('the grey drift outranks the mutual clause on the SOFT rung too', () {
+      // The hard rung's ordering has a guard; a refactor that flips only
+      // the soft branch's order must trip one as well.
+      final t = pcdText(Refractory.tenderness([0]), pcd: true, mutual: true);
+      expect(t, contains('sudden grey drift'));
+      expect(t, isNot(contains('the wind-down is shared')));
+    });
+
+    test('a closed window ships the mutual and default copy untouched', () {
+      expect(
+        pcdText(Refractory.fromJudgeTurns(6), pcd: false, mutual: true),
+        contains('came undone together'),
+      );
+      final plain = pcdText(Refractory.fromJudgeTurns(6), pcd: false);
+      expect(plain, isNot(contains('grey drift')));
+      expect(
+        plain,
+        contains('the body simply cannot respond yet'),
+        reason: 'the PR 3 hard rung, byte for byte',
+      );
+    });
+
+    test('a mid-window body never speaks the grey opening', () {
+      // The rung is opening-turn-only even while the window runs — the
+      // window's later turns color the EMOTION eval, not the ladder.
+      final t = pcdText(
+        const Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10, 0],
+        ),
+        pcd: true,
+      );
+      expect(t, contains('still humming from it'));
+      expect(t, isNot(contains('grey drift')));
+    });
+
+    test('the grey rungs speak no gendered pronoun', () {
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      for (final t in [
+        pcdText(Refractory.fromJudgeTurns(6), pcd: true),
+        pcdText(Refractory.tenderness([0]), pcd: true),
+      ]) {
+        expect(
+          t,
+          isNot(contains(genders)),
+          reason:
+              'the grey rungs interpolate \$name and speak of the '
+              'body — never a gendered pronoun: $t',
+        );
+      }
+    });
+
+    test('the emotion note invites the grey read and pins bond untouched', () {
+      final note = RealismPromptFragments.emotionSection(
+        'Nia',
+        const [],
+        userName: 'You',
+        pcdActive: true,
+      );
+      expect(note, contains('"wistful" or "tearful" is an honest read'));
+      expect(note, contains('something unnameable after the peak'));
+      expect(note, contains('NOT a reaction to You'));
+      expect(
+        note,
+        contains('bond and trust stay exactly as they were'),
+        reason:
+            'the hard guard: dysphoria is weather, not a verdict on '
+            'the bond — and the fused prompt must say so',
+      );
+      expect(
+        RealismPromptFragments.emotionSection('Nia', const []),
+        isNot(contains('grey')),
+        reason: 'default reads are today\'s emotion rubric verbatim',
+      );
+    });
+
+    test('both eval lanes carry the note only when the window is open', () {
+      final emotional = RealismPromptBuilder.emotionalEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+        pcdActive: true,
+      );
+      expect(emotional, contains('something unnameable after the peak'));
+      expect(
+        RealismPromptBuilder.emotionalEvalPrompt(
+          charName: 'Nia',
+          userName: 'You',
+          dossier: '',
+          standing: '',
+          recent: '',
+          arousalEnabled: true,
+          arousalLevel: 30,
+          refractoryMinutesLeft: 45,
+        ),
+        isNot(contains('unnameable after the peak')),
+      );
+      final fused = RealismPromptBuilder.oneShotEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        pcdActive: true,
+      );
+      expect(fused, contains('bond and trust stay exactly as they were'));
+      expect(
+        RealismPromptBuilder.oneShotEvalPrompt(
+          charName: 'Nia',
+          userName: 'You',
+          dossier: '',
+          standing: '',
+          recent: '',
+          arousalEnabled: true,
+          arousalLevel: 30,
+        ),
+        isNot(contains('unnameable after the peak')),
+      );
     });
   });
 }

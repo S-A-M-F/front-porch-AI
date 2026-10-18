@@ -60,6 +60,7 @@ const String kFeelingsUnscoredTip =
 /// fields it covers. Group speakers impersonate through ChatService
 /// load/save scalars before the eval.
 bool _noMutualOpening() => false;
+bool _noPcdActive() => false;
 
 class RealismEvals {
   final Future<String?> Function(
@@ -291,6 +292,13 @@ class RealismEvals {
   /// default (false, no wiring) ships today's note verbatim.
   final bool Function() getMutualOpening;
 
+  /// PR 8: whether the reply being generated is inside a grey-drift
+  /// (post-coital dysphoria) window for the speaker. When true, the emotion
+  /// eval note invites a wistful/tearful read with an unnameable cause and
+  /// pins that bond/trust are unmoved. Default (no wiring) ships today's
+  /// emotion section verbatim.
+  final bool Function() getPcdActive;
+
   /// The proposal gate's inputs (objectives-that-keep-up.md part 3), all
   /// optional: unwired means no "lately" line, no cooldown, no cap and no
   /// name tokens ignored, which is how a bare test host has always run.
@@ -351,6 +359,7 @@ class RealismEvals {
     this.getPreferences,
     this.getPlannerEnabled,
     this.getMutualOpening = _noMutualOpening,
+    this.getPcdActive = _noPcdActive,
     required this.setObjective,
     this.verifyRealismOutput,
   });

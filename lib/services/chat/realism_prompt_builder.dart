@@ -308,6 +308,7 @@ class RealismPromptBuilder {
     bool refractorySoft = false,
     int warmthTailMinutes = 0,
     bool mutualOpening = false,
+    bool pcdActive = false,
     List<String> allowedEmotionLabels = const [],
     String preferences = '',
     List<({String text, int progress})> ambitions = const [],
@@ -315,7 +316,7 @@ class RealismPromptBuilder {
   }) =>
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Name what $charName truly feels right now. Evaluate:\n'
-      '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels)}'
+      '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels, userName: userName, pcdActive: pcdActive)}'
       '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes, mutualOpening: mutualOpening) : ''}'
       '\n'
       '${RealismPromptFragments.recentBlock(recent)}'
@@ -357,6 +358,7 @@ class RealismPromptBuilder {
     bool refractorySoft = false,
     int warmthTailMinutes = 0,
     bool mutualOpening = false,
+    bool pcdActive = false,
     List<String> allowedEmotionLabels = const [],
     String? primaryObjective,
     List<({String text, int progress})> ambitions = const [],
@@ -370,8 +372,8 @@ class RealismPromptBuilder {
       'dimension below. Evaluate ALL of the following at once:\n'
       '${RealismPromptFragments.bondSection(charName, userName)}'
       '${RealismPromptFragments.trustSection(charName, userName)}'
-      '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels)}'
-      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes, mutualOpening: mutualOpening) : ''}'
+      '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels, userName: userName, pcdActive: pcdActive)}'
+      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes, mutualOpening: mutualOpening, bondScoredHere: true) : ''}'
       '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions, openGoals: openGoals, recentEnded: recentEnded)}'
       '${RealismPromptFragments.fixationSection(charName)}'
       '${RealismPromptFragments.reasonSection()}'

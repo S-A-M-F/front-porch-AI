@@ -21,11 +21,13 @@ import {
   TIME_OPTIONS,
   longTermTier,
   recoveryClockOffHint,
+  PCD_OPTIONS,
   recoveryFromPreset,
   recoveryPresetKey,
   recoveryResolvesLine,
   recoverySuggestionLine,
   recoveryWithMinutes,
+  recoveryWithPcdMood,
   shortTermTier,
   suggestRecoveryPresetKey,
   titleCase,
@@ -485,8 +487,8 @@ function RecoveryBlock({
           set({
             recovery:
               key === 'custom'
-                ? recoveryWithMinutes(sliderValue)
-                : recoveryFromPreset(key),
+                ? recoveryWithMinutes(r, sliderValue)
+                : recoveryFromPreset(key, r.pcdMood ?? 'off'),
           })
         }
       />
@@ -496,7 +498,7 @@ function RecoveryBlock({
         max={RECOVERY_MAX_MINUTES}
         value={sliderValue}
         badge={`${sliderValue} min`}
-        onChange={(n) => set({ recovery: recoveryWithMinutes(n) })}
+        onChange={(n) => set({ recovery: recoveryWithMinutes(r, n) })}
       />
       <small className="muted" data-testid="recovery-clock-off-hint">
         {recoveryClockOffHint(r.recoveryMinutes)}
@@ -504,6 +506,21 @@ function RecoveryBlock({
       <small className="muted" data-testid="recovery-resolves-line">
         {recoveryResolvesLine(r, v.sex ?? '')}
       </small>
+      {/* PR 8: the grey-drift dial. Opt-in by law — Off ships and Off is
+          what every pre-PR-8 card reads (mirror of desktop RecoveryBlock). */}
+      <div data-testid="recovery-pcd-row">
+        <SelectRow
+          label="Grey drift after"
+          value={r.pcdMood ?? 'off'}
+          options={PCD_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+          onChange={(mood) => set({ recovery: recoveryWithPcdMood(r, mood) })}
+        />
+        <small className="muted">
+          A hollow, misty mood some people feel minutes to an hour after
+          intimacy — real, brief, and not about their partner. How often it
+          visits after a climax.
+        </small>
+      </div>
       {suggestion && (
         <small className="recovery-suggestion" data-testid="recovery-suggestion">
           {suggestion}

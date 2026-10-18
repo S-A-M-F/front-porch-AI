@@ -28,10 +28,32 @@ export interface InventoryRecord {
  *  and desktop must put the identical pair on the card). */
 export type RecoveryMode = 'auto' | 'hard' | 'soft';
 
+/** Post-coital dysphoria dial (recovery overhaul PR 8) — mirror of the
+ *  Dart `kPcdMood*` constants. Opt-in: absence reads `off`, so a card
+ *  saved before PR 8 never rolls the grey beat. */
+export type PcdMood = 'off' | 'rare' | 'sometimes';
+
 export interface RecoveryProfileValue {
   recoveryMode: RecoveryMode;
   recoveryMinutes: number | null;
+  pcdMood?: PcdMood;
 }
+
+/** Roll rates per dial — mirror of kPcdRateRare/kPcdRateSometimes. */
+export const PCD_RATE_RARE = 0.15;
+export const PCD_RATE_SOMETIMES = 0.35;
+
+/** The dial's options — labels byte-identical with Dart `kPcdOptions`. */
+export interface PcdOptionValue {
+  key: PcdMood;
+  label: string;
+}
+
+export const PCD_OPTIONS: PcdOptionValue[] = [
+  { key: 'off', label: 'Off' },
+  { key: 'rare', label: 'Rare — a grey drift after some climaxes (~15%)' },
+  { key: 'sometimes', label: 'Sometimes — often a grey drift after (~35%)' },
+];
 
 export const RECOVERY_MIN_MINUTES = 0;
 export const RECOVERY_MAX_MINUTES = 180;
@@ -73,13 +95,18 @@ export function normalizeSex(raw: unknown): string {
  *  junk mode reads auto, an out-of-span length clamps, and a length on a
  *  non-hard mode is dropped — the pair is one unit, the menu must not lie. */
 export function recoveryFromDetail(raw: unknown): RecoveryProfileValue {
-  if (raw == null || typeof raw !== 'object') return { recoveryMode: 'auto', recoveryMinutes: null };
+  const pcdRaw =
+    raw != null && typeof raw === 'object' && typeof (raw as Record<string, unknown>).pcdMood === 'string'
+      ? String((raw as Record<string, unknown>).pcdMood).trim().toLowerCase()
+      : '';
+  const pcdMood: PcdMood = pcdRaw === 'rare' || pcdRaw === 'sometimes' ? (pcdRaw as PcdMood) : 'off';
+  if (raw == null || typeof raw !== 'object') return { recoveryMode: 'auto', recoveryMinutes: null, pcdMood };
   const v = raw as Record<string, unknown>;
   const mode: RecoveryMode = v.recoveryMode === 'hard' || v.recoveryMode === 'soft' ? v.recoveryMode : 'auto';
-  if (mode !== 'hard') return { recoveryMode: mode, recoveryMinutes: null };
+  if (mode !== 'hard') return { recoveryMode: mode, recoveryMinutes: null, pcdMood };
   const n = typeof v.recoveryMinutes === 'number' ? v.recoveryMinutes : Number.parseInt(String(v.recoveryMinutes ?? ''), 10);
-  if (!Number.isFinite(n) || n < RECOVERY_MIN_MINUTES) return { recoveryMode: mode, recoveryMinutes: null };
-  return { recoveryMode: mode, recoveryMinutes: Math.min(n, RECOVERY_MAX_MINUTES) };
+  if (!Number.isFinite(n) || n < RECOVERY_MIN_MINUTES) return { recoveryMode: mode, recoveryMinutes: null, pcdMood };
+  return { recoveryMode: mode, recoveryMinutes: Math.min(n, RECOVERY_MAX_MINUTES), pcdMood };
 }
 
 export function recoveryPresetKey(p: RecoveryProfileValue): string {
@@ -94,19 +121,42 @@ export function recoveryPresetKey(p: RecoveryProfileValue): string {
   }
 }
 
-export function recoveryFromPreset(key: string): RecoveryProfileValue {
+/** Preset switch preserves the pcd dial — it is orthogonal to kind and
+ *  length (mirror of Dart `fromPreset(key, pcdMood:)`). */
+export function recoveryFromPreset(key: string, pcdMood: PcdMood = 'off'): RecoveryProfileValue {
   const p = RECOVERY_PRESETS.find((x) => x.key === key);
   if (!p || p.key === 'custom' || p.key === 'auto') {
-    return key === 'auto' ? { recoveryMode: 'auto', recoveryMinutes: null } : recoveryFromPreset('auto');
+    return key === 'auto'
+      ? { recoveryMode: 'auto', recoveryMinutes: null, pcdMood }
+      : recoveryFromPreset('auto', pcdMood);
   }
-  return { recoveryMode: p.recoveryMode, recoveryMinutes: p.recoveryMinutes };
+  return { recoveryMode: p.recoveryMode, recoveryMinutes: p.recoveryMinutes, pcdMood };
 }
 
-/** Moving the slider selects Custom (decision 3). */
-export function recoveryWithMinutes(minutes: number): RecoveryProfileValue {
+/** Moving the slider selects Custom (decision 3); the pcd dial survives. */
+export function recoveryWithMinutes(
+  current: RecoveryProfileValue,
+  minutes: number,
+): RecoveryProfileValue {
   return {
     recoveryMode: 'hard',
     recoveryMinutes: Math.max(RECOVERY_MIN_MINUTES, Math.min(RECOVERY_MAX_MINUTES, Math.round(minutes))),
+    pcdMood: current.pcdMood ?? 'off',
+  };
+}
+
+/** The pcd dial's setter — junk normalizes to off (mirror of Dart
+ *  `withPcdMood`). */
+export function recoveryWithPcdMood(
+  current: RecoveryProfileValue,
+  mood: string,
+): RecoveryProfileValue {
+  const m = mood.trim().toLowerCase();
+  const pcd: PcdMood = m === 'rare' || m === 'sometimes' ? (m as PcdMood) : 'off';
+  return {
+    recoveryMode: current.recoveryMode,
+    recoveryMinutes: current.recoveryMinutes,
+    pcdMood: pcd,
   };
 }
 

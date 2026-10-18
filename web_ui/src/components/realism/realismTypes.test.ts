@@ -18,6 +18,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   REALISM_DEFAULTS,
+  PCD_OPTIONS,
+  PCD_RATE_RARE,
+  PCD_RATE_SOMETIMES,
   RECOVERY_PRESETS,
   chipsToInventory,
   compactGreetingPairs,
@@ -31,6 +34,7 @@ import {
   recoveryResolvesLine,
   recoverySuggestionLine,
   recoveryWithMinutes,
+  recoveryWithPcdMood,
   suggestRecoveryPresetKey,
 } from './realismTypes';
 
@@ -243,9 +247,43 @@ describe('the recovery mirror matches the Dart source of truth', () => {
       expect(recoveryPresetKey(recoveryFromPreset(key))).toBe(key);
     }
     expect(recoveryPresetKey({ recoveryMode: 'hard', recoveryMinutes: 45 })).toBe('custom');
-    expect(recoveryWithMinutes(50)).toEqual({ recoveryMode: 'hard', recoveryMinutes: 50 });
-    expect(recoveryWithMinutes(-5).recoveryMinutes).toBe(0);
-    expect(recoveryWithMinutes(500).recoveryMinutes).toBe(180);
+    expect(recoveryWithMinutes({ recoveryMode: 'soft', recoveryMinutes: null }, 50)).toEqual({
+      recoveryMode: 'hard',
+      recoveryMinutes: 50,
+      pcdMood: 'off',
+    });
+    expect(recoveryWithMinutes({ recoveryMode: 'hard', recoveryMinutes: 90 }, -5).recoveryMinutes).toBe(0);
+    expect(recoveryWithMinutes({ recoveryMode: 'hard', recoveryMinutes: 90 }, 500).recoveryMinutes).toBe(180);
+    // The pcd dial is orthogonal — the slider switch and the preset switch
+    // both carry it through untouched.
+    expect(
+      recoveryWithMinutes({ recoveryMode: 'hard', recoveryMinutes: 90, pcdMood: 'rare' }, 45).pcdMood,
+    ).toBe('rare');
+    expect(recoveryFromPreset('short', 'sometimes').pcdMood).toBe('sometimes');
+    expect(recoveryFromPreset('auto', 'sometimes').pcdMood).toBe('sometimes');
+    expect(recoveryFromPreset('glitch', 'rare').pcdMood).toBe('rare');
+  });
+
+  it('mirrors the pcd dial table byte-for-byte', () => {
+    expect(PCD_OPTIONS.map((o) => o.key)).toEqual(['off', 'rare', 'sometimes']);
+    expect(PCD_OPTIONS.map((o) => o.label)).toEqual([
+      'Off',
+      'Rare — a grey drift after some climaxes (~15%)',
+      'Sometimes — often a grey drift after (~35%)',
+    ]);
+    // The percent numbers in the labels must track the rate constants —
+    // same law as the Dart guard on kPcdOptions.
+    expect(PCD_OPTIONS[1].label).toContain(`~${Math.round(PCD_RATE_RARE * 100)}%`);
+    expect(PCD_OPTIONS[2].label).toContain(`~${Math.round(PCD_RATE_SOMETIMES * 100)}%`);
+  });
+
+  it('reads pcd leniently and keeps the dial off unless asked', () => {
+    expect(recoveryFromDetail({ recoveryMode: 'hard', recoveryMinutes: 90 }).pcdMood).toBe('off');
+    expect(recoveryFromDetail({ pcdMood: 'rare' }).pcdMood).toBe('rare');
+    expect(recoveryFromDetail({ pcdMood: ' SOMETIMES ' }).pcdMood).toBe('sometimes');
+    expect(recoveryFromDetail({ pcdMood: 'always' }).pcdMood).toBe('off');
+    expect(recoveryWithPcdMood({ recoveryMode: 'hard', recoveryMinutes: 30 }, 'rare').recoveryMinutes).toBe(30);
+    expect(recoveryWithPcdMood({ recoveryMode: 'hard', recoveryMinutes: 30 }, 'glitch').pcdMood).toBe('off');
   });
 
   it('reads sex leniently in the same order as Dart', () => {
@@ -260,8 +298,16 @@ describe('the recovery mirror matches the Dart source of truth', () => {
   });
 
   it('coerces a detail payload like the Dart reader does', () => {
-    expect(recoveryFromDetail(null)).toEqual({ recoveryMode: 'auto', recoveryMinutes: null });
-    expect(recoveryFromDetail('insatiable')).toEqual({ recoveryMode: 'auto', recoveryMinutes: null });
+    expect(recoveryFromDetail(null)).toEqual({
+      recoveryMode: 'auto',
+      recoveryMinutes: null,
+      pcdMood: 'off',
+    });
+    expect(recoveryFromDetail('insatiable')).toEqual({
+      recoveryMode: 'auto',
+      recoveryMinutes: null,
+      pcdMood: 'off',
+    });
     expect(recoveryFromDetail({ recoveryMode: 'soft', recoveryMinutes: 30 }).recoveryMinutes).toBeNull();
     expect(recoveryFromDetail({ recoveryMode: 'hard', recoveryMinutes: 900 }).recoveryMinutes).toBe(180);
     expect(recoveryFromDetail({ recoveryMode: 'hard', recoveryMinutes: '90' }).recoveryMinutes).toBe(90);

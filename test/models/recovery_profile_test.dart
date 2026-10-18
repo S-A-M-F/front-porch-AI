@@ -24,6 +24,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:front_porch_ai/models/character/pcd_mood.dart';
 import 'package:front_porch_ai/models/character/recovery_profile.dart';
 import 'package:front_porch_ai/services/chat/refractory.dart';
 
@@ -340,7 +341,7 @@ void main() {
       expect(line, contains('90 min fixed (replaces the judge\'s number)'));
     });
 
-    test('the soft gate admits it behaves as hard until PR 3', () {
+    test('the soft gate line describes the physics the engine has', () {
       final line = recoveryResolvesLine(
         const RecoveryProfile(recoveryMode: kRecoveryModeSoft),
         'female',
@@ -348,8 +349,15 @@ void main() {
       expect(line, contains('Soft gate'));
       expect(
         line,
-        contains('until soft-gate mechanics'),
-        reason: 'no promised physics the engine does not have yet',
+        contains('tenderness window'),
+        reason: 'PR 3 shipped the mechanics — the copy may promise them',
+      );
+      expect(
+        line,
+        isNot(contains('until soft-gate mechanics')),
+        reason:
+            'the PR 2 hedge is stale copy — a paid-for debt from 3699384ec, '
+            'disclosed on the PR, not quietly smoothed',
       );
     });
 
@@ -364,6 +372,149 @@ void main() {
 
     test('the duplicated per-turn constant cannot drift', () {
       expect(kRefractoryMinutesPerTurnHint, kRefractoryMinutesPerTurn);
+    });
+  });
+
+  group('the grey-drift dial is opt-in and orthogonal (PR 8)', () {
+    test('every door reads absent as off', () {
+      expect(const RecoveryProfile().pcdMood, kPcdMoodOff);
+      expect(RecoveryProfile.fromJson({}).pcdMood, kPcdMoodOff);
+      expect(RecoveryProfile.fromFields({}).pcdMood, kPcdMoodOff);
+      expect(RecoveryProfile.fromJson({'pcd': 'always'}).pcdMood, kPcdMoodOff);
+      expect(
+        RecoveryProfile.fromJson({'pcd': ' SOMETIMES '}).pcdMood,
+        kPcdMoodSometimes,
+      );
+      expect(
+        RecoveryProfile.fromFields({'pcdMood': 'rare'}).pcdMood,
+        kPcdMoodRare,
+      );
+      expect(normalizePcdMood(null), kPcdMoodOff);
+    });
+
+    test('the writers only speak the key when it is set', () {
+      // Additive-law round trip: pre-PR-8 card JSON must not change, so
+      // off omits the key everywhere; a set dial survives both shapes.
+      expect(RecoveryProfile.auto.toJson().containsKey('pcd'), isFalse);
+      final profile = const RecoveryProfile(pcdMood: kPcdMoodSometimes);
+      expect(profile.toJson()['pcd'], kPcdMoodSometimes);
+      expect(
+        RecoveryProfile.fromJson(profile.toJson()).pcdMood,
+        kPcdMoodSometimes,
+      );
+      expect(
+        RecoveryProfile.fromFields(profile.toFields()).pcdMood,
+        kPcdMoodSometimes,
+      );
+      // The web bridge shape ALWAYS carries it — the form needs the field
+      // to exist to show the dial, and off is the honest default.
+      expect(profile.toFields()['pcdMood'], kPcdMoodSometimes);
+      expect(RecoveryProfile.auto.toFields()['pcdMood'], kPcdMoodOff);
+    });
+
+    test(
+      'a set dial makes the profile non-default, so the codec writes it',
+      () {
+        // isDefault gates the whole 'recovery' block in the card JSON —
+        // if pcd did not count, a pcd-only card would silently lose it.
+        expect(const RecoveryProfile(pcdMood: kPcdMoodRare).isDefault, isFalse);
+        final round = RecoveryProfile.fromJson(
+          const RecoveryProfile(pcdMood: kPcdMoodRare).toJson(),
+        );
+        expect(round.pcdMood, kPcdMoodRare);
+      },
+    );
+
+    test('the dial survives the kind-and-length setters untouched', () {
+      const dial = RecoveryProfile(pcdMood: kPcdMoodSometimes);
+      expect(
+        RecoveryProfile.fromPreset('short', pcdMood: dial.pcdMood).pcdMood,
+        kPcdMoodSometimes,
+      );
+      expect(
+        RecoveryProfile.fromPreset('auto', pcdMood: kPcdMoodSometimes).pcdMood,
+        kPcdMoodSometimes,
+        reason:
+            'the auto/fallback branch carries it too — every menu '
+            'entry preserves the orthogonal dial',
+      );
+      expect(
+        RecoveryProfile.fromPreset('glitch', pcdMood: kPcdMoodRare).pcdMood,
+        kPcdMoodRare,
+      );
+      expect(dial.withMinutes(45).pcdMood, kPcdMoodSometimes);
+      expect(dial.withMinutes(45).recoveryMinutes, 45);
+      expect(dial.withPcdMood(kPcdMoodRare).pcdMood, kPcdMoodRare);
+      expect(dial.withPcdMood('glitch').pcdMood, kPcdMoodOff);
+      final modeAndLength = const RecoveryProfile(
+        recoveryMode: kRecoveryModeHard,
+        recoveryMinutes: 60,
+        pcdMood: kPcdMoodRare,
+      ).withPcdMood(kPcdMoodOff);
+      expect(modeAndLength.recoveryMode, kRecoveryModeHard);
+      expect(modeAndLength.recoveryMinutes, 60);
+    });
+
+    test('the roll boundaries are strict and off never draws', () {
+      expect(
+        const RecoveryProfile(pcdMood: kPcdMoodRare).pcdRate,
+        kPcdRateRare,
+      );
+      expect(
+        const RecoveryProfile(pcdMood: kPcdMoodSometimes).pcdRate,
+        kPcdRateSometimes,
+      );
+      expect(
+        const RecoveryProfile(pcdMood: kPcdMoodRare).pcdRollHit(() => 0.1499),
+        isTrue,
+      );
+      expect(
+        const RecoveryProfile(pcdMood: kPcdMoodRare).pcdRollHit(() => 0.15),
+        isFalse,
+      );
+      expect(
+        const RecoveryProfile(
+          pcdMood: kPcdMoodSometimes,
+        ).pcdRollHit(() => 0.3499),
+        isTrue,
+      );
+      expect(
+        const RecoveryProfile(
+          pcdMood: kPcdMoodSometimes,
+        ).pcdRollHit(() => 0.35),
+        isFalse,
+      );
+      // Off short-circuits: a draw would corrupt the sequence a later
+      // dial change sees, so it must not be taken at all.
+      expect(
+        RecoveryProfile.auto.pcdRollHit(
+          () => throw StateError('off must not draw'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('the option table matches its rates and the web mirror', () {
+      expect(kPcdOptions.map((o) => o.key), [
+        kPcdMoodOff,
+        kPcdMoodRare,
+        kPcdMoodSometimes,
+      ]);
+      // Byte-identical with PCD_OPTIONS in realismTypes.ts — edit one,
+      // the other half's vitest pin fails.
+      expect(kPcdOptions.map((o) => o.label), [
+        'Off',
+        'Rare — a grey drift after some climaxes (~15%)',
+        'Sometimes — often a grey drift after (~35%)',
+      ]);
+      expect(
+        kPcdOptions[1].label,
+        contains('~${(kPcdRateRare * 100).round()}%'),
+      );
+      expect(
+        kPcdOptions[2].label,
+        contains('~${(kPcdRateSometimes * 100).round()}%'),
+      );
     });
   });
 }

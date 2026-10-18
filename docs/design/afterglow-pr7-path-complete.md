@@ -18,7 +18,7 @@ stress-test: the sex-worker / dissociation archetype must have a legal
 | Path | What happens | Verified by |
 | --- | --- | --- |
 | Fused one-shot eval | `bondSection` carries the conditional — the model scores `relationship_delta` with the surge lever named ("counts more toward short-term bond") and the duty escape together | `every window speaks the conditional` + drift pin |
-| Emotional (non-fused) eval | Same `bondSection` rides its prompt too (realism_prompt_builder :292) — both fused and standalone bond lanes get the copy | same |
+| Multi-call lane (every local backend) | `bondSection` rides the RELATIONSHIP judge's prompt (realism_prompt_builder :292) where `relationship_delta` is the output; the emotional judge's arousal notes carry NO surge (it has no bond field — §4b M1) | `the emotional judge gets no dangling surge` guard |
 | Cooldown window (hard) | The refractory note on the arousal section appends the clause — mid-lock the surge prose still reads (affection scored while capacity is out is exactly when the lever matters) | hard-note guard |
 | Cooldown window (soft) | Soft refractory note appends the same clause | soft-note guard |
 | Warmth tail window | Tail note appends the same clause (PR 4 left the bond side to PR 7; now it lands) | tail-note guard |
@@ -31,7 +31,10 @@ stress-test: the sex-worker / dissociation archetype must have a legal
 - ONE source: `RealismPromptFragments.bondSurgeClause(charName, userName)`
   in `realism_prompt_fragments.dart`; four call sites (hard note, soft
   note, tail note, bond section). PR 7 owns the copy; nothing paraphrases
-  it.
+  it. The three NOTES append it only when `bondScoredHere` is set (the
+  fused lane); the multi-call emotional judge — which has no bond field
+  to spend the advice on — gets the conditional solely through
+  `bondSection` on the relationship judge (§4b M1).
 - Drift law, double-pinned: (a) each surface's output must contain the
   SOW sentence and the duty clause verbatim; (b) the drift pin EXTRACTS
   the emitted sentence from all four surfaces and requires byte equality.
@@ -61,6 +64,50 @@ None. No fields, no columns, no metadata, no member-map keys. Nothing for
 Red proofs: tail note dropped, bond section dropped, call-site paraphrase
 — 3/3 red on exactly their guards, then green. Existing pins (fusion
 parity, prompt-shape tests) pass UNCHANGED.
+
+## 4b. Hostile-review ledger (commit `1d9a8d840`)
+
+Reviewer attacked across eight fronts. No BLOCKING; two MAJOR, all fixed:
+
+- **M1 (MAJOR, fixed + red-proven) — the dangling surge.** The multi-call
+  lane (which `resolveOneShotMode` resolves for EVERY local backend)
+  builds `emotionalEvalPrompt` with `arousalSection` but no
+  `relationship_delta` field — the surge rode that note as advice with no
+  field to spend it on, and small models pour unmatched advice into the
+  number that IS there (exactly what the note caps). Fix: notes carry the
+  clause only when the same prompt scores bond — `arousalSection` gains
+  `bondScoredHere` (default false), only `oneShotEvalPrompt` passes true.
+  The trio lane still gets the conditional through `bondSection` on the
+  relationship judge, where the field lives (pinned). Guards: emotional
+  prompt clause-free while its note stays; bond section keeps it; fused
+  emits exactly two copies. Red by opting the emotional call in.
+- **M2 (MAJOR, fixed + red-proven) — the duty escape was rhetoric, not
+  instruction.** Under two unconditional-sounding warmth sentences, "the
+  heart may not follow" reads as permission to climb anyway. Duty branch
+  now names the score: "…and the heart may not follow — a flat or dipped
+  bond is the honest score there." The neither-wanted-nor-duty middle
+  case lands on the existing default bands by design (no lever fires).
+  Drift pin's `duty` constant moved with the copy.
+- **m1 (fixed)** — `bondSurgeClause` carried a leading space the call
+  sites also added, leaving three-space indents mid-paragraph. Clause is
+  space-free now; notes join with one space, the bond rubric indents two
+  like its siblings, and a surface-aware whitespace guard pins both.
+- **m2 (accepted)** — the fused prompt speaks the surge twice (bond line +
+  refractory note). Double-emphasis of ONE copy is the accepted cost of
+  the SOW's "extend all three places + the bond section"; the fused
+  guard pins the count at exactly 2 so a third copy fails loudly.
+- **"Contented satedness" softening declined** — PR 3's copy is its own
+  pinned law; the surge steers BOND while that sentence bounds AROUSAL.
+  Complementary, not contradictory; a model reads "not horny, but this
+  closeness matters."
+- **Checked CLEAN:** single source (no second copy in lib/ or web_ui/ —
+  rubric fragments have no web duplicate); bond is always an output
+  wherever bondSection rides (`:292` relationship, `:371` fused); no
+  prompt golden pins the changed sections byte-exact (chat golden and
+  stopped-reply pins pass unchanged); output parsers untouched (the
+  clause names no output field); `_warmthTailNote`'s new `userName` is
+  passed at its single call site; pure function of two names — no state,
+  no stamp, nothing to persist.
 
 ## 5. Web parity
 

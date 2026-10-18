@@ -863,4 +863,255 @@ void main() {
       );
     });
   });
+
+  group('the grey-drift roll rides the first reading (PR 8)', () {
+    Future<List<ChatMessage>> climaxWithPcd(
+      String pcdMood,
+      List<double> draws, {
+      bool continueOntoStampedClimax = false,
+    }) async {
+      final nsfw = NsfwService(
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
+      );
+      nsfw.loadNsfwScalars(arousalLevel: 100, nsfwCooldownEnabled: true);
+
+      final messages = [
+        ChatMessage(
+          text: 'she shuddered and went limp',
+          sender: 'Vera',
+          isUser: false,
+          metadata: continueOntoStampedClimax
+              ? {
+                  'climax_triggered': true,
+                  'pre_climax_arousal': 100,
+                  'pre_climax_refractory': Refractory.none.toSnapshot(),
+                }
+              : null,
+        ),
+      ];
+      final vera = CharacterCard(
+        name: 'Vera',
+        frontPorchExtensions: FrontPorchExtensions(
+          recovery: RecoveryProfile(pcdMood: pcdMood),
+        ),
+      )..dbId = 'vera';
+
+      // Scripted draws, one per roll this pass dares to take. Exhausting
+      // the script THROWS, so a pass drawing more than its dial may, or
+      // an `off` card drawing at all, fails loudly instead of silently
+      // consuming randomness it should never touch.
+      final queue = draws.iterator;
+      double nextDraw() {
+        if (!queue.moveNext()) {
+          throw StateError('the roll drew past the script');
+        }
+        return queue.current;
+      }
+
+      final eval = ClimaxEval(
+        fire:
+            ({
+              required debugLabel,
+              required tools,
+              required buildPrompt,
+            }) async => '{"is_climax":true,"refractory_turns":6}',
+      );
+      final scope = RealismScope(
+        messages: messages,
+        activeCharacter: () => vera,
+        setActiveCharacter: (_) {},
+        activeGroup: () => null,
+        groupCharacters: () => [vera],
+        observerMode: () => false,
+        realismEnabled: () => true,
+        needsSimEnabled: () => false,
+        realismSettings: () => throw UnimplementedError(),
+        clockRunning: () => false,
+        characterIdFor: (c) => c.dbId ?? '',
+        groups: GroupRealismStore(
+          isGroup: () => false,
+          groupCharacters: () => [vera],
+          characterIdFor: (c) => c.dbId ?? '',
+          hostId: () => 'vera',
+          activeCharacter: () => vera,
+          isGenerating: () => false,
+          nextCharacter: () => null,
+          workFieldsFor: (_) => throw UnimplementedError(),
+        ),
+        needs: () => throw UnimplementedError(),
+        relationship: () => throw UnimplementedError(),
+        nsfw: () => nsfw,
+        time: () => throw UnimplementedError(),
+        pending: () => null,
+        setPending: (_) {},
+        emotion: () => '',
+        setEmotion: (_) {},
+        intensity: () => '',
+        setIntensity: (_) {},
+        cause: () => '',
+        setCause: (_) {},
+        heldTurns: () => 0,
+        setHeldTurns: (_) {},
+        saveChat: () async {},
+        notify: () {},
+      );
+      await AfterglowPass(
+        scope,
+        eval,
+        fusedReply: () => null,
+        isGuestAuthoredMessage: (_) => false,
+        resolveGroupSpeakerForMessage: (_) => null,
+        randomSource: nextDraw,
+      ).runClimaxPass('she shuddered and went limp');
+      return messages;
+    }
+
+    test(
+      'a rare dial and a low draw stamp the beat beside the climax',
+      () async {
+        final messages = await climaxWithPcd(kPcdMoodRare, [0.10]);
+        final meta = messages.last.activeMetadata!;
+        expect(meta['climax_triggered'], isTrue);
+        expect(
+          meta['pcd'],
+          isTrue,
+          reason: '0.10 < 0.15 — the rare dial takes the beat',
+        );
+      },
+    );
+
+    test('the boundary is strict — exactly the rate misses', () async {
+      final messages = await climaxWithPcd(kPcdMoodRare, [0.15]);
+      expect(messages.last.activeMetadata!['pcd'], isNull);
+    });
+
+    test('sometimes takes what rare declines', () async {
+      final missed = await climaxWithPcd(kPcdMoodRare, [0.30]);
+      expect(missed.last.activeMetadata!['pcd'], isNull);
+      final hit = await climaxWithPcd(kPcdMoodSometimes, [0.30]);
+      expect(hit.last.activeMetadata!['pcd'], isTrue);
+    });
+
+    test('off never rolls and never even draws', () async {
+      // Empty script: ANY draw throws, so this proves the short-circuit —
+      // an off card cannot shift the sequence a later dial change sees.
+      final messages = await climaxWithPcd(kPcdMoodOff, []);
+      expect(messages.last.activeMetadata!['climax_triggered'], isTrue);
+      expect(messages.last.activeMetadata!['pcd'], isNull);
+    });
+
+    test(
+      'a continuation does not re-roll — the first reading owns the beat',
+      () async {
+        // Empty script again: the continue branch must not draw. Regen of
+        // the climax itself re-runs the FIRST-reading branch and re-rolls;
+        // a continuation only ever merges what the new text declares.
+        final messages = await climaxWithPcd(
+          kPcdMoodSometimes,
+          [],
+          continueOntoStampedClimax: true,
+        );
+        expect(messages.last.activeMetadata!['pcd'], isNull);
+      },
+    );
+  });
+
+  group('the grey-drift window runs on history alone (PR 8)', () {
+    ChatMessage beat({bool pcd = false}) => ChatMessage(
+      text: 'the peak',
+      sender: 'Vera',
+      isUser: false,
+      metadata: {'climax_triggered': true, if (pcd) 'pcd': true},
+    );
+    ChatMessage reply({String sender = 'Vera', bool user = false}) =>
+        ChatMessage(text: 'after', sender: sender, isUser: user);
+    ChatMessage plain() =>
+        ChatMessage(text: 'before', sender: 'Vera', isUser: false);
+
+    bool window(
+      List<ChatMessage> messages, {
+      String? speakerId,
+      String Function(ChatMessage)? speakerOf,
+    }) => pcdWindowActive(
+      messages: messages,
+      speakerId: speakerId,
+      isUser: (m) => m.isUser,
+      climaxStamped: (m) => m.activeMetadata?['climax_triggered'] == true,
+      pcdStamped: (m) => m.activeMetadata?['pcd'] == true,
+      speakerOf: speakerOf ?? (m) => m.sender,
+    );
+
+    test('the opening turn runs on the stamped beat', () {
+      expect(window([plain(), beat(pcd: true)]), isTrue);
+    });
+
+    test('two replies carry the window, the third closes it', () {
+      expect(window([beat(pcd: true), reply(), reply()]), isTrue);
+      expect(window([beat(pcd: true), reply(), reply(), reply()]), isFalse);
+    });
+
+    test('user turns do not advance the clock', () {
+      expect(
+        window([beat(pcd: true), reply(user: true), reply(user: true)]),
+        isTrue,
+      );
+    });
+
+    test('a fresh solo climax closes the older grey beat', () {
+      expect(
+        window([beat(pcd: true), reply(), beat()]),
+        isFalse,
+        reason: 'the newest climax owns the body — no reviving stale weather',
+      );
+    });
+
+    test('a climax without the stamp opens nothing', () {
+      expect(window([plain(), beat()]), isFalse);
+    });
+
+    test('status banners are weather, not story — they never spend a tick', () {
+      // 1:1 has no speaker filter to hide behind: a backend-down banner
+      // rides the timeline as sender System, isUser false. The window
+      // counts the speaker's REPLIES, never the ops furniture
+      // (_refractoryBeatMinutes in the leaf lives by the same law).
+      final banner = ChatMessage(
+        text: 'Generation failed — trying again',
+        sender: 'System',
+        isUser: false,
+      );
+      expect(
+        window([beat(pcd: true), reply(), banner, banner, reply()]),
+        isTrue,
+        reason: 'two real replies advance the clock to 2; banners do not',
+      );
+      expect(
+        window([
+          beat(pcd: true),
+          banner,
+          banner,
+          banner,
+          reply(),
+          reply(),
+          reply(),
+        ]),
+        isFalse,
+        reason: 'the third REAL reply still closes it',
+      );
+    });
+
+    test('group windows run per body', () {
+      // Vera's grey window does not burn in Bo's turns, and Bo's plain
+      // turns do not inherit Vera's beat.
+      final history = [
+        beat(pcd: true),
+        reply(sender: 'Bo'),
+        reply(sender: 'Bo'),
+        reply(sender: 'Bo'),
+      ];
+      expect(window(history, speakerId: 'Vera'), isTrue);
+      expect(window(history, speakerId: 'Bo'), isFalse);
+    });
+  });
 }

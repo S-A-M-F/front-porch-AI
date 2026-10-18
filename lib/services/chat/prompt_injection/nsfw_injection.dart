@@ -69,6 +69,14 @@ class NsfwInjection {
   /// copy ships verbatim.
   final bool Function() getMutualOpening;
 
+  /// PR 8: whether the reply being generated sits inside a grey-drift
+  /// (post-coital dysphoria) window seeded by this speaker's `pcd`-stamped
+  /// climax. Inside the opening branch the ladder uses it to swap in the
+  /// grey rung (opt-in; off cards and pre-PR-8 chats read false and today's
+  /// copy ships verbatim). RealismEvals reads the SAME closure for the
+  /// emotion note, whose window runs two replies longer than the opening.
+  final bool Function() getPcdActive;
+
   NsfwInjection({
     required this.nsfwService,
     required this.getRealismEnabled,
@@ -78,6 +86,7 @@ class NsfwInjection {
     required this.getGroupCharacters,
     required this.getCharacterIdFromCard,
     this.getMutualOpening = _noMutualOpening,
+    this.getPcdActive = _noMutualOpening,
   });
 
   String _speakerName() {
@@ -111,6 +120,16 @@ class NsfwInjection {
         // strings interpolate $name and speak of the body — never a
         // gendered pronoun (whole-word guard in prompt_injection_test).
         if (nsfwService.isOpeningAfterglowTurn) {
+          if (getPcdActive()) {
+            // PR 8: the grey drift outranks the mutual clause on the
+            // opening — an opt-in, specific mood beats a general one; the
+            // mutual stamp survives underneath for the eval note's lane.
+            return 'Body: $name just climaxed — trembling and flushed, '
+                'oversensitive in the best way, buzzing rather than wrecked. '
+                'And under the warmth, a sudden grey drift — not sad about '
+                'anything, and nothing {{user}} did; closeness is still '
+                'wanted, and the grey passes through on its own.';
+          }
           if (getMutualOpening()) {
             return 'Body: $name just climaxed — trembling and flushed, '
                 'oversensitive in the best way, buzzing rather than wrecked. '
@@ -130,6 +149,18 @@ class NsfwInjection {
             'lands at half weight.';
       }
       if (nsfwService.isOpeningAfterglowTurn) {
+        if (getPcdActive()) {
+          // PR 8: grey drift first (see the soft branch for the law); the
+          // hard lock's incapacity truth rides along — the drift is mood,
+          // not capacity, and capacity is already out.
+          return 'Body: $name just climaxed — still trembling, flushed, '
+              'oversensitive, blissfully wrecked, with other physical needs '
+              'feeling far away. And under the warmth, a sudden grey drift '
+              '— not sad about anything, and nothing {{user}} did. A new '
+              'advance still cannot be answered, and the drift makes even '
+              'naming wanting closeness hard — let it pass through, it '
+              'will.';
+        }
         if (getMutualOpening()) {
           return 'Body: $name just climaxed — still trembling, flushed, '
               'oversensitive, blissfully wrecked, with other physical needs '

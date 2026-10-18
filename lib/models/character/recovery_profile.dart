@@ -31,6 +31,8 @@
 // own physics: peak costs, a tenderness window, and peak stamps on the
 // story-minute ledger.
 
+import 'pcd_mood.dart';
+
 /// The preset values a card may store. `auto` = the structured sex decides
 /// the kind and the judge the length (decision 2's prior; anything but a
 /// female card resolves to today's hard lock — "no card gets surprised").
@@ -186,6 +188,7 @@ class RecoveryProfile {
   const RecoveryProfile({
     this.recoveryMode = kRecoveryModeAuto,
     this.recoveryMinutes,
+    this.pcdMood = kPcdMoodOff,
   });
 
   final String recoveryMode;
@@ -195,10 +198,32 @@ class RecoveryProfile {
   /// the pair; the soft-gate tenderness window is fixed by decision 4).
   final int? recoveryMinutes;
 
+  /// Post-coital dysphoria dial (PR 8): `off` / `rare` / `sometimes`.
+  /// Opt-in by law — a card that never stores the key never rolls the grey
+  /// beat, so no existing character gets a surprise tone-shift. The roll
+  /// happens once per climax at first reading ([pcdRollHit]); the beat
+  /// itself lives in the reply's metadata, not here.
+  final String pcdMood;
+
   static const auto = RecoveryProfile();
 
   bool get isDefault =>
-      recoveryMode == kRecoveryModeAuto && recoveryMinutes == null;
+      recoveryMode == kRecoveryModeAuto &&
+      recoveryMinutes == null &&
+      pcdMood == kPcdMoodOff;
+
+  /// The stored dial's per-climax roll rate (0 for off and for junk).
+  double get pcdRate => switch (pcdMood) {
+    kPcdMoodRare => kPcdRateRare,
+    kPcdMoodSometimes => kPcdRateSometimes,
+    _ => 0.0,
+  };
+
+  /// Roll a climax into the grey beat? [rand] is the injectable source
+  /// (seeded in tests); off and junk never roll, and the roll consumes a
+  /// draw only when a dial is set — an `off` card must not shift the
+  /// sequence a later dial change would see.
+  bool pcdRollHit(double Function() rand) => pcdRate > 0 && rand() < pcdRate;
 
   /// The kind this profile resolves to for a card whose structured sex is
   /// [sex] (decision 2): the author's explicit mode always beats the prior;
@@ -233,30 +258,51 @@ class RecoveryProfile {
 
   /// The preset menu's stored pair for [key]. `custom` never routes here —
   /// it carries the slider's live value, so the block calls [withMinutes]
-  /// for that selection instead.
-  static RecoveryProfile fromPreset(String key) => switch (key) {
-    'none' => const RecoveryProfile(recoveryMode: kRecoveryModeSoft),
-    'personality' => const RecoveryProfile(recoveryMode: kRecoveryModeHard),
-    'short' => const RecoveryProfile(
+  /// for that selection instead. The pcd dial is orthogonal to the preset
+  /// and rides through untouched ([PcdOption] has its own control).
+  static RecoveryProfile fromPreset(
+    String key, {
+    String pcdMood = kPcdMoodOff,
+  }) => switch (key) {
+    'none' => RecoveryProfile(
+      recoveryMode: kRecoveryModeSoft,
+      pcdMood: pcdMood,
+    ),
+    'personality' => RecoveryProfile(
+      recoveryMode: kRecoveryModeHard,
+      pcdMood: pcdMood,
+    ),
+    'short' => RecoveryProfile(
       recoveryMode: kRecoveryModeHard,
       recoveryMinutes: 30,
+      pcdMood: pcdMood,
     ),
-    'typical' => const RecoveryProfile(
+    'typical' => RecoveryProfile(
       recoveryMode: kRecoveryModeHard,
       recoveryMinutes: 90,
+      pcdMood: pcdMood,
     ),
-    'long' => const RecoveryProfile(
+    'long' => RecoveryProfile(
       recoveryMode: kRecoveryModeHard,
       recoveryMinutes: 180,
+      pcdMood: pcdMood,
     ),
-    _ => const RecoveryProfile(),
+    _ => RecoveryProfile(pcdMood: pcdMood),
   };
 
   /// Moving the slider selects Custom (decision 3): a hard lock of exactly
-  /// this many minutes.
+  /// this many minutes. The pcd dial is orthogonal — it survives.
   RecoveryProfile withMinutes(int minutes) => RecoveryProfile(
     recoveryMode: kRecoveryModeHard,
     recoveryMinutes: minutes.clamp(kRecoveryMinutesMin, kRecoveryMinutesMax),
+    pcdMood: pcdMood,
+  );
+
+  /// The pcd dial's setter. Junk normalizes to `off` (opt-in by law).
+  RecoveryProfile withPcdMood(String mood) => RecoveryProfile(
+    recoveryMode: recoveryMode,
+    recoveryMinutes: recoveryMinutes,
+    pcdMood: normalizePcdMood(mood),
   );
 
   /// Card JSON (`realism_engine.recovery`). Only written when non-default;
@@ -265,6 +311,7 @@ class RecoveryProfile {
   Map<String, dynamic> toJson() => {
     'mode': recoveryMode,
     if (recoveryMinutes != null) 'minutes': recoveryMinutes,
+    if (pcdMood != kPcdMoodOff) 'pcd': pcdMood,
   };
 
   /// The web bridge shape (`toFields` precedent from greeting seeds): the
@@ -273,10 +320,15 @@ class RecoveryProfile {
   Map<String, dynamic> toFields() => {
     'recoveryMode': recoveryMode,
     'recoveryMinutes': recoveryMinutes,
+    'pcdMood': pcdMood,
   };
 
-  static RecoveryProfile fromFields(Object? raw) =>
-      _read(raw, modeKey: 'recoveryMode', minutesKey: 'recoveryMinutes');
+  static RecoveryProfile fromFields(Object? raw) => _read(
+    raw,
+    modeKey: 'recoveryMode',
+    minutesKey: 'recoveryMinutes',
+    pcdKey: 'pcdMood',
+  );
 
   /// Lenient like every other card reader (a card comes from anywhere):
   /// absent/malformed reads defaults, junk mode reads `auto`, an
@@ -284,12 +336,13 @@ class RecoveryProfile {
   /// decision 3 says those pairs carry no length, and keeping a stray one
   /// would make the preset menu lie about what it shows.
   static RecoveryProfile fromJson(Object? raw) =>
-      _read(raw, modeKey: 'mode', minutesKey: 'minutes');
+      _read(raw, modeKey: 'mode', minutesKey: 'minutes', pcdKey: 'pcd');
 
   static RecoveryProfile _read(
     Object? raw, {
     required String modeKey,
     required String minutesKey,
+    required String pcdKey,
   }) {
     if (raw is! Map) return auto;
     final mode = switch (raw[modeKey]?.toString().trim().toLowerCase()) {
@@ -297,7 +350,10 @@ class RecoveryProfile {
       kRecoveryModeSoft => kRecoveryModeSoft,
       _ => kRecoveryModeAuto,
     };
-    if (mode != kRecoveryModeHard) return RecoveryProfile(recoveryMode: mode);
+    final pcd = normalizePcdMood(raw[pcdKey]);
+    if (mode != kRecoveryModeHard) {
+      return RecoveryProfile(recoveryMode: mode, pcdMood: pcd);
+    }
     final m = raw[minutesKey];
     final n = m is num
         ? m.toInt()
@@ -309,6 +365,7 @@ class RecoveryProfile {
       recoveryMinutes: (n ?? -1) < kRecoveryMinutesMin
           ? null
           : n!.clamp(kRecoveryMinutesMin, kRecoveryMinutesMax),
+      pcdMood: pcd,
     );
   }
 }

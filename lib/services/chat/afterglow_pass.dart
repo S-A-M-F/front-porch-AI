@@ -8,6 +8,8 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/climax_eval.dart';
@@ -20,6 +22,54 @@ import 'package:front_porch_ai/services/chat/realism_scope.dart';
 import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat/story_clock_writer.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
+
+/// PR 8 (post-coital dysphoria): is the reply about to be generated still
+/// inside the grey-drift window seeded by a `pcd`-stamped climax by
+/// [speakerId]? The window is the opening turn plus that speaker's NEXT TWO
+/// replies, counted from message history (their replies strictly after the
+/// stamped climax), so regen and delete rewind it for free — no new state.
+/// Only [speakerId]'s replies advance the clock, so in a group another
+/// member's turns do not burn the window; a null [speakerId] (1:1) counts
+/// every non-user reply. [climaxStamped] decides which reply seeded it and
+/// [speakerOf] attributes one — both injected so this leaf stays testable
+/// and knows nothing about groups or guests.
+bool pcdWindowActive({
+  required List<ChatMessage> messages,
+  required String? speakerId,
+  required bool Function(ChatMessage) isUser,
+  required bool Function(ChatMessage) climaxStamped,
+  required bool Function(ChatMessage) pcdStamped,
+  required String? Function(ChatMessage) speakerOf,
+}) {
+  bool mine(ChatMessage m) => speakerId == null || speakerOf(m) == speakerId;
+  // Status banners are not story (`_refractoryBeatMinutes` below lives by
+  // the same law): in 1:1 they carry no speaker to attribute, so they
+  // must never spend a reply tick of the window. Guests arrive through
+  // [isUser] at the closure.
+  bool story(ChatMessage m) => !isUser(m) && m.sender != 'System';
+  ChatMessage? beat;
+  for (var i = messages.length - 1; i >= 0; i--) {
+    final m = messages[i];
+    if (!story(m) || !mine(m)) continue;
+    if (!climaxStamped(m)) continue;
+    // This body's NEWEST climax decides: a fresh solo beat closes an older
+    // grey one rather than reviving it. Another member's climax is not
+    // this body's business — each window runs on its own history.
+    beat = pcdStamped(m) ? m : null;
+    break;
+  }
+  final climaxAt = beat == null ? -1 : messages.indexOf(beat);
+  if (climaxAt < 0) return false;
+  var since = 0;
+  for (var i = climaxAt + 1; i < messages.length; i++) {
+    final m = messages[i];
+    if (!story(m)) continue;
+    if (speakerId != null && !mine(m)) continue;
+    since++;
+  }
+  // Opening (0 since) + two more (1, 2); the third onward is normal ladder.
+  return since <= 2;
+}
 
 /// Afterglow's post-generation climax check — the one place it is gated, fired
 /// and applied — and the refractory it starts, run down on the story clock.
@@ -35,10 +85,15 @@ class AfterglowPass {
     required this.fusedReply,
     required this.isGuestAuthoredMessage,
     required this.resolveGroupSpeakerForMessage,
-  });
+    double Function()? randomSource,
+  }) : _random = randomSource ?? _defaultRandom;
 
   final RealismScope _scope;
   final ClimaxEval _eval;
+  final double Function() _random;
+
+  static final Random _defaultRng = Random();
+  static double _defaultRandom() => _defaultRng.nextDouble();
 
   /// The fused reply-facts carrier (`ReplyFacts.raw`).
   final String? Function() fusedReply;
@@ -157,6 +212,13 @@ class AfterglowPass {
         // once on the opening turn, and re-rolled by regen with its
         // timeline. The receipt body is unchanged.
         if (userClimaxed) meta['user_climaxed'] = true;
+        // PR 8: the grey-drift roll rides the SAME first reading, off the
+        // speaker's own card dial through the injectable source. Stamped
+        // only on a hit; absence is the default. Regen re-rolls because
+        // regen re-runs this pass with fresh history — no extra state.
+        final pcdProfile =
+            speaker.frontPorchExtensions?.recovery ?? RecoveryProfile.auto;
+        if (pcdProfile.pcdRollHit(_random)) meta['pcd'] = true;
         // The full pre-climax body — minutes, opened flag, soft flag, peak
         // stamps — beside the arousal. The regen revert restores THIS
         // instead of `none`, so regenerating a soft peak 2 leaves peak 1

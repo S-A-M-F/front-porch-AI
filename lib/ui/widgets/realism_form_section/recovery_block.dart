@@ -117,7 +117,10 @@ class RecoveryBlock extends StatelessWidget {
               onChanged(
                 key == 'custom'
                     ? recovery.withMinutes(sliderValue.round())
-                    : RecoveryProfile.fromPreset(key),
+                    : RecoveryProfile.fromPreset(
+                        key,
+                        pcdMood: recovery.pcdMood,
+                      ),
               );
             },
           ),
@@ -172,6 +175,57 @@ class RecoveryBlock extends StatelessWidget {
           recoveryClockOffHint(recovery.recoveryMinutes),
           key: const Key('recovery-clock-off-hint'),
           style: TextStyle(color: mutedColor, fontSize: 11, height: 1.35),
+        ),
+        const SizedBox(height: 10),
+        // PR 8: the grey-drift dial. Opt-in by law — Off ships and Off is
+        // what every pre-PR-8 card reads, so no existing character gains
+        // a tone-shift it never asked for.
+        Text(
+          'Grey drift after',
+          style: TextStyle(
+            color: textColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'A hollow, misty mood some people feel minutes to an hour after '
+          'intimacy — real, brief, and not about their partner. How often '
+          'it visits after a climax.',
+          style: TextStyle(color: mutedColor, fontSize: 11, height: 1.35),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: palette?.raise ?? AppColors.surfaceContainerOf(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: palette?.line ?? AppColors.borderOf(context),
+            ),
+          ),
+          child: DropdownButton<String>(
+            key: const Key('recovery-pcd-dropdown'),
+            value: recovery.pcdMood,
+            isExpanded: true,
+            dropdownColor:
+                palette?.raise ?? AppColors.surfaceContainerOf(context),
+            underline: const SizedBox(),
+            style: TextStyle(
+              color: palette?.ink ?? AppColors.textPrimary(context),
+              fontSize: 14,
+            ),
+            items: [
+              for (final o in kPcdOptions)
+                DropdownMenuItem(value: o.key, child: Text(o.label)),
+            ],
+            onChanged: (mood) {
+              if (mood == null) return;
+              onChanged(recovery.withPcdMood(mood));
+            },
+          ),
         ),
         const SizedBox(height: 6),
         Text(
