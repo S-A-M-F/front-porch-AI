@@ -661,6 +661,53 @@ test('Manage Chats on a library card starts a new chat through the persona step'
   }
 });
 
+// A card with its own system prompt asks, on a new chat, which prompt this
+// chat sends (desktop new-chat picker parity); the answer can be changed
+// later in the chat's settings drawer.
+test('a new chat with a prompted card asks which system prompt it sends', { tag: SERIAL }, async ({ page }) => {
+  const name = `Prompted ${test.info().project.name}`;
+  const created = await page.request.post('/api/characters/create', {
+    data: { name, firstMessage: 'Evening.', systemPrompt: 'JOURNEY_CARD_PROMPT for {{char}}' },
+  });
+  expect(created.ok(), `create: ${created.status()}`).toBe(true);
+  const id = String(((await created.json()) as { id: string | number }).id);
+  const source = async () =>
+    ((await (await page.request.get('/api/chat/state')).json()) as {
+      promptSource?: { source?: string | null; amendments?: boolean | null; picker?: unknown };
+    }).promptSource;
+  try {
+    await openRoute(page, '/');
+    await page.locator('.lib-card', { hasText: name }).locator('.lib-open').click();
+    await expect(page.locator('.chat-view')).toBeVisible();
+
+    const picker = page.getByRole('dialog', { name: 'Choose the system prompt for this chat' });
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText('JOURNEY_CARD_PROMPT');
+    await picker.getByRole('radio', { name: /My prompt/ }).click();
+    await expect(picker).toContainText('base: your prompt');
+    await picker.getByRole('button', { name: 'Start chat' }).click();
+    await expect(picker).toHaveCount(0);
+    await expect.poll(async () => (await source())?.source).toBe('user');
+    expect((await source())?.picker).toBeUndefined();
+
+    if (test.info().project.name.startsWith('phone')) {
+      await page.getByRole('button', { name: 'More chat options' }).click();
+      await page.getByRole('menuitem', { name: /Theme/ }).click();
+    } else {
+      await page.locator('.chat-view').getByRole('button', { name: 'Theme', exact: true }).click();
+    }
+    const drawer = page.locator('.settings-drawer');
+    await expect(drawer.getByRole('radio', { name: 'My prompt' })).toHaveAttribute('aria-checked', 'true');
+    await drawer.getByRole('radio', { name: 'Card only' }).click();
+    await expect.poll(async () => (await source())?.amendments).toBe(false);
+    expect((await source())?.source).toBe('card');
+    await expect(drawer.getByLabel('Append global prompt additions')).not.toBeChecked();
+  } finally {
+    const gone = await page.request.post(`/api/characters/${id}/delete`);
+    expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+  }
+});
+
 test('the chat model sheet lists models you can tap, and offers providers', async ({ page }) => {
   await openPorchChat(page);
   await page.locator('.model-switch-chip').click();

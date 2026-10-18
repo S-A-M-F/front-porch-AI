@@ -377,6 +377,28 @@ class ChatFacade {
 
   List<String> lorePreview(String draft) => _history.lorePreview(draft);
 
+  // ── Per-chat prompt source (desktop Chat Settings + new-chat picker) ────
+  /// The new-chat picker's answer; a null [preset] is a dismiss. False when
+  /// no 1:1 chat is open.
+  Future<bool> answerPromptPicker({
+    String? preset,
+    bool remember = false,
+    bool askEveryChat = false,
+  }) async {
+    if (_chat.activeGroup != null || _chat.activeCharacter == null) {
+      return false;
+    }
+    await _chat.applyPromptSourceChoice(
+      preset: preset,
+      remember: remember,
+      askEveryChat: askEveryChat,
+    );
+    return true;
+  }
+
+  Future<bool> setPromptSource({String? source, bool? amendments}) =>
+      _chat.setPromptSource(source: source, amendments: amendments);
+
   // ── Personas ────────────────────────────────────────────────────────────
   List<Map<String, dynamic>> personas() => _personaOps.personas();
 
