@@ -47,11 +47,15 @@ const int kAdultWheelSlots = 3;
 /// repeats) so a wheel is never eight bathroom jokes. When [includeAdult] is
 /// set, [kAdultWheelSlots] of the slots are adult. Events in [recent] are
 /// skipped while enough others remain. Pair events need [allowPair]; events
-/// naming the user need [allowUser].
+/// naming the user need [allowUser]. While [hardLockActive] is set,
+/// desire-asserting adult events are pulled from the pool entirely — the
+/// attributed speaker is mid a hard refractory lock and cannot honestly
+/// narrate arousal (recovery overhaul PR 6); every other event stays.
 List<String> buildChaosWheel({
   required bool includeAdult,
   required bool allowPair,
   required bool allowUser,
+  bool hardLockActive = false,
   Iterable<String> recent = const [],
   int size = 8,
   Random? random,
@@ -67,8 +71,16 @@ List<String> buildChaosWheel({
     return unseen.length >= size ? unseen : all;
   }
 
+  // The gate runs against the POOL, not the picked slots: filtering after
+  // the take would hand the wheel dead adult slots — the "stays full"
+  // guard proves that failure red. Un-gated, the pool still holds 78
+  // adults, so the three slots always fill and no turn dies.
   final adult = includeAdult
-      ? fresh(kAllChaosEvents.where((e) => e.adult))
+      ? fresh(
+          kAllChaosEvents.where(
+            (e) => e.adult && !(hardLockActive && e.desireAsserting),
+          ),
+        )
       : const <ChaosEvent>[];
   final picked = adult.take(kAdultWheelSlots).toList();
 

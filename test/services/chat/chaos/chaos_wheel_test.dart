@@ -163,4 +163,126 @@ void main() {
       expect(ChaosFrequency.fromName('wild'), ChaosFrequency.wild);
     });
   });
+
+  // Recovery overhaul PR 6: the wheel respects the hard lock. Exactly the
+  // events that ASSERT the speaker's own desire leave the pool while that
+  // body is locked — every other event (and the whole SFW wheel) spins as
+  // before, and a soft-gate body never loses one.
+  group('the hard lock respects the wheel (PR 6)', () {
+    const locked = {
+      '{{char}} is visibly aroused at the most inconvenient moment '
+          'imaginable and is scrambling',
+      '{{char}} is trying extremely hard to hide a visible physical '
+          'reaction to someone attractive nearby',
+      '{{char}} is suddenly, intensely in the mood and it is very hard '
+          'to hide',
+      'A long dry spell has caught up with {{char}} and they are '
+          'restless, flustered, and thinking about little else',
+    };
+
+    test('exactly the four desire-asserting events carry the tag', () {
+      final tagged = kAllChaosEvents
+          .where((e) => e.desireAsserting)
+          .map((e) => e.text)
+          .toSet();
+      expect(tagged, locked);
+      expect(
+        kAllChaosEvents.where((e) => e.desireAsserting).every((e) => e.adult),
+        isTrue,
+        reason: 'a desire event that is not adult would gate into SFW wheels',
+      );
+    });
+
+    test('the locked wheel never speaks a tagged event, and stays full', () {
+      for (var seed = 0; seed < 200; seed++) {
+        final wheel = buildChaosWheel(
+          includeAdult: true,
+          allowPair: true,
+          allowUser: true,
+          hardLockActive: true,
+          random: Random(seed),
+        );
+        expect(wheel.length, 8);
+        expect(wheel.toSet().length, 8);
+        expect(
+          wheel.where(locked.contains),
+          isEmpty,
+          reason: 'seed $seed narrates arousal under a hard lock: $wheel',
+        );
+        expect(
+          wheel.where(_isAdult).length,
+          kAdultWheelSlots,
+          reason: 'the remaining adult pool backfills — no dead slots',
+        );
+      }
+    });
+
+    test('the unlocked wheel still serves them', () {
+      final seen = <String>{};
+      for (var seed = 0; seed < 200; seed++) {
+        seen.addAll(
+          buildChaosWheel(
+            includeAdult: true,
+            allowPair: true,
+            allowUser: true,
+            random: Random(seed),
+          ).where(locked.contains),
+        );
+      }
+      expect(
+        seen,
+        locked,
+        reason: 'a baseline wheel must still be able to land each one',
+      );
+    });
+
+    test('the recent-skip fallback cannot sneak one back under lock', () {
+      // Saturate recency with every OTHER adult text: the "not enough
+      // fresh" fallback hands back the whole pool, and the tagged four
+      // were already pulled BEFORE that branch — never after.
+      final others = [
+        for (final e in kAllChaosEvents)
+          if (e.adult && !locked.contains(e.text)) e.text,
+      ];
+      for (var seed = 0; seed < 50; seed++) {
+        final wheel = buildChaosWheel(
+          includeAdult: true,
+          allowPair: true,
+          allowUser: true,
+          hardLockActive: true,
+          recent: others,
+          random: Random(seed),
+        );
+        expect(wheel.where(locked.contains), isEmpty, reason: 'seed $seed');
+        expect(wheel.length, 8);
+      }
+    });
+
+    test('the service gate is live per spin, and absent means never gated', () {
+      var lockedNow = true;
+      final chaos = ChaosModeService(
+        onNotify: () {},
+        onSaveChat: () async {},
+        onSetPendingRealismMetadata: (_, _) {},
+        isAdultAllowed: () => true,
+        isHardLockActive: () => lockedNow,
+      )..seedFromGroupOrExt(true, true);
+      for (var i = 0; i < 100; i++) {
+        expect(chaos.spinWheelEvents().where(locked.contains), isEmpty);
+      }
+      lockedNow = false; // the window passes mid-session
+      final seen = <String>{};
+      for (var i = 0; i < 300; i++) {
+        seen.addAll(chaos.spinWheelEvents().where(locked.contains));
+      }
+      expect(seen, isNotEmpty);
+      // A service built without the closure (every other host) never gates.
+      final ungated = _chaos(adult: true, spicy: true);
+      final seen2 = <String>{};
+      for (var i = 0; i < 300; i++) {
+        seen2.addAll(ungated.spinWheelEvents().where(locked.contains));
+      }
+      expect(seen2, isNotEmpty);
+    });
+  });
 }

@@ -28,7 +28,6 @@ const _spicy = <String>[
   '{{char}} found something very intimate that does not belong to them in their belongings',
   '{{char}} walked into the wrong room and what they saw cannot be unseen',
   '{{char}} scratched somewhere inappropriate and someone absolutely noticed',
-  '{{char}} is visibly aroused at the most inconvenient moment imaginable and is scrambling',
   'A stranger just described {{char}} in extremely flattering and very explicit physical terms within earshot',
   '{{char}}\'s clothing has shifted in a way that is revealing something they very much did not intend to share',
   '{{char}} just discovered that a private intimate item of theirs has been on display this whole time',
@@ -37,7 +36,6 @@ const _spicy = <String>[
   '{{char}} accidentally grabbed someone in a place that was very much not where they intended',
   'Something {{char}} said came out sounding incredibly dirty and everyone heard it',
   '{{char}} has just received a gift that is unmistakably sexual and has to open it in front of people',
-  '{{char}} is trying extremely hard to hide a visible physical reaction to someone attractive nearby',
   '{{char}} walked in on something they desperately wish they had not walked in on',
   'Someone just loudly and publicly asked {{char}} about their love life in excruciating detail',
   '{{char}} realized their private journal or personal writing has been read by someone else',
@@ -88,7 +86,6 @@ const _spicy = <String>[
   '{{char}}\'s neck is covered in fresh marks and everyone has noticed',
   'An intimate item {{char}} ordered has been delivered to the wrong person, who is bringing it over',
   'The romance novel {{char}} was reading in secret has just been read aloud, at the steamiest part',
-  '{{char}} is suddenly, intensely in the mood and it is very hard to hide',
 ];
 
 const _needs = <String>[
@@ -98,7 +95,6 @@ const _needs = <String>[
   'A wardrobe malfunction in the bathroom has left {{char}} unable to get dressed again without help',
   '{{char}}\'s stomach growled loudly in the middle of a heated kiss',
   '{{char}} is so starving they are eating in a way that is accidentally very suggestive, and people are watching',
-  'A long dry spell has caught up with {{char}} and they are restless, flustered, and thinking about little else',
   '{{char}} is so sleepy they just dozed off on {{user}} in a very compromising position',
   'The only bathroom has a glass door, and {{char}} really cannot wait any longer',
   '{{char}} spilled their drink down their front and is now soaked through and very see-through',
@@ -111,5 +107,26 @@ const _needs = <String>[
 /// consenting adults; nothing here involves minors, coercion, or non-consent.
 final List<ChaosEvent> kChaosAdultEvents = [
   for (final t in _spicy) ChaosEvent(ChaosCategory.spicy, t, adult: true),
+  for (final t in _desireSpicy)
+    ChaosEvent(ChaosCategory.spicy, t, adult: true, desireAsserting: true),
   for (final t in _needs) ChaosEvent(ChaosCategory.needs, t, adult: true),
+  for (final t in _desireNeeds)
+    ChaosEvent(ChaosCategory.needs, t, adult: true, desireAsserting: true),
+];
+
+/// The events that ASSERT the character's own desire or arousal. Selection
+/// already shuffles, so they sit in their own lists purely to carry the
+/// [ChaosEvent.desireAsserting] tag — the wheel drops them while the
+/// attributed speaker is mid a hard refractory lock (recovery overhaul
+/// PR 6). Soft-gate bodies keep desire up, so the gate is hard-lock only;
+/// "the body betrays them" stays legal as a CARD-authored trait, never a
+/// system coin flip.
+const _desireSpicy = <String>[
+  '{{char}} is visibly aroused at the most inconvenient moment imaginable and is scrambling',
+  '{{char}} is trying extremely hard to hide a visible physical reaction to someone attractive nearby',
+  '{{char}} is suddenly, intensely in the mood and it is very hard to hide',
+];
+
+const _desireNeeds = <String>[
+  'A long dry spell has caught up with {{char}} and they are restless, flustered, and thinking about little else',
 ];
