@@ -8,11 +8,13 @@ class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     // Opaque so Impeller's wide-gamut Metal layer does not start clear
-    // under the title bar (Flutter 3.47 desktop default).
+    // under the title bar (Flutter 3.47 desktop default). Porch brown
+    // #1B1611 (AppColors.background) so the pre-first-frame window paint
+    // matches the theme instead of the old slate #0F172A.
     flutterViewController.backgroundColor = NSColor(
-      srgbRed: 15.0 / 255.0,
-      green: 23.0 / 255.0,
-      blue: 42.0 / 255.0,
+      srgbRed: 27.0 / 255.0,
+      green: 22.0 / 255.0,
+      blue: 17.0 / 255.0,
       alpha: 1.0
     )
 
