@@ -94,21 +94,35 @@ class AfterglowPass {
     // SAME parser the standalone call feeds. A fused answer without a
     // verdict skips, exactly as a failed standalone call does.
     final fused = fusedReply();
-    final turns = fused != null
-        ? ClimaxEval.parseRefractory(fused)
-        : await _eval.detect(
-            charName: speaker.name,
-            // Clamped like every judge window (eval diet, hostile
-            // review 2026-08-11).
-            reply: clampEvalMessage(reply),
-            // The same window the needs eval uses, from the one shared helper —
-            // this was a hand-rolled copy until Pockets needed a third.
-            recentExchange: recentExchange(_messages),
-            // The speaker's own card — post-gen has already made the active
-            // character this turn's speaker, so groups judge the right body.
-            physiology: ClimaxEval.physiologyFor(speaker),
-          );
-    if (turns == null) return;
+    final ({int turns, bool userClimaxed})? verdict;
+    if (fused != null) {
+      final fusedTurns = ClimaxEval.parseRefractory(fused);
+      verdict = fusedTurns == null
+          ? null
+          : (
+              turns: fusedTurns,
+              // PR 5: the SAME verdict's mutual flag through the SAME
+              // lenient parser on both transports — no second call, no
+              // inference.
+              userClimaxed: ClimaxEval.parseUserClimaxed(fused),
+            );
+    } else {
+      verdict = await _eval.detect(
+        charName: speaker.name,
+        // Clamped like every judge window (eval diet, hostile
+        // review 2026-08-11).
+        reply: clampEvalMessage(reply),
+        // The same window the needs eval uses, from the one shared helper —
+        // this was a hand-rolled copy until Pockets needed a third.
+        recentExchange: recentExchange(_messages),
+        // The speaker's own card — post-gen has already made the active
+        // character this turn's speaker, so groups judge the right body.
+        physiology: ClimaxEval.physiologyFor(speaker),
+      );
+    }
+    if (verdict == null) return;
+    final turns = verdict.turns;
+    final userClimaxed = verdict.userClimaxed;
 
     // Metadata first, then the effect — applyClimaxEffects zeroes arousal
     // (hard) or trims it by the peak cost (soft), so reading it afterwards
@@ -126,9 +140,23 @@ class AfterglowPass {
         // no peak (decision 4), so a misread of the aftermath cannot stack
         // peaks. Hard bodies re-apply absolutely, exactly as before.
         newPeak = false;
+        // PR 5 review (M1): the continuation's verdict still COUNTS for the
+        // mutual flag — the lock re-arms on this branch, so an opening turn
+        // the judge just declared mutual must not speak the solitary rung.
+        // Merge monotonically: a continuation can raise mutual, never
+        // un-stamp it (the first reading still owns everything else).
+        if (userClimaxed && meta['user_climaxed'] != true) {
+          meta['user_climaxed'] = true;
+          msg.activeMetadata = meta;
+        }
       } else {
         meta['climax_triggered'] = true;
         meta['pre_climax_arousal'] = preClimaxArousal;
+        // PR 5: the mutual beat rides the same verdict — stamped only when
+        // true (absence is the default the whole stack already reads), read
+        // once on the opening turn, and re-rolled by regen with its
+        // timeline. The receipt body is unchanged.
+        if (userClimaxed) meta['user_climaxed'] = true;
         // The full pre-climax body — minutes, opened flag, soft flag, peak
         // stamps — beside the arousal. The regen revert restores THIS
         // instead of `none`, so regenerating a soft peak 2 leaves peak 1

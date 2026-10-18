@@ -52,6 +52,8 @@ const _afterglowNeedsDrive =
 /// finish naturally without an OOC order (otherwise arousal pins at max and
 /// the refractory never fires, since the post-gen climax check only triggers
 /// when the reply depicts release).
+bool _noMutualOpening() => false;
+
 class NsfwInjection {
   final NsfwService nsfwService;
   final bool Function() getRealismEnabled;
@@ -61,6 +63,12 @@ class NsfwInjection {
   final List<CharacterCard> Function() getGroupCharacters;
   final String Function(CharacterCard) getCharacterIdFromCard;
 
+  /// PR 5: whether THIS beat's climax verdict said {{user}} came too. The
+  /// mutual opening rungs fire only when this reads true on the opening
+  /// turn; everywhere else (and every pre-PR-5 chat) reads false and today's
+  /// copy ships verbatim.
+  final bool Function() getMutualOpening;
+
   NsfwInjection({
     required this.nsfwService,
     required this.getRealismEnabled,
@@ -69,6 +77,7 @@ class NsfwInjection {
     required this.getCurrentSpeakerIdForRealism,
     required this.getGroupCharacters,
     required this.getCharacterIdFromCard,
+    this.getMutualOpening = _noMutualOpening,
   });
 
   String _speakerName() {
@@ -102,6 +111,14 @@ class NsfwInjection {
         // strings interpolate $name and speak of the body — never a
         // gendered pronoun (whole-word guard in prompt_injection_test).
         if (nsfwService.isOpeningAfterglowTurn) {
+          if (getMutualOpening()) {
+            return 'Body: $name just climaxed — trembling and flushed, '
+                'oversensitive in the best way, buzzing rather than wrecked. '
+                '$name and {{user}} came undone together — the wind-down is '
+                'shared: every slow touch goes both ways and closeness is '
+                'answered with closeness; direct attention may still land a '
+                'beat too intense.';
+          }
           return 'Body: $name just climaxed — trembling and flushed, '
               'oversensitive in the best way, buzzing rather than wrecked. '
               'Closeness is wanted now; direct attention may land a beat '
@@ -113,6 +130,15 @@ class NsfwInjection {
             'lands at half weight.';
       }
       if (nsfwService.isOpeningAfterglowTurn) {
+        if (getMutualOpening()) {
+          return 'Body: $name just climaxed — still trembling, flushed, '
+              'oversensitive, blissfully wrecked, with other physical needs '
+              'feeling far away. $name and {{user}} came undone together — '
+              'the room went soft at the edges, both wrecked, neither '
+              'willing to move first. A new advance still cannot be answered '
+              'yet: a shared breathless laugh, a hand held instead of '
+              'pushed away, closeness without capacity.';
+        }
         return 'Body: $name just climaxed — still trembling, flushed, '
             'oversensitive, blissfully wrecked, with other physical needs '
             'feeling far away. If {{user}} starts something sexual again the '

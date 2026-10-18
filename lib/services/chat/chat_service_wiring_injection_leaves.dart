@@ -226,7 +226,35 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
+      getMutualOpening: _mutualAfterglowOpening,
     );
+  }
+
+  /// PR 5: the mutual afterglow opening — the SAME beat's climax verdict
+  /// said {{user}} came too. True only while the afterglow opening turn runs
+  /// AND this speaker's latest climax-stamped reply carries `user_climaxed`.
+  /// Never inferred: pre-PR-5 replies simply have no stamp, and a
+  /// roster-mate's mutual beat is not this body's warmth.
+  bool _mutualAfterglowOpening() {
+    if (!_nsfwService.isOpeningAfterglowTurn) return false;
+    final group = _activeGroup != null;
+    for (final m in _messages.reversed) {
+      if (m.isUser) continue;
+      // A scene guest's prose is not the host's body (M7 review): the
+      // mutual beat belongs to the character the lock is counting.
+      if (_isGuestAuthoredMessage(m)) continue;
+      final meta = m.activeMetadata;
+      if (meta?['climax_triggered'] != true) continue;
+      if (group) {
+        final card = _resolveGroupSpeakerForMessage(m);
+        if (card == null ||
+            _getCharacterIdFromCard(card) != _groupStore.currentSpeakerId()) {
+          continue;
+        }
+      }
+      return meta?['user_climaxed'] == true;
+    }
+    return false;
   }
 
   ChaosInjection _buildChaosInjection() {

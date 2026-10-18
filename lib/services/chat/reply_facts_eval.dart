@@ -107,7 +107,11 @@ class ReplyFactsEval {
   }) {
     final askPockets = pockets != null;
     final keys = [
-      if (askClimax) ...['"is_climax"', '"refractory_turns"'],
+      if (askClimax) ...[
+        '"is_climax"',
+        '"refractory_turns"',
+        '"user_climaxed"',
+      ],
       if (askPockets) '"inventory_ops" (an array)',
       if (askPosture) '"posture"',
     ];

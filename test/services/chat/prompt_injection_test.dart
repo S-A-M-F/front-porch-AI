@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
+import 'package:front_porch_ai/services/chat/realism_prompt_builder.dart';
 import 'package:front_porch_ai/services/chat/realism_prompt_builder/realism_prompt_fragments.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/author_note_builder.dart';
@@ -1464,6 +1465,159 @@ void main() {
         isNot(contains('still riding a warm afterglow')),
         reason: 'no tail, no note',
       );
+    });
+  });
+
+  // Recovery overhaul PR 5: the mutual opening. One variant per mode,
+  // replacing the partner-facing clause only while the beat's climax
+  // verdict stamped {{user}} came too — everywhere else today's copy
+  // ships verbatim, and the pronoun-free contract still holds.
+  group('mutual opening (PR 5)', () {
+    String mutualText(
+      Refractory r, {
+      required bool mutual,
+      String name = 'Nia',
+    }) {
+      final n = createTestNsfwSvc();
+      n.setNsfwCooldownEnabled(true);
+      n.setRefractory(r);
+      return NsfwInjection(
+        nsfwService: n,
+        getRealismEnabled: () => true,
+        getActiveCharacter: () => CharacterCard(name: name),
+        getIsGroupNonObserverMode: () => false,
+        getCurrentSpeakerIdForRealism: () => 'c1',
+        getGroupCharacters: () => const [],
+        getCharacterIdFromCard: (c) => c.dbId?.toString() ?? c.name,
+        getMutualOpening: () => mutual,
+      ).buildNsfwCooldownInjection();
+    }
+
+    test('a mutual hard opening trades isolation for shared wreck', () {
+      final t = mutualText(Refractory.fromJudgeTurns(6), mutual: true);
+      expect(t, contains('just climaxed — still trembling, flushed'));
+      expect(t, contains('came undone together'));
+      expect(t, contains('neither willing to move first'));
+      expect(t, isNot(contains('If {{user}} starts something sexual again')));
+      expect(
+        t,
+        contains('cannot be answered'),
+        reason: 'the hard lock stays true even when it is shared',
+      );
+    });
+
+    test('the hard opening without the stamp ships today\'s copy verbatim', () {
+      expect(
+        mutualText(Refractory.fromJudgeTurns(6), mutual: false),
+        contains('If {{user}} starts something sexual again'),
+      );
+    });
+
+    test('a mutual soft opening shares the wind-down', () {
+      final t = mutualText(Refractory.tenderness([0]), mutual: true);
+      expect(t, contains('oversensitive in the best way'));
+      expect(t, contains('came undone together'));
+      expect(t, contains('the wind-down is shared'));
+      expect(t, isNot(contains('a flinch that turns into pulling closer')));
+    });
+
+    test('the soft opening without the stamp ships today\'s copy verbatim', () {
+      expect(
+        mutualText(Refractory.tenderness([0]), mutual: false),
+        contains('a flinch that turns into pulling closer'),
+      );
+    });
+
+    test('a mid-window body never speaks the mutual opening', () {
+      // The stamp is opening-turn-only: past the first reply the normal
+      // tender rung ships even if the closure wrongly says mutual.
+      final t = mutualText(
+        const Refractory(
+          minutes: 10,
+          total: 15,
+          opened: true,
+          soft: true,
+          peaks: [10, 0],
+        ),
+        mutual: true,
+      );
+      expect(t, contains('still humming from it'));
+      expect(t, isNot(contains('came undone together')));
+    });
+
+    test('the mutual rungs speak no gendered pronoun', () {
+      final genders = RegExp(
+        r'\b(she|her|hers|herself|he|him|his|himself)\b',
+        caseSensitive: false,
+      );
+      for (final t in [
+        mutualText(Refractory.fromJudgeTurns(6), mutual: true),
+        mutualText(Refractory.tenderness([0]), mutual: true),
+      ]) {
+        expect(
+          t,
+          isNot(contains(genders)),
+          reason:
+              'the mutual rungs interpolate \$name and speak of the '
+              'body — never a gendered pronoun: $t',
+        );
+      }
+    });
+
+    test('the refractory note colors shared wind-down only when told', () {
+      final mutual = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        30,
+        45,
+        true,
+        mutualOpening: true,
+      );
+      expect(mutual, contains('came undone together'));
+      expect(mutual, contains('shared recovery, not distance'));
+      expect(
+        mutual,
+        contains('(-3 to +5)'),
+        reason:
+            'the sentence colors how low desire reads — the band is '
+            'the same law',
+      );
+      final plain = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        30,
+        45,
+        true,
+      );
+      expect(plain, isNot(contains('came undone together')));
+      final softMutual = RealismPromptFragments.arousalSection(
+        'Nia',
+        'You',
+        30,
+        45,
+        true,
+        refractorySoft: true,
+        mutualOpening: true,
+      );
+      expect(softMutual, contains('came undone together'));
+      expect(softMutual, contains('oversensitive after climax'));
+    });
+
+    test('the prompt-builder chain carries the flag to the note', () {
+      // The eval call sites reach the fragment through the builder —
+      // silently dropping the param mid-chain must fail something.
+      final p = RealismPromptBuilder.emotionalEvalPrompt(
+        charName: 'Nia',
+        userName: 'You',
+        dossier: '',
+        standing: '',
+        recent: '',
+        arousalEnabled: true,
+        arousalLevel: 30,
+        refractoryMinutesLeft: 45,
+        mutualOpening: true,
+      );
+      expect(p, contains('came undone together'));
     });
   });
 }

@@ -117,6 +117,7 @@ class RealismEvalOneShot {
           clockRunning: evals.nsfwService.clockRunning,
           refractorySoft: evals.nsfwService.refractory.soft,
           warmthTailMinutes: evals.nsfwService.refractoryTailMinutes,
+          mutualOpening: evals.getMutualOpening(),
           allowedEmotionLabels: labels,
           primaryObjective: primary?.objective,
           ambitions: evals.getAmbitions?.call() ?? const [],

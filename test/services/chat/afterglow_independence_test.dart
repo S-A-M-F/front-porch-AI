@@ -674,4 +674,193 @@ void main() {
       },
     );
   });
+
+  // Recovery overhaul PR 5: the mutual flag rides the SAME verdict onto
+  // the receipt — stamped only when the judge says both came, and never
+  // assumed from a missing key. The mutual ladder beat reads this stamp.
+  group('the mutual stamp rides the climax receipt (PR 5)', () {
+    Future<List<ChatMessage>> mutualClimaxWith(
+      String verdict, {
+      String? fused,
+      bool continueOntoStampedClimax = false,
+    }) async {
+      final nsfw = NsfwService(
+        getGroupInt: (_, _) => 0,
+        getGroupValue: (_, _) => null,
+        setGroupValue: (_, _, _) {},
+      );
+      nsfw.loadNsfwScalars(arousalLevel: 100, nsfwCooldownEnabled: true);
+
+      final messages = [
+        ChatMessage(
+          text: 'she shuddered and went limp',
+          sender: 'Vera',
+          isUser: false,
+          metadata: continueOntoStampedClimax
+              ? {
+                  'climax_triggered': true,
+                  'pre_climax_arousal': 100,
+                  'pre_climax_refractory': Refractory.none.toSnapshot(),
+                }
+              : null,
+        ),
+      ];
+      final vera = CharacterCard(name: 'Vera')..dbId = 'vera';
+
+      // A GIVEN verdict per test — the fake never varies it by
+      // personality (CLAUDE.md "No stub tests"). With [fused] set the
+      // standalone call must not even fire: the fused slice answers.
+      final eval = ClimaxEval(
+        fire:
+            ({
+              required debugLabel,
+              required tools,
+              required buildPrompt,
+            }) async {
+              if (fused != null) {
+                throw StateError('standalone call fired on a fused turn');
+              }
+              return verdict;
+            },
+      );
+      final scope = RealismScope(
+        messages: messages,
+        activeCharacter: () => vera,
+        setActiveCharacter: (_) {},
+        activeGroup: () => null,
+        groupCharacters: () => [vera],
+        observerMode: () => false,
+        realismEnabled: () => true,
+        needsSimEnabled: () => false,
+        realismSettings: () => throw UnimplementedError(),
+        clockRunning: () => false,
+        characterIdFor: (c) => c.dbId ?? '',
+        groups: GroupRealismStore(
+          isGroup: () => false,
+          groupCharacters: () => [vera],
+          characterIdFor: (c) => c.dbId ?? '',
+          hostId: () => 'vera',
+          activeCharacter: () => vera,
+          isGenerating: () => false,
+          nextCharacter: () => null,
+          workFieldsFor: (_) => throw UnimplementedError(),
+        ),
+        needs: () => throw UnimplementedError(),
+        relationship: () => throw UnimplementedError(),
+        nsfw: () => nsfw,
+        time: () => throw UnimplementedError(),
+        pending: () => null,
+        setPending: (_) {},
+        emotion: () => '',
+        setEmotion: (_) {},
+        intensity: () => '',
+        setIntensity: (_) {},
+        cause: () => '',
+        setCause: (_) {},
+        heldTurns: () => 0,
+        setHeldTurns: (_) {},
+        saveChat: () async {},
+        notify: () {},
+      );
+      await AfterglowPass(
+        scope,
+        eval,
+        fusedReply: () => fused,
+        isGuestAuthoredMessage: (_) => false,
+        resolveGroupSpeakerForMessage: (_) => null,
+      ).runClimaxPass('she shuddered and went limp');
+      return messages;
+    }
+
+    test('a mutual verdict stamps the receipt beside the climax', () async {
+      final messages = await mutualClimaxWith(
+        '{"is_climax":true,"refractory_turns":6,"user_climaxed":true}',
+      );
+      final meta = messages.last.activeMetadata!;
+      expect(meta['climax_triggered'], isTrue);
+      expect(
+        meta['user_climaxed'],
+        isTrue,
+        reason: 'the mutual beat is carried by the reply that earned it',
+      );
+    });
+
+    test('a solo verdict stamps nothing new', () async {
+      final messages = await mutualClimaxWith(
+        '{"is_climax":true,"refractory_turns":6,"user_climaxed":false}',
+      );
+      expect(messages.last.activeMetadata!['climax_triggered'], isTrue);
+      expect(
+        messages.last.activeMetadata!['user_climaxed'],
+        isNull,
+        reason: 'absence is the default the whole stack already reads',
+      );
+    });
+
+    test('a missing key reads solo — mutual is never assumed', () async {
+      final messages = await mutualClimaxWith(
+        '{"is_climax":true,"refractory_turns":6}',
+      );
+      expect(messages.last.activeMetadata!['user_climaxed'], isNull);
+    });
+
+    test(
+      'the fused slice carries the mutual flag through the same parser',
+      () async {
+        // One call answers all bookkeeping on a fused turn: the mutual flag
+        // must ride that answer, not a second climax call.
+        final messages = await mutualClimaxWith(
+          '',
+          fused:
+              '{"is_climax":true,"refractory_turns":6,"user_climaxed":'
+              '"true"}',
+        );
+        final meta = messages.last.activeMetadata!;
+        expect(meta['climax_triggered'], isTrue);
+        expect(meta['user_climaxed'], isTrue);
+      },
+    );
+
+    // Hostile review M1: the first-reading guard keeps the receipt's BODY
+    // from the first reading, but a continuation's MUTUAL verdict must
+    // still merge — the lock re-arms on that branch, and the opening turn
+    // it creates must not speak the solitary rung for a beat the judge
+    // just declared shared.
+    test(
+      'a Continue that finally narrates both can still raise mutual',
+      () async {
+        final messages = await mutualClimaxWith(
+          '{"is_climax":true,"refractory_turns":6,"user_climaxed":true}',
+          continueOntoStampedClimax: true,
+        );
+        final meta = messages.last.activeMetadata!;
+        expect(
+          meta['user_climaxed'],
+          isTrue,
+          reason:
+              'mutual merges monotonically — never invented, never held '
+              'hostage by the first reading',
+        );
+        expect(
+          meta['pre_climax_arousal'],
+          100,
+          reason: 'the first reading still owns the receipt body',
+        );
+      },
+    );
+
+    test('a Continue saying solo never un-stamps and never invents', () async {
+      final messages = await mutualClimaxWith(
+        '{"is_climax":true,"refractory_turns":6,"user_climaxed":false}',
+        continueOntoStampedClimax: true,
+      );
+      expect(
+        messages.last.activeMetadata!['user_climaxed'],
+        isNull,
+        reason:
+            'a solo continuation leaves the receipt as the first '
+            'reading wrote it',
+      );
+    });
+  });
 }

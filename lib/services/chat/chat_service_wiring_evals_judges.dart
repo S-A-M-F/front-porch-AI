@@ -190,6 +190,9 @@ extension ChatServiceWiringEvalJudges on ChatService {
               !objectivesActive
           ? const []
           : ambitionsFor(_activeCharacter!),
+      // PR 5: one shared source for the mutual opening — the ladder and the
+      // refractory note read the identical stamp-backed truth.
+      getMutualOpening: _mutualAfterglowOpening,
       // Likes & Dislikes — the SCORING half. Called once per prompt BUILD, not
       // once per turn (review, 2026-08-07 — the earlier comment here claimed
       // otherwise). What makes one-shot parity hold is that it is PURE: it

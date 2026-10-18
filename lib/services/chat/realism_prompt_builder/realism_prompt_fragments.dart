@@ -142,6 +142,11 @@ class RealismPromptFragments {
     /// arousal section — the same "gentle band" job the refractory note
     /// does, one rung-late.
     int warmthTailMinutes = 0,
+
+    /// PR 5: the opening turn of a beat whose climax verdict said {{user}}
+    /// came too. Adds one shared-wind-down sentence to the refractory note
+    /// — opening turn only, never a standing state.
+    bool mutualOpening = false,
   }) =>
       '- "arousal_delta": physical desire shift this turn ($kMinArousalDelta to +$kMaxArousalDelta). '
       'Current arousal: $currentArousal/100.\n'
@@ -161,7 +166,7 @@ class RealismPromptFragments {
       '  A non-sexual, non-romantic turn (food, work, errands, small talk, plain comfort) is 0 — and if '
       'current arousal is above 0 on such a turn, return roughly -5 to -10 so it cools back toward neutral.\n'
       '${refractoryMinutesLeft > 0
-          ? _refractoryNote(charName, refractoryMinutesLeft, clockRunning, refractorySoft)
+          ? _refractoryNote(charName, userName, refractoryMinutesLeft, clockRunning, refractorySoft, mutualOpening: mutualOpening)
           : warmthTailMinutes > 0
           ? _warmthTailNote(charName)
           : ''}';
@@ -184,26 +189,34 @@ class RealismPromptFragments {
   /// modes keep the same gentle -3…+5 scoring band.
   static String _refractoryNote(
     String charName,
+    String userName,
     int minutesLeft,
     bool clockRunning,
-    bool soft,
-  ) {
+    bool soft, {
+    bool mutualOpening = false,
+  }) {
     final left = describeRefractory(
       minutesLeft,
       clockRunning: clockRunning,
       soft: soft,
     ).prompt;
+    // PR 5: one sentence, opening turn only — the shared wind-down colors
+    // how low desire reads, never the scoring band.
+    final shared = mutualOpening
+        ? ' $charName and $userName came undone together, so the quiet '
+              'after is shared recovery, not distance.'
+        : '';
     return soft
         ? '  NOTE: $charName is oversensitive after climax $left but '
               'desire stays up; touch may read as too much — tenderness, '
               'not rejection. Score gentle deltas (-3 to +5); an advance '
-              'that needs slowing down is a flinch, not a no.\n'
+              'that needs slowing down is a flinch, not a no.$shared\n'
         : '  NOTE: $charName is in the post-orgasm refractory $left. '
               'Their low desire right now is contented satedness, NOT '
               'aversion — an affectionate afterglow. Score gentle deltas '
               '(-3 to +5); a soft "not yet" to another advance is normal '
               'recovery, not a rejection, so do not score it negative '
-              'unless something genuinely upsetting happened.\n';
+              'unless something genuinely upsetting happened.$shared\n';
   }
 
   // (There is no posture section here any more. Posture left the fused

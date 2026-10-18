@@ -219,6 +219,7 @@ class RealismEvalCalls {
           clockRunning: evals.nsfwService.clockRunning,
           refractorySoft: evals.nsfwService.refractory.soft,
           warmthTailMinutes: evals.nsfwService.refractoryTailMinutes,
+          mutualOpening: evals.getMutualOpening(),
           allowedEmotionLabels: labels,
           toolsMode: toolsMode,
         );

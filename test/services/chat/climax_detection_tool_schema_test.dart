@@ -51,17 +51,16 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:front_porch_ai/services/chat/climax_eval.dart';
+import 'package:front_porch_ai/services/chat/reply_facts_eval.dart';
 import 'package:front_porch_ai/services/chat/realism_tools.dart';
 import 'package:front_porch_ai/services/llm_service.dart' show LlmToolCall;
 
 List<String> _requiredOf(List<Map<String, dynamic>> tools) =>
-    ((tools.single['function'] as Map)['parameters']
-            as Map)['required']
+    ((tools.single['function'] as Map)['parameters'] as Map)['required']
         as List<String>;
 
 Map<String, dynamic> _propsOf(List<Map<String, dynamic>> tools) =>
-    ((tools.single['function'] as Map)['parameters']
-            as Map)['properties']
+    ((tools.single['function'] as Map)['parameters'] as Map)['properties']
         as Map<String, dynamic>;
 
 void main() {
@@ -83,7 +82,8 @@ void main() {
       expect(
         _requiredOf(ClimaxEval.tools),
         contains('is_climax'),
-        reason: 'optional means the model may skip it, and skipping reads as '
+        reason:
+            'optional means the model may skip it, and skipping reads as '
             '"no climax" — the refractory then never starts and Lust stays '
             'pinned at 100 forever',
       );
@@ -146,6 +146,151 @@ void main() {
         ),
       ]);
       expect((jsonDecode(json!) as Map)['is_climax'], isTrue);
+    });
+  });
+
+  // Recovery overhaul PR 5: `user_climaxed` rides the SAME verdict for
+  // free. Same law as is_climax — defined, required, whitelisted, and
+  // leniently parsed — or the mutual beat silently never exists.
+  group('the mutual field rides the same verdict (PR 5)', () {
+    test('user_climaxed is defined and required on the climax tool', () {
+      final props =
+          ((ClimaxEval.tools.single['function'] as Map)['parameters']
+                  as Map)['properties']
+              as Map;
+      expect(props, contains('user_climaxed'));
+      expect((props['user_climaxed'] as Map)['type'], 'boolean');
+      expect(
+        _requiredOf(ClimaxEval.tools),
+        containsAll(['is_climax', 'refractory_turns', 'user_climaxed']),
+        reason:
+            'optional means never emitted — the exact hole that turned '
+            'climax detection off on every tools-capable backend once',
+      );
+    });
+
+    test(
+      'the fused tool demands it only when the climax question is asked',
+      () {
+        final asked = kReplyFactsToolsFor(
+          askClimax: true,
+          askPockets: false,
+          askPosture: false,
+        );
+        expect(_requiredOf(asked), contains('user_climaxed'));
+        final silent = kReplyFactsToolsFor(
+          askClimax: false,
+          askPockets: true,
+          askPosture: false,
+        );
+        expect(
+          _requiredOf(silent),
+          isNot(contains('user_climaxed')),
+          reason: 'a disabled feature must not be demanded of the model',
+        );
+        expect(_requiredOf(silent), contains('inventory_ops'));
+      },
+    );
+
+    test('the registry whitelist carries it — transport drops the rest', () {
+      expect(
+        realismToolFieldsByTool[ClimaxEval.kClimaxTool],
+        contains('user_climaxed'),
+      );
+      expect(
+        realismToolFieldsByTool[kReplyFactsToolName],
+        contains('user_climaxed'),
+        reason:
+            'an unregistered tool or key is dropped and the feature falls '
+            'back to text (or to nothing) on every tools backend, silently',
+      );
+    });
+
+    test('the rubric and the text floor both ask for the flag', () {
+      expect(ClimaxEval.rubric('Nia'), contains('user_climaxed'));
+      expect(
+        ClimaxEval.buildPrompt(
+          charName: 'Nia',
+          reply: 'x',
+          recentExchange: '',
+          toolsMode: false,
+        ),
+        contains('"user_climaxed"'),
+        reason: 'the no-tools floor names every key or loose models skip it',
+      );
+      // Judge lanes are NOT macro-resolved (only generation blocks are):
+      // a {{user}} token here would reach the model literally.
+      expect(ClimaxEval.rubric('Nia'), isNot(contains('{{user}}')));
+      expect(
+        kClimaxFields['user_climaxed']!['description']!,
+        isNot(contains('{{user}}')),
+      );
+    });
+
+    test('parseUserClimaxed is lenient in, strict by absence', () {
+      expect(ClimaxEval.parseUserClimaxed('{"user_climaxed":true}'), isTrue);
+      expect(ClimaxEval.parseUserClimaxed('{"user_climaxed":"true"}'), isTrue);
+      expect(ClimaxEval.parseUserClimaxed('{"user_climaxed":"yes"}'), isTrue);
+      expect(ClimaxEval.parseUserClimaxed('{"user_climaxed":"Yes"}'), isTrue);
+      expect(ClimaxEval.parseUserClimaxed('{"user_climaxed":false}'), isFalse);
+      expect(
+        ClimaxEval.parseUserClimaxed('{"is_climax":true,"refractory_turns":6}'),
+        isFalse,
+        reason: 'a missing key is never assumed — the mutual beat is opt-in',
+      );
+      expect(ClimaxEval.parseUserClimaxed('nonsense'), isFalse);
+      expect(ClimaxEval.parseUserClimaxed(null), isFalse);
+    });
+
+    test('a real false field cannot be flipped by a later quote, '
+        'nor a word match by half', () {
+      // Hostile review M2: the sibling parseRefractory wins the FIRST
+      // match so chatty codicils cannot flip a real verdict; a bare
+      // hasMatch("true|yes") also let "yesterday" and "truest" read true.
+      expect(
+        ClimaxEval.parseUserClimaxed(
+          '{"user_climaxed":false,"posture":"lying still — she wrote '
+          '\\"user_climaxed\\": true would be wrong here"}',
+        ),
+        isFalse,
+        reason: 'the real field is first; the quote is prose',
+      );
+      expect(
+        ClimaxEval.parseUserClimaxed('{"user_climaxed":"yesterday"}'),
+        isFalse,
+      );
+      expect(
+        ClimaxEval.parseUserClimaxed('{"user_climaxed":"truest"}'),
+        isFalse,
+      );
+    });
+
+    test('the fused TEXT floor names the key too', () {
+      // The tools lane is pinned by the required-list guards above; a
+      // text-mode fused backend must be ASKED or the mutual beat silently
+      // never exists there (hostile review M4).
+      final asked = ReplyFactsEval.buildPrompt(
+        charName: 'Nia',
+        reply: 'x',
+        recentExchange: '',
+        toolsMode: false,
+        askClimax: true,
+      );
+      // Target the flat-JSON keys list itself — the rubric already names
+      // the key, so a bare contains() would pass without the floor.
+      expect(asked, contains('"refractory_turns", "user_climaxed". '));
+      final silent = ReplyFactsEval.buildPrompt(
+        charName: 'Nia',
+        reply: 'x',
+        recentExchange: '',
+        toolsMode: false,
+        askClimax: false,
+      );
+      expect(
+        silent,
+        isNot(contains('"user_climaxed"')),
+        reason: 'a disabled feature must not be asked of the model',
+      );
     });
   });
 }

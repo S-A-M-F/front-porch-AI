@@ -97,7 +97,11 @@ class ClimaxEval {
       'long the post-orgasm cooldown should last. A quick climax runs shorter '
       'than a drawn-out or repeated one; a highly sexual character recovers '
       'fast, a reserved one slowly. 0 is a valid, common answer — a character '
-      'who could easily go again needs no cooldown. When false, 0.\n\n';
+      'who could easily go again needs no cooldown. When false, 0.\n'
+      '"user_climaxed": true only if the user ALSO climaxed in this reply — '
+      'judge it on its own line of the text, independent of your is_climax '
+      'answer (both true, either one, or neither are all normal). When '
+      'unsure, false.\n\n';
 
   /// The judge's view of who the character is, for [rubric]'s traits slot:
   /// authored intimate preferences first, then the card's personality; an
@@ -148,8 +152,9 @@ class ClimaxEval {
       '${rubric(charName, physiology)}'
       'The scene:\n$reply\n\n'
       '${recentExchange.trim().isEmpty ? '' : 'Recent exchange for context:\n$recentExchange\n\n'}'
-      '${toolsMode ? 'Report by calling the $kClimaxTool tool. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "is_climax" and '
-                '"refractory_turns". Do NOT use markdown code blocks — raw JSON only.'}';
+      '${toolsMode ? 'Report by calling the $kClimaxTool tool. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "is_climax", '
+                '"refractory_turns", and "user_climaxed". Do NOT use markdown '
+                'code blocks — raw JSON only.'}';
 
   /// Forgiving on purpose (local-model floor): tools mode yields a real bool,
   /// text mode may quote it, and a missing refractory falls back to the middle
@@ -170,12 +175,35 @@ class ClimaxEval {
     return (int.tryParse(t?.group(1) ?? '') ?? 5).clamp(0, 12);
   }
 
-  /// Returns the refractory length when the character climaxed, else null.
+  /// Lenient read of the mutual flag (recovery overhaul PR 5): a real bool
+  /// or the strings "true"/"yes" (quoted values are the local-model floor,
+  /// same style as [parseRefractory]); a missing key, `false`, or junk
+  /// reads false. The mutual beat is opt-in per verdict — never assumed.
+  ///
+  /// `firstMatch` on the WHOLE word, like [parseRefractory]: the real field
+  /// is first in the JSON, so a chatty codicil or a posture string quoting
+  /// the key later cannot flip a real `false`, and "yesterday"/"truest"
+  /// cannot read true. The tools lane is slightly stricter still: the arg
+  /// coercion in realism_tools.dart accepts only "true"/"false" strings, so
+  /// a "yes" arriving as a tool argument falls back through text parsing,
+  /// failing solo — never inventing a mutual beat.
+  static bool parseUserClimaxed(String? raw) {
+    if (raw == null) return false;
+    final m = RegExp(
+      r'"user_climaxed"\s*:\s*"?(\w+)"?',
+      caseSensitive: false,
+    ).firstMatch(raw);
+    final v = m?.group(1)?.toLowerCase();
+    return v == 'true' || v == 'yes';
+  }
+
+  /// Returns the refractory length and the mutual flag when the character
+  /// climaxed, else null.
   ///
   /// The caller decides whether to run at all (the engine, the Afterglow
   /// switch, a non-empty reply); this leaf consults no settings, so there is
   /// exactly one place the feature is gated.
-  Future<int?> detect({
+  Future<({int turns, bool userClimaxed})?> detect({
     required String charName,
     required String reply,
     String recentExchange = '',
@@ -183,19 +211,20 @@ class ClimaxEval {
   }) async {
     if (reply.trim().isEmpty) return null;
     try {
-      return parseRefractory(
-        await fire(
-          debugLabel: 'climax',
-          tools: tools,
-          buildPrompt: ({required bool toolsMode}) => buildPrompt(
-            charName: charName,
-            reply: reply,
-            recentExchange: recentExchange,
-            toolsMode: toolsMode,
-            physiology: physiology,
-          ),
+      final raw = await fire(
+        debugLabel: 'climax',
+        tools: tools,
+        buildPrompt: ({required bool toolsMode}) => buildPrompt(
+          charName: charName,
+          reply: reply,
+          recentExchange: recentExchange,
+          toolsMode: toolsMode,
+          physiology: physiology,
         ),
       );
+      final turns = parseRefractory(raw);
+      if (turns == null) return null;
+      return (turns: turns, userClimaxed: parseUserClimaxed(raw));
     } catch (e) {
       // Never fail a turn over bookkeeping: the reply already happened and the
       // refractory simply does not start. Logged rather than swallowed.

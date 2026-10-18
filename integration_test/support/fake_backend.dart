@@ -105,6 +105,11 @@ class FakeBackendServer {
   bool softClimaxRepeats = false;
   int climaxVerdictsServed = 0;
 
+  /// Mutual climax verdict (PR 5): when set, the climax judge answers
+  /// user_climaxed=true — a GIVEN verdict for the mutual-mechanics suites,
+  /// never a judgement that varies by personality.
+  bool userClimaxVerdict = false;
+
   /// Manual needs-reprocess hook. A completion whose prompt carries
   /// [reprocessMarker] is answered with [reprocessDeltas] instead of the
   /// standard canned needs set. Set the deltas to something DIFFERENT on every
@@ -570,6 +575,9 @@ class FakeBackendServer {
           softClimaxRepeats || lastContent.contains('the wave crests');
       eval['is_climax'] = climax;
       eval['refractory_turns'] = climax ? 6 : 0;
+      // PR 5: the mutual flag rides the same given verdict — stamped only
+      // when the beat climaxed AND the suite set the flag.
+      eval['user_climaxed'] = climax && userClimaxVerdict;
       if (climax) climaxVerdictsServed++;
     }
     if (lastContent.contains('emotion_intensity')) {
