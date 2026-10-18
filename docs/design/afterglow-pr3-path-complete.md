@@ -71,7 +71,7 @@ carries `approved-test-change` for the two existing-test edits — the vitest
 6. Regen revert: soft body restored with peaks+window; pre-PR-3 stamp → `none`.
 7. Persistence: session row round-trip (DB columns v59), `.fpchat` round-trip,
    group member-map round-trip.
-8. Integration (`integration_test/soft_gate_climax_test.dart`): multiorgasmic
+8. Integration (`integration_test/climax_refractory_test.dart`, the soft-gate test): multiorgasmic
    card climaxes twice in one scene, arousal stays ≥ 50, second peak bites
    harder, regen of peak 2 leaves peak 1 and its window, Continue on the peak-1
    reply adds no peak. `fake_backend` answers a given verdict (marker-driven,
