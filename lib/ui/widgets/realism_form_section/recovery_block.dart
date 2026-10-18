@@ -24,10 +24,13 @@ import 'package:front_porch_ai/ui/theme/creator_palette.dart';
 /// "Recovery after intimacy" — the card author's one control over how their
 /// character comes down after climax (recovery overhaul PR 2; the mockup's
 /// editor frame). A preset dropdown over the decision-3 table, a minutes
-/// slider that is always shown (moving it selects Custom), the clock-off
-/// reply hint, and a plain-English "resolves to" line naming the kind and
-/// the length. Its copy helpers are pure functions in `recovery_profile.dart`
-/// so both this and the web mirror can be pinned against one source.
+/// slider shown for every preset except 'none' (maintainer ruling
+/// 2026-10-18: the soft gate has no length, so it shows [recoverySoftGateHint]
+/// instead of a slider that dragging flips to a hard lock; moving the slider
+/// elsewhere selects Custom), the clock-off reply hint, and a plain-English
+/// "resolves to" line naming the kind and the length. Its copy helpers are
+/// pure functions in `recovery_profile.dart` so both this and the web mirror
+/// can be pinned against one source.
 class RecoveryBlock extends StatelessWidget {
   const RecoveryBlock({
     super.key,
@@ -61,6 +64,7 @@ class RecoveryBlock extends StatelessWidget {
     final mutedColor = palette?.muted ?? AppColors.textTertiary(context);
     final accent = palette?.amber ?? AppColors.porchAmberOf(context);
     final presetKey = recovery.presetKey;
+    final softGate = presetKey == 'none';
     final suggestion = showChargenSuggestion && presetKey == 'auto'
         ? recoverySuggestionLine(
             suggestRecoveryPreset(
@@ -126,53 +130,57 @@ class RecoveryBlock extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          'Recovery minutes',
-          style: TextStyle(
-            color: textColor,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
+        if (!softGate) ...[
+          Text(
+            'Recovery minutes',
+            style: TextStyle(
+              color: textColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
           ),
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: SliderTheme(
-                data: SliderThemeData(
-                  activeTrackColor: accent,
-                  inactiveTrackColor:
-                      (palette?.line ?? AppColors.borderOf(context)).withValues(
-                        alpha: 0.3,
-                      ),
-                  thumbColor: accent,
-                  trackHeight: 3,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 7,
+          Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    activeTrackColor: accent,
+                    inactiveTrackColor:
+                        (palette?.line ?? AppColors.borderOf(context))
+                            .withValues(alpha: 0.3),
+                    thumbColor: accent,
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 7,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
                   ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 14,
+                  child: Slider(
+                    key: const Key('recovery-minutes-slider'),
+                    value: sliderValue,
+                    min: kRecoveryMinutesMin.toDouble(),
+                    max: kRecoveryMinutesMax.toDouble(),
+                    label: '${sliderValue.round()} min',
+                    onChanged: (v) =>
+                        onChanged(recovery.withMinutes(v.round())),
                   ),
-                ),
-                child: Slider(
-                  key: const Key('recovery-minutes-slider'),
-                  value: sliderValue,
-                  min: kRecoveryMinutesMin.toDouble(),
-                  max: kRecoveryMinutesMax.toDouble(),
-                  label: '${sliderValue.round()} min',
-                  onChanged: (v) => onChanged(recovery.withMinutes(v.round())),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${sliderValue.round()} min',
-              style: TextStyle(color: accent, fontSize: 12),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              Text(
+                '${sliderValue.round()} min',
+                style: TextStyle(color: accent, fontSize: 12),
+              ),
+            ],
+          ),
+        ],
         Text(
-          recoveryClockOffHint(recovery.recoveryMinutes),
+          softGate
+              ? recoverySoftGateHint()
+              : recoveryClockOffHint(recovery.recoveryMinutes),
           key: const Key('recovery-clock-off-hint'),
           style: TextStyle(color: mutedColor, fontSize: 11, height: 1.35),
         ),

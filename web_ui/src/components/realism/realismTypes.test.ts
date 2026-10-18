@@ -32,6 +32,7 @@ import {
   recoveryFromPreset,
   recoveryPresetKey,
   recoveryResolvesLine,
+  recoverySoftGateHint,
   recoverySuggestionLine,
   recoveryWithMinutes,
   recoveryWithPcdMood,
@@ -338,5 +339,10 @@ describe('the recovery mirror matches the Dart source of truth', () => {
     expect(recoveryClockOffHint(90)).toContain('90 min ≈ 6 replies');
     expect(recoveryClockOffHint(30)).toContain('2 replies');
     expect(recoveryClockOffHint(null)).toContain('each reply of theirs is 15');
+    // Byte-identical with recoverySoftGateHint() in recovery_profile.dart —
+    // the soft gate shows this instead of the minutes slider.
+    expect(recoverySoftGateHint()).toContain('no length to set');
+    expect(recoverySoftGateHint()).toContain('~15 min tenderness window is fixed');
+    expect(recoverySoftGateHint()).not.toContain("judge's length");
   });
 });

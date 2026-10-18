@@ -190,6 +190,14 @@ export function recoveryClockOffHint(minutes: number | null): string {
   return `With Passage of Time off, ${minutes} min ≈ ${replies} ${replies === 1 ? 'reply' : 'replies'} (15 min per reply).`;
 }
 
+/** The soft gate's replacement for the minutes slider and its clock-off hint
+ *  (mirror of `recoverySoftGateHint` in recovery_profile.dart — edit one,
+ *  edit both): the gate has no length, so the slider hides for 'none' and
+ *  this line speaks instead. */
+export function recoverySoftGateHint(): string {
+  return 'This gate has no length to set — the ~15 min tenderness window is fixed, about one reply of theirs with Passage of Time off.';
+}
+
 /** Chargen's preset suggestion from the authored intimacy notes (mirror of
  *  `suggestRecoveryPreset` in recovery_profile.dart — keyword scan, never
  *  applied silently). */

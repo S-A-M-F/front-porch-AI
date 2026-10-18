@@ -25,6 +25,7 @@ import {
   recoveryFromPreset,
   recoveryPresetKey,
   recoveryResolvesLine,
+  recoverySoftGateHint,
   recoverySuggestionLine,
   recoveryWithMinutes,
   recoveryWithPcdMood,
@@ -470,6 +471,11 @@ function RecoveryBlock({
 }) {
   const r = v.recovery ?? { recoveryMode: 'auto' as const, recoveryMinutes: null };
   const presetKey = recoveryPresetKey(r);
+  // The soft gate has no length (decision 4) — its slider parked at a
+  // misleading 90 and dragging it flipped the card to a hard lock.
+  // Maintainer ruling 2026-10-18: hide it for 'none' (mirror of desktop
+  // RecoveryBlock); a plain-English line takes its place.
+  const softGate = presetKey === 'none';
   const sliderValue = r.recoveryMinutes ?? NEUTRAL_RECOVERY_MINUTES;
   const suggestion =
     showChargenSuggestion && presetKey === 'auto'
@@ -492,16 +498,18 @@ function RecoveryBlock({
           })
         }
       />
-      <Slider
-        label="Recovery minutes"
-        min={RECOVERY_MIN_MINUTES}
-        max={RECOVERY_MAX_MINUTES}
-        value={sliderValue}
-        badge={`${sliderValue} min`}
-        onChange={(n) => set({ recovery: recoveryWithMinutes(r, n) })}
-      />
+      {!softGate && (
+        <Slider
+          label="Recovery minutes"
+          min={RECOVERY_MIN_MINUTES}
+          max={RECOVERY_MAX_MINUTES}
+          value={sliderValue}
+          badge={`${sliderValue} min`}
+          onChange={(n) => set({ recovery: recoveryWithMinutes(r, n) })}
+        />
+      )}
       <small className="muted" data-testid="recovery-clock-off-hint">
-        {recoveryClockOffHint(r.recoveryMinutes)}
+        {softGate ? recoverySoftGateHint() : recoveryClockOffHint(r.recoveryMinutes)}
       </small>
       <small className="muted" data-testid="recovery-resolves-line">
         {recoveryResolvesLine(r, v.sex ?? '')}

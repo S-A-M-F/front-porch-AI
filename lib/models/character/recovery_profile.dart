@@ -482,6 +482,16 @@ String recoveryClockOffHint(int? minutes) => minutes == null
           '${(minutes + kRefractoryMinutesPerTurnHint - 1) ~/ kRefractoryMinutesPerTurnHint} '
           'replies (15 min per reply).';
 
+/// The soft gate's replacement for the minutes slider and its clock-off
+/// hint (maintainer ruling 2026-10-18): the gate has no length — decision 4
+/// fixes its tenderness window at ~15 story minutes — so a slider parked
+/// at the neutral 90 showed a number the mode never uses, and dragging it
+/// into Custom silently flipped the card to a hard lock. Mirrored in
+/// `realismTypes.ts`; both suites pin the same words.
+String recoverySoftGateHint() =>
+    'This gate has no length to set — the ~15 min tenderness window is '
+    'fixed, about one reply of theirs with Passage of Time off.';
+
 /// Local copy of the refractory's 15-minutes-per-reply constant — the
 /// models layer does not import services. The reply-hint math is two lines;
 /// an import cycle for it would be worse than the duplication, and both the

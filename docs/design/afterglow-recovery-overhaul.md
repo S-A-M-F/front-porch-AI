@@ -314,9 +314,12 @@ UI (desktop **and** web — parity is law):
 
 - Desktop: `lib/ui/widgets/realism_form_section/realism_optional_features_card.dart`
   — "Recovery after intimacy" block under the Afterglow toggle: the preset
-  dropdown (decision 3's table) + 0–180 "Recovery minutes" slider (always
-  shown, as in the mockup; moving it selects Custom) + live "≈ N replies with
-  the clock off" hint + a plain-English "resolves to" line naming the kind and
+  dropdown (decision 3's table) + 0–180 "Recovery minutes" slider (shown for
+  every preset except "None / multiorgasmic" — maintainer ruling 2026-10-18,
+  superseding the mockup's "always shown": the soft gate has no length, so it
+  shows the fixed-window line instead of a slider whose first drag flips the
+  card to a hard lock; moving it elsewhere selects Custom) + live "≈ N replies
+  with the clock off" hint + a plain-English "resolves to" line naming the kind and
   the length (e.g. "Auto → soft gate (card says female)"). The block shows
   only when Afterglow and 18+ themes are on.
 - Web: `web_ui/src/components/realism/RealismFormSection.tsx` +

@@ -370,6 +370,17 @@ void main() {
       );
     });
 
+    test('the soft gate names its fixed window, not a judge length', () {
+      final hint = recoverySoftGateHint();
+      expect(hint, contains('no length to set'));
+      expect(hint, contains('~15 min tenderness window is fixed'));
+      expect(
+        hint,
+        isNot(contains('judge\'s length')),
+        reason: 'decision 4 fixes the window — no judge number exists here',
+      );
+    });
+
     test('the duplicated per-turn constant cannot drift', () {
       expect(kRefractoryMinutesPerTurnHint, kRefractoryMinutesPerTurn);
     });
