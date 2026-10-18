@@ -368,6 +368,16 @@ class SettingsWriter {
       }
     }
 
+    if (body['additionalSystemPrompt'] is String) {
+      await g.setAdditionalSystemPrompt(
+        body['additionalSystemPrompt'] as String,
+      );
+    }
+    if (body['additionalPostHistoryInstructions'] is String) {
+      await g.setAdditionalPostHistoryInstructions(
+        body['additionalPostHistoryInstructions'] as String,
+      );
+    }
     final prompt = body['systemPrompt']?.toString();
     if (prompt != null) await g.setSystemPrompt(prompt);
     final bans = body['bannedPhrases'];

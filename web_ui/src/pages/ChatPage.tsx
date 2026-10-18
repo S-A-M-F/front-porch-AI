@@ -11,6 +11,7 @@ import { ChatComposer } from '../components/ChatComposer';
 import { ChatInsight } from '../components/ChatInsight';
 import { ConversationsDrawer } from '../components/ConversationsDrawer';
 import { ChatThemeSettings } from '../components/ChatThemeSettings';
+import { PromptSourcePickerModal, PromptSourceSettings } from '../components/PromptSource';
 import { ProcessingOverlay } from '../components/ProcessingOverlay';
 import { useEvaluationView } from '../components/useEvaluationView';
 import { type Realism } from '../components/chatTypes';
@@ -449,9 +450,16 @@ export function ChatPage() {
         <div className="drawer-backdrop" onClick={() => setShowTheme(false)}>
           <div className="settings-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="drawer-head">
-              <span>Chat theme</span>
+              <span>Chat settings</span>
               <button className="link-btn" onClick={() => setShowTheme(false)}>Close</button>
             </div>
+            {state.promptSource && (
+              <PromptSourceSettings
+                state={state.promptSource}
+                onDone={refresh}
+                onFailed={reportActionFailure}
+              />
+            )}
             <ChatThemeSettings
               overrides={state.themeOverrides ?? null}
               onSave={async (overrides) => {
@@ -493,6 +501,13 @@ export function ChatPage() {
         onConfirmPending={confirmPending}
         onCancelPending={cancelPending}
       />
+      {state.promptSource?.picker && (
+        <PromptSourcePickerModal
+          picker={state.promptSource.picker}
+          onDone={refresh}
+          onFailed={reportActionFailure}
+        />
+      )}
     </div>
   );
 }

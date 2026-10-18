@@ -133,6 +133,8 @@ class SettingsSnapshot {
       },
       // General-tab extras the Generation card on web also hosts.
       'systemPrompt': g.systemPrompt,
+      'additionalSystemPrompt': g.additionalSystemPrompt,
+      'additionalPostHistoryInstructions': g.additionalPostHistoryInstructions,
       'bannedPhrases': _storage.realismSettings.bannedPhrases,
       // Ambitions + the promise ledger. Both work with the Realism Engine off,
       // so they are the two realism-adjacent settings the web needs first.

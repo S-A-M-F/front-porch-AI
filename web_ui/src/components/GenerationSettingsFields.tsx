@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Generation card for web Settings: sampler sliders, thinking, AFK replies,
-// sanitiser, stop sequences, banned phrases, and the global system prompt.
-// Desktop Generation + General parity (audit P2.12).
+// sanitiser, stop sequences, and banned phrases. The prompt family lives in
+// PromptSettingsCard under General (prompt-picker SOW Phase 2).
+// Desktop Generation parity (audit P2.12).
 
 import {
   reasoningEffortBlurb,
@@ -146,7 +147,6 @@ export function GenerationSettingsFields({
   contextLocked,
   contextFloor = CONTEXT_FLOOR,
   generation,
-  systemPrompt,
   bannedPhrases,
   spellCheckLanguage,
   spellCheckLanguages,
@@ -168,7 +168,6 @@ export function GenerationSettingsFields({
   /** Below this the context is warned about (the host's kKoboldContextFloor). */
   contextFloor?: number;
   generation: GenSettings;
-  systemPrompt?: string;
   bannedPhrases?: string[];
   spellCheckLanguage?: string;
   spellCheckLanguages?: string[];
@@ -187,18 +186,8 @@ export function GenerationSettingsFields({
   // Only what this backend's requests carry; a hidden value is kept.
   const shown = (knob: SamplerKnob) => samplerKnobShown(knob, backend, samplerKnobs);
   return (
-    <section className="card">
+    <section className="card" data-testid="generation-fields">
       <h3>Generation</h3>
-      {systemPrompt !== undefined && (
-        <label>
-          System prompt
-          <textarea
-            rows={6}
-            value={systemPrompt}
-            onChange={(e) => patch({ systemPrompt: e.target.value })}
-          />
-        </label>
-      )}
       <SliderField label="Temperature" value={g.temperature} min={0} max={2} step={0.05}
         onChange={(v) => patchGen({ temperature: v })} />
       {shown('minP') && (

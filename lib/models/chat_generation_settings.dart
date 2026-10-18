@@ -47,6 +47,14 @@ class ChatGenerationSettings {
   bool? outputSanitizerEnabled;
   List<OutputSanitizerRule>? outputSanitizerRules;
 
+  /// Which base system prompt wins: `'card'` or `'user'` (the global
+  /// fallback). `null` = inherit = the card-first hierarchy as today.
+  String? systemPromptSource;
+
+  /// Whether the global prompt additions (#546) append. `null`/`true`
+  /// append; `false` sends the base with nothing added.
+  bool? promptAmendmentsEnabled;
+
   ChatGenerationSettings({
     this.temperature,
     this.minP,
@@ -68,6 +76,8 @@ class ChatGenerationSettings {
     this.reasoningEffort,
     this.outputSanitizerEnabled,
     this.outputSanitizerRules,
+    this.systemPromptSource,
+    this.promptAmendmentsEnabled,
   });
 
   /// Whether any field has a non-null override.
@@ -91,7 +101,9 @@ class ChatGenerationSettings {
       reasoningEnabled != null ||
       reasoningEffort != null ||
       outputSanitizerEnabled != null ||
-      outputSanitizerRules != null;
+      outputSanitizerRules != null ||
+      systemPromptSource != null ||
+      promptAmendmentsEnabled != null;
 
   // ── Resolved getters ────────────────────────────────────────────────────
   // Each returns the per-session override if set, otherwise the global value.
@@ -171,6 +183,12 @@ class ChatGenerationSettings {
           .map((r) => r.toJson())
           .toList();
     }
+    if (systemPromptSource != null) {
+      map['system_prompt_source'] = systemPromptSource;
+    }
+    if (promptAmendmentsEnabled != null) {
+      map['prompt_amendments_enabled'] = promptAmendmentsEnabled;
+    }
     return map;
   }
 
@@ -206,6 +224,11 @@ class ChatGenerationSettings {
         null => null,
         final list => OutputSanitizerRule.listFromJson(list),
       },
+      systemPromptSource: switch (json['system_prompt_source']) {
+        'card' || 'user' => json['system_prompt_source'] as String,
+        _ => null,
+      },
+      promptAmendmentsEnabled: json['prompt_amendments_enabled'] as bool?,
     );
   }
 

@@ -9,6 +9,7 @@ export 'backend_routes.dart';
 export 'character_routes.dart';
 export 'chargen_routes.dart';
 export 'chat_overlay_routes.dart';
+export 'chat_prompt_source_routes.dart';
 export 'token_alts_routes.dart';
 export 'chat_package_routes.dart';
 export 'chat_routes.dart';

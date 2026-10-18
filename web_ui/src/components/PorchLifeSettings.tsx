@@ -412,7 +412,7 @@ export function PorchLifeSettings() {
   // there. The "left off, the clock holds still" fact lives on the row above.
 
   return (
-    <section className="card pl-section">
+    <section className="card pl-section" data-testid="porch-life-card">
       <h3>Porch Life</h3>
       <p className="muted small pl-intro">
         Everything that makes a character feel like they live somewhere. Each switch says plainly what it needs — many need nothing at all.

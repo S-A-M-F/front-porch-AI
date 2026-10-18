@@ -6,6 +6,7 @@
 
 import { type CastMember } from '../../components/CastBar';
 import { type ToolSupport } from '../../components/ToolCallingPill';
+import { type PromptSourceState } from '../../components/PromptSource';
 import { type DirectorState, type ExitUndo } from '../../components/DirectorStrip';
 import {
   type ChatThemeOverrides,
@@ -69,6 +70,9 @@ export interface ChatState {
   toolSupport?: ToolSupport;
   // Per-chat theme overrides (preset + font/color/background/border).
   themeOverrides?: ChatThemeOverrides;
+  // Per-chat system prompt source (1:1 only) and the new-chat picker's
+  // prompts while a new chat waits on it (additive; omitted in groups).
+  promptSource?: PromptSourceState;
   // Host LLM connection (additive — older desktops omit it).
   llmReady?: boolean;
   // Why the host's start of KoboldCpp was refused, in place of "No API

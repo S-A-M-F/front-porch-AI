@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
 import 'package:front_porch_ai/ui/dialogs/chat_settings_generation_section.dart';
 import 'package:front_porch_ai/ui/settings/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
@@ -41,6 +42,12 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
   late final TextEditingController _bannedPhrasesController;
   late ChatGenerationSettings _gen;
   bool _initialised = false;
+
+  PromptPreset get _promptPreset {
+    if (_gen.systemPromptSource == 'user') return PromptPreset.userPrompt;
+    if (_gen.promptAmendmentsEnabled == false) return PromptPreset.cardOnly;
+    return PromptPreset.cardAmendments;
+  }
 
   @override
   void didChangeDependencies() {
@@ -205,6 +212,72 @@ class _ChatSettingsDialogState extends State<ChatSettingsDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // ── System prompt source (prompt-picker SOW) ──────────
+                    const Text(
+                      'System prompt',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.formMasterAccent,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Which base this chat sends. Global additions append '
+                      'unless turned off; blank state follows the defaults.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.textSecondary(context),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final preset in PromptPreset.values)
+                          ChoiceChip(
+                            label: Text(preset.label),
+                            tooltip: preset.sub,
+                            selected: _promptPreset == preset,
+                            onSelected: (_) {
+                              setState(() {
+                                _gen.systemPromptSource =
+                                    preset == PromptPreset.userPrompt
+                                    ? 'user'
+                                    : 'card';
+                                _gen.promptAmendmentsEnabled =
+                                    preset != PromptPreset.cardOnly;
+                              });
+                              _save();
+                            },
+                          ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Append global prompt additions',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          value: _gen.promptAmendmentsEnabled ?? true,
+                          onChanged: (val) {
+                            setState(() => _gen.promptAmendmentsEnabled = val);
+                            _save();
+                          },
+                          activeTrackColor: AppColors.formMasterAccent,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Divider(color: AppColors.borderOf(context)),
+                    const SizedBox(height: 8),
+
                     // Thinking toggle — all backends. KoboldCpp honors
                     // thinking too (native chat_template_kwargs +
                     // reasoning_effort in openai_chat_stream.dart).

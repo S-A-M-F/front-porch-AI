@@ -359,7 +359,12 @@ class GeneralTab extends StatelessWidget {
           const SizedBox(height: 8),
           const PorchLifePointerCard(),
           const SizedBox(height: 24),
-          const SectionHeader('Model Instructions'),
+          const SectionHeader('Fallback system prompt'),
+          const SizedBox(height: 8),
+          Text(
+            'Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
           const SizedBox(height: 8),
           // Prompt library row simplified for smallest (full chips/load/save use the extracted dialogs)
           Row(
@@ -455,7 +460,8 @@ class GeneralTab extends StatelessWidget {
             maxLines: 5,
             style: theme.textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: 'System Prompt...',
+              labelText: 'Fallback system prompt',
+              hintText: 'Used when a character has no system prompt...',
               hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
               filled: true,
               fillColor: AppColors.cardOf(context),
@@ -466,6 +472,8 @@ class GeneralTab extends StatelessWidget {
             onChanged: (val) =>
                 storageService.generationSettings.setSystemPrompt(val),
           ),
+          const SizedBox(height: 24),
+          const GlobalPromptAdditions(),
           const SizedBox(height: 24),
           const SectionHeader('About & License'),
           const SizedBox(height: 8),

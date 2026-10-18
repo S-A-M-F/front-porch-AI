@@ -119,6 +119,7 @@ extension ChatServiceSessionNewChatPrep on ChatService {
         .clear(); // fresh 1:1: drop prior chat's per-chat look selection (keep reset blocks in sync)
     _sessionGenSettings =
         ChatGenerationSettings(); // fresh chat: drop prior chat's per-chat gen overrides — forkSession is the ONE path that inherits them on purpose (keep reset blocks in sync)
+    _armPromptPickerIfDue(); // prompt-picker SOW: new 1:1 with a card prompt asks (or applies the remembered choice)
     _clearContextBudget();
     _summaryPaused =
         false; // explicit secondary zero for _summaryPaused (symmetric; startNew 1:1/ext-seed branch + incomplete zeroing ... now complete)

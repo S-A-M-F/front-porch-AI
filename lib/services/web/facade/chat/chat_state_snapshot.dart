@@ -290,6 +290,9 @@ class ChatStateSnapshot {
       'toolSupport': _chat.toolSupportJson,
       // Per-chat theme overrides (preset + font/color/background/border).
       'themeOverrides': _chat.sessionThemeOverrides.toJson(),
+      // Per-chat system prompt source (1:1 only) and, while a new chat
+      // waits on it, the picker's prompts. Additive; omitted in groups.
+      'promptSource': ?_chat.promptSourceJson,
       // LLM backend connection (not a one-off request). Additive; older
       // PWAs ignore it and keep the normal composer placeholder. Local
       // GGUF-ready is ignored so mouth/worker swaps do not flash the box.

@@ -162,3 +162,12 @@
 .sg-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sg-signed-in { margin: 0; font-weight: 600; color: var(--ok); }
 .sg-fine { margin: 0; font-size: 0.75rem; color: var(--porch-amber); }
+
+/* ── Settings sections (desktop-tab parity: General → Advanced) ─────────── */
+.settings-section { margin-bottom: 28px; }
+.settings-section-heading {
+  margin: 0 0 12px; font-size: 1.15rem; color: var(--text);
+  border-bottom: 1px solid var(--border); padding-bottom: 6px;
+}
+.settings-group { margin-bottom: 16px; }
+.settings-group-heading { margin: 0 0 8px; font-size: 0.95rem; color: var(--muted); }
