@@ -370,4 +370,43 @@ void main() {
       }
     },
   );
+
+  test('an unanswered picker never lands on the next chat opened', () async {
+    final storage = await seededStorage();
+    final (chat, db, backend) = await openChat(storage);
+    addTearDown(() async {
+      await disposeChatThenCloseDb(chat, db);
+      await backend.close();
+    });
+    final rook = CharacterCard(
+      name: 'Rook',
+      firstMessage: 'Evening.',
+      systemPrompt: 'ROOK_SYSTEM',
+      frontPorchExtensions: FrontPorchExtensions(
+        realismEnabled: false,
+        needsSimEnabled: false,
+        chaosModeEnabled: false,
+      ),
+    )..dbId = 'picker-rook';
+
+    // Rook gets a saved chat of its own.
+    await chat.setActiveCharacter(rook);
+    await chat.applyPromptSourceChoice(preset: 'card+amend');
+    await chat.sendMessage('Hello there.');
+    expect(chat.currentSessionId, isNotNull);
+
+    // A new Wren chat is armed, then left unanswered (started from the
+    // phone, or the desktop was on another page) while Rook's saved
+    // chat is opened.
+    await chat.setActiveCharacter(wrenCard());
+    expect(chat.promptPickerPendingFor, 'Wren');
+    await chat.setActiveCharacter(rook);
+    expect(chat.promptPickerPendingFor, isNull);
+
+    // A late answer describes the chat on screen, never Wren's.
+    await chat.applyPromptSourceChoice(preset: 'user', remember: true);
+    final choices = storage.generationSettings.promptPickerChoices;
+    expect(choices.containsKey('Wren'), isFalse);
+    expect(choices['Rook'], 'user');
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }

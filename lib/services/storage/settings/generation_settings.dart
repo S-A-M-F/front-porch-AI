@@ -18,6 +18,8 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:front_porch_ai/models/models.dart';
 
 import 'settings_base.dart';
@@ -179,8 +181,9 @@ class GenerationSettings with SettingsBase {
       try {
         _promptPickerChoices = (jsonDecode(pickerJson) as Map)
             .cast<String, String>();
-      } catch (_) {
-        // Keep empty on corrupt data
+      } catch (e) {
+        // Corrupt data: every new chat asks again rather than failing load.
+        debugPrint('[GenerationSettings] unreadable prompt_picker_choices: $e');
       }
     }
 

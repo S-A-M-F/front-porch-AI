@@ -177,7 +177,8 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _maybeShowPromptPicker() async {
     final chat = _chatService;
     if (chat == null || !mounted || _promptPickerOpen) return;
-    if (chat.promptPickerPendingFor == null) return;
+    final pendingFor = chat.promptPickerPendingFor;
+    if (pendingFor == null) return;
     final card = chat.activeCharacter;
     if (card == null) return;
     _promptPickerOpen = true;
@@ -190,7 +191,10 @@ class _ChatPageState extends State<ChatPage> {
         userPrompt: storage.generationSettings.systemPrompt,
         amendment: storage.generationSettings.additionalSystemPrompt,
       );
-      if (!mounted) return;
+      // The chat may have changed under the dialog (another chat opened,
+      // or the phone answered first): this answer only belongs to the
+      // chat it was asked about.
+      if (!mounted || chat.promptPickerPendingFor != pendingFor) return;
       await chat.applyPromptSourceChoice(
         preset: choice?.preset.wireName,
         remember: choice?.remember ?? false,

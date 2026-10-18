@@ -457,8 +457,8 @@ mixin ChatServiceFieldBag {
 
   // ── Per-session generation overrides ──
   ChatGenerationSettings _sessionGenSettings = ChatGenerationSettings();
-  String?
-  _promptPickerPendingFor; // prompt-picker SOW: new 1:1 awaiting the picker
+  ({String key, ChatGenerationSettings chat})?
+  _promptPickerPending; // prompt-picker SOW: the new 1:1 awaiting the picker
 
   // ── Per-chat theme ──
   ChatThemeOverrides _sessionThemeOverrides = ChatThemeOverrides();

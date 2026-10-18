@@ -176,14 +176,30 @@ extension ChatServicePromptSource on ChatService {
   }
 
   /// The character key whose new 1:1 chat is waiting on the picker, or
-  /// null when nothing is pending.
-  String? get promptPickerPendingFor => _promptPickerPendingFor;
+  /// null when nothing is pending. The arm is tied to the chat it was made
+  /// for: every load, fork, import and new-chat reset replaces
+  /// [_sessionGenSettings], so a picker armed for one chat and left
+  /// unanswered never surfaces on the next one.
+  String? get promptPickerPendingFor {
+    final pending = _promptPickerPending;
+    final key = _activeOneToOneKey;
+    if (pending == null || key == null) return null;
+    if (!identical(pending.chat, _sessionGenSettings) || pending.key != key) {
+      return null;
+    }
+    return key;
+  }
+
+  String? get _activeOneToOneKey {
+    final card = _activeGroup == null ? _activeCharacter : null;
+    return card == null ? null : stableGroupIdFrom(card.imagePath, card.name);
+  }
 
   /// Prompt-picker SOW trigger: a new 1:1 chat whose card ships its own
   /// system prompt asks the user which base wins — unless a choice was
   /// remembered for this character, which is applied instead.
   void _armPromptPickerIfDue() {
-    _promptPickerPendingFor = null;
+    _promptPickerPending = null;
     final card = _activeCharacter;
     if (_activeGroup != null || card == null || card.systemPrompt.isEmpty) {
       return;
@@ -195,7 +211,7 @@ extension ChatServicePromptSource on ChatService {
       _applyPromptPreset(remembered);
       return;
     }
-    _promptPickerPendingFor = key;
+    _promptPickerPending = (key: key, chat: _sessionGenSettings);
   }
 
   /// Maps a picker preset onto the per-chat pair. 'card+amend' and 'card'
@@ -214,25 +230,56 @@ extension ChatServicePromptSource on ChatService {
     bool remember = false,
     bool askEveryChat = false,
   }) async {
-    final card = _activeGroup == null ? _activeCharacter : null;
-    final key =
-        _promptPickerPendingFor ??
-        (card != null ? stableGroupIdFrom(card.imagePath, card.name) : null);
-    _promptPickerPendingFor = null;
-    if (preset != null) {
+    // Always the open 1:1 card's key, never a leftover arm: an answer can
+    // only describe the chat on screen. Groups have no per-chat source.
+    final key = _activeOneToOneKey;
+    _promptPickerPending = null;
+    if (preset != null && key != null) {
       _applyPromptPreset(preset);
-      if (key != null) {
-        if (askEveryChat) {
-          await _storageService.generationSettings.clearPromptPickerChoice(key);
-        } else if (remember) {
-          await _storageService.generationSettings.setPromptPickerChoice(
-            key,
-            preset,
-          );
-        }
+      if (askEveryChat) {
+        await _storageService.generationSettings.clearPromptPickerChoice(key);
+      } else if (remember) {
+        await _storageService.generationSettings.setPromptPickerChoice(
+          key,
+          preset,
+        );
       }
       if (_currentSessionId != null) await _saveChat();
     }
     notifyListeners();
+  }
+
+  /// Chat Settings' System prompt row from outside the picker (the web
+  /// app's per-chat drawer; desktop writes [sessionGenSettings] directly).
+  /// 1:1 only, like the source itself. Editing the row answers any picker
+  /// still waiting on this chat.
+  Future<bool> setPromptSource({String? source, bool? amendments}) async {
+    if (_activeOneToOneKey == null) return false;
+    _promptPickerPending = null;
+    _sessionGenSettings.systemPromptSource = source;
+    _sessionGenSettings.promptAmendmentsEnabled = amendments;
+    if (_currentSessionId != null) await _saveChat();
+    notifyListeners();
+    return true;
+  }
+
+  /// The per-chat prompt source as the web app shows it: the row's state,
+  /// plus the picker's prompts while a new chat is waiting on it. Null in
+  /// groups and with no chat open.
+  Map<String, Object?>? get promptSourceJson {
+    final card = _activeGroup == null ? _activeCharacter : null;
+    if (card == null) return null;
+    final g = _storageService.generationSettings;
+    return {
+      'source': _sessionGenSettings.systemPromptSource,
+      'amendments': _sessionGenSettings.promptAmendmentsEnabled,
+      if (promptPickerPendingFor != null)
+        'picker': {
+          'characterName': card.name,
+          'cardPrompt': card.systemPrompt,
+          'userPrompt': g.systemPrompt,
+          'amendment': g.additionalSystemPrompt,
+        },
+    };
   }
 }
