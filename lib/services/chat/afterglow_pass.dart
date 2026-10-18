@@ -75,11 +75,11 @@ class AfterglowPass {
   /// On Continue the caller passes the NEW text only (2026-08-12; the pass
   /// used to be skipped outright): a climax the first half already registered
   /// is not re-claimed by its aftermath, and one the continuation adds
-  /// finally starts its refractory. `applyClimaxEffects` is absolute
-  /// (turns × 15 story minutes, opening turn unspoken, arousal = 0), so even
-  /// a re-affirmation cannot stack; the metadata guard below keeps the FIRST
-  /// reading's pre-climax arousal, because by the second reading it is
-  /// already 0.
+  /// finally starts its refractory. `applyClimaxEffects` is absolute (the
+  /// card's fixed recovery minutes, else turns × 15 story minutes, opening
+  /// turn unspoken, arousal = 0), so even a re-affirmation cannot stack; the
+  /// metadata guard below keeps the FIRST reading's pre-climax arousal,
+  /// because by the second reading it is already 0.
   Future<void> runClimaxPass(String reply) async {
     if (!active) return;
     if (reply.trim().isEmpty) return;
@@ -128,11 +128,20 @@ class AfterglowPass {
         msg.activeMetadata = meta;
       }
     }
-    _nsfwService.applyClimaxEffects(turns: turns);
+    // The speaker's recovery profile (their card — the same one the judge
+    // saw): a fixed hard-lock length replaces the judge's number, nothing
+    // else. `soft` is stored but takes this path until PR 3 lands, so the
+    // observable change is only fixed-length cards.
+    final ext = speaker.frontPorchExtensions;
+    final recovery = ext?.recovery ?? RecoveryProfile.auto;
+    final fixed = recovery.recoveryMinutes;
+    _nsfwService.applyClimaxEffects(turns: turns, fixedMinutes: fixed);
 
+    final kind = recovery.resolvedMode(ext?.sex ?? '');
     debugPrint(
       '[Afterglow] climax detected (arousal was $preClimaxArousal) — '
-      'refractory ${_nsfwService.refractoryMinutesRemaining} min',
+      'refractory ${_nsfwService.refractoryMinutesRemaining} min '
+      '($kind, ${fixed != null ? 'card-fixed' : 'judge'})',
     );
     _scope.notify();
   }

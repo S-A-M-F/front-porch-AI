@@ -22,3 +22,4 @@ export 'realism_master_toggle.dart';
 export 'realism_optional_features_card.dart';
 export 'realism_relationship_card.dart';
 export 'realism_time_day_card.dart';
+export 'recovery_block.dart';

@@ -178,16 +178,21 @@ class NsfwService {
     _refractory = r;
   }
 
-  /// The climax pass's one effect on this body: the refractory starts at the
-  /// judge's turns × 15 story minutes with its opening turn unspoken.
+  /// The climax pass's one effect on this body: the refractory starts with
+  /// its opening turn unspoken and arousal lands at 0, not negative —
+  /// post-climax satedness is contentment, not aversion (the old -3 put the
+  /// character into the injection ladder's negative branches the moment the
+  /// cooldown expired, reading as repulsion right after wanted sex).
   ///
-  /// Arousal lands at 0, not negative: post-climax satedness is contentment,
-  /// not aversion — the refractory cooldown carries the "not right now"
-  /// semantics. (The old -3 put the character into the injection ladder's
-  /// negative branches the moment the cooldown expired, reading as repulsion
-  /// right after wanted sex.)
-  void applyClimaxEffects({required int turns}) {
-    _refractory = Refractory.fromJudgeTurns(turns);
+  /// Length: a card's fixed recovery minutes ([fixedMinutes], recovery
+  /// overhaul PR 2) replace the judge's number; without them the judge's
+  /// turns × 15 stands. A hard lock of 0 (either source) starts no
+  /// refractory — arousal still resets as today. `soft` resolves to this
+  /// same path until PR 3 gives it its own mechanics.
+  void applyClimaxEffects({required int turns, int? fixedMinutes}) {
+    _refractory = fixedMinutes != null
+        ? Refractory.fromMinutes(fixedMinutes)
+        : Refractory.fromJudgeTurns(turns);
     _arousalLevel = 0;
   }
 

@@ -225,6 +225,10 @@ extension CreatorEngine on CreatorState {
         dislikes: realismDislikes,
         intimateInto: realismIntimateInto,
         intimateNotInto: realismIntimateNotInto,
+        // Structured sex from the template form (persisted at chargen, plan
+        // PR 2) + the recovery profile authored on the realism step.
+        sex: normalizeCharacterSex(sexController.text),
+        recovery: realismRecovery,
         // Same shared normalizer as the other two authoring surfaces.
         inventory: Pockets.cardJsonFrom(
           worn: realismWorn,

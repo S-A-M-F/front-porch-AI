@@ -20,6 +20,149 @@ export interface InventoryRecord {
   carrying?: InventoryEntry[];
 }
 
+/** Recovery profile — the card's "how it comes down after climax" setting,
+ *  the Dart `FrontPorchExtensions.recovery` object (recovery overhaul PR 2;
+ *  `RecoveryProfile` in lib/models/character/recovery_profile.dart is the
+ *  source of truth — same mirror precedent as the tier names and the pocket
+ *  chip text, for the same reason: the browser cannot call Dart, and phone
+ *  and desktop must put the identical pair on the card). */
+export type RecoveryMode = 'auto' | 'hard' | 'soft';
+
+export interface RecoveryProfileValue {
+  recoveryMode: RecoveryMode;
+  recoveryMinutes: number | null;
+}
+
+export const RECOVERY_MIN_MINUTES = 0;
+export const RECOVERY_MAX_MINUTES = 180;
+/** One reply with the clock off (refractory.dart's kRefractoryMinutesPerTurn). */
+export const RECOVERY_MINUTES_PER_REPLY = 15;
+
+/** Decision 3's preset table — keep byte-identical with kRecoveryPresets. */
+export interface RecoveryPresetValue {
+  key: string;
+  label: string;
+  recoveryMode: RecoveryMode;
+  recoveryMinutes: number | null;
+}
+
+export const RECOVERY_PRESETS: RecoveryPresetValue[] = [
+  { key: 'auto', label: 'Auto — judge + physiology decide', recoveryMode: 'auto', recoveryMinutes: null },
+  { key: 'none', label: 'None / multiorgasmic', recoveryMode: 'soft', recoveryMinutes: null },
+  { key: 'personality', label: 'Lock, length by personality', recoveryMode: 'hard', recoveryMinutes: null },
+  { key: 'short', label: 'Short (30)', recoveryMode: 'hard', recoveryMinutes: 30 },
+  { key: 'typical', label: 'Typical (90)', recoveryMode: 'hard', recoveryMinutes: 90 },
+  { key: 'long', label: 'Long (180)', recoveryMode: 'hard', recoveryMinutes: 180 },
+  { key: 'custom', label: 'Custom', recoveryMode: 'hard', recoveryMinutes: null },
+];
+
+/** Lenient structured-sex read (mirror of `normalizeCharacterSex`; they
+ *  first, female before masculine so "female" is not swallowed by "male"). */
+export function normalizeSex(raw: unknown): string {
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (!s) return '';
+  const has = (words: string[]) =>
+    words.some((w) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(s));
+  if (has(['they', 'them', 'nonbinary', 'non-binary', 'non binary', 'enby', 'nb', 'genderfluid', 'agender', 'genderless', 'asexual', 'ace', 'futanari', 'futa', 'shapeshifter', 'shapechanger', 'herm'])) return 'other';
+  if (has(['female', 'woman', 'women', 'girl', 'lady', 'feminine', 'she', 'her', 'f'])) return 'female';
+  if (has(['male', 'man', 'men', 'boy', 'guy', 'masculine', 'he', 'him', 'm'])) return 'male';
+  return 'other';
+}
+
+/** Coerce the `/detail` `recovery` object (or absence) to a valid profile:
+ *  junk mode reads auto, an out-of-span length clamps, and a length on a
+ *  non-hard mode is dropped — the pair is one unit, the menu must not lie. */
+export function recoveryFromDetail(raw: unknown): RecoveryProfileValue {
+  if (raw == null || typeof raw !== 'object') return { recoveryMode: 'auto', recoveryMinutes: null };
+  const v = raw as Record<string, unknown>;
+  const mode: RecoveryMode = v.recoveryMode === 'hard' || v.recoveryMode === 'soft' ? v.recoveryMode : 'auto';
+  if (mode !== 'hard') return { recoveryMode: mode, recoveryMinutes: null };
+  const n = typeof v.recoveryMinutes === 'number' ? v.recoveryMinutes : Number.parseInt(String(v.recoveryMinutes ?? ''), 10);
+  if (!Number.isFinite(n) || n < RECOVERY_MIN_MINUTES) return { recoveryMode: mode, recoveryMinutes: null };
+  return { recoveryMode: mode, recoveryMinutes: Math.min(n, RECOVERY_MAX_MINUTES) };
+}
+
+export function recoveryPresetKey(p: RecoveryProfileValue): string {
+  if (p.recoveryMode === 'soft') return 'none';
+  if (p.recoveryMode !== 'hard') return 'auto';
+  switch (p.recoveryMinutes) {
+    case null: return 'personality';
+    case 30: return 'short';
+    case 90: return 'typical';
+    case 180: return 'long';
+    default: return 'custom';
+  }
+}
+
+export function recoveryFromPreset(key: string): RecoveryProfileValue {
+  const p = RECOVERY_PRESETS.find((x) => x.key === key);
+  if (!p || p.key === 'custom' || p.key === 'auto') {
+    return key === 'auto' ? { recoveryMode: 'auto', recoveryMinutes: null } : recoveryFromPreset('auto');
+  }
+  return { recoveryMode: p.recoveryMode, recoveryMinutes: p.recoveryMinutes };
+}
+
+/** Moving the slider selects Custom (decision 3). */
+export function recoveryWithMinutes(minutes: number): RecoveryProfileValue {
+  return {
+    recoveryMode: 'hard',
+    recoveryMinutes: Math.max(RECOVERY_MIN_MINUTES, Math.min(RECOVERY_MAX_MINUTES, Math.round(minutes))),
+  };
+}
+
+export function recoveryResolvesLine(p: RecoveryProfileValue, sex: string): string {
+  const kind =
+    p.recoveryMode === 'auto'
+      ? `Auto → ${
+          normalizeSex(sex) === 'female'
+            ? 'soft gate (card says female)'
+            : normalizeSex(sex) === 'male'
+              ? 'hard lock (card says male)'
+              : normalizeSex(sex) === 'other'
+                ? 'hard lock (sex not female — chosen here to change)'
+                : "hard lock (no structured sex — today's behavior)"
+        }`
+      : p.recoveryMode === 'soft'
+        ? "Soft gate — no capacity lock (until soft-gate mechanics ship, it behaves as today's hard lock)"
+        : 'Hard lock';
+  const length =
+    p.recoveryMinutes != null
+      ? `${p.recoveryMinutes} min fixed (replaces the judge's number)`
+      : 'length by the personality judge';
+  return `Resolves to: ${kind} — ${length}.`;
+}
+
+export function recoveryClockOffHint(minutes: number | null): string {
+  if (minutes == null) {
+    return "With Passage of Time off, each reply of theirs is 15 minutes — the judge's length becomes that many replies.";
+  }
+  const replies = Math.ceil(minutes / RECOVERY_MINUTES_PER_REPLY);
+  return `With Passage of Time off, ${minutes} min ≈ ${replies} ${replies === 1 ? 'reply' : 'replies'} (15 min per reply).`;
+}
+
+/** Chargen's preset suggestion from the authored intimacy notes (mirror of
+ *  `suggestRecoveryPreset` in recovery_profile.dart — keyword scan, never
+ *  applied silently). */
+export function suggestRecoveryPresetKey(
+  intimateInto: string[],
+  intimateNotInto: string[] = [],
+): string | null {
+  const into = (intimateInto ?? []).join(' · ').toLowerCase();
+  const not = (intimateNotInto ?? []).join(' · ').toLowerCase();
+  const multi = ['multi-orgasm', 'multi orgasm', 'multiple orgasm', 'insatiable', 'always ready', 'always up for', 'high sex drive', 'high libido', 'very sexual', 'again and again', 'no refractory', 'no cooldown', 'recovers fast', 'recovers quickly', 'recovers in minutes', 'go again', 'endless', 'non-stop', 'nonstop', 'all day long'].some((k) => into.includes(k));
+  const reserved = ['slow to warm', 'takes a while', 'takes some time', 'takes me a while', 'low sex drive', 'low libido', 'hardly ever', 'rarely', 'rare ', 'delicate', 'slow burn', 'hard to arouse', 'once in a while', 'after a long', 'easily over', 'quick to fade'].some((k) => into.includes(k) || not.includes(k));
+  if (multi && !reserved) return 'none';
+  if (reserved && !multi) return 'long';
+  return null;
+}
+
+export function recoverySuggestionLine(key: string | null): string | null {
+  if (!key) return null;
+  const p = RECOVERY_PRESETS.find((x) => x.key === key);
+  if (!p) return null;
+  return `Your intimacy notes read like "${p.label}" may fit them — pick it above if you agree. Any preset except Auto or "Lock, length by personality" overrides the personality judge with a fixed length or a fixed window.`;
+}
+
 export interface RealismValues {
   realismEnabled: boolean;
   timeOfDay: string;
@@ -82,6 +225,13 @@ export interface RealismValues {
    * that omits the key.
    */
   inventory: InventoryRecord;
+  /** Structured sex + recovery profile. `sex` has no control in this form
+   *  (chargen persists it; the recovery block's "resolves to" line reads
+   *  it), so it is declared and carried for the same reason `inventory`
+   *  is: the edit page sends `...rv` wholesale, and an undeclared field is
+   *  a dropped field. `recovery` is authored by the recovery block. */
+  sex: string;
+  recovery: RecoveryProfileValue;
   realismVerificationEnabled: boolean;
   realismVerificationMaxReprocesses: number;
   realismVerificationStrictness: number;
@@ -160,6 +310,8 @@ export const REALISM_DEFAULTS: RealismValues = {
   intimateInto: [],
   intimateNotInto: [],
   inventory: {},
+  sex: '',
+  recovery: { recoveryMode: 'auto', recoveryMinutes: null },
   realismVerificationEnabled: false,
   realismVerificationMaxReprocesses: 1,
   realismVerificationStrictness: 3,
@@ -282,6 +434,8 @@ export function realismFromDetail(raw: Partial<RealismValues> | null | undefined
   const merged: RealismValues = { ...REALISM_DEFAULTS, ...(raw ?? {}) };
   const present = raw != null && Object.prototype.hasOwnProperty.call(raw, 'workDays');
   merged.workDays = parseWorkDaysField(raw?.workDays, present);
+  merged.sex = normalizeSex(raw?.sex ?? '');
+  merged.recovery = recoveryFromDetail(raw?.recovery);
   return merged;
 }
 

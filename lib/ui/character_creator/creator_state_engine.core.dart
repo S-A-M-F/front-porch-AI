@@ -254,6 +254,7 @@ class CreatorGenerationCore {
     state.realismDislikes = List<String>.from(ext.dislikes);
     state.realismIntimateInto = List<String>.from(ext.intimateInto);
     state.realismIntimateNotInto = List<String>.from(ext.intimateNotInto);
+    state.realismRecovery = ext.recovery;
   }
 
   String _personaContext(UserPersonaService personaService) {

@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/birthday.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
@@ -147,6 +148,13 @@ class RealismStep extends StatelessWidget {
                   state.realismNsfwCooldown = v;
                   state.notify();
                 },
+                recovery: state.realismRecovery,
+                onRecoveryChanged: (v) {
+                  state.realismRecovery = v;
+                  state.notify();
+                },
+                sex: normalizeCharacterSex(state.sexController.text),
+                showChargenSuggestion: true,
                 chaosModeEnabled: state.realismChaosMode,
                 onChaosModeChanged: (v) {
                   state.realismChaosMode = v;

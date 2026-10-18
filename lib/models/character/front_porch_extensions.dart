@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:front_porch_ai/models/character/front_porch_extensions_codec.dart';
+import 'package:front_porch_ai/models/character/recovery_profile.dart';
 import 'package:front_porch_ai/models/greeting_realism_seed.dart';
 
 /// Front Porch AI V2.5 extensions — stored inside V2 `extensions.front_porch`.
@@ -120,6 +121,19 @@ class FrontPorchExtensions {
   /// `intimate_preferences: {into: [], not_into: []}`.
   List<String> intimateInto;
   List<String> intimateNotInto;
+
+  /// Structured sex — normalized `male` / `female` / `other`, blank = the
+  /// card says nothing (which the recovery `auto` prior treats as today's
+  /// hard lock). Persisted at chargen from the template / interview answer;
+  /// read leniently at parse (`normalizeCharacterSex`). Additive key, so
+  /// Stoop round-trips stay readable by older apps.
+  String sex;
+
+  /// How this character comes down after climax (mode + optional fixed
+  /// hard-lock length). One field so the 18+ recovery surface can grow
+  /// (PR 8's mood dial) without pushing this class over the size ratchet.
+  /// Missing JSON reads `auto` — every card without it behaves as today.
+  RecoveryProfile recovery;
 
   /// Starting Pockets & Wardrobe — what the character already has when a chat
   /// opens: `{worn: [...], carrying: [...]}`, entries either plain strings or
@@ -236,6 +250,8 @@ class FrontPorchExtensions {
     this.dislikes = const [],
     this.intimateInto = const [],
     this.intimateNotInto = const [],
+    this.sex = '',
+    this.recovery = const RecoveryProfile(),
     this.inventory = const {},
 
     // Realism Verification (Director/Verifier) — optional, off by default (zero cost when off)
@@ -318,6 +334,8 @@ class FrontPorchExtensions {
     List<String>? dislikes,
     List<String>? intimateInto,
     List<String>? intimateNotInto,
+    String? sex,
+    RecoveryProfile? recovery,
     Map<String, dynamic>? inventory,
     bool? realismVerificationEnabled,
     int? realismVerificationMaxReprocesses,
@@ -379,6 +397,8 @@ class FrontPorchExtensions {
       dislikes: dislikes ?? this.dislikes,
       intimateInto: intimateInto ?? this.intimateInto,
       intimateNotInto: intimateNotInto ?? this.intimateNotInto,
+      sex: sex ?? this.sex,
+      recovery: recovery ?? this.recovery,
       inventory: inventory ?? this.inventory,
       realismVerificationEnabled:
           realismVerificationEnabled ?? this.realismVerificationEnabled,

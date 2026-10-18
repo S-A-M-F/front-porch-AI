@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/character/front_porch_extensions.dart';
+import 'package:front_porch_ai/models/character/recovery_profile.dart';
 import 'package:front_porch_ai/models/greeting_realism_seed.dart';
 
 /// Coerce an untrusted JSON value into a list of non-blank trimmed phrases.
@@ -111,6 +112,8 @@ FrontPorchExtensions decodeFrontPorchExtensions(
     dislikes: _phrases(realism['dislikes']),
     intimateInto: _phrases(_intimate(realism)['into']),
     intimateNotInto: _phrases(_intimate(realism)['not_into']),
+    sex: normalizeCharacterSex(realism['sex']),
+    recovery: RecoveryProfile.fromJson(realism['recovery']),
     inventory: realism['inventory'] is Map
         ? Map<String, dynamic>.from(realism['inventory'] as Map)
         : const {},
@@ -210,6 +213,11 @@ Map<String, dynamic> encodeFrontPorchExtensions(FrontPorchExtensions e) {
         'into': e.intimateInto,
         'not_into': e.intimateNotInto,
       },
+      // Additive keys (Afterglow overhaul PR 2): omitted when the card says
+      // nothing, so pre-feature cards stay byte-identical and old apps read
+      // them exactly as before.
+      if (e.sex.isNotEmpty) 'sex': e.sex,
+      if (!e.recovery.isDefault) 'recovery': e.recovery.toJson(),
       if (e.inventory.isNotEmpty) 'inventory': e.inventory,
       'realism_verification_enabled': e.realismVerificationEnabled,
       'realism_verification_max_reprocesses':

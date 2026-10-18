@@ -17,10 +17,13 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/theme/creator_palette.dart';
+import 'package:front_porch_ai/ui/widgets/identity_chip_lists.dart';
 
 import 'realism_form_controls.dart';
+import 'recovery_block.dart';
 
 /// Afterglow, Chaos and Realism Verification switches (engine on).
 class RealismOptionalFeaturesCard extends StatelessWidget {
@@ -39,6 +42,12 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
     required this.showNsfwCooldownToggle,
     required this.showChaosToggle,
     required this.showVerificationToggle,
+    this.recovery,
+    this.onRecoveryChanged,
+    this.sex = '',
+    this.intimateInto = const [],
+    this.intimateNotInto = const [],
+    this.showChargenSuggestion = false,
   });
 
   final bool nsfwCooldownEnabled;
@@ -55,8 +64,26 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
   final bool showChaosToggle;
   final bool showVerificationToggle;
 
+  /// Recovery block (recovery overhaul PR 2). Rendered under the Afterglow
+  /// row only when a caller supplies the value + setter (the group editors
+  /// pass neither: per ruling, members follow their own cards, and the
+  /// block would be a lie there), the 18+ themes are on, and Afterglow is
+  /// on. With Afterglow off the settings stay on the card, hidden.
+  final RecoveryProfile? recovery;
+  final ValueChanged<RecoveryProfile>? onRecoveryChanged;
+  final String sex;
+  final List<String> intimateInto;
+  final List<String> intimateNotInto;
+  final bool showChargenSuggestion;
+
   @override
   Widget build(BuildContext context) {
+    final showRecovery =
+        showNsfwCooldownToggle &&
+        nsfwCooldownEnabled &&
+        recovery != null &&
+        onRecoveryChanged != null &&
+        adultThemesEnabledOf(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -77,6 +104,18 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
               onChanged: onNsfwCooldownChanged,
               context: context,
             ),
+            if (showRecovery) ...[
+              const SizedBox(height: 12),
+              RecoveryBlock(
+                recovery: recovery!,
+                sex: sex,
+                intimateInto: intimateInto,
+                intimateNotInto: intimateNotInto,
+                onChanged: onRecoveryChanged!,
+                showChargenSuggestion: showChargenSuggestion,
+              ),
+              const SizedBox(height: 4),
+            ],
             if (showChaosToggle)
               Divider(
                 color:

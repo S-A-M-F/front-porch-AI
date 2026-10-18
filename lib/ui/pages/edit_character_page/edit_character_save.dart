@@ -151,6 +151,8 @@ class EditCharacterCardWriter {
       dislikes: _trimmed(d.dislikes),
       intimateInto: _trimmed(d.intimateInto),
       intimateNotInto: _trimmed(d.intimateNotInto),
+      sex: normalizeCharacterSex(d.sex),
+      recovery: d.recovery,
       // Not the inline trim the lists above use: wardrobe entries carry a
       // condition, so normalizing them means parsing `name (state)` apart,
       // capping both halves and applying the per-list caps. That belongs in

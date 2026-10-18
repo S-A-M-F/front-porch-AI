@@ -51,6 +51,7 @@ import 'package:front_porch_ai/services/chat/afterglow_pass.dart';
 import 'package:front_porch_ai/services/chat/climax_eval.dart';
 import 'package:front_porch_ai/services/chat/group_realism_store.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
+import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat/realism_scope.dart';
 import 'package:front_porch_ai/services/chat/realism_tools.dart';
 
@@ -359,6 +360,145 @@ void main() {
             'the nsfw_injection group contract: never the previous '
             'speaker\'s card — that is how one body gets another\'s cooldown',
       );
+      expect(nsfw.refractoryMinutesRemaining, 30);
+    });
+  });
+
+  // Recovery overhaul PR 2: the speaker's card carries a fixed recovery
+  // length (and a mode), and at climax that number — not the judge's —
+  // opens the refractory. Two cards, two fates: the pass must read the
+  // SPEAKER's profile and never the roster-mate's.
+  group("the card's fixed recovery minutes rule at climax", () {
+    Future<NsfwService> climaxWith({
+      required FrontPorchExtensions? speakerExt,
+      required int judgeTurns,
+    }) async {
+      final groupMap = <String, Map<String, dynamic>>{};
+      final nsfw = NsfwService(
+        getGroupInt: (id, key) => (groupMap[id]?[key] as num?)?.toInt() ?? 0,
+        getGroupValue: (id, key) => groupMap[id]?[key],
+        setGroupValue: (id, key, v) {
+          (groupMap[id] ??= {})[key] = v;
+        },
+      );
+      nsfw.loadNsfwScalars(arousalLevel: 80, nsfwCooldownEnabled: true);
+
+      // Ada is on the roster with a DIFFERENT fixed length; Vera spoke, so
+      // only Vera's number may land.
+      final ada = CharacterCard(
+        name: 'Ada',
+        frontPorchExtensions: FrontPorchExtensions(
+          recovery: const RecoveryProfile(
+            recoveryMode: kRecoveryModeHard,
+            recoveryMinutes: 90,
+          ),
+        ),
+      )..dbId = 'ada';
+      final vera = CharacterCard(name: 'Vera', frontPorchExtensions: speakerExt)
+        ..dbId = 'vera';
+
+      final eval = ClimaxEval(
+        fire:
+            ({
+              required debugLabel,
+              required tools,
+              required buildPrompt,
+            }) async => '{"is_climax":true,"refractory_turns":$judgeTurns}',
+      );
+      final messages = [
+        ChatMessage(
+          text: 'she shuddered and went limp',
+          sender: 'Vera',
+          isUser: false,
+        ),
+      ];
+      final scope = RealismScope(
+        messages: messages,
+        activeCharacter: () => vera,
+        setActiveCharacter: (_) {},
+        activeGroup: () => GroupChat(id: 'g1', name: 'The porch'),
+        groupCharacters: () => [ada, vera],
+        observerMode: () => false,
+        realismEnabled: () => true,
+        needsSimEnabled: () => false,
+        realismSettings: () => throw UnimplementedError(),
+        clockRunning: () => false,
+        characterIdFor: (c) => c.dbId ?? '',
+        groups: GroupRealismStore(
+          isGroup: () => true,
+          groupCharacters: () => [ada, vera],
+          characterIdFor: (c) => c.dbId ?? '',
+          hostId: () => 'g1',
+          activeCharacter: () => vera,
+          isGenerating: () => false,
+          nextCharacter: () => null,
+          workFieldsFor: (_) => throw UnimplementedError(),
+        ),
+        needs: () => throw UnimplementedError(),
+        relationship: () => throw UnimplementedError(),
+        nsfw: () => nsfw,
+        time: () => throw UnimplementedError(),
+        pending: () => null,
+        setPending: (_) {},
+        emotion: () => '',
+        setEmotion: (_) {},
+        intensity: () => '',
+        setIntensity: (_) {},
+        cause: () => '',
+        setCause: (_) {},
+        heldTurns: () => 0,
+        setHeldTurns: (_) {},
+        saveChat: () async {},
+        notify: () {},
+      );
+      await AfterglowPass(
+        scope,
+        eval,
+        fusedReply: () => null,
+        isGuestAuthoredMessage: (_) => false,
+        resolveGroupSpeakerForMessage: (_) => null,
+      ).runClimaxPass('she shuddered and went limp');
+      return nsfw;
+    }
+
+    test("the speaker's fixed minutes replace the judge number", () async {
+      final nsfw = await climaxWith(
+        speakerExt: FrontPorchExtensions(
+          recovery: const RecoveryProfile(
+            recoveryMode: kRecoveryModeHard,
+            recoveryMinutes: 20,
+          ),
+        ),
+        judgeTurns: 2,
+      );
+      expect(
+        nsfw.refractoryMinutesRemaining,
+        20,
+        reason: 'the card fixes the length; the judge only ever suggested it',
+      );
+    });
+
+    test(
+      'a "None" card starts no refractory however long the judge called',
+      () async {
+        final nsfw = await climaxWith(
+          speakerExt: FrontPorchExtensions(
+            recovery: const RecoveryProfile(
+              recoveryMode: kRecoveryModeHard,
+              recoveryMinutes: 0,
+            ),
+          ),
+          judgeTurns: 3,
+        );
+        expect(nsfw.refractory, Refractory.none);
+        expect(nsfw.arousalLevel, 0, reason: 'the climax still happened');
+      },
+    );
+
+    test("a card with no profile keeps the judge's number untouched", () async {
+      // PR 1 behaviour survives PR 2 byte-for-byte for every card that was
+      // never edited: judge says 2, the lock is 2 × 15.
+      final nsfw = await climaxWith(speakerExt: null, judgeTurns: 2);
       expect(nsfw.refractoryMinutesRemaining, 30);
     });
   });

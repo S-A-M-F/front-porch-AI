@@ -38,11 +38,17 @@ class Refractory {
   /// The first reply after the climax reply, and only that one.
   bool get isOpeningTurn => running && !opened;
 
-  /// Set at climax from the judge's `refractory_turns`.
-  factory Refractory.fromJudgeTurns(int turns) {
-    final m = turns * kRefractoryMinutesPerTurn;
-    return m > 0 ? Refractory(minutes: m, total: m) : none;
-  }
+  /// Canonical constructor: the length in story minutes — a card's fixed
+  /// recovery minutes (recovery overhaul PR 2) or any ledger-computed value.
+  /// Zero or less starts no refractory; that is a real answer, not an error.
+  factory Refractory.fromMinutes(int minutes) =>
+      minutes > 0 ? Refractory(minutes: minutes, total: minutes) : none;
+
+  /// Set at climax from the judge's `refractory_turns` (each ≈ 15 story
+  /// minutes). A wrapper over [fromMinutes] — the judge number is one
+  /// possible length, and a card's fixed profile minutes bypass it.
+  factory Refractory.fromJudgeTurns(int turns) =>
+      Refractory.fromMinutes(turns * kRefractoryMinutesPerTurn);
 
   /// A count saved in replies before minutes existed. The opening turn was
   /// already spoken once a reply had ticked it (remaining below total).

@@ -363,5 +363,49 @@ void main() {
       expect(svc.refractory.running, isFalse);
       expect(svc.arousalLevel, 0);
     });
+
+    // Recovery overhaul PR 2: minutes are the canonical unit, and a card's
+    // fixed recovery minutes outrank the judge's turn count.
+    test('Refractory.fromMinutes is canonical — judge turns are a wrapper', () {
+      expect(
+        Refractory.fromMinutes(45),
+        const Refractory(minutes: 45, total: 45),
+      );
+      expect(Refractory.fromMinutes(0), Refractory.none);
+      expect(Refractory.fromMinutes(-10), Refractory.none);
+      // The judge path is exactly the same math through the same door.
+      expect(
+        Refractory.fromJudgeTurns(4),
+        Refractory.fromMinutes(4 * kRefractoryMinutesPerTurn),
+      );
+    });
+
+    test('card-fixed minutes replace the judge number at climax', () {
+      // An insatiable card fixed at 20 min must lock 20, not the judge's
+      // 5 × 15 = 75. Arousal resets either way.
+      final svc = createTestNsfw();
+      svc.setArousalLevel(90);
+      svc.applyClimaxEffects(turns: 5, fixedMinutes: 20);
+      expect(svc.refractoryMinutesRemaining, 20);
+      expect(svc.refractory.total, 20);
+      expect(svc.arousalLevel, 0);
+    });
+
+    test('card-fixed 0 starts nothing even when the judge called turns', () {
+      // The multiorgasmic card: a judge verdict of 6 turns is overruled by
+      // the author's "None" — no lock is opened at all.
+      final svc = createTestNsfw();
+      svc.setArousalLevel(90);
+      svc.applyClimaxEffects(turns: 6, fixedMinutes: 0);
+      expect(svc.refractory, Refractory.none);
+      expect(svc.arousalLevel, 0);
+    });
+
+    test('no fixed minutes leaves the judge number standing', () {
+      // The card-says-nothing path is byte-identical to PR 1 behaviour.
+      final svc = createTestNsfw();
+      svc.applyClimaxEffects(turns: 4, fixedMinutes: null);
+      expect(svc.refractoryMinutesRemaining, 60);
+    });
   });
 }

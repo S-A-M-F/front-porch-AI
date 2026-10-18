@@ -36,6 +36,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/character_card.dart';
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/web/util/realism_extensions_json.dart';
 
 FrontPorchExtensions seeded() => FrontPorchExtensions(
@@ -214,6 +215,71 @@ void main() {
         expect(back.intimateNotInto, isEmpty);
       }
     });
+
+    // Recovery overhaul PR 2 (docs/design/afterglow-recovery-overhaul.md):
+    // structured sex + the recovery profile are additive card keys — a Stoop
+    // card must not lose its profile through a PNG, and a card that never had
+    // them must read as today's behavior (auto / no sex), not garbage.
+    test('sex and the recovery profile survive the card wire', () {
+      final ext = FrontPorchExtensions(
+        sex: 'female',
+        recovery: const RecoveryProfile(
+          recoveryMode: kRecoveryModeHard,
+          recoveryMinutes: 45,
+        ),
+      );
+      final realism = ext.toJson()['realism_engine'] as Map<String, dynamic>;
+      expect(realism['sex'], 'female');
+      expect(realism['recovery'], {'mode': 'hard', 'minutes': 45});
+      final back = FrontPorchExtensions.fromJson(ext.toJson());
+      expect(back.sex, 'female');
+      expect(back.recovery.recoveryMode, 'hard');
+      expect(back.recovery.recoveryMinutes, 45);
+    });
+
+    test('a default profile and blank sex are omitted — old cards stay byte-stable', () {
+      final realism =
+          FrontPorchExtensions().toJson()['realism_engine']
+              as Map<String, dynamic>;
+      expect(realism.containsKey('sex'), isFalse);
+      expect(realism.containsKey('recovery'), isFalse);
+    });
+
+    test('a card without the new keys reads as auto — exactly today', () {
+      final back = FrontPorchExtensions.fromJson(const {'realism_engine': {}});
+      expect(back.sex, '');
+      expect(back.recovery.recoveryMode, kRecoveryModeAuto);
+      expect(back.recovery.recoveryMinutes, isNull);
+      expect(back.recovery.isDefault, isTrue);
+    });
+
+    test('sex is read leniently and stored normalized', () {
+      final back = FrontPorchExtensions.fromJson(const {
+        'realism_engine': {'sex': ' Woman '},
+      });
+      expect(back.sex, 'female');
+      final junk = FrontPorchExtensions.fromJson(const {
+        'realism_engine': {'sex': 42},
+      });
+      expect(junk.sex, kSexOther);
+    });
+
+    test('a malformed recovery object never fails the import', () {
+      for (final junk in <Object>['nope', 3, ['hard']]) {
+        final back = FrontPorchExtensions.fromJson({
+          'realism_engine': {'recovery': junk},
+        });
+        expect(back.recovery.isDefault, isTrue, reason: 'junk: $junk');
+      }
+      // A length on a mode that carries none is dropped, not kept-as-a-lie.
+      final softFixed = FrontPorchExtensions.fromJson(const {
+        'realism_engine': {
+          'recovery': {'mode': 'soft', 'minutes': 30},
+        },
+      });
+      expect(softFixed.recovery.recoveryMode, kRecoveryModeSoft);
+      expect(softFixed.recovery.recoveryMinutes, isNull);
+    });
   });
 
   group('the web bridge', () {
@@ -278,6 +344,44 @@ void main() {
       }, base: seeded());
       expect(back.likes, ['being read to', 'thunderstorms']);
       expect(back.intimateInto, ['slow mornings']);
+    });
+
+    // Recovery overhaul PR 2 — the data-loss trap that ate `inventory`:
+    // any field missing from the bridge constructor silently takes its
+    // default on every phone save. `sex` + `recovery` nest/read with the
+    // base as fallback, and a save that touches neither keeps both.
+    test('sex and recovery survive extensions -> json -> extensions', () {
+      final ext = FrontPorchExtensions(
+        sex: 'male',
+        recovery: const RecoveryProfile(recoveryMode: kRecoveryModeHard, recoveryMinutes: 30),
+      );
+      final back = frontPorchFromFields(frontPorchToJson(ext));
+      expect(back.sex, 'male');
+      expect(back.recovery.recoveryMode, kRecoveryModeHard);
+      expect(back.recovery.recoveryMinutes, 30);
+    });
+
+    test('a web edit that does not touch them keeps them', () {
+      final base = FrontPorchExtensions(
+        sex: 'female',
+        recovery: const RecoveryProfile(recoveryMode: kRecoveryModeSoft),
+      );
+      // A phone changing the description posts a realism block without
+      // either key — the exact shape that wiped starting inventory.
+      final back = frontPorchFromFields(const {'currentTask': 'fixed'}, base: base);
+      expect(back.sex, 'female');
+      expect(back.recovery.recoveryMode, kRecoveryModeSoft);
+      expect(back.currentTask, 'fixed');
+    });
+
+    test('a web sex edit is normalized on the way in, junk keeps nothing false', () {
+      final back = frontPorchFromFields(const {'sex': 'FEMALE ELF'}, base: seeded());
+      expect(back.sex, 'female');
+      final junk = frontPorchFromFields(const {'recovery': 'multi'}, base: FrontPorchExtensions(
+        recovery: const RecoveryProfile(recoveryMode: kRecoveryModeHard, recoveryMinutes: 90),
+      ));
+      expect(junk.recovery.recoveryMinutes, 90,
+          reason: 'an unusable payload falls back to the base, like inventory');
     });
   });
 }
