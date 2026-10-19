@@ -32,6 +32,7 @@ export function CastBar({
   cast,
   focusedId,
   busy,
+  settling = false,
   guestStatus,
   guestIsError,
   pendingDetection,
@@ -44,6 +45,8 @@ export function CastBar({
   cast: CastMember[];
   focusedId: string | null;
   busy: boolean;
+  /** Post-gen still settling: the server refuses Away / Back until done. */
+  settling?: boolean;
   guestStatus: string | null;
   guestIsError: boolean;
   pendingDetection: string | null;
@@ -82,7 +85,7 @@ export function CastBar({
                 {onSetAway && (c.presence === 'withYou' || c.presence === 'away') && (
                   <button
                     className="ghost small"
-                    disabled={busy}
+                    disabled={busy || settling}
                     onClick={() => onSetAway(c.id, c.presence === 'withYou')}
                     title={c.presence === 'withYou' ? 'Mark as away' : 'Bring back into the scene'}
                   >

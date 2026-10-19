@@ -85,7 +85,10 @@ extension ChatServiceAwayPulse on ChatService {
           ? null
           : _getCharacterIdFromCard(addressed),
       flippedTrueOldestFirst: AwayPulse.orderOldestAway(flipped),
-      alreadyUsedThisSend: _awayPulse.returnSpeakUsedThisUserSend,
+      // The cap is per user send: a cadence / all-Away pulse after it must
+      // still bring one back, or Director Mode (notes are the sends) stalls.
+      alreadyUsedThisSend:
+          fromUserSend && _awayPulse.returnSpeakUsedThisUserSend,
     );
     final forcedPresent = _groupManager?.hasForcedSpeaker ?? false;
     if (pick != null && !forcedPresent) {
@@ -135,6 +138,18 @@ extension ChatServiceAwayPulse on ChatService {
     await _saveChat();
     notifyListeners();
     return true;
+  }
+
+  /// The user's own `@Name` or `/speak` of a member they set Away is their
+  /// Back: the hold lifts and they reply. A model Away is left alone — the
+  /// glance after their reply decides that one.
+  void _releaseHeldAway(CharacterCard card) {
+    final id = _getCharacterIdFromCard(card);
+    if (!(_groupRealism[id]?.awayHeld ?? false)) return;
+    final slot = _groupStore.memberForWrite(id);
+    slot.awayHeld = false;
+    slot.withUser = true;
+    debugPrint('[Presence] addressed back $id');
   }
 
   int _lastSpokeIndex(String name) {

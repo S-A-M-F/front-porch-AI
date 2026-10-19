@@ -216,6 +216,25 @@ describe('Director Mode on the web', () => {
     expect(chips[2].textContent).not.toMatch(/Away|Back/);
   });
 
+  it('holds Away / Back while the turn settles (the server refuses it)', () => {
+    render(
+      createElement(CastBar, {
+        cast: [{ ...member('Ayla'), presence: 'withYou' }],
+        focusedId: null,
+        busy: false,
+        settling: true,
+        guestStatus: null,
+        guestIsError: false,
+        pendingDetection: null,
+        onFocus: () => {},
+        onAdd: () => {},
+        onCommand: () => {},
+        onSetAway: () => {},
+      }),
+    );
+    expect(button('Away')!.disabled).toBe(true);
+  });
+
   it('cues a speaker, sends a beat, pins a goal, clears a whisper and sets the run', () => {
     const onCommand = vi.fn();
     const onGoal = vi.fn();

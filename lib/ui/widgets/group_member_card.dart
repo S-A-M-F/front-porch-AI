@@ -215,7 +215,9 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
     final presence = PresenceWord(
       where: where,
       padTop: false,
-      onToggle: chat.isGenerating
+      // Same busy read the service refuses on, or a tap while post-gen
+      // settles looks live and does nothing.
+      onToggle: chat.isTurnBusy
           ? null
           : () => chat.setGroupMemberAway(
               chat.characterIdFor(widget.character),

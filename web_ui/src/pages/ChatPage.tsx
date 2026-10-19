@@ -243,6 +243,7 @@ export function ChatPage() {
           cast={cast}
           focusedId={focusedId}
           busy={state.isGenerating}
+          settling={!!state.isSettlingTurn}
           guestStatus={state.guestActivity?.status ?? null}
           guestIsError={state.guestActivity?.isError ?? false}
           pendingDetection={state.pendingDetection ?? null}

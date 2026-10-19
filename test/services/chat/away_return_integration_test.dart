@@ -478,6 +478,56 @@ void main() {
     );
   });
 
+  test('the per-send return cap does not outlive its own send', () async {
+    // A user send spends the one spoken return. Later Nexts are not that
+    // send: an all-Away cast must still be glanced back, or Director Mode
+    // (where every note is a send) piles up banners after the first note.
+    await boot(anaQuiet: true, beaQuiet: false);
+    await enterGroup(beaAtWork: false);
+    final anaId = chat.characterIdFor(
+      chat.groupCharacters.firstWhere((c) => c.name == 'Ana'),
+    );
+
+    await chat.sendMessage('Evening.');
+    await drainTurn();
+    expect(chat.messages.last.sender, 'Ana');
+
+    chat.debugSetGroupWithUser(anaId, false);
+    await chat.triggerNextCharacter();
+    await drainTurn();
+
+    expect(
+      chat.messages.last.sender,
+      'Ana',
+      reason: 'a Next after the send must still bring one Away member back',
+    );
+  });
+
+  test('@ or /speak of a member set Away by hand is their Back', () async {
+    await boot(anaQuiet: true, beaQuiet: false);
+    await enterGroup(beaAtWork: false);
+    final ana = chat.groupCharacters.firstWhere((c) => c.name == 'Ana');
+    final anaId = chat.characterIdFor(ana);
+    chat.debugSetGroupWithUser(
+      chat.characterIdFor(
+        chat.groupCharacters.firstWhere((c) => c.name == 'Bea'),
+      ),
+      true,
+    );
+
+    for (final line in ['@Ana you there?', '/speak Ana']) {
+      expect(await chat.setGroupMemberAway(anaId, away: true), isTrue);
+      await chat.sendMessage(line);
+      await drainTurn();
+      expect(chat.messages.last.sender, 'Ana', reason: line);
+      expect(
+        chat.groupMemberPresence(anaId),
+        PresenceWhere.withYou,
+        reason: '$line must bring a hand-set Away back, not talk from Away',
+      );
+    }
+  });
+
   test(
     'manual Away beats the pulse and the glance; only Back returns',
     () async {
@@ -501,14 +551,6 @@ void main() {
         reason: 'a hand-set Away is not pulsed back by the quiet glance',
       );
       expect(chat.withUserForGroupCharacter(ana), isFalse);
-
-      // The user's choice beats the model: Ana may speak when @'d, but her
-      // own glance (scripted true) must not lift the hand-set Away.
-      await chat.sendMessage('@Ana you there?');
-      await drainTurn();
-      expect(chat.messages.last.sender, 'Ana');
-      expect(chat.withUserForGroupCharacter(ana), isFalse);
-      expect(chat.groupMemberPresence(anaId), PresenceWhere.away);
 
       expect(await chat.setGroupMemberAway(anaId, away: false), isTrue);
       expect(chat.groupMemberPresence(anaId), PresenceWhere.withYou);
