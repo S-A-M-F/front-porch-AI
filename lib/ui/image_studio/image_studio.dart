@@ -23,8 +23,7 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/image_prompt/image_prompt.dart';
-import 'package:front_porch_ai/ui/widgets/widgets.dart';
-import 'package:front_porch_ai/utils/utils.dart';
+import 'package:front_porch_ai/ui/pages/pages.dart';
 
 import 'studio_shell/studio_shell.dart';
 import 'studio_widgets.dart';
@@ -76,6 +75,9 @@ class ImageStudio extends StatefulWidget {
   /// Fires after a pack import so the launcher refreshes the live card.
   final void Function(String characterDbId)? onExpressionsImported;
 
+  /// Home launch: picks the Character subject from the library. True = chosen.
+  final Future<bool> Function()? onChooseCharacter;
+
   const ImageStudio({
     super.key,
     required this.mode,
@@ -101,6 +103,7 @@ class ImageStudio extends StatefulWidget {
     this.characterDbId,
     this.characterImagePath,
     this.onExpressionsImported,
+    this.onChooseCharacter,
   });
 
   @override
@@ -108,12 +111,12 @@ class ImageStudio extends StatefulWidget {
 }
 
 class _ImageStudioState extends State<ImageStudio> {
-  // Session state (owned here; no god proliferation).
   late String _selectedStyle;
   late String _paradigm;
 
-  /// 0 = Create, 1 = Edit, 2 = Expressions.
+  /// 0 = Create, 1 = Edit, 2 = Expressions, 3 = Batch.
   int _studioTab = 0;
+  bool _batchOpened = false; // keeps the Prepare form once Batch was opened
   final _expressionsKey = GlobalKey<StudioExpressionTabState>();
   bool _allowClose = false;
   late final StudioSubject _subject = StudioSubject(widget.mode);
@@ -126,9 +129,8 @@ class _ImageStudioState extends State<ImageStudio> {
   bool _isGenerating = false;
   bool _saving = false;
 
-  /// Optional img2img reference (transient, never persisted). When set, Generate
-  /// runs img2img at the shared imageGenDenoise strength on the local backends;
-  /// remote APIs ignore it (the picker hides itself there).
+  /// Transient img2img reference at the shared denoise strength on local
+  /// backends; remote APIs ignore it (the picker hides itself there).
   Uint8List? _referenceImageBytes;
 
   // History: session-local thumbnails + restoreable prompt/bytes.
@@ -144,9 +146,7 @@ class _ImageStudioState extends State<ImageStudio> {
     _selectedStyle = storage.imageGenSettings.imageGenStyle;
     _paradigm = storage.imageGenSettings.imageGenPromptParadigm;
     _builder = ImagePromptBuilder(llmService: widget.llmService);
-    // No boilerplate prefill for ANY subject: an empty box until the user
-    // types or taps "Write it for me". Dumping the raw character description
-    // made a poor prompt.
+    // No prefill for any subject: a raw character description is a poor prompt.
     _editablePrompt = '';
     _storage = storage..addListener(_followStyleSettings);
   }
@@ -174,8 +174,7 @@ class _ImageStudioState extends State<ImageStudio> {
     });
   }
 
-  /// Re-apply the live style suffix to a non-empty prompt so Generate sends the
-  /// currently chosen style. No-op on an empty box (avoids glue+style synthesis).
+  /// Re-apply the live style suffix to a non-empty prompt (no-op when empty).
   void _reapplyStyle() {
     if (_editablePrompt.trim().isEmpty) return;
     _editablePrompt = reapplyCurrentStyleSuffix(
@@ -228,18 +227,9 @@ class _ImageStudioState extends State<ImageStudio> {
     });
   }
 
-  /// Pick a transient img2img reference (desktop file dialog; not persisted).
   Future<void> _pickReferenceImage() async {
-    final result = await GuardedPicker.pickFiles(
-      context,
-      category: PickerPrefs.catImage,
-      dialogTitle: 'Select a reference image',
-      type: FileType.image,
-    );
-    final bytes = await result?.firstBytes();
-    if (bytes != null && mounted) {
-      setState(() => _referenceImageBytes = bytes);
-    }
+    final bytes = await pickStudioReference(context);
+    if (bytes != null && mounted) setState(() => _referenceImageBytes = bytes);
   }
 
   Future<void> _variations() async {
@@ -326,8 +316,7 @@ class _ImageStudioState extends State<ImageStudio> {
     };
   }
 
-  /// A refusal from the last generate no longer applies once the graph or a
-  /// model file has been changed on the desk.
+  /// A refusal is stale once the desk's graph or model file has changed.
   void _dropStaleError() {
     final settings = context.read<StorageService>().imageGenSettings;
     if (!_deskStamp.changed(settings) || _error.isEmpty) return;
@@ -336,8 +325,7 @@ class _ImageStudioState extends State<ImageStudio> {
     });
   }
 
-  /// Switch subject and clear the prompt box — no bleed between subjects,
-  /// and no raw-description prefill.
+  /// Switch subject and clear the prompt box (no bleed, no description prefill).
   void _selectSubject(ImageGenMode mode) => setState(() {
     _subject.select(mode);
     _editablePrompt = '';
@@ -426,6 +414,13 @@ class _ImageStudioState extends State<ImageStudio> {
         groupShotActive: _subject.groupShot,
         onPickGroupMember: _pickGroupSubject,
         onPickGroupShot: () => _pickGroupSubject(null),
+        onChooseCharacter: widget.onChooseCharacter == null
+            ? null
+            : () async {
+                if (await widget.onChooseCharacter!() && mounted) {
+                  _selectSubject(ImageGenMode.characterPortrait);
+                }
+              },
         prompt: _editablePrompt,
         referenceBytes: _referenceImageBytes,
         currentImageBytes: _currentImageBytes,
@@ -467,18 +462,22 @@ class _ImageStudioState extends State<ImageStudio> {
           onImported: widget.onExpressionsImported,
           onPackChanged: () => setState(() {}),
         ),
+        batchBody: _batchOpened ? const ImageBatchesPage(embedded: true) : null,
         modeTabs: StudioModeTabs(
           selected: _studioTab,
           onChanged: (i) {
             if (i == 2) {
               _openExpressionPack();
             } else {
-              setState(() => _studioTab = i);
+              setState(() {
+                _studioTab = i;
+                _batchOpened |= i == 3;
+              });
             }
           },
-          enabled: true,
         ),
         editBody: EditView(
+          key: ValueKey(widget.characterImagePath),
           onResultImage: (bytes) => setState(() => _lastStudioImage = bytes),
           onSendToChat: widget.onSendToChat,
           onAcceptBytes: hasAcceptAction(_subject.mode)
