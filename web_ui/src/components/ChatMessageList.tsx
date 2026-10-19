@@ -6,7 +6,7 @@
 // the per-message action toolbar) plus the live streaming bubble. Message edit
 // is a fullscreen modal owned by ChatPage (MessageEditModal).
 
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   classifyTranscriptGrowth,
   followTranscriptWhileStreaming,
@@ -16,7 +16,8 @@ import {
   transcriptHeadKey,
   transcriptTipKey,
 } from '../pages/chat/transcriptAutoScroll';
-import { applyTranscriptSpan, revealOlderSpan, type TranscriptSpan } from '../pages/chat/transcriptWindow';
+import { applyTranscriptSpan, revealOlderSpan, revealAroundSpan, type TranscriptSpan } from '../pages/chat/transcriptWindow';
+import { useFindSurface, markRanges } from './chatSearch';
 import { MessageContent } from './MessageContent';
 import { ChipsRow } from './ChipsRow';
 import { MessageActions } from './MessageActions';
@@ -188,6 +189,17 @@ const TranscriptRows = memo(function TranscriptRows({
   onChatImageLoad,
 }: TranscriptProps) {
   const userHasReplied = messages.some((m) => m.isUser);
+  const find = useFindSurface();
+  // The engine's sender hits index m.sender; only a header showing exactly
+  // that name can paint them.
+  const markSpeaker = (m: Message, name: string): ReactNode => {
+    const hits = find?.byMessage.get(m.index);
+    if (!find || !hits?.sender.length || name !== m.sender) return name;
+    const active = find.active;
+    const activeStart =
+      active && active.messageIndex === m.index && active.region === 'sender' ? active.start : null;
+    return markRanges(name, 0, hits.sender, activeStart, `sf${m.index}`);
+  };
   return (
     <>
       {messages.map((m) => {
@@ -205,8 +217,8 @@ const TranscriptRows = memo(function TranscriptRows({
           );
         }
         return (
-          <div key={m.rowKey ?? m.index} className="msg-row">
-            {multiCast && speaker && <span className="msg-speaker">{speaker.name}</span>}
+          <div key={m.rowKey ?? m.index} data-msg-index={m.index} className="msg-row">
+            {multiCast && speaker && <span className="msg-speaker">{markSpeaker(m, speaker.name)}</span>}
             <span className={m.isUser ? 'msg-number user' : 'msg-number'}>
               #{(m.position ?? m.index) + 1}
             </span>
@@ -233,7 +245,7 @@ const TranscriptRows = memo(function TranscriptRows({
                 />
               )}
               {m.text ? (
-                <MessageContent text={m.text} />
+                <MessageContent text={m.text} find={find} msgIndex={m.index} />
               ) : !m.isUser && m.thinkingContent && !(busy && m.index === lastIndex) ? (
                 // Thought-only reply (the model spent its whole turn inside a
                 // <think> block): say so instead of a bare empty bubble.
@@ -299,6 +311,7 @@ export function ChatMessageList({
   scrollRef,
   onScroll,
   followStreamingReplies = true,
+  revealTarget,
   ...transcript
 }: TranscriptProps & {
   sessionId?: string | null;
@@ -307,8 +320,12 @@ export function ChatMessageList({
   scrollRef: RefObject<HTMLDivElement>;
   onScroll?: () => void;
   followStreamingReplies?: boolean;
+  /** ⌘F navigation: grow the mounted span around this row, then scroll
+   * it to center. New object identity per navigation retriggers the seek. */
+  revealTarget?: { index: number; tick: number } | null;
 }) {
   const pinnedOpen = useRef<string | null>(null);
+  const revealedTick = useRef<number | null>(null);
   const stickToLatest = useRef(false);
   const selfScroll = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -346,6 +363,27 @@ export function ChatMessageList({
     prepended,
     nearTop: settled.current && nearTop.current,
   });
+  // Once per navigation: re-applying on every render would pin the span
+  // to the match and fight the reader scrolling back to the tail.
+  if (revealTarget && full.length > 0 && !opened && revealedTick.current !== revealTarget.tick) {
+    revealedTick.current = revealTarget.tick;
+    revealAroundSpan(
+      spanRef.current,
+      Math.min(revealTarget.index, full.length - 1),
+      full.length,
+    );
+  }
+  useLayoutEffect(() => {
+    if (!revealTarget) return;
+    // Prefer the lit word itself; a tall bubble centered by its row would
+    // otherwise hide the match under the find bar.
+    const el =
+      scrollRef.current?.querySelector('mark.find-hit.active') ??
+      scrollRef.current?.querySelector(
+        `[data-msg-index="${revealTarget.index}"]`,
+      );
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [revealTarget, scrollRef]);
   if (opened) settled.current = false;
   trackedFull.current = full.length;
   spanTip.current = fullTip;

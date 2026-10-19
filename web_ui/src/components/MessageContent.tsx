@@ -11,8 +11,9 @@
 // colored spans carry plain text content, never markup. img src is never set
 // until the user consents (session flag).
 
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { renderRpInline } from './rpText';
+import { markRanges, type FindSurface } from './chatSearch';
 
 // Desktop only matches http(s) — data:/javascript:/relative stay as text.
 const IMAGE_RE = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
@@ -74,15 +75,35 @@ function ExternalChatImage({ url, alt }: { url: string; alt: string }) {
 // re-render for messages whose text is unchanged stops the transcript re-parsing
 // every bubble. ExternalChatImage owns consent state so a grant still updates
 // already-mounted placeholders without busting this memo.
-function MessageContentImpl({ text }: { text: string }) {
-  const parts: React.ReactNode[] = [];
+//
+// ⌘F parity with the desktop: each colored run paints the slice of the
+// server's hit ranges that falls inside it, by its offset into [text].
+function MessageContentImpl({
+  text,
+  find,
+  msgIndex,
+}: {
+  text: string;
+  find?: FindSurface | null;
+  msgIndex?: number;
+}) {
+  const hits = find && msgIndex != null ? find.byMessage.get(msgIndex) : undefined;
+  const active = find?.active;
+  const activeStart =
+    active && active.messageIndex === msgIndex && active.region === 'body' ? active.start : null;
+  const mark = hits?.body.length
+    ? (plain: string, key: string, offset: number): ReactNode =>
+        markRanges(plain, offset, hits.body, activeStart, key)
+    : undefined;
+
+  const parts: ReactNode[] = [];
   let last = 0;
   let seg = 0;
   let match: RegExpExecArray | null;
   IMAGE_RE.lastIndex = 0;
   while ((match = IMAGE_RE.exec(text)) !== null) {
     if (match.index > last) {
-      parts.push(...renderRpInline(text.slice(last, match.index), `t${seg++}`));
+      parts.push(...renderRpInline(text.slice(last, match.index), `t${seg++}`, true, mark, last));
     }
     const alt = match[1] || 'image';
     const url = match[2];
@@ -91,7 +112,7 @@ function MessageContentImpl({ text }: { text: string }) {
     );
     last = match.index + match[0].length;
   }
-  if (last < text.length) parts.push(...renderRpInline(text.slice(last), `t${seg++}`));
+  if (last < text.length) parts.push(...renderRpInline(text.slice(last), `t${seg++}`, true, mark, last));
 
   return (
     <>

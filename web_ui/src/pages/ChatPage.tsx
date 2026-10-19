@@ -19,8 +19,11 @@ import { useLayout } from '../hooks/useBreakpoint';
 import { ChatHeader } from './chat/ChatHeader';
 import { ChatNotices } from './chat/ChatNotices';
 import { ChatOverlays } from './chat/ChatOverlays';
+import { useChatFind } from './chat/useChatFind';
 import { useChatSend } from './chat/useChatSend';
 import { useChatSession } from './chat/useChatSession';
+import { FindBar } from '../components/FindBar';
+import { FindSurfaceContext } from '../components/chatSearch';
 import { useFollowStreamingReplies } from '../followStreaming';
 import { useUserMessageSide } from '../userMessageSide';
 
@@ -52,6 +55,26 @@ export function ChatPage() {
 
   // Living Time §2: sessions whose welcome-back banner was dismissed (ephemeral).
   const [absenceDismissed, setAbsenceDismissed] = useState<Set<string>>(new Set());
+  // ⌘F find-in-chat: server-scan counts + leaf highlight surface (parity
+  // with the desktop ChatFindController).
+  const lastTranscriptMsg = state?.messages?.[state.messages.length - 1];
+  // Messages whose speaker label (multi-cast only) shows exactly the name
+  // the engine scanned; sender hits anywhere else have nothing to light.
+  const senderLabelShown = useMemo(() => {
+    const cast = state?.cast ?? [];
+    const shown = new Set<number>();
+    if (cast.length < 2) return shown;
+    const names = new Map(cast.map((c) => [c.id, c.name]));
+    for (const m of state?.messages ?? []) {
+      if (!m.isUser && m.characterId && names.get(m.characterId) === m.sender) shown.add(m.index);
+    }
+    return shown;
+  }, [state?.cast, state?.messages]);
+  const find = useChatFind({
+    sessionId: state?.sessionId,
+    senderLabelShown,
+    transcriptVersion: `${state?.messages?.length ?? 0}|${lastTranscriptMsg?.text?.length ?? 0}`,
+  });
   // Composer draft mirror — powers the lorebook "would trigger next" preview.
   const [draft, setDraft] = useState('');
   // Resizable insight sidebar (desktop) — width persists across sessions.
@@ -318,35 +341,57 @@ export function ChatPage() {
             </button>
           </div>
         )}
-        <ChatMessageList
-          sessionId={state.sessionId}
-          messages={state.messages}
-          castById={castById}
-          multiCast={multiCast}
-          lastIndex={lastIndex}
-          busy={state.isGenerating}
-          settling={!!state.isSettlingTurn}
-          streaming={streaming}
-          followStreamingReplies={followStreamingReplies}
-          genStatus={state.isGenerating ? genStatus : null}
-          scrollRef={scrollRef}
-          onScroll={onTranscriptScroll}
-          canSpeak={!!voice?.ttsEnabled}
-          onBeginEdit={beginEdit}
-          onSwipe={swipe}
-          onRegenerate={regenerate}
-          lookupWeb={!!state.lookupSources?.web}
-          lookupWiki={!!state.lookupSources?.wiki}
-          onContinue={continueGen}
-          onFork={fork}
-          onDelete={del}
-          onReprocess={setReprocessIndex}
-          onRevert={revertNeeds}
-          greetCount={state.totalGreetings}
-          greetingIndex={state.greetingIndex}
-          onVariantPicked={refresh}
-          onActionFailed={reportActionFailure}
-        />
+        <div className="chat-find-host">
+          <FindSurfaceContext.Provider value={find.surface}>
+            <ChatMessageList
+              sessionId={state.sessionId}
+              messages={state.messages}
+              castById={castById}
+              multiCast={multiCast}
+              lastIndex={lastIndex}
+              busy={state.isGenerating}
+              settling={!!state.isSettlingTurn}
+              streaming={streaming}
+              followStreamingReplies={followStreamingReplies}
+              genStatus={state.isGenerating ? genStatus : null}
+              scrollRef={scrollRef}
+              onScroll={onTranscriptScroll}
+              canSpeak={!!voice?.ttsEnabled}
+              onBeginEdit={beginEdit}
+              onSwipe={swipe}
+              onRegenerate={regenerate}
+              lookupWeb={!!state.lookupSources?.web}
+              lookupWiki={!!state.lookupSources?.wiki}
+              onContinue={continueGen}
+              onFork={fork}
+              onDelete={del}
+              onReprocess={setReprocessIndex}
+              onRevert={revertNeeds}
+              greetCount={state.totalGreetings}
+              greetingIndex={state.greetingIndex}
+              onVariantPicked={refresh}
+              onActionFailed={reportActionFailure}
+              revealTarget={find.reveal}
+            />
+          </FindSurfaceContext.Provider>
+          {find.open && (
+            <FindBar
+              value={find.query}
+              onValue={find.setQuery}
+              regexOn={find.regexOn}
+              onToggleRegex={find.toggleRegex}
+              caseOn={find.caseOn}
+              onToggleCase={find.toggleCase}
+              waiting={find.waiting}
+              bad={find.bad}
+              slow={find.slow}
+              counter={find.counter}
+              wildcardChip={find.wildcardChip}
+              onStep={find.step}
+              onClose={find.close}
+            />
+          )}
+        </div>
 
         {evaluationView.error && <p role="alert">{evaluationView.error}</p>}
         <ProcessingOverlay minimized={evaluationView.minimized} onMinimizedChange={evaluationView.change} saving={evaluationView.saving} p={processing} onCancel={cancelRealism} onSkipObjective={skipObjectiveCheck} />
