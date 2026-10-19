@@ -108,12 +108,6 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
     final emotion = isRealism
         ? (chat.getEmotionForGroupCharacter(widget.character) ?? 'neutral')
         : null;
-    final intensity = isRealism
-        ? chat.getEmotionIntensityForGroupCharacter(widget.character)
-        : null;
-    final memberMood = isRealism
-        ? chat.getMoodForGroupCharacter(widget.character)
-        : null;
     final affection = isRealism
         ? chat.getAffectionForGroupCharacter(widget.character)
         : 0;
@@ -217,7 +211,7 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
     );
     // While the user directs, the cast is still live (Needs, the clock and
     // their feelings for each other), so the card stays lit; only the feelings
-    // toward the user hold, marked by the pause icon beside the emotion.
+    // toward the user hold, marked by the pause line at the top of the card.
     final isDirector = chat.observerMode;
     // Away / At work uses the signed 0.45.
     final opacity = presence.dimCard ? 0.45 : 1.0;
@@ -230,9 +224,6 @@ class _GroupMemberCardState extends State<GroupMemberCard> {
       onOpenObjectives: widget.onOpenObjectives,
       chat: chat,
       isRealism: isRealism,
-      emotion: emotion,
-      intensity: intensity,
-      moodLine: memberMood == null ? null : moodDisplayLine(memberMood),
       affection: affection,
       longTerm: longTerm,
       trust: trust,
