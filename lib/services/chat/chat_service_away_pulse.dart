@@ -25,6 +25,7 @@ extension ChatServiceAwayPulse on ChatService {
     if (!AwayPulse.shouldPulse(
       fromUserSend: fromUserSend,
       presentSpeakerTurns: _awayPulse.presentSpeakerTurns,
+      nobodyPresent: _groupCharacters.every(_groupSpeakerSkips),
     )) {
       return;
     }
@@ -56,6 +57,8 @@ extension ChatServiceAwayPulse on ChatService {
       roster: _groupCharacters,
       userText: text,
       presenceOf: presenceOf,
+      isHeld: (c) =>
+          _groupRealism[_getCharacterIdFromCard(c)]?.awayHeld ?? false,
     );
     final userName = _userPersonaService.persona.name.trim();
     final exchange = recentExchange(_messages);
@@ -69,6 +72,7 @@ extension ChatServiceAwayPulse on ChatService {
         userName: userName.isEmpty ? 'the user' : userName,
         recentExchange: exchange,
         stance: _groupRealism[id]?.spatialStance ?? '',
+        directing: _directing,
       );
       debugPrint('[Presence] away-pulse ${card.name}=$verdict');
       if (verdict == true) {
@@ -90,6 +94,47 @@ extension ChatServiceAwayPulse on ChatService {
           addressed != null && pick == _getCharacterIdFromCard(addressed);
       if (fromUserSend) _awayPulse.returnSpeakUsedThisUserSend = true;
     }
+  }
+
+  /// Where a group member is right now: the same read the turn picker
+  /// skips on. Null outside a group or for a name not in the roster.
+  PresenceWhere? groupMemberPresence(String memberId) {
+    if (_activeGroup == null) return null;
+    for (final card in _groupCharacters) {
+      if (_getCharacterIdFromCard(card) != memberId) continue;
+      final work = _workFieldsFor(card);
+      return derivePresence(
+        occupation: work.occupation,
+        hours: work.hours,
+        clockMinutes: _timeService.clockMinutes,
+        weekday: _timeService.clock.weekday,
+        workDays: work.workDays,
+        inScene: _memberInScene(card),
+      );
+    }
+    return null;
+  }
+
+  /// The user's own Away / Back for one group member. The user's choice
+  /// beats the model: a held Away stays until Back, whatever the glance or
+  /// quiet pulse says. Back puts them in the turn order now.
+  /// False (nothing changed) outside a group, mid-turn, or for an id not
+  /// in the roster.
+  Future<bool> setGroupMemberAway(String memberId, {required bool away}) async {
+    if (_activeGroup == null || _isTurnBusy) return false;
+    if (!_groupCharacters.any((c) => _getCharacterIdFromCard(c) == memberId)) {
+      return false;
+    }
+    final slot = _groupStore.memberForWrite(memberId);
+    slot.awayHeld = away;
+    slot.withUser = !away;
+    if (!away && _awayPulse.pendingReturnSpeakId == memberId) {
+      _awayPulse.pendingReturnSpeakId = null;
+    }
+    debugPrint('[Presence] manual ${away ? 'away' : 'back'} $memberId');
+    await _saveChat();
+    notifyListeners();
+    return true;
   }
 
   int _lastSpokeIndex(String name) {
