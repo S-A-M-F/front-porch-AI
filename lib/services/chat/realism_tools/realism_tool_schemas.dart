@@ -70,6 +70,9 @@ final Map<String, Map<String, dynamic>> _emotionalFields = {
   'arousal_delta': _intField(
     'Physical desire shift this turn (only when asked for in the prompt).',
   ),
+  'arousal_reason': _strField(
+    'One brief in-character thought explaining the desire shift, or "none".',
+  ),
 };
 
 final Map<String, Map<String, dynamic>> _narrativeFields = {
