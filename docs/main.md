@@ -2,6 +2,42 @@
 
 These notes feed the in-app "Update Available" dialog for stable releases on `main`.
 
+## v1.6.0 — Fifty Shades of Porch
+
+Paint it your colour, call the shots, and let the story keep its own time.
+
+- 🎨 **Make the porch yours.** A new **Appearance** tab in Settings has eight app themes, light and dark, a custom accent colour, fonts and corner styles. The phone and browser app follow the desktop theme, light mode included, with a per-device override.
+
+- 🎬 **Director Mode, rebuilt.** `/director` steps you out of a group and runs the scene from the chair: cue a line, whisper to one character, set a scene goal, bring in a narrator, give the run a budget and beats, and let a judge keep character-to-character turns honest. Pause and Resume, typed lines that stick, and manual **Away** and **Back** for any cast member. Same controls on the phone.
+
+- 🔎 **Find in chat.** Ctrl+F (⌘F on a Mac) opens a find bar that searches the whole chat, not just what's on screen. Desktop and phone.
+
+- ⏩ **Time skips that make sense.** A big skip gets a narrator card that bridges the gap. Skips the reply or a `/narrate` beat describes now move the clock, more ways of saying "later" are understood, and a long skip lands at the time of day it names. Needs live through a day-plus skip before the reply, and Journal heat cools by story days.
+
+- 🎯 **Goals keep up with the story.** Objectives sync with what actually happened, a character feels and remembers how a goal ended, a goal they keep pushing gets a rest, and a goal you set is never set aside.
+
+- 😤 **Mood with bite.** A mood now has a cause, holds for a while, eases off, and pulls on how the character behaves. The Mood and Lust chips explain themselves when you hover or tap.
+
+- 🌙 **Afterglow (18+).** What happens after a climax now follows the character: a recovery profile on the card, a tenderness window, satisfaction that fades on a curve, both sides read by the judge, and closeness that bonds deeper when it was wanted. Chance Time respects the refractory lock, and an opt-in grey mood afterwards is there for darker stories.
+
+- 🪄 **A better Character Creator.** A Profile step that fills in the full Front Porch card, interview questions you can edit, reorder and voice, templates saved as files, and an "Interview this character" switch to skip the interview. Desktop and phone.
+
+- 🖼️ **Images in bulk.** Image Studio opens from Home and has a **Batch** tab for generating many pictures at once and reviewing them. A Remote API option with host tiles, per-host sizes and Grok Imagine; expression intensity controls; and each image backend keeps its own model and LoRA picks.
+
+- 🧠 **KoboldCpp, smarter.** Pick a chat template in a preset, with a warning when the template doesn't fit the model. The app remembers the last model on each backend, can send Realism checks to a worker on another PC, and leaves more of your graphics card for the model while it writes. The prompt progress bar tells the truth, and the check progress can be minimized.
+
+- 💬 **See behind a reply.** Inspect the exact prompt behind any reply, see other words a KoboldCpp reply weighed and rewrite from one, pick a prompt source per chat when you start it, add global prompt additions, and see "Your chats together" stats on a character's Details tab. Characters and personas convert into each other.
+
+- 🛟 **No more lost edits.** Editors for characters, groups, personas, worlds, the Data Bank and Growth Rings ask before you leave with unsaved changes, on desktop and phone.
+
+- 🎲 **Chaos with more range.** More varied events, a frequency setting, an 18+ gate, and a spicy switch that stays saved.
+
+- 🧑‍💻 **Waifu Coder that finishes.** Turns always finish and undo as a whole, she stays in character, switches really reach OpenCode (Plan is read-only), and the pinned OpenCode is checked before it installs.
+
+- 📱 **The phone catches up again.** Settings in the desktop's sections, the per-chat prompt picker, Pockets receipts and Director chips.
+
+- 🧹 **Smaller fixes.** The update check says "check failed" when it can't reach GitHub instead of "up to date", tap the version in the sidebar to copy it for a bug report, Next names who will really speak in a group, Create World saves once on Windows, and the app leaks less memory going Home.
+
 ## v1.5.0 — Revenge of the Kobold
 
 The engine room got rebuilt while you were chatting. Kobold insists you update.

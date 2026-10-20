@@ -15,16 +15,16 @@
 
 **A local-first AI companion for character chat & roleplay — Windows, macOS, and Linux.** Runs fully offline with local LLMs (KoboldCpp, oMLX, LM Studio, …), driven by a living **Realism Engine** (emotion, trust, needs, memory, pockets) with built-in **TTS and image generation** — and supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them. Open-source (**AGPL-3.0**). Built as a home for people who lost theirs when Backyard AI killed its desktop app.
 
-> ### 🧠 New in 1.5.0 — Revenge of the Kobold
-> The engine room got rebuilt while you were chatting. Kobold insists you update.
+> ### 🎨 New in 1.6.0 — Fifty Shades of Porch
+> Paint it your colour, call the shots, and let the story keep its own time.
 >
-> - **KoboldCpp, rebuilt so it just works.** Fits your model to your graphics card by itself, a plain Local model card, a real preset editor, model switches that reload in place, and a speed test that keeps the fastest settings. Replies start fast and stay fast.
-> - **When KoboldCpp can't, you're told why**, and at start the app offers to update an old one (or remove it).
-> - **Needs keep time with the story**, and the Refractory countdown runs on the story clock.
-> - **Porch Stories Studio**, an **Expressions workspace with prompt rules**, the **Image Studio desk**, and **a library you can grab** (box select, drag a whole pick into a folder, `.porch` export).
-> - **The phone catches up**, **xAI is a chat backend**, and macOS 13.3 Ventura is the new floor on the Mac.
+> - **Make the porch yours.** Eight app themes, light and dark, a custom accent, fonts and corners, and the phone follows along.
+> - **Director Mode, rebuilt.** Cue, whisper, scene goals, a narrator, beats and a run budget, with Away and Back for any cast member.
+> - **Find in chat** with Ctrl+F (⌘F), and **time skips that make sense**, bridged by a narrator card.
+> - **Goals keep up with the story**, **mood with bite**, and **Afterglow** (18+) that follows the character.
+> - **Images in bulk** with a Batch tab, a better **Character Creator**, and a look at **the prompt behind any reply**.
 >
-> Plus message numbers, your messages on the left (or the right), a Greetings step in the AI creator, no more white window on Windows, and text that no longer smears while a model runs. The in-app What's New has all fifteen.
+> Plus editors that ask before dropping unsaved work, more varied Chaos, a Waifu Coder that finishes its turns, and the phone's Settings in the desktop's sections. The in-app What's New has all sixteen.
 
 ## 🕯️ Why Does This Exist?
 
