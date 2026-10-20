@@ -32,6 +32,18 @@ int? _extractMinutes(String text) {
   return m == null ? null : int.tryParse(m.group(1)!);
 }
 
+int _extractDays(String text) {
+  final m = RegExp(r'"days_elapsed"\s*:\s*"?(\d+)').firstMatch(text);
+  return m == null ? 0 : int.tryParse(m.group(1)!) ?? 0;
+}
+
+/// The judge's days_elapsed counts only when the exchange names a span of
+/// days at all; like [newDayCorroboration] for new_day.
+final _daysCorroboration = RegExp(
+  r'\b(?:days?|weeks?|months?|years?|fortnights?)\b',
+  caseSensitive: false,
+);
+
 bool _extractContinuousInstant(
   String text,
   bool? Function(String, String) extractJsonBool,
@@ -225,6 +237,25 @@ class SceneTimeEvaluator {
       'in the recent exchange (hallucination guard)',
     );
 
+    // A multi-day jump the reply narrates in words the skip regex cannot
+    // read: lived off-screen, like a skip. Otherwise the clamped minutes.
+    Future<void> applyVerdict(String text) async {
+      final days = _extractDays(text);
+      if (days > 0 && _daysCorroboration.hasMatch(recent)) {
+        await applier.applyJudgedDays(days);
+        // This eval was the turn's one clock authority; nothing to hand on.
+        state.oocSkipMovedClockThisTurn = false;
+        return;
+      }
+      final saidNewDay = extractJsonBool(text, 'new_day') ?? false;
+      if (saidNewDay && !newDayCorroborated) logSuppressedNewDay();
+      await applier.applyElapsed(
+        minutes: _extractMinutes(text),
+        newDay: saidNewDay && newDayCorroborated,
+        continuousInstant: _extractContinuousInstant(text, extractJsonBool),
+      );
+    }
+
     // One clock authority per turn (chip/clock parity): when an OOC or
     // narrative skip already moved the clock for this exchange, this eval
     // must not count the same exchange again — the double-advance is how a
@@ -250,13 +281,7 @@ class SceneTimeEvaluator {
         if (!skipTodayEval) await _maybeApplyTodayEval(text);
         return;
       }
-      final saidNewDay = extractJsonBool(text, 'new_day') ?? false;
-      if (saidNewDay && !newDayCorroborated) logSuppressedNewDay();
-      await applier.applyElapsed(
-        minutes: _extractMinutes(text),
-        newDay: saidNewDay && newDayCorroborated,
-        continuousInstant: _extractContinuousInstant(text, extractJsonBool),
-      );
+      await applyVerdict(text);
       if (!skipTodayEval) await _maybeApplyTodayEval(text);
       debugPrint(
         '[Realism:Time] One-shot elapsed applied → ${state.displayClock} (Day ${state.dayCount})',
@@ -275,7 +300,8 @@ class SceneTimeEvaluator {
         'A completed spoken reply is never a continuous instant. When true, minutes_elapsed is ignored and the clock stays still.\n'
         '3. "new_day": true ONLY if the conversation explicitly transitioned to the next day (slept, woke up, scene break). false otherwise. '
         'Merely MENTIONING yesterday, tomorrow, or another day does NOT count — the characters must actually cross a night.\n'
-        '${plannerToday ? '4. "today_sentence": one sentence of what they are doing or planning today. '
+        '4. "days_elapsed": ONLY when the reply just written explicitly narrates a jump of one or more whole days ("a week later", "three days passed"), the number of days skipped (1-365). Otherwise 0. Mentioning a date or a plan is not a jump.\n'
+        '${plannerToday ? '5. "today_sentence": one sentence of what they are doing or planning today. '
                   'Empty or "none" abandons the current hold. Omit to keep it.\n' : ''}';
 
     // One time prompt. Engine-on adds scene framing; timeOnly asks bare.
@@ -287,7 +313,7 @@ class SceneTimeEvaluator {
         'Current story time: ${state.displayClock} on ${state.narrativeWeekday}, Day ${state.dayCount}.\n\n'
         '$timeRules\n'
         'Recent conversation:\n$recent\n\n'
-        '${toolsMode ? 'Report by calling the $kSceneTimeTool tool with "minutes_elapsed", "continuous_instant", and "new_day"${plannerToday ? ' and "today_sentence"' : ''}. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "minutes_elapsed", "continuous_instant", and "new_day"${plannerToday ? ' and "today_sentence"' : ''}. '
+        '${toolsMode ? 'Report by calling the $kSceneTimeTool tool with "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}. '
                   'Do NOT use markdown code blocks — return raw JSON only.'}';
 
     try {
@@ -309,13 +335,7 @@ class SceneTimeEvaluator {
             'movement suppressed',
           );
         } else {
-          final saidNewDay = extractJsonBool(text, 'new_day') ?? false;
-          if (saidNewDay && !newDayCorroborated) logSuppressedNewDay();
-          await applier.applyElapsed(
-            minutes: _extractMinutes(text),
-            newDay: saidNewDay && newDayCorroborated,
-            continuousInstant: _extractContinuousInstant(text, extractJsonBool),
-          );
+          await applyVerdict(text);
         }
         if (!skipTodayEval) await _maybeApplyTodayEval(text);
       } else if (!skipOwnsClock) {

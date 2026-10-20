@@ -363,6 +363,16 @@ class TimeService {
 
   void reclaimSkipOwnership() => _applier.reclaimSkipOwnership();
 
+  /// A skip (user line, `/narrate`, time away) already moved the clock.
+  bool get skipOwnsTurn => _state.oocSkipMovedClockThisTurn;
+
+  /// No scene-time eval consumed the ownership: the next turn is its own.
+  void releaseSkipOwnership() => _state.oocSkipMovedClockThisTurn = false;
+
+  Future<int> applyReplySkip(String text) => _applier.applyReplySkip(text);
+
+  int takeReplySkipMinutes() => _applier.takeReplySkipMinutes();
+
   Future<void> applyReconciledClock(DateTime newClock) =>
       _applier.applyReconciledClock(newClock);
 

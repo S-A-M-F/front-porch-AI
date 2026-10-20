@@ -379,6 +379,14 @@ extension ChatServiceGenerationPostGen on ChatService {
             _timeService.clock,
       );
     }
+    // "A week later, she…" in the reply's own narration moves the clock
+    // the span, unless a skip (the user's line, a /narrate beat) already
+    // owns this turn. The judge's days_elapsed covers what the regex
+    // misses. Either one settles the scene below; no bridge card.
+    _timeService.takeReplySkipMinutes();
+    if (!msg.isUser && !_timeService.skipOwnsTurn) {
+      await _timeService.applyReplySkip(msg.displayText);
+    }
     // Fiction wins (K-A). A named wall-clock is the beat — do not
     // add the conversational floor on top (07:30 + 2 min = 07:32).
     final named = clockNamedInReply(msg.text, _timeService.clock);
@@ -389,6 +397,9 @@ extension ChatServiceGenerationPostGen on ChatService {
       );
     } else {
       await _timeService.applyReconciledClock(named);
+      // No eval consumed the skip's turn ownership; it must not suppress
+      // the next turn's eval.
+      _timeService.releaseSkipOwnership();
       // K-A: overwrite the slot's own before so the stored pair is
       // named/named (07:30/07:30). Clamp still holds. Continue
       // already stamps through writeSlotClock above.
@@ -396,6 +407,9 @@ extension ChatServiceGenerationPostGen on ChatService {
     }
     if (named == null && _isLiteTurn(t) && _clockRunning) {
       _clockWriter.writeSlotClock(msg, kind: SlotClockWrite.tick);
+    }
+    if (_timeService.takeReplySkipMinutes() >= kLongSkipMinutes) {
+      LongSkipSettle(_realismScope()).settle();
     }
     await _episodeCrumbs.maybeMint(before, _timeService.clock);
     debugPrint(
