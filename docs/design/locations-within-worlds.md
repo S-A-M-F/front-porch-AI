@@ -1,226 +1,275 @@
-# Locations within Worlds — exploration and plan
+# Locations within Worlds
 
-Status: **proposal, not started.** Source: the Discord enhancement thread
-"Support Locations as a finer-grain entity within Worlds" (Oct 2026).
+Status: **approved plan, not started.** Source: the Discord enhancement
+thread "Support Locations as a finer-grain entity within Worlds" (Oct 2026)
+and the follow-up on overloading lorebooks.
 
-## 1. What was asked
+## 1. The ask
 
-The requester builds one detailed World (a town) and many places inside it
-(town hall, academy, church, tea rooms …). Each place has its own description
-and lorebook; all of them share the town's lorebook, description and climate.
-They want to use a *place* as the Setting of a group chat and have it pull in
-its World's weather, description and lore without copying that material into
-every place.
+Authors build one detailed World (a town, a planet) and many places inside
+it: town hall, academy, church, tea rooms. Every place has its own
+description and lorebook. All of them share the parent's lorebook,
+description and climate. Picking a place as the Setting of a chat should
+bring the whole bundle: place prose, place lore, parent lore, parent
+weather, without copying any of it into every place.
 
-In their words: **a Location is a sub-World that inherits from its parent
-World.**
+In one line: **a Location is a sub-World that inherits from its parent.**
 
-The maintainer's concerns in the thread, which the plan must answer:
+Three concerns from the thread that this plan answers:
 
-- Budgets: the Setting block is a budget-capped always-injected description;
-  a 3-tier (location → world) chain makes it longer.
-- Sub-locations: "it escalates quickly" — does a location get children?
-- Transitions: moving between places mid-chat, especially when climate
-  changes.
+- **Budget.** The Setting block is always injected and budget-capped. A
+  chain must not cost more than one world does today.
+- **Depth.** Do locations have sub-locations? "It escalates quickly."
+- **Transitions.** Moving between places mid-chat, including climate.
 
-## 2. What exists today (read before touching anything)
+Plus two requirements that came out of review:
 
-Terminology: the UI already calls a World a **place**. One chat has place
-*slots*:
+- A world must be able to hold several locales with **different climates**
+  (Earth with its continents).
+- **Overloading lorebooks**: a teacup in a palace and a teacup in a
+  commoner's house trigger on the same key but read differently. The more
+  specific place should win without the author copying worlds or toggling
+  entries by hand.
+
+## 2. What exists today
+
+The UI already calls a World a **place**. A chat has place slots:
 
 | Slot | Count | Owns |
 |------|-------|------|
-| Setting (Primary) | 0..1 | weather/climate, the "Setting — where you are" prose, place traits |
+| Setting | 0..1 | weather and climate, the "Setting — where you are" prose, place traits |
 | Lore | 0..N | lorebook entries only; never weather, never prose |
 
-Where that lives:
+Where it lives:
 
-- Model: `lib/models/world.dart` (`World`: name, description, lorebook,
-  biomeId/biomeJson, climateEnabled, injectDescription, placeTraits,
-  coverImage, sourceId). `lib/models/chat_place_slots.dart`
+- Model `lib/models/world.dart` (`World`), `lib/models/chat_place_slots.dart`
   (`ChatPlaceSlots`, `primaryWorldAllowsClimate`).
-- Storage: `Worlds` and `ChatWorlds` tables in
-  `lib/database/database.tables.features.dart`; queries in
-  `lib/database/database.queries.worlds.dart`. `chat_worlds.is_primary`
-  marks the Setting. Schema is at v60 (`AppDatabase.schemaVersion`).
-- Repository: `lib/services/world_repository.dart` (cache, save/import/export,
-  `resolveWorld(idOrName)`) + `lib/services/world_store/`.
-- Chat wiring: `lib/services/chat/chat_service_wiring_injection.dart`
-  loads slots into `_chatPlaceSlots`, `setChatPlaceSlots`, `setChatClimate`.
-  `chat_service_wiring_injection_leaves.dart` `_worldDefaultBiome` reads the
-  Setting's biome. `chat_service_accessors_living.dart` gates weather on
-  `primaryWorldAllowsClimate(primary)`.
-- Prompt: `lib/services/chat/prompt_injection/world_injection.dart`
-  `buildWorldInjection([primary])` — 600-char soft cap, trait lines beat
-  description under pressure. Called from `chat_service_generation_plan.dart`
-  with **only the Setting**.
-- Lore: `lib/services/chat/lorebook_collection.dart` `collectLoreEntryRefs`
-  enumerates chat book → group book → `chatWorldIds` (Setting first, then
-  Lore) → character books + character `worldNames`.
+- Tables `Worlds`, `ChatWorlds` in `lib/database/database.tables.features.dart`;
+  queries in `database.queries.worlds.dart`. Schema is v60.
+- `lib/services/world_repository.dart` (cache, save, import, export,
+  `resolveWorld`), `lib/services/world_store/`.
+- Chat wiring `lib/services/chat/chat_service_wiring_injection.dart`
+  (`_chatPlaceSlots`, `setChatPlaceSlots`, `setChatClimate`);
+  `_worldDefaultBiome` in `chat_service_wiring_injection_leaves.dart`;
+  weather gate in `chat_service_accessors_living.dart`.
+- Prompt `lib/services/chat/prompt_injection/world_injection.dart`
+  (`buildWorldInjection`, 600-char soft cap, trait lines beat description),
+  called from `chat_service_generation_plan.dart` with the Setting only.
+- Lore `lib/services/chat/lorebook_collection.dart` (`collectLoreEntryRefs`:
+  chat book → group book → chat worlds → character books) and
+  `lorebook_injector.dart` (SillyTavern inclusion groups: of the active
+  members of a group exactly one injects, chosen sticky → prioritize →
+  match score → seeded random).
+- Clock judge `lib/services/chat/time_service/scene_time_evaluator.dart`:
+  one post-reply model call reporting minutes, new day, days skipped and
+  posture, tool call first then JSON text floor.
+- Scene Guests: `cast_detector.dart` finds a named side character in the
+  narration, `pendingGuestDetection` surfaces `SceneGuestDetectedDialog`,
+  accept runs `SceneGuestFactory` and mints a lite card. The web snapshot
+  carries the same flag.
 - Desktop UI: Places sidebar `lib/ui/chat_components/sidebar/story_tools/
-  chat_places_panel*.dart`; World editor `lib/ui/pages/world_management/`;
-  cards `lib/ui/pages/worlds/world_place_card.dart`; group wizard / group
+  chat_places_panel*.dart`; editor `lib/ui/pages/world_management/`;
+  cards `lib/ui/pages/worlds/world_place_card.dart`; group wizard and group
   settings pick template `groups.world_ids`.
 - Web: `web_ui/src/components/ChatPlacesSection.tsx`,
-  `web_ui/src/pages/WorldsPage.tsx`, `WorldCard.tsx`; relay
-  `lib/services/web/facade/world_facade.dart` + `routes/world_routes.dart`
-  (`/api/worlds*`, `/api/chat/places`, `/api/chat/climate`).
-- Portable format: `lib/models/fp_world_package.dart` (`.fpworld`, format
-  version 1, `lorebooks` array already reserved for multi-book). Stoop
-  shares the same envelope (`stoop_world_share.dart`).
+  `web_ui/src/pages/WorldsPage.tsx`; relay `lib/services/web/facade/
+  world_facade.dart` + `routes/world_routes.dart` (`/api/worlds*`,
+  `/api/chat/places`, `/api/chat/climate`).
+- Portable format `lib/models/fp_world_package.dart` (`.fpworld` v1; the
+  `lorebooks` array is already reserved for multi-book). The Stoop shares
+  the same envelope.
 - Tests: `test/services/chat/chat_places_primary_lore_test.dart`,
   `world_injection_test.dart`, `world_climate_injection_test.dart`,
   `test/services/world_repository_test.dart`,
-  `integration_test/worlds_management_test.dart`, web
-  `WorldsPage.*.test.tsx`, sweep route `/worlds`.
+  `integration_test/worlds_management_test.dart`, `WorldsPage.*.test.tsx`.
 
-### What the requester can already do, and why it is not enough
+What the author can already do: one climate-off world per place attached
+as Lore, the town as Setting. That gives the lore union but not the place's
+own prose in the Setting block, not a one-tap bundle switch, and not a
+library that reads as "town → its places".
 
-A climate-off World per place, attached as a Lore place, plus the town as
-the Setting, gives the lore union today. It does **not** give:
+## 3. Design: a Location is a World with a parent
 
-- a place's *own* description in the Setting prose (Lore places inject no
-  prose);
-- one-click switching of the whole bundle (town climate + town lore + place
-  lore + place prose) as one Setting;
-- a library that reads as "Bletchfield → its places" instead of a flat list
-  of N+1 worlds.
+No second entity, table, editor, relay or file format. One nullable
+column, `worlds.parent_world_id`, and everything else is derived.
 
-## 3. Design decision: a Location is a World with a parent
-
-Do **not** add a second entity, table, editor, relay, or package format.
-Add one nullable column, `worlds.parent_world_id`, and derive everything
-else:
-
-- A **Location** is a `World` row whose `parentWorldId` is non-null.
-- A location **always** has `climateEnabled = false` in its own row. It
-  never authors climate. Weather, biome and place traits come from the
-  nearest climate-enabled ancestor. (This is the "sub-World inherits" rule
-  and it sidesteps the transition problem for climate inside one world: the
-  climate does not change when you walk from the church to the tea rooms.)
-- Depth: allow a parent chain, but **cap at two levels below the root in
-  the UI** (town → building → room). The engine walks the chain to the
-  root regardless; the UI refuses to make a child of a depth-2 location.
-  The maintainer asked whether sub-locations should exist; answer is "yes,
-  shallow", and the cap is a UI rule so the schema never needs to change.
-- Cycles: the save path rejects a parent that is the world itself or any
-  of its descendants.
+- A **Location** is a `World` whose `parentWorldId` is set.
+- **Climate is inherited by default and may be owned.** A location with
+  climate off takes weather, biome and place traits from the nearest
+  climate-enabled ancestor. A location may switch its own climate on and
+  becomes the climate author for itself and its descendants. So Earth can
+  be a climate-off root carrying shared lore, each continent a child with
+  its own biome, and each city under a continent inherits that continent.
+- **Depth** is capped at two levels below the root in the UI (town →
+  building → room). The engine walks any chain to the root; the editor
+  refuses to make a child of a depth-2 location. The schema never needs to
+  change if the cap moves.
+- **Cycles** are rejected on save (a parent may not be the world itself or
+  any descendant). **Deleting a parent re-roots its children** (parent
+  cleared, climate left as it was) and tells the user how many. Lore the
+  user wrote is never cascade-deleted.
 
 ### Resolution rules (the engine's contract)
 
-Given the chat's Setting slot holds world `S`:
+With world `S` in the Setting slot:
 
-1. **Chain** = `[S, parent(S), parent(parent(S)) …]` up to the root, deduped.
-2. **Climate / weather / traits** = the first climate-enabled world in the
-   chain. Empty ⇒ weather off, exactly as today for a lore-only Setting.
-   `primaryWorldAllowsClimate` gains the chain; `_worldDefaultBiome` reads
-   the same world. The custom-climate dropdown option id stays
-   `world:<id of the climate author>`.
-3. **Setting prose** = `buildWorldInjection(chain)`, **leaf first**. The
-   existing budget code already handles a list; the location's own
-   description wins the budget, the town's gets truncated. Budget answer
-   for the maintainer: the cap stays at 600 chars total, so a 3-tier chain
-   costs no more than today's one-world Setting; authors see the truncation
-   in the preview (see §5 UI).
-4. **Lore** = chain books in leaf-first order, then the Lore slot books.
-   `collectLoreEntryRefs` already dedupes worlds by id, so a town attached
-   as both an ancestor and an explicit Lore place enumerates once.
-5. **Lore slot** places may also be locations; they contribute their own
-   book **and their ancestors' books** (a lore place "Bletchmore Academy"
-   should bring Bletchfield's lore too). Still no prose, still no weather.
+1. **Chain** = `[S, parent(S), …]` up to the root, deduped by id.
+2. **Climate, weather, traits** = the first climate-enabled world in the
+   chain. None ⇒ weather off, exactly as a lore-only Setting today. The
+   custom-climate dropdown id stays `world:<id of the climate author>`.
+3. **Setting prose** = `buildWorldInjection(chain)`, leaf first, under the
+   same 600-char cap. The location's own description wins the budget and
+   the town's is truncated. A three-tier chain costs no more tokens than a
+   single world does now. The editor shows the preview (see §5).
+4. **Lore** = chain books leaf first, then the Lore slot books. Existing
+   dedupe by world id means a town attached both as ancestor and as an
+   explicit Lore place enumerates once.
+5. **Lore slot places may be locations** and bring their ancestors' books
+   too. Still no prose, still no weather.
+
+### Overloading: nearest place wins its inclusion group
+
+`LoreEntryRef` gains a specificity rank set by `collectLoreEntryRefs`: the
+Setting leaf is 0, its parent 1, and so on; Lore-slot places and character
+books rank behind the whole chain. `_pickGroupWinner` checks that rank
+right after the sticky check. Among members from chain worlds the nearest
+place wins; the existing prioritize, scoring and random steps still break
+ties at the same rank.
+
+Authoring: put both "teacup" entries in inclusion group `teacup`. The
+palace version injects whenever the palace or a room inside it is the
+Setting. An ungrouped entry behaves exactly as today, and the group field
+already round-trips through import and export, so the change is
+nonbreaking.
+
+Held back: implicit shadowing by identical keys with no group label. Zero
+authoring, but it would silently hide a town entry meant to add detail. If
+wanted later it is a per-location switch, never a default.
 
 ### Transitions
 
-Phase 1 ships only the switch that exists today: replace the Setting. The
-existing demote-on-replace behaviour (old Setting goes to the top of Lore)
-is right for places: move from the church to the tea rooms and the church's
-book stays in play as lore for the rest of the scene. A climate change on
-transition only happens when the new Setting resolves to a *different*
-climate author, which is the cross-world case the maintainer said is
-already hard and is out of scope here. The biome-span machinery
-(`setChatClimate`, `ChatBiomeSpans`) already records a mid-chat changeover
-from "today" onward; a Setting swap that changes the climate author should
-call it with the new author's biome so earlier story days keep their
-weather. That is one call in `setChatPlaceSlots`, guarded by "climate
-author actually changed".
+**Manual, always available.** Replace the Setting from the Places sidebar
+or the web Places section. The Setting card's breadcrumb becomes a
+dropdown of reachable places (self, parents, siblings, children) so a
+by-hand move is one tap. Today's demote-on-replace stays: the old place
+goes to the top of Lore, so its book remains live for the rest of the
+scene. When the swap changes the climate author, `setChatPlaceSlots`
+records a biome span from the current story day, so earlier days keep
+their weather. That is the same `ChatBiomeSpans` machinery the climate
+dropdown uses now.
 
-Automatic transit from narration ("they walk to the academy") is **not** in
-this plan.
+**Suggested, confirmed by the user.** No new model call. The clock judge
+gains one field, `scene_place`, whose only legal values are the ids of the
+reachable places plus `same`. The field is sent only when Passage of Time
+is on, the per-chat switch "Suggest scene moves" (default off) is on, and
+the Setting has relatives; otherwise the prompt is unchanged. The rubric
+mirrors the days rule: report a move only when the reply narrates
+arriving; a plan or a mention is not a move; missing or unparseable means
+`same`. The service never applies the answer. It sets `pendingPlaceMove`
+and the chat page shows a dialog in the Scene Guest style: "The model
+thinks the scene has moved to the Tea Rooms. Move there?" with Move and
+Stay. Move runs the manual path above. Stay remembers that place as
+declined until the Setting next changes, so it does not nag. Because the
+user confirms, a move is a user action: no undo chip, no per-message
+rewind stamp, no Continue or one-shot special case. Web gets the flag
+through the chat snapshot and shows the same dialog. One scene place per
+chat in both 1:1 and group; split parties are out of scope. Director and
+AFK turns do not run the clock judge and never move the scene.
+
+### Minted places
+
+The same field gains one more legal value, `new`, carried with a name and
+a one-line descriptor, the same pair `DetectedCharacter` uses. It fires
+only when the reply narrates arriving at a **named** place that is not in
+the reachable list; an unnamed side street never qualifies. The dialog
+offers Add and move, Just add, Ignore. Ignored names are remembered per
+chat. Nothing is minted until the tap.
+
+`PlaceFactory` sits beside `SceneGuestFactory`. Inputs: the name, the
+descriptor, the narration lines where the place was portrayed, and the
+parent chain's description and lore. Output: a child World under the
+current Setting (or its parent when the depth cap is hit) with a short
+description sized to the Setting budget, three to five lore entries, climate
+inherited, and a `model-made` provenance marker. Where a parent entry
+shares keys with a minted entry, the factory puts the new entry into that
+inclusion group, so the palace teacup is written as the palace's version.
+Persisted through `WorldRepository.saveWorld`, so name collisions, cycle
+checks, export and the Stoop envelope behave as for a hand-made place.
+
+Transport: the **eval transport** (native tool call first, then the JSON
+text floor), not the World-from-Wiki tools gate, so a local KoboldCpp model
+can mint. Guardrails: a separate per-chat switch "Let the model add
+places" (default off), never climate on the fly, entry count capped, and a
+`model-made` filter with bulk delete in the Worlds library.
 
 ## 4. Data and portability
 
 - Schema v61: `ALTER TABLE worlds ADD COLUMN parent_world_id TEXT NULL`.
-  Additive; no backfill. Repair ladder entry so a rerun is idempotent
-  (`test/database/repair_covers_ladder_columns_test.dart` pattern).
-- Deleting a parent: children are **re-rooted** (their `parent_world_id`
-  set null, `climateEnabled` left false) and the user is told how many.
-  Never cascade-delete lore the user wrote.
-- `.fpworld` stays format 1 and gains an additive `locations: [ … ]`
-  array on the root world's envelope, each item a world envelope minus
-  climate. Import creates child rows with fresh ids and `sourceId`
-  provenance. Older apps ignore the key and import the town alone
-  (mixed-fleet rule). Exporting a location on its own exports its root
-  with only that branch.
-- Stoop: same envelope, so a shared WORLD card carries its locations for
-  free. No new endpoint. Relay list/detail DTOs gain `parentWorldId` and
-  `locationCount` (additive).
-- Group template `groups.world_ids` and character `world_names` keep
-  accepting any world id, location or not.
+  Additive, no backfill, repair-ladder entry so a rerun is idempotent.
+- `.fpworld` stays format 1 and gains an additive `locations: [ … ]` array
+  on the root envelope, each item a world envelope with its own
+  `climate_enabled` (inherit or own). Import creates child rows with fresh
+  ids and `sourceId` provenance. Older apps ignore the key and import the
+  root alone. Exporting a location alone exports its root with that branch.
+- Stoop: same envelope, so a shared WORLD card carries locations. Relay
+  list and detail DTOs gain `parentWorldId`, `locationCount`,
+  `climateAuthorId` (additive).
+- `groups.world_ids` and character `world_names` keep accepting any world
+  id, location or not.
 
-## 5. UI (desktop and web in the same PR, per parity law)
+## 5. UI (desktop and web in the same slice, parity law)
 
-**Worlds library**
+**Worlds library.** Cards group by root; a root card shows an "N places"
+chip that expands the children indented beneath it. Flat list is unchanged
+for users with no locations. Root card action: "Add a place inside".
+Filter: "model-made", with bulk delete.
 
-- Cards group by root: a root card shows a small "N places" chip; tapping
-  the chip expands the children under it (indent, smaller card). Flat list
-  stays for users with no locations.
-- World editor gains, in the basics section, a **"Part of"** picker
-  (none / any root or depth-1 world, excluding self and descendants). When
-  set, the climate section collapses to one line: "Climate comes from
-  <parent> (<biome>)". Place traits collapse the same way.
-- New-location affordance on a root card: "+ Add a place inside".
-- Setting prose preview under the description field shows what
-  `buildWorldInjection(chain)` would emit at the 600 cap, so authors see
-  the truncation the maintainer worried about.
+**World editor.** Basics gains a **Part of** picker (none, or any root or
+depth-1 world excluding self and descendants). With a parent set, the
+climate section offers "Inherit from <parent> (<biome>)" or "Own climate";
+the existing climate editor shows under "Own". A Setting-prose preview
+under the description shows what the chain emits at the 600 cap.
 
-**Places sidebar / web ChatPlacesSection**
+**Places sidebar / web ChatPlacesSection.** Setting card shows the
+breadcrumb ("Tea Rooms · Bletchfield") as the move dropdown and names the
+climate author ("Weather from Bletchfield"). Attach picker lists roots with
+children indented. Group wizard and group settings pickers get the same
+indented list. Two per-chat switches under the panel: "Suggest scene moves"
+and "Let the model add places".
 
-- Setting card shows the breadcrumb ("Tea Rooms · Bletchfield") and the
-  climate author's name in the climate line ("Weather from Bletchfield").
-- Attach picker lists roots with their children indented; picking a child
-  is the same `setChatPlaceSlots` call.
-- Group wizard / group settings "Linked Worlds" pickers get the same
-  indented list (no new behaviour).
+**Dialogs.** `PlaceMoveDialog` in the `SceneGuestDetectedDialog` style, via
+`showWarmDialog`, for both the move and the mint offers; web twin on the
+chat page. Rendered text is plain strings; no enum names leak.
 
-**Rendered text rule:** the breadcrumb separator and labels are plain
-strings; no enum names leak.
+## 6. Delivery: seven PRs in strict order, each shippable alone
 
-## 6. Delivery plan (one PR per row, each independently shippable)
+| # | Slice | Depends on | Guard that goes red first |
+|---|-------|-----------|---------------------------|
+| 1 | Model + schema v61 + `chainFor` / `climateAuthorFor` on the repository, cycle check, re-root on delete | — | `world_repository_test`: chain, cycle refusal, re-root; `repair_covers_ladder_columns_test` |
+| 2 | Engine: chain climate (own or inherited), leaf-first prose, chain lore for Setting and Lore slots, specificity rank + nearest-wins group rule, biome span on author change | 1 | `chat_places_primary_lore_test`: location Setting gets ancestor weather, lore-only root keeps weather off, continent-level climates differ, grouped teacup flips with the Setting (1:1 and group); `world_injection_test`: leaf wins budget; `lorebook_scanner_test`: ancestor books enumerate once |
+| 3 | Desktop UI: Part of picker, inherit-or-own climate, grouped library, breadcrumb dropdown, prose preview | 2 | `integration_test/worlds_management_test`: make a town, make a place inside, attach, see "Weather from <town>", move by dropdown; `layout_sweep` at 400 and 1440 |
+| 4 | Web + relay twins of 3 | 3 | `WorldsPage.*.test.tsx` for the picker; journey in `web_ui/e2e/journeys.spec.ts` |
+| 5 | `.fpworld` `locations[]`, Stoop ride-along, Rawhide notes | 1 | `world_repository_test` import group: round-trip keeps children, old envelope still imports |
+| 6 | Confirmed scene moves: `scene_place` on the clock judge, `pendingPlaceMove`, dialog, declined memory, both shells | 2, 3, 4 | scene-time evaluator test: arrival sets the flag without changing slots, a plan does not, Move swaps and demotes, Stay is not re-offered until the Setting changes; dialog widget test; web journey |
+| 7 | Minted places: `new` value, `PlaceFactory`, `model-made` marker, library filter + bulk delete, both shells | 6 | pure test of the tool payload decoder; the mint itself in the E2E journey (real model, no stub) |
 
-| # | Slice | Touches | Guard that goes red first |
-|---|-------|---------|---------------------------|
-| 1 | Model + schema + resolver | `world.dart` (`parentWorldId`), `WorldRepository.chainFor(id)` / `climateAuthorFor(id)`, v61 migration, repair ladder, cycle check in `_saveWorld` | `world_repository_test.dart`: chain resolution, cycle refusal, re-root on parent delete; `repair_covers_ladder_columns_test` |
-| 2 | Engine | `primaryWorldAllowsClimate` → chain; `_worldDefaultBiome`; `buildWorldInjection(chain)` leaf-first; `collectLoreEntryRefs` expands ancestors for Setting **and** Lore slots; biome span on author change in `setChatPlaceSlots` | `chat_places_primary_lore_test`: location Setting gets parent weather; lore-only root keeps weather off; `world_injection_test`: leaf wins budget; `lorebook_scanner_test`/`lorebook_speaker_inherit_test`: ancestor books enumerate once; group twin asserted in the same test |
-| 3 | Desktop UI | editor "Part of" picker + collapsed climate, library grouping, Places breadcrumb, pickers | `integration_test/worlds_management_test.dart`: create town, create place inside it, attach place, see "Weather from <town>"; `layout_sweep` at 400/1440 |
-| 4 | Web + relay | facade DTOs, `/api/worlds` save accepts `parentWorldId`, `WorldsPage` picker + grouping, `ChatPlacesSection` breadcrumb | `WorldsPage.*.test.tsx` for the picker; journey in `web_ui/e2e/journeys.spec.ts` (town → place → attach) |
-| 5 | Portability | `.fpworld` `locations[]` export/import, Stoop share rides along, Rawhide notes | `world_repository_test` import group: round-trip keeps children, old envelope still imports |
+Slices 1 to 5 are a complete, useful V1 on their own. If 6 or 7 slip,
+nothing ships half-wired. Slice 7 carries the one real open risk, the
+quality of minted lore on small local models, which is why it has its own
+switch, default off.
 
-Path-complete matrix for slice 2: generation ✓, Continue (reads the same
-slots, no change), regen/swipe (slots are per chat, not per message, no
-change), 1:1 ↔ group (slots are session-scoped for both; test both),
-desktop ↔ web (slice 4). RAG / Journal / Growth / Pockets: N/A, no
-world input.
+Path-complete matrix for slice 2: generation ✓; Continue reads the same
+slots, no change; regen/swipe: slots are per chat, not per message, no
+change; 1:1 ↔ group: slots are session-scoped for both, both asserted;
+desktop ↔ web in slice 4. RAG, Journal, Growth, Pockets: N/A, no world
+input. Slices 6 and 7 add no per-message state because the user confirms.
 
-## 7. Open questions for the maintainer
+## 7. Decisions taken
 
-1. Depth cap of two below the root (town → building → room): fine, or
-   keep it to one?
-2. On Setting swap between two places under the same town, should the
-   old place be demoted to Lore (today's behaviour) or dropped? Plan says
-   demote.
-3. Should a location be allowed to **override** the parent climate (a
-   greenhouse in a tundra)? Plan says no in phase 1; the column shape
-   allows it later by letting a child set `climateEnabled = true`, which
-   then makes it the climate author for itself and its descendants.
-4. Does the Stoop need a "place inside" badge on WORLD cards, or is the
-   envelope ride-along enough for now?
+- Depth cap two below the root, UI-enforced.
+- Setting swap demotes the old place to Lore (today's behaviour).
+- A location may own its climate; inheritance is the default.
+- A climate-off root as Setting means weather off, as a lore-only world
+  does today.
+- No implicit key shadowing in V1.
+- No automatic travel without confirmation.
