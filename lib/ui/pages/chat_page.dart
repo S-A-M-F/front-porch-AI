@@ -40,6 +40,7 @@ import 'package:front_porch_ai/ui/pages/chat_page.sidebar_widgets.dart';
 import 'package:front_porch_ai/ui/pages/chat_page.speakers.dart';
 import 'package:front_porch_ai/ui/pages/chat_page_overlays.dart';
 import 'package:front_porch_ai/ui/pages/chat_page_sidebar_host.dart';
+import 'package:front_porch_ai/utils/utils.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -173,7 +174,7 @@ class _ChatPageState extends State<ChatPage> {
       // A guest's background portrait finished — evict its stale cached
       // image so the new art replaces the initials avatar.
       onGuestAvatarReady: (path) {
-        FileImage(_speakers.resolveCharImage(path)).evict().then((_) {
+        evictPortraitImage(_speakers.resolveCharImage(path)).then((_) {
           if (mounted) setState(() {});
         });
       },
@@ -311,10 +312,10 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ChatService>(
-      builder: (context, chatService, child) {
+    // Streamed-text ticks rebuild only the transcript and the status bar.
+    return ChatTurnBuilder(
+      builder: (context, chatService) {
         final character = chatService.activeCharacter;
-        final messages = chatService.messages;
         final isGroup = chatService.isGroupMode;
 
         // New chat, new keys: without this a long-lived page pins every past
@@ -388,7 +389,6 @@ class _ChatPageState extends State<ChatPage> {
                             transcript: ChatSurface(
                               transcriptListKey: _transcriptListKey,
                               character: character,
-                              messages: messages,
                               isGroup: isGroup,
                               controller: _controller,
                               focusNode: _chatFocusNode,
@@ -404,13 +404,12 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                           ),
                         ),
-                        if (chatService.isGenerating)
-                          GenerationStatusBar(chatService: chatService),
+                        const LiveGenerationStatusBar(),
                         ChatEvaluationProgress(
                           chatService: chatService,
                           inline: true,
                         ),
-                        _buildInputArea(chatService),
+                        RepaintBoundary(child: _buildInputArea(chatService)),
                       ],
                     ),
                   ),
@@ -418,7 +417,9 @@ class _ChatPageState extends State<ChatPage> {
                     ChatResizeSidebar(
                       width: _sidebarWidth,
                       onWidth: (w) => setState(() => _sidebarWidth = w),
-                      child: _buildRightSidebar(chatService),
+                      child: RepaintBoundary(
+                        child: _buildRightSidebar(chatService),
+                      ),
                     ),
                 ],
               ),
