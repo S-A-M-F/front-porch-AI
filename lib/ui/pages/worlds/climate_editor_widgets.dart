@@ -75,8 +75,9 @@ Color stanceColor(BuildContext context, WeatherStance? s) => switch (s) {
   null => AppColors.textTertiary(context),
   WeatherStance.pleasant ||
   WeatherStance.ordinary => AppColors.textSecondary(context),
-  WeatherStance.harsh => kClimateWarn,
-  WeatherStance.dangerous || WeatherStance.deadly => kClimateDanger,
+  WeatherStance.harsh => StatusColors.climateWarnOf(context),
+  WeatherStance.dangerous ||
+  WeatherStance.deadly => StatusColors.climateDangerOf(context),
 };
 
 /// Section header in the artifact's register: small caps amber + hint.

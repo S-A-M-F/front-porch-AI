@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_palette.dart';
 
 /// Neutral ink that is not part of a palette: dims over content, faint
 /// lines and wells that read on both dark and light grounds.
@@ -158,4 +159,32 @@ class InkColors {
   /// A field set into a panel, such as the climate editor's inputs.
   static Color insetFieldOf(BuildContext context) =>
       AppColors.resolve(context, Colors.black26, Colors.white54);
+
+  /// The caption strip and buttons laid over a picture, and their ink.
+  static const Color imageScrim = Colors.black54;
+  static const Color onImageMuted = Colors.white70;
+
+  /// Faint labels and unset icons: a word count, an entry not yet embedded.
+  static Color faintOf(BuildContext context) =>
+      AppColors.resolve(context, Colors.white24, AppPalette.of(context).muted);
+
+  /// The title of an empty list.
+  static Color emptyTitleOf(BuildContext context) =>
+      AppColors.resolve(context, Colors.white30, AppPalette.of(context).muted);
+
+  /// The large glyph above an empty list.
+  static Color ghostOf(BuildContext context) =>
+      AppColors.resolve(context, Colors.white12, Colors.black12);
+
+  /// A frosted welcome panel floating on the dim, and its rim.
+  static Color frostPanelOf(BuildContext context) => AppColors.resolve(
+    context,
+    Colors.white.withValues(alpha: 0.06),
+    AppColors.cardOf(context),
+  );
+  static Color frostEdgeOf(BuildContext context) => AppColors.resolve(
+    context,
+    Colors.white.withValues(alpha: 0.12),
+    AppColors.borderOf(context),
+  );
 }

@@ -107,4 +107,28 @@ class StatusColors {
     const Color(0xFFE8CF96),
     const Color(0xFF92400E),
   );
+
+  /// A soft caution tint behind a count, at [alpha].
+  static Color warningWashOf(BuildContext context, double alpha) =>
+      AppColors.resolve(
+        context,
+        Colors.orangeAccent.withValues(alpha: alpha),
+        const Color(0xFF9A3412).withValues(alpha: alpha),
+      );
+
+  /// The snackbar behind a failed update.
+  static final Color errorFill = Colors.red.shade700;
+
+  /// Climate editor text: a clashing season or a dangerous stance, and a
+  /// harsh stance. Dark keeps the mockup's soft red and gold.
+  static Color climateDangerOf(BuildContext context) => AppColors.resolve(
+    context,
+    const Color(0xFFE0644C),
+    const Color(0xFFB71C1C),
+  );
+  static Color climateWarnOf(BuildContext context) => AppColors.resolve(
+    context,
+    const Color(0xFFE3B341),
+    const Color(0xFF92400E),
+  );
 }

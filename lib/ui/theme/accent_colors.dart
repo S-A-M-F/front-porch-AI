@@ -48,4 +48,27 @@ class AccentColors {
     const Color(0xFF3ECF8E),
     const Color(0xFF047857),
   );
+
+  /// Gold marks: the Director notice in group settings, the primary
+  /// objective, tags.
+  static Color goldOf(BuildContext context) =>
+      AppColors.resolve(context, Colors.amber, const Color(0xFF92400E));
+  static Color goldEdgeOf(BuildContext context) =>
+      goldOf(context).withValues(alpha: 0.4);
+
+  /// The solid Save Tags button.
+  static final Color goldFill = Colors.amber.shade700;
+
+  /// A group's lorebook, and its solid Add Entry button.
+  static Color loreOf(BuildContext context) =>
+      AppColors.resolve(context, loreFill, const Color(0xFF9A3412));
+  static const Color loreFill = Colors.orangeAccent;
+
+  /// The Ko-fi brand red on the update dialog's support button. Light mode
+  /// deepens it so the label reads on paper.
+  static Color kofiOf(BuildContext context) => AppColors.resolve(
+    context,
+    const Color(0xFFFF5E5B),
+    const Color(0xFFB42318),
+  );
 }
