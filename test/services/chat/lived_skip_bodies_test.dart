@@ -17,7 +17,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart'
     show NeedsSimulation, kLongSkipMinutesMeta;
 
