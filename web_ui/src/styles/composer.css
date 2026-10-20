@@ -34,6 +34,7 @@
    bubble's colour (chatColors.ts userBubbleDialogueColor). */
 .bubble.user .dlg { color: var(--chat-user-dialogue, var(--dialogue)); }
 .bubble .act { color: var(--action); font-style: italic; }
+.bubble.user .act { color: var(--chat-user-action, var(--action)); }
 .bubble .act.bold { font-weight: 700; font-style: normal; }
 .chat-composer-wrap { width: 100%; }
 .composer-photo-chip {
@@ -136,7 +137,7 @@
 /* ── Conversations drawer ─────────────────────────────────────── */
 .drawer-backdrop {
   position: fixed; inset: 0; z-index: 50;
-  background: rgba(0, 0, 0, 0.5); display: flex; justify-content: flex-end;
+  background: color-mix(in srgb, var(--scrim-ink) 50%, transparent); display: flex; justify-content: flex-end;
 }
 .sessions-drawer {
   width: min(360px, 88%); height: 100%; background: var(--surface);
