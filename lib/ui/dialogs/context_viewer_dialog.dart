@@ -17,33 +17,29 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/dialogs/context_viewer_section_row.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
-/// Dialog showing token budget breakdown of the last assembled prompt.
+/// Dialog showing token budget breakdown of the last assembled prompt, or of
+/// one reply's prompt when [snapshot] is given.
 class ContextViewerDialog extends StatefulWidget {
   final ChatService chatService;
 
-  const ContextViewerDialog({super.key, required this.chatService});
+  /// A reply's recorded prompt. When set, the dialog shows that send instead
+  /// of the chat's last one and offers no live refresh.
+  final ContextViewerSnapshot? snapshot;
 
-  // theme-keep: data-viz legend hues — every section needs a DISTINCT
-  // identity color for the stacked bar + rows (shared verbatim with the web
-  // ContextBudgetModal). Chrome around them is AppColors.
-  static const sectionColors = {
-    'System Prompt': Color(0xFF3B82F6),
-    'Lorebook': Color(0xFF8B5CF6),
-    'Persona': Color(0xFF06B6D4),
-    'Scenario': Color(0xFF10B981),
-    'Examples': Color(0xFFF59E0B),
-    'Chat History': Color(0xFF6366F1),
-    'Post-History': Color(0xFFEF4444),
-    'Journal': Color(0xFFF97316),
-    'Realism Mode': Color(0xFFEC4899),
-    'Memories': Color(0xFF14B8A6),
-    'Speaker Card': Color(0xFF7C3AED),
-  };
+  const ContextViewerDialog({
+    super.key,
+    required this.chatService,
+    this.snapshot,
+  });
+
+  // Data-viz legend hues: every section needs a distinct identity color for
+  // the stacked bar and rows. Chrome around them is AppColors.
+  static const sectionColors = LegendColors.contextSections;
 
   @override
   State<ContextViewerDialog> createState() => _ContextViewerDialogState();
@@ -80,9 +76,16 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
     return ListenableBuilder(
       listenable: chat,
       builder: (context, _) {
-        final budget = chat.lastPromptBudget;
+        final snap = widget.snapshot;
+        final budget = snap?.budget ?? chat.lastPromptBudget;
+        final sections = snap?.sections ?? chat.lastPromptSections;
+        final textPruned = snap != null && snap.sections.isEmpty;
+        // Read only with a budget on screen: the empty state never needs it.
+        final dropped = budget.isEmpty
+            ? 0
+            : snap?.droppedMessages ?? chat.promptDroppedMessages;
         final totalTokens = budget.values.fold<int>(0, (a, b) => a + b);
-        final contextLimit = chat.contextSize;
+        final contextLimit = snap?.contextLimit ?? chat.contextSize;
         final usage = contextLimit > 0 ? totalTokens / contextLimit : 0.0;
 
         final Color usageColor;
@@ -94,8 +97,10 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
           usageColor = AppColors.bondHighOf(context);
         }
 
-        final source = _sourceLabel();
-        final at = chat.promptBudgetAssembledAt;
+        final source = snap != null ? 'This reply' : _sourceLabel();
+        final at = snap != null
+            ? snap.assembledAt
+            : chat.promptBudgetAssembledAt;
 
         return Dialog(
           backgroundColor: AppColors.surfaceOf(context),
@@ -116,9 +121,9 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.analytics_outlined,
-                        color: AppColors.formMasterAccent,
+                        color: AppColors.formAccentOf(context),
                         size: 22,
                       ),
                       const SizedBox(width: 10),
@@ -147,24 +152,25 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
                           ],
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Refresh estimate from this chat',
-                        onPressed: _estimating ? null : _refreshEstimate,
-                        icon: _estimating
-                            ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                      if (snap == null)
+                        IconButton(
+                          tooltip: 'Refresh estimate from this chat',
+                          onPressed: _estimating ? null : _refreshEstimate,
+                          icon: _estimating
+                              ? SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.iconSecondary(context),
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.refresh,
                                   color: AppColors.iconSecondary(context),
+                                  size: 20,
                                 ),
-                              )
-                            : Icon(
-                                Icons.refresh,
-                                color: AppColors.iconSecondary(context),
-                                size: 20,
-                              ),
-                      ),
+                        ),
                       IconButton(
                         icon: Icon(
                           Icons.close,
@@ -268,7 +274,7 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
                                 : 0.0;
                             final color =
                                 ContextViewerDialog.sectionColors[e.key] ??
-                                Colors.grey;
+                                LegendColors.unknownSection;
                             return Expanded(
                               flex: (frac * 1000).round().clamp(1, 1000),
                               child: Tooltip(
@@ -281,6 +287,28 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
                       ),
                     ),
                   ),
+                if (dropped > 0)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: Text(
+                      droppedMessagesNote(dropped),
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                if (textPruned)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: Text(
+                      'Only the token counts are kept for older replies.',
+                      style: TextStyle(
+                        color: AppColors.textTertiary(context),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 Flexible(
                   child: ListView(
@@ -289,16 +317,19 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
                     children: budget.entries.map((e) {
                       final color =
                           ContextViewerDialog.sectionColors[e.key] ??
-                          Colors.grey;
+                          LegendColors.unknownSection;
                       final pct = totalTokens > 0
                           ? '${(e.value / totalTokens * 100).toStringAsFixed(1)}%'
                           : '0%';
-                      return _SectionRow(
+                      return ContextSectionRow(
                         label: e.key,
                         tokens: e.value,
                         percentage: pct,
                         color: color,
-                        rawText: chat.lastPromptSections[e.key] ?? '',
+                        rawText: sections[e.key] ?? '',
+                        emptyText: textPruned
+                            ? '(Not kept for older replies.)'
+                            : '(Empty in this snapshot.)',
                       );
                     }).toList(),
                   ),
@@ -317,150 +348,5 @@ class _ContextViewerDialogState extends State<ContextViewerDialog> {
     final hh = l.hour.toString().padLeft(2, '0');
     final mm = l.minute.toString().padLeft(2, '0');
     return '$hh:$mm';
-  }
-}
-
-class _SectionRow extends StatefulWidget {
-  final String label;
-  final int tokens;
-  final String percentage;
-  final Color color;
-  final String rawText;
-
-  const _SectionRow({
-    required this.label,
-    required this.tokens,
-    required this.percentage,
-    required this.color,
-    required this.rawText,
-  });
-
-  @override
-  State<_SectionRow> createState() => _SectionRowState();
-}
-
-class _SectionRowState extends State<_SectionRow> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: widget.color,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: AppColors.textPrimary(context),
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${widget.tokens}',
-                  style: TextStyle(
-                    color: widget.color,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 48,
-                  child: Text(
-                    widget.percentage,
-                    style: TextStyle(
-                      color: AppColors.textTertiary(context),
-                      fontSize: 12,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  _expanded ? Icons.expand_less : Icons.expand_more,
-                  color: AppColors.iconSecondary(context),
-                  size: 18,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_expanded)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerOf(context),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: widget.color.withValues(alpha: 0.3)),
-            ),
-            constraints: const BoxConstraints(maxHeight: 240),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    Icons.copy_outlined,
-                    size: 14,
-                    color: AppColors.iconSecondary(context),
-                  ),
-                  padding: const EdgeInsets.only(top: 6, right: 6),
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Copy section text',
-                  onPressed: widget.rawText.isEmpty
-                      ? null
-                      : () {
-                          Clipboard.setData(
-                            ClipboardData(text: widget.rawText),
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Section text copied.'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                ),
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: SelectableText(
-                        widget.rawText.isEmpty
-                            ? '(Empty in this snapshot.)'
-                            : widget.rawText,
-                        style: TextStyle(
-                          color: AppColors.textSecondary(context),
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Divider(height: 1, color: AppColors.borderOf(context)),
-      ],
-    );
   }
 }

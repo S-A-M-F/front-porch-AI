@@ -19,7 +19,7 @@
   background: var(--surface-2); color: var(--muted); font-size: 0.8rem; border: 2px solid var(--border);
 }
 .step-dot.current .step-num { border-color: var(--accent); color: var(--accent); }
-.step-dot.done .step-num { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.step-dot.done .step-num { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .step-label { font-size: 0.68rem; white-space: nowrap; }
 .step-dot.current .step-label, .step-dot.done .step-label { color: var(--text); }
 .wizard-body { display: flex; flex-direction: column; gap: 8px; flex: 1; }
@@ -27,7 +27,7 @@
 .req { color: var(--danger); }
 .lore-edit { display: flex; flex-direction: column; gap: 8px; }
 button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
-button.danger:hover { background: rgba(255, 107, 107, 0.12); filter: none; }
+button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); filter: none; }
 
 /* ── Avatar manager ───────────────────────────────────────────── */
 .avatar-manager { display: flex; flex-direction: column; gap: 10px; }
@@ -40,11 +40,11 @@ button.danger:hover { background: rgba(255, 107, 107, 0.12); filter: none; }
 .avatar-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .avatar-label {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px;
-  font-size: 0.68rem; background: rgba(15, 23, 42, 0.78); text-align: center;
+  font-size: 0.68rem; background: color-mix(in srgb, var(--image-scrim) 78%, transparent); color: var(--image-ink); text-align: center;
 }
 .avatar-badge {
   position: absolute; top: 4px; left: 4px; font-size: 0.6rem; padding: 1px 6px;
-  border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+  border-radius: 999px; background: var(--accent); color: var(--on-accent);
 }
 .avatar-actions {
   position: absolute; top: 2px; right: 2px; display: flex; gap: 2px;
@@ -52,7 +52,7 @@ button.danger:hover { background: rgba(255, 107, 107, 0.12); filter: none; }
 }
 .avatar-tile:hover .avatar-actions { opacity: 1; }
 @media (hover: none) { .avatar-actions { opacity: 1; } }
-.avatar-actions .icon-btn { background: rgba(15, 23, 42, 0.7); color: #fff; }
+.avatar-actions .icon-btn { background: color-mix(in srgb, var(--image-scrim) 70%, transparent); color: var(--image-ink); }
 /* Avatar gallery: looks + expressions sections + the ★ favorite (default face) */
 .gallery-section-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -61,7 +61,7 @@ button.danger:hover { background: rgba(255, 107, 107, 0.12); filter: none; }
 .gallery-section-head .tool-row { flex: 0 1 auto; max-width: 260px; }
 .gallery-empty { font-size: 0.8rem; margin: 0 0 4px; }
 .avatar-tile.favorite { border-color: var(--porch-honey); }
-.avatar-tile.favorite .avatar-badge { background: var(--porch-honey); color: #241a0f; }
+.avatar-tile.favorite .avatar-badge { background: var(--porch-honey); color: var(--on-accent); }
 .review .review-val { max-width: 60%; text-align: right; word-break: break-word; }
 
 /* ── Accessibility: visible keyboard focus ────────────────────── */
@@ -89,3 +89,11 @@ button.danger:hover { background: rgba(255, 107, 107, 0.12); filter: none; }
   .stats-btn { display: none; } /* insight is persistent; no drawer toggle needed */
 }
 
+
+/* "Make a Character" from a persona: its picture beside the note. */
+.persona-seed-note { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
+.persona-seed-note p { margin: 0; }
+.persona-seed-portrait {
+  width: 56px; height: 56px; flex: none; object-fit: cover;
+  border-radius: var(--radius); border: 1px solid var(--border);
+}

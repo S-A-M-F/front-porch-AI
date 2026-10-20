@@ -3,7 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/dialogs/group_settings/group_settings.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
@@ -157,37 +157,43 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
 
             Divider(height: 1, color: AppColors.borderOf(context)),
 
-            // Tab Content
+            // Tab Content. The tabs get their own (transparent) Material: the
+            // dialog's coloured box above sits between every ListTile and the
+            // Dialog's Material, which hides their ink and background
+            // (Flutter asserts on each tile).
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  GroupPromptEngineeringTab(
-                    chatService: widget.chatService,
-                    groupRepo: widget.groupRepo,
-                  ),
-                  GroupMemoryRAGTab(
-                    chatService: widget.chatService,
-                    groupRepo: widget.groupRepo,
-                  ),
-                  GroupRealismNeedsTab(
-                    chatService: widget.chatService,
-                    groupRepo: widget.groupRepo,
-                  ),
-                  GroupNeedsTab(
-                    chatService: widget.chatService,
-                    groupRepo: widget.groupRepo,
-                  ),
-                  GroupGeneralTab(
-                    key: _generalTabKey,
-                    chatService: widget.chatService,
-                    groupRepo: widget.groupRepo,
-                  ),
-                  GroupLorebookWorldsTab(
-                    chatService: widget.chatService,
-                    groupRepo: widget.groupRepo,
-                  ),
-                ],
+              child: Material(
+                type: MaterialType.transparency,
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    GroupPromptEngineeringTab(
+                      chatService: widget.chatService,
+                      groupRepo: widget.groupRepo,
+                    ),
+                    GroupMemoryRAGTab(
+                      chatService: widget.chatService,
+                      groupRepo: widget.groupRepo,
+                    ),
+                    GroupRealismNeedsTab(
+                      chatService: widget.chatService,
+                      groupRepo: widget.groupRepo,
+                    ),
+                    GroupNeedsTab(
+                      chatService: widget.chatService,
+                      groupRepo: widget.groupRepo,
+                    ),
+                    GroupGeneralTab(
+                      key: _generalTabKey,
+                      chatService: widget.chatService,
+                      groupRepo: widget.groupRepo,
+                    ),
+                    GroupLorebookWorldsTab(
+                      chatService: widget.chatService,
+                      groupRepo: widget.groupRepo,
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -224,7 +230,7 @@ class _GroupSettingsDialogState extends State<GroupSettingsDialog>
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('Group settings saved.'),
-                              backgroundColor: Color(0xFF10B981),
+                              backgroundColor: AccentColors.emeraldFill,
                             ),
                           );
                         }

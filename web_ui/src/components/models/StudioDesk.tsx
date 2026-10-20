@@ -13,6 +13,7 @@ import { DeskConnection, backendName } from './studio/DeskConnection';
 import { DeskLoras } from './studio/DeskLoras';
 import { DeskModel } from './studio/DeskModel';
 import { DeskRail, type Picture, type Subject } from './studio/DeskRail';
+import { DeskRemote } from './studio/DeskRemote';
 import { DeskSize } from './studio/DeskSize';
 import { PackPanel } from './studio/PackPanel';
 import { GraphSheet } from './studio/GraphSheet';
@@ -35,6 +36,8 @@ export interface GenerateRequest {
 
 export interface StudioDeskProps {
   cfg: ImageConfig;
+  configurationOnly?: boolean;
+  configurationMode?: Mode;
   /** The computer's answer to a pick: the config as it is now. */
   onConfig: (next: ImageConfig) => void;
   /** Saves part of the config. Resolves false when the computer refused it. */
@@ -55,6 +58,8 @@ export interface StudioDeskProps {
   civitaiPollMs?: number;
   onSharedBusy?: (busy: boolean) => void;
   onConfigMode?: (mode: Mode) => void;
+  /** Image Studio's Batch tab, beside Create, Edit and Expression pack. */
+  batch?: ReactNode;
 }
 
 type Sheet =
@@ -73,8 +78,11 @@ function paddedSlots(cfg: ImageConfig): LoraSlot[] {
 export function StudioDesk(props: StudioDeskProps) {
   const { cfg } = props;
   const [mode, setMode] = useState<Mode>('create');
-  const [tab, setTab] = useState<Mode | 'pack'>('create');
+  const [tab, setTab] = useState<Mode | 'pack' | 'batch'>('create');
+  const tabs: readonly ('create' | 'edit' | 'pack' | 'batch')[] = props.batch
+    ? ['create', 'edit', 'pack', 'batch'] : ['create', 'edit', 'pack'];
   const [packVisited, setPackVisited] = useState(false);
+  const [batchVisited, setBatchVisited] = useState(false);
   const [packBusy, setPackBusy] = useState(false);
   const [subject, setSubject] = useState<Subject>('free');
   const [picture, setPicture] = useState<Picture | null>(null);
@@ -88,7 +96,7 @@ export function StudioDesk(props: StudioDeskProps) {
     cfg.comfyUrl, cfg.localUrl, cfg.drawThingsHost, cfg.drawThingsPort,
     cfg.comfyCreateUploadedTitle, cfg.comfyEditUploadedTitle,
   ]);
-  const configMode = tab === 'pack' ? cfg.packConfigMode ?? (cfg.backend === 'a1111' ? 'create' : 'edit') : mode;
+  const configMode = props.configurationMode ?? (tab === 'pack' ? cfg.packConfigMode ?? (cfg.backend === 'a1111' ? 'create' : 'edit') : mode);
   const { onConfigMode, onSharedBusy } = props;
   useEffect(() => onConfigMode?.(configMode), [configMode, onConfigMode]);
   const globalGeneration = useSharedGeneration(props.busy === true || packBusy);
@@ -174,6 +182,12 @@ export function StudioDesk(props: StudioDeskProps) {
     }
   };
 
+  const remote = cfg.backend === 'remote';
+  const pickRemoteModel = (id: string) =>
+    configMode === 'create'
+      ? saveConfig({ model: id }).then(() => undefined)
+      : choose({ kind: 'model', mode: 'edit', file: id }).catch((e) => failed(e, 'Could not change the Edit model.'));
+
   const ready = facts?.ready === true;
   const needsPicture = mode === 'edit' && !picture;
   const line = readyLine({
@@ -182,26 +196,28 @@ export function StudioDesk(props: StudioDeskProps) {
     kind: facts?.kind,
     message: facts?.message,
     missingClass: facts?.missingClass,
+    line: facts?.line,
     backendName: backendName(cfg.backend),
     file,
     blockedLora: facts?.blockedLora,
   });
+  const generateDisabled =
+    !ready || props.busy === true || globalBusy === true || packBusy || needsPicture || !props.prompt.trim();
 
   return (
-    <section className="studio-desk">
-      <div role="tablist" aria-label="Image Studio workspace" className="fp-workspace-tabs">
-        {(['create', 'edit', 'pack'] as const).map((value) => (
+    <section className={`studio-desk${props.configurationOnly ? ' fp-config-only' : ''}`}>
+      {!props.configurationOnly && <div role="tablist" aria-label="Image Studio workspace" className="fp-workspace-tabs">
+        {tabs.map((value) => (
           <button key={value} id={`studio-tab-${value}`} type="button" role="tab"
             aria-selected={tab === value} aria-pressed={tab === value}
             aria-expanded={value === 'pack' ? tab === 'pack' : undefined}
-            aria-controls={value === 'pack' ? 'studio-pack-panel' : 'studio-image-panel'}
+            aria-controls={value === 'pack' ? 'studio-pack-panel' : value === 'batch' ? 'studio-batch-panel' : 'studio-image-panel'}
             tabIndex={tab === value ? 0 : -1}
             onKeyDown={(e) => {
-              const values = ['create', 'edit', 'pack'] as const;
-              const index = values.indexOf(value);
-              const next = e.key === 'ArrowRight' ? values[(index + 1) % 3]
-                : e.key === 'ArrowLeft' ? values[(index + 2) % 3]
-                : e.key === 'Home' ? 'create' : e.key === 'End' ? 'pack' : null;
+              const index = tabs.indexOf(value);
+              const next = e.key === 'ArrowRight' ? tabs[(index + 1) % tabs.length]
+                : e.key === 'ArrowLeft' ? tabs[(index + tabs.length - 1) % tabs.length]
+                : e.key === 'Home' ? 'create' : e.key === 'End' ? tabs[tabs.length - 1] : null;
               if (next) {
                 e.preventDefault();
                 document.getElementById(`studio-tab-${next}`)?.click();
@@ -211,14 +227,18 @@ export function StudioDesk(props: StudioDeskProps) {
             onClick={() => {
               setTab(value);
               if (value === 'pack') setPackVisited(true);
+              else if (value === 'batch') setBatchVisited(true);
               else setMode(value);
             }}>
-            {value === 'pack' ? 'Expression pack' : value === 'create' ? 'Create' : 'Edit'}
+            {value === 'pack' ? 'Expression pack' : value === 'batch' ? 'Batch' : value === 'create' ? 'Create' : 'Edit'}
           </button>
         ))}
-      </div>
-      <div className="fp-desk-body">
-        <div className="fp-desk-rail" id="studio-image-panel" role="tabpanel"
+      </div>}
+      {/* Both stay mounted once opened, so a draft or a batch setup survives a tab trip. */}
+      {batchVisited && props.batch ? <div id="studio-batch-panel" role="tabpanel" aria-labelledby="studio-tab-batch"
+        hidden={tab !== 'batch'}>{props.batch}</div> : null}
+      <div className="fp-desk-body" style={tab === 'batch' ? { display: 'none' } : undefined}>
+        {!props.configurationOnly && <div className="fp-desk-rail" id="studio-image-panel" role="tabpanel"
           aria-labelledby={`studio-tab-${mode}`} hidden={tab === 'pack'}>
         <DeskRail
           mode={mode}
@@ -231,8 +251,8 @@ export function StudioDesk(props: StudioDeskProps) {
           lastSaved={props.lastSaved ?? null}
           onNote={setNote}
         />
-        </div>
-        {packVisited ? <div className="fp-desk-rail" id="studio-pack-panel" role="tabpanel"
+        </div>}
+        {packVisited && !props.configurationOnly ? <div className="fp-desk-rail" id="studio-pack-panel" role="tabpanel"
           aria-labelledby="studio-tab-pack" hidden={tab !== 'pack'}>
           <PackPanel lastSaved={props.lastSaved ?? null}
             sharedBusy={props.busy === true || (globalBusy ?? cfg.isGenerating) === true}
@@ -240,6 +260,25 @@ export function StudioDesk(props: StudioDeskProps) {
         </div> : null}
         {props.result ? <div className="fp-desk-output" data-region="output">{props.result}</div> : null}
         <div className="fp-desk-stove" data-region="stove">
+          {remote ? (
+            <fieldset className="fp-desk-remote" disabled={sharedBusy}
+              aria-label={tab === 'pack' ? `Pack settings · ${configMode === 'edit' ? 'Edit' : 'Create / img2img'}` : 'Image settings'}>
+              <DeskRemote
+                cfg={cfg}
+                mode={configMode}
+                busy={sharedBusy}
+                totpEnabled={props.totpEnabled}
+                onBackend={(backend) => void saveConfig({ backend }).then(refresh)}
+                save={saveConfig}
+                onModel={pickRemoteModel}
+                onChanged={refresh}
+                readyLine={line}
+                generateDisabled={generateDisabled}
+                showGenerate={!props.configurationOnly && tab !== 'pack'}
+                onGenerate={() => props.onGenerate({ mode, picture })}
+              />
+            </fieldset>
+          ) : (
           <fieldset className="fp-desk-settings" disabled={sharedBusy}>
           <legend>{tab === 'pack' ? `Pack settings · ${configMode === 'edit' ? 'Edit' : 'Create / img2img'}` : 'Image settings'}</legend>
           <DeskConnection
@@ -272,17 +311,18 @@ export function StudioDesk(props: StudioDeskProps) {
           <DeskSize size={cfg.size} onSize={(size) => void saveConfig({ size })} />
           <DeskAdvanced cfg={cfg} samplers={cfg.drawThingsSamplers ?? []} save={saveConfig} />
           </fieldset>
+          )}
           {props.busy ? (
             <div>
               <progress aria-label="Generation progress" max={1} value={props.progress ?? undefined} />
               {props.progress != null ? <span>{`Painting… ${Math.round(props.progress * 100)}%`}</span> : null}
             </div>
           ) : null}
-          <p>{line}</p>
-          {needsPicture ? <p>Pick a picture to edit.</p> : null}
-          {tab !== 'pack' ? <button
+          {remote ? null : <p>{line}</p>}
+          {!props.configurationOnly && needsPicture ? <p>Pick a picture to edit.</p> : null}
+          {!props.configurationOnly && tab !== 'pack' && !remote ? <button
             type="button"
-            disabled={!ready || props.busy === true || globalBusy === true || packBusy || needsPicture || !props.prompt.trim()}
+            disabled={generateDisabled}
             onClick={() => props.onGenerate({ mode, picture })}
           >
             Generate

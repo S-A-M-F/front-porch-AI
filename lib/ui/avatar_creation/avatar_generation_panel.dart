@@ -26,12 +26,12 @@ import 'package:front_porch_ai/services/capability/vision_support_resolver.dart'
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/image_studio/vision_gate.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/creator_palette.dart';
 
 import 'avatar_creation_controller.dart';
+import 'avatar_generation_panel/avatar_generation_panel.dart';
 import 'expressions_section.dart';
 import 'portrait_section.dart';
-
-part 'avatar_generation_panel.progress.dart';
 
 /// The ONE shared "Portrait & Avatars" panel (phase #12), hosted by BOTH
 /// creators — the manual wizard's final step and the AI Character Creator's
@@ -44,6 +44,7 @@ class AvatarGenerationPanel extends StatefulWidget {
     required this.ensureCardSaved,
     required this.initialPrompt,
     this.card,
+    this.existingPortraitPath,
     this.onBusyChanged,
   });
 
@@ -56,6 +57,10 @@ class AvatarGenerationPanel extends StatefulWidget {
 
   /// Already-saved card, when the host saved before showing the panel.
   final CharacterCard? card;
+
+  /// A picture the new card already has (made from a persona): the panel
+  /// opens on Upload with it in the portrait slot, not on Generate.
+  final String? existingPortraitPath;
 
   /// Fires on run start/stop so the host can lock its own exits (e.g. the
   /// manual wizard's Done) — leaving mid-run disposes the panel and drops
@@ -98,6 +103,7 @@ class _AvatarGenerationPanelState extends State<AvatarGenerationPanel> {
       },
       initialPrompt: widget.initialPrompt,
       card: widget.card,
+      existingPortraitPath: widget.existingPortraitPath,
     );
     _c.addListener(_reportBusy);
     _c.init();
@@ -128,7 +134,10 @@ class _AvatarGenerationPanelState extends State<AvatarGenerationPanel> {
           // not buried under it in the bottom progress card.
           if (_c.stage == AvatarRunStage.portraitReview) ...[
             const SizedBox(height: 16),
-            _reviewCard(context),
+            AvatarPortraitReviewCard(
+              controller: _c,
+              onZoom: _showPortraitFullSize,
+            ),
           ],
           const SizedBox(height: 16),
           ExpressionsSection(controller: _c),
@@ -139,7 +148,7 @@ class _AvatarGenerationPanelState extends State<AvatarGenerationPanel> {
           if (_c.stage != AvatarRunStage.idle &&
               _c.stage != AvatarRunStage.portraitReview) ...[
             const SizedBox(height: 14),
-            _progress(context),
+            AvatarRunProgress(controller: _c),
           ],
         ],
       ),
@@ -153,10 +162,18 @@ class _AvatarGenerationPanelState extends State<AvatarGenerationPanel> {
         ElevatedButton(
           onPressed: _c.canRun ? _c.run : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.formMasterAccent,
-            foregroundColor: AppColors.onChaosAccent,
-            disabledBackgroundColor: AppColors.surfaceContainerOf(context),
-            disabledForegroundColor: AppColors.textTertiary(context),
+            backgroundColor:
+                context.creatorPalette?.amber ??
+                AppColors.formAccentOf(context),
+            foregroundColor:
+                context.creatorPalette?.amberInk ??
+                AppColors.onAccentOf(context),
+            disabledBackgroundColor:
+                context.creatorPalette?.raise ??
+                AppColors.surfaceContainerOf(context),
+            disabledForegroundColor:
+                context.creatorPalette?.muted ??
+                AppColors.textTertiary(context),
             padding: const EdgeInsets.symmetric(vertical: 13),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
@@ -173,11 +190,34 @@ class _AvatarGenerationPanelState extends State<AvatarGenerationPanel> {
           'gallery.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: AppColors.textTertiary(context),
+            color:
+                context.creatorPalette?.muted ??
+                AppColors.textTertiary(context),
             fontSize: 11,
           ),
         ),
       ],
+    );
+  }
+
+  /// Full-size zoomable portrait viewer (same interaction as the chat image
+  /// viewer): pinch/scroll to zoom + pan, tap anywhere to close. Takes the
+  /// in-memory bytes since the portrait may not be on disk as a standalone file.
+  void _showPortraitFullSize(BuildContext context, Uint8List bytes) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: GestureDetector(
+          onTap: () => Navigator.of(ctx).pop(),
+          child: InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 6,
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -154,10 +154,10 @@ extension ChatServiceAccessors on ChatService {
     rerollIfSame: rerollIfSame,
   );
 
-  /// True when the Realism Engine (and Needs) should actually run for the
-  /// current chat mode. In group chats this is only true when *not* in
-  /// Director/observerMode (per design — Director is narrative control,
-  /// not simulation).
+  /// True when the user-facing Realism Engine (the judges that score the
+  /// user's message: bond, trust, emotion) runs for the current chat mode.
+  /// False in Director Mode, where the user is off stage; Needs, the clock
+  /// and the cast's feelings for each other still run there.
   bool get _realismActiveThisMode =>
       _realismEnabled &&
       !_autoResponseInProgress &&
@@ -165,12 +165,13 @@ extension ChatServiceAccessors on ChatService {
 
   /// The one-shot decision for THIS turn — the tri-state setting resolved
   /// against the live backend (pure policy in resolveOneShotMode; the
-  /// probe verdict and locality are the only inputs storage can't know).
+  /// probe verdict and locality are the only inputs storage can't know; both
+  /// describe the model that runs the evals, the helper when one is on).
   /// Consulted by the pre-generation dance, the regen replay, and the
   /// retroactive baseline scan, so all three paths flip together.
   bool get _oneShotActive => resolveOneShotMode(
     mode: _storageService.realismSettings.oneShotMode,
-    isLocal: _mouthIsLocal,
+    isLocal: _evalModelIsLocal,
     toolSupport: _toolProbe.supportFor(_evalBackendIdentity),
     // A live voice call upgrades Off to Auto's fuse-where-safe rule — one
     // eval call instead of three before the character can speak.
@@ -455,6 +456,7 @@ extension ChatServiceAccessors on ChatService {
     _llmProvider?.removeListener(_onBackendIdentity);
     _toolProbe.removeListener(notifyListeners);
     _toolSupportTester.dispose();
+    _disposeStudioToolTester();
     unawaited(_deletedChats?.cancel());
   }
 

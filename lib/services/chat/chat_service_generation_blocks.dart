@@ -26,6 +26,8 @@ part of '../chat_service.dart';
 /// (docs/design/god-file-elimination.md). Zero behaviour change.
 extension ChatServiceGenerationBlocks on ChatService {
   Future<void> _assembleGenerationBlocks(_GenTurn t) async {
+    // Days lived off-screen land before any prompt reads a body.
+    if (t.mode == GenerationMode.normal) _needsPass.landLivedBeatBeforeReply();
     // ── System prompt selection (Path B clean hierarchy) ──
     // 1. Group-level system prompt (if set) — base for the whole group.
     // 2. Per-character group override (if set for the speaker in this group) — appended.
@@ -37,15 +39,16 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.systemPrompt = _observerMode
           ? observerModeSystemPrompt
           : defaultGroupSystemPrompt;
-    } else if (t.speakingCharacter.systemPrompt.isNotEmpty) {
-      t.systemPrompt = t.speakingCharacter.systemPrompt;
-    } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
-      t.systemPrompt = _storageService.generationSettings.systemPrompt;
     } else {
       // Every backend now speaks the OpenAI chat protocol (local KoboldCpp
       // via its /v1/chat/completions door), so the server applies the model's
       // instruct template — use the chat-style default system prompt.
-      t.systemPrompt = defaultApiSystemPrompt;
+      t.systemPrompt = _resolveOneToOneBase(t.speakingCharacter);
+    }
+
+    if (_amendmentsAllowed) {
+      t.systemPrompt = _storageService.generationSettings
+          .withSystemPromptAddition(t.systemPrompt);
     }
 
     // Per-character group overlay used to append here and churn the system
@@ -88,6 +91,10 @@ extension ChatServiceGenerationBlocks on ChatService {
     _lastLoreOverflow = loreInjection.overflowDropped;
     _lastLoreTokens = loreInjection.approxTokens;
     _lastLoreBudget = loreInjection.budgetTokens;
+    debugPrint(
+      '[Lorebook] injected for ${t.speakingCharacter.name}: '
+      '${loreInjection.injected.isEmpty ? 'none' : loreInjection.injected.join(', ')}',
+    );
     if (loreInjection.overflowDropped.isNotEmpty) {
       debugPrint(
         '[Lorebook] ⚠ budget overflow — dropped: '
@@ -112,9 +119,12 @@ extension ChatServiceGenerationBlocks on ChatService {
       );
     } else {
       t.personaBlock =
-          "${t.speakingCharacter.name}'s Persona: ${_resolvedCardPersonality(t.speakingCharacter, t.userName)}";
+          "${t.speakingCharacter.name}'s Persona: ${_growthDesk.resolvedCardPersonality(t.speakingCharacter, t.userName)}";
     }
-    t.growthBlock = _resolvedGrowthBlock(t.speakingCharacter, t.userName);
+    t.growthBlock = _growthDesk.resolvedGrowthBlock(
+      t.speakingCharacter,
+      t.userName,
+    );
 
     // User persona — inject user's self-description + learned facts
     t.userPersonaBlock = await _buildUserPersonaBlock(t.userName);
@@ -131,7 +141,7 @@ extension ChatServiceGenerationBlocks on ChatService {
                 ? _groupCharacters.first.scenario
                 : '');
     } else {
-      rawScenario = _getEffectiveScenario(t.speakingCharacter);
+      rawScenario = _growthDesk.effectiveScenario(t.speakingCharacter);
     }
     t.scenario = rawScenario;
     // A Scene Guest drops into the HOST's ongoing scene — it has no scenario
@@ -164,6 +174,11 @@ extension ChatServiceGenerationBlocks on ChatService {
     if (_activeGroup == null &&
         t.speakingCharacter.postHistoryInstructions.isNotEmpty) {
       t.postHistoryBlock = '${t.speakingCharacter.postHistoryInstructions}\n';
+    }
+
+    if (_amendmentsAllowed) {
+      t.postHistoryBlock = _storageService.generationSettings
+          .withPostHistoryAddition(t.postHistoryBlock);
     }
 
     // Author's note — placed right before the character speaks for maximum influence
@@ -199,6 +214,15 @@ extension ChatServiceGenerationBlocks on ChatService {
     if (_entranceDirective != null) {
       t.authorNoteBlock += '[${_entranceDirective!}]\n';
       _entranceDirective = null;
+    }
+
+    // The director's standing goal and this speaker's whisper, while the
+    // user directs (stepping back in hides them; it does not erase them).
+    if (_directing) {
+      t.authorNoteBlock += _directorScene.promptBlock(
+        speakerId: _getCharacterIdFromCard(t.speakingCharacter),
+        speakerName: t.speakingCharacter.name,
+      );
     }
 
     // ── Scene Guests (Lite NPCs) prompt injection (1:1 only) ───────────
@@ -300,6 +324,14 @@ extension ChatServiceGenerationBlocks on ChatService {
       // `_isLiteTurn` — written out so the journal-off recap pin still
       // sees guestSpeaker, and a host/full turn still gets the recap.
       isGuest: t.guestSpeaker != null || t.speakingCharacter.isLite,
+      asOf: _clockRunning
+          ? recapAsOf(
+              messages: _messages,
+              cursor: _summaryLastIndex,
+              startDate: _timeService.startDate,
+              currentDay: _timeService.dayCount,
+            )
+          : null,
     );
 
     // Cued query for journal cold-resurface AND RAG (not last-3 live lines
@@ -309,7 +341,13 @@ extension ChatServiceGenerationBlocks on ChatService {
       final speakerId = _getCharacterIdFromCard(t.speakingCharacter);
       final cards = speakerId.isEmpty
           ? const <JournalMemoryData>[]
-          : await _journalStore.cardsFor(_currentSessionId!, speakerId);
+          : [
+              for (final c in await _journalStore.cardsFor(
+                _currentSessionId!,
+                speakerId,
+              ))
+                cooledForStoryDay(c, _timeService.dayCount),
+            ];
       // Cover-drop uses THIS-BEAT injected gist only (set after the
       // journal block builds). The whole cabinet here would eat a
       // fallen-off fact that shares filler with a cold card.
@@ -334,7 +372,7 @@ extension ChatServiceGenerationBlocks on ChatService {
     if (_storageService.memorySettings.journalEnabled &&
         !_isLiteTurn(t) &&
         _currentSessionId != null) {
-      await _ensureBirthdayState();
+      await _birthdaySync.ensure();
       final journal = await _journalInjection.buildJournalBlock(
         characterId: _getCharacterIdFromCard(t.speakingCharacter),
         characterName: t.speakingCharacter.name,
@@ -377,7 +415,7 @@ extension ChatServiceGenerationBlocks on ChatService {
           );
     final persona = buildSpeakerPersonaLine(
       name: speaker.name,
-      personality: _resolvedCardPersonality(speaker, t.userName),
+      personality: _growthDesk.resolvedCardPersonality(speaker, t.userName),
     );
     var example = '';
     if (speaker.mesExample.isNotEmpty) {

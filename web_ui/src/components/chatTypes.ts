@@ -10,8 +10,14 @@ export interface Chips {
   trustDelta?: number;
   arousalDelta?: number;
   emotionLabel?: string;
+  /** Why they felt it, filed with this reply (desktop: `emotion_cause`). */
+  emotionCause?: string;
+  /** Standing Mood: what they walked in carrying ("Came in …"). */
+  moodStanding?: string;
   bondReason?: string;
   trustReason?: string;
+  /** Why Lust moved this reply, in the character's words. */
+  arousalReason?: string;
   timeSkipTo?: string;
   timePassed?: string;
   chanceTimeEvent?: string;
@@ -26,12 +32,27 @@ export interface Chips {
   needsDeltas?: Record<string, number | { delta: number; reason?: string }>;
   /** Short no-action turn: Needs ran, bars did not move. */
   needsUnaffected?: boolean;
+  /** The bond/trust judge ran but its answer could not be read. */
+  feelingsUnscored?: boolean;
+  /** Chip text and tip for feelingsUnscored, from the desktop's constants. */
+  feelingsUnscoredLabel?: string;
+  feelingsUnscoredTip?: string;
   needsReprocessable?: boolean;
+  /** Manual Reprocess can score this reply's feelings again (desktop resolver). */
+  feelingsReprocessable?: boolean;
+  /** Display name of the speaker a Feelings re-score would score. */
+  feelingsSpeaker?: string;
   needsRevertable?: boolean;
   /** Enabled need keys for this speaker, from the desktop resolver. */
   enabledNeeds?: string[];
   /** Display name of the speaker the enabled set belongs to. */
   needsSpeaker?: string;
+  /** Pockets & Wardrobe receipts ("picked up: car keys"), one chip each. */
+  pocketChanges?: string[];
+  /** Director verifier: 'accepted' | 'corrected'; passes = reprocess count. */
+  directorStatus?: string;
+  directorPasses?: number;
+  directorReason?: string;
 }
 
 export interface Message {
@@ -47,10 +68,16 @@ export interface Message {
   swipeCount?: number;
   swipeIndex?: number;
   hasThinking?: boolean;
+  /** The reply kept the prompt that produced it (Inspect prompt). */
+  hasContext?: boolean;
+  /** KoboldCpp kept the words this reply nearly used (Other words). */
+  hasTokenAlts?: boolean;
   thinkingContent?: string;
   characterId?: string;
   /** Living Time §1 dream narration (additive — absent on older facades). */
   isDream?: boolean;
+  /** A narrator's scene beat asked for while directing (`/narrate`). */
+  isNarration?: boolean;
   /** Generated-image message: saved basename, served at /api/image/saved/<image>. */
   image?: string;
   /** The prompt that produced the image (tooltip / alt text). */
@@ -70,6 +97,12 @@ export interface Realism {
   emotion: string;
   emotionIntensity: string;
   mood: string;
+  /** Why the mood is what it is, and how many judge passes have kept it;
+   *  `moodLine` is the one-line row the desktop shows. Absent on an older
+   *  desktop build, which still sends `mood`. */
+  emotionCause?: string;
+  emotionHeld?: number;
+  moodLine?: string;
   arousal: { level: number; tier: string };
   fixation: string;
   needsEnabled: boolean;

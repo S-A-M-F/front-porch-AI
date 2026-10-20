@@ -16,65 +16,47 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'settings_page.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-/// Collapsible "Advanced Launch Options" of the Advanced tab: Flash Attention,
-/// mlock, GPU ID, BLAS batch size, and the restart-backend action. Extracted
-/// from the inline _buildAdvancedLaunchOptions/_Body; direct state access
-/// preserves behavior. Warm-porch amber accent (was a teal-green literal).
-extension _SettingsLaunchOptions on _SettingsPageState {
-  /// Does the model the backend would relaunch still exist? Memoized per
-  /// path: the caller's Builder listens to KoboldService, which notifies per
-  /// backend log line while a model loads, and a bare existsSync there stats
-  /// a multi-GB GGUF on every one of those rebuilds.
-  bool _launchModelExists(String? path) {
-    if (path == null) return false;
-    if (_launchModelExistsForPath == path) return _launchModelExistsCache;
-    _launchModelExistsForPath = path;
-    _launchModelExistsCache = File(
-      path,
-    ).existsSync(); // io-ok: memoized per path — once per model, not per notify
-    return _launchModelExistsCache;
-  }
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/settings/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
-  /// The Start/Restart button under Advanced Launch Options: applies the
-  /// launch settings above by starting the engine again.
-  Future<void> _restartFromLaunchOptions(BuildContext ctx) async {
-    final koboldService = Provider.of<KoboldService>(ctx, listen: false);
-    final backendManager = Provider.of<BackendManager>(ctx, listen: false);
-    final storage = Provider.of<StorageService>(ctx, listen: false);
-    final messenger = ScaffoldMessenger.of(ctx);
+import 'package:front_porch_ai/ui/pages/settings_page/launch_actions.dart';
+import 'package:front_porch_ai/ui/pages/settings_page/launch_engine_rows.dart';
 
-    // Checked before anything is stopped, so a model or preset that cannot
-    // be used leaves the running engine alone.
-    final problem = await koboldLaunchProblem(storage);
-    if (problem != null) {
-      messenger.showSnackBar(SnackBar(content: Text(problem)));
-      return;
-    }
+/// Collapsible "Advanced Launch Options" of the Advanced tab: the engine rows
+/// ([launchEngineRows]), GPU ID, BLAS batch size, idle unload, recent chats,
+/// and the restart-backend action. Warm-porch amber accent.
+///
+/// The expanded flag is owned by the page so it survives tab switches.
+/// This library stays at this path because
+/// test/ui/pages/settings_page_launch_state_test.dart reads it.
+class AdvancedLaunchOptions extends StatelessWidget {
+  const AdvancedLaunchOptions({
+    super.key,
+    required this.storage,
+    required this.expanded,
+    required this.onToggleExpanded,
+    required bool Function(String? path) launchModelExists,
+    required this.onRocmChanged,
+  }) : _launchModelExists = launchModelExists;
 
-    final wasRunning = koboldService.isRunning;
-    if (wasRunning) {
-      await koboldService.stopKobold();
-      await Future.delayed(const Duration(seconds: 1));
-    }
-    final result = await koboldService.launch(backendManager.backendPath!);
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          result.message ??
-              (wasRunning
-                  ? 'Restarting backend with new settings…'
-                  : 'Starting backend…'),
-        ),
-      ),
-    );
-  }
+  final StorageService storage;
+  final bool expanded;
+  final VoidCallback onToggleExpanded;
 
-  Widget _buildAdvancedLaunchOptions(
-    BuildContext context,
-    StorageService storage,
-  ) {
+  /// Does the model the backend would relaunch still exist? Must be memoized
+  /// per path: the restart button's Builder listens to KoboldService, which
+  /// notifies per backend log line while a model loads, and a bare existsSync
+  /// there stats a multi-GB GGUF on every one of those rebuilds.
+  final bool Function(String? path) _launchModelExists;
+
+  final VoidCallback onRocmChanged;
+
+  @override
+  Widget build(BuildContext context) {
     final accent = AppColors.porchAmberOf(context);
     return Container(
       decoration: BoxDecoration(
@@ -87,9 +69,7 @@ extension _SettingsLaunchOptions on _SettingsPageState {
           // Header — tap to expand/collapse.
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: () => rebuildState(
-              () => _advancedLaunchExpanded = !_advancedLaunchExpanded,
-            ),
+            onTap: onToggleExpanded,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
@@ -110,7 +90,7 @@ extension _SettingsLaunchOptions on _SettingsPageState {
                   ),
                   const SizedBox(width: 8),
                   AnimatedRotation(
-                    turns: _advancedLaunchExpanded ? 0.5 : 0,
+                    turns: expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
                     child: Icon(
                       Icons.keyboard_arrow_down,
@@ -124,8 +104,8 @@ extension _SettingsLaunchOptions on _SettingsPageState {
           ),
           AnimatedCrossFade(
             firstChild: const SizedBox(height: 0),
-            secondChild: _buildAdvancedLaunchBody(context, storage, accent),
-            crossFadeState: _advancedLaunchExpanded
+            secondChild: _buildBody(context, accent),
+            crossFadeState: expanded
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 220),
@@ -136,79 +116,7 @@ extension _SettingsLaunchOptions on _SettingsPageState {
     );
   }
 
-  Widget _buildAdvancedLaunchBody(
-    BuildContext context,
-    StorageService storage,
-    Color accent,
-  ) {
-    Widget toggle({
-      required String label,
-      required String tooltip,
-      required bool value,
-      required ValueChanged<bool> onChanged,
-      bool recommended = false,
-    }) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textPrimary(context),
-                        ),
-                      ),
-                      if (recommended) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            'RECOMMENDED',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: accent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    tooltip,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textTertiary(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Switch(
-              value: value,
-              onChanged: onChanged,
-              activeTrackColor: accent,
-            ),
-          ],
-        ),
-      );
-    }
-
+  Widget _buildBody(BuildContext context, Color accent) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Column(
@@ -216,38 +124,11 @@ extension _SettingsLaunchOptions on _SettingsPageState {
         children: [
           Divider(color: AppColors.borderOf(context), height: 1),
           const SizedBox(height: 12),
-          toggle(
-            label: 'Flash Attention',
-            tooltip:
-                'Faster attention math, and less memory. ~20–40% speed boost on RTX/Apple Silicon. AMD (ROCm) follows this switch too: if KoboldCpp stops while answering with it on, the app turns it off and starts again. Gemma 4 on Vulkan always runs without it.',
-            value: storage.backendSettings.flashAttentionEnabled,
-            recommended: true,
-            onChanged: (v) =>
-                storage.backendSettings.setFlashAttentionEnabled(v),
-          ),
-          // Switched off, it still runs with a compressed cache.
-          if (!storage.backendSettings.flashAttentionEnabled &&
-              storage.backendSettings.kvQuant.needsFlashAttention)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                kKoboldCompressedTurnsFlashOn,
-                key: const ValueKey('flash-attention-compressed-note'),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: accent,
-                ),
-              ),
-            ),
-          toggle(
-            label: 'Lock Weights in RAM (mlock)',
-            tooltip: Platform.isLinux
-                ? 'Prevents paging to disk. Requires root or ulimit ‑l unlimited on Linux — off by default.'
-                : 'Prevents OS from paging model weights to disk. Avoids catastrophic slowdown under memory pressure.',
-            value: storage.backendSettings.mlockEnabled,
-            recommended: !Platform.isLinux,
-            onChanged: (v) => storage.backendSettings.setMlockEnabled(v),
+          ...launchEngineRows(
+            context,
+            storage: storage,
+            accent: accent,
+            onRocmChanged: onRocmChanged,
           ),
           const SizedBox(height: 12),
           Divider(color: AppColors.borderOf(context), height: 1),
@@ -309,7 +190,7 @@ extension _SettingsLaunchOptions on _SettingsPageState {
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                           color: isSelected
-                              ? AppColors.onChaosAccent
+                              ? AppColors.onAccentOf(context)
                               : AppColors.textTertiary(context),
                         ),
                       ),
@@ -388,7 +269,7 @@ extension _SettingsLaunchOptions on _SettingsPageState {
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                           color: isSelected
-                              ? AppColors.onChaosAccent
+                              ? AppColors.onAccentOf(context)
                               : AppColors.textTertiary(context),
                         ),
                       ),
@@ -421,7 +302,10 @@ extension _SettingsLaunchOptions on _SettingsPageState {
                 listen: false,
               );
               final storage = Provider.of<StorageService>(ctx, listen: false);
+              // Chat on another backend: the options do not reach it, so no
+              // Start button and no "pick a model" blame.
               final canRestart =
+                  launchOptionsApply(storage) &&
                   backendManager.backendPath != null &&
                   _launchModelExists(storage.backendSettings.lastUsedModelPath);
 
@@ -429,31 +313,13 @@ extension _SettingsLaunchOptions on _SettingsPageState {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (!canRestart)
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: accent.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline, color: accent, size: 14),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'No model loaded yet. Select a model on the Backend tab first.',
-                              style: TextStyle(fontSize: 11, color: accent),
-                            ),
-                          ),
-                        ],
-                      ),
+                    LaunchOptionsNotice(
+                      text: launchOptionsNoticeText(storage),
+                      accent: accent,
                     ),
                   if (canRestart)
                     ElevatedButton.icon(
-                      onPressed: () => _restartFromLaunchOptions(ctx),
+                      onPressed: () => restartFromLaunchOptions(ctx),
                       icon: Icon(
                         koboldService.isRunning
                             ? Icons.restart_alt
@@ -467,7 +333,7 @@ extension _SettingsLaunchOptions on _SettingsPageState {
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: accent,
-                        foregroundColor: AppColors.onChaosAccent,
+                        foregroundColor: AppColors.onAccentOf(context),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),

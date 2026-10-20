@@ -28,7 +28,7 @@ const int kFpchatFormatVersion = 1;
 /// Old files (stamp 1) stay valid — the importer only refuses *newer*.
 const int kFpchatStampVersion = 2;
 
-/// Keys written by ChatService._captureRealismState (plus optional needs).
+/// Keys written by RealismSnapshot.capture (plus optional needs).
 /// Guard test must stay in sync — see fpchat_stamp_keys_test.dart.
 const Set<String> kFpchatRealismStateCoreKeys = {
   'affectionScore',
@@ -42,6 +42,8 @@ const Set<String> kFpchatRealismStateCoreKeys = {
   'interCharacterRelationships',
   'characterEmotion',
   'emotionIntensity',
+  'emotionCause',
+  'emotionHeldTurns',
   'timeOfDay',
   'dayCount',
   'startDayOfWeek',
@@ -51,6 +53,12 @@ const Set<String> kFpchatRealismStateCoreKeys = {
   'refractoryMinutesRemaining',
   'refractoryMinutesTotal',
   'refractoryOpened',
+  // PR 3 soft gate — only present on bodies that have one (toSnapshot
+  // omits defaults), and absent reads hard lock / no peaks.
+  'refractorySoft',
+  'refractoryPeakMinutes',
+  // PR 4 warmth tail — the nested body, only present when one was seeded.
+  'refractoryTail',
   // No longer written; files from before minutes carry them, and the
   // restore reads them once as turns × 15.
   'cooldownTurnsRemaining',

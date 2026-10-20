@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/waifu/waifu.dart';
 import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_coworker_face.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/waifu/waifu_motion.dart';
 
 class WaifuWizardCoworkerStep extends StatefulWidget {
   const WaifuWizardCoworkerStep({
@@ -37,7 +38,8 @@ class WaifuWizardCoworkerStep extends StatefulWidget {
   final ValueChanged<CharacterCard> onSelected;
 
   @override
-  State<WaifuWizardCoworkerStep> createState() => _WaifuWizardCoworkerStepState();
+  State<WaifuWizardCoworkerStep> createState() =>
+      _WaifuWizardCoworkerStepState();
 }
 
 class _WaifuWizardCoworkerStepState extends State<WaifuWizardCoworkerStep> {
@@ -136,10 +138,9 @@ class _WaifuWizardCoworkerStepState extends State<WaifuWizardCoworkerStep> {
                     itemCount: visible.length,
                     itemBuilder: (context, i) {
                       final card = visible[i];
+                      final picked = widget.selected;
                       final isSelected =
-                          identical(card, widget.selected) ||
-                          (widget.selected != null &&
-                              widget.selected!.name == card.name);
+                          picked != null && waifuSameCard(picked, card);
                       return _CoworkerPick(
                         card: card,
                         selected: isSelected,
@@ -180,7 +181,7 @@ class _CoworkerPick extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
+          duration: waifuMotion(context, const Duration(milliseconds: 160)),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             gradient: LinearGradient(

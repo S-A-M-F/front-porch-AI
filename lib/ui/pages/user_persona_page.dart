@@ -16,25 +16,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/utils/utils.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/dialogs/dialogs.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
-
-// The main view, list-card, edit-form, and hover-card builders live in these
-// `part of` files (extensions on _UserPersonaPageState, plus one library-
-// private StatefulWidget) to keep every file under the 500-LOC cap — same
-// pattern chat_service.dart / settings_page.dart use. They share this
-// library's imports and access the page's private state directly, so
-// behavior is unchanged.
-part 'user_persona_page.main_view.dart';
-part 'user_persona_page.list_cards.dart';
-part 'user_persona_page.edit_form.dart';
-part 'user_persona_page.hover_card.dart';
+import 'user_persona/user_persona.dart';
 
 class UserPersonaPage extends StatefulWidget {
   const UserPersonaPage({super.key});
@@ -97,6 +86,23 @@ class _UserPersonaPageState extends State<UserPersonaPage>
 
   void _setBirthday(String v) => setState(() => _birthday = v);
 
+  /// The form differs from the persona it opened with (or a new one has
+  /// anything in it).
+  bool _isDirty() {
+    if (!_isEditing) return false;
+    final p = _editingPersona;
+    return _titleController.text != (p?.title ?? '') ||
+        _nameController.text != (p?.name ?? '') ||
+        _personaController.text != (p?.persona ?? '') ||
+        _avatarPath != p?.avatarPath ||
+        _birthday != (p?.birthday ?? '');
+  }
+
+  Future<void> _requestCancel() async {
+    if (_isDirty() && !await confirmDiscardChanges(context)) return;
+    if (mounted) _cancelEditing();
+  }
+
   void _cancelEditing() {
     setState(() {
       _isEditing = false;
@@ -156,9 +162,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           SnackBar(
             content: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.check_circle,
-                  color: Colors.greenAccent,
+                  color: StatusColors.successOf(context),
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -204,9 +210,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.download_done,
-                    color: Colors.greenAccent,
+                    color: StatusColors.successOf(context),
                     size: 18,
                   ),
                   const SizedBox(width: 8),
@@ -225,9 +231,9 @@ class _UserPersonaPageState extends State<UserPersonaPage>
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.error_outline,
-                    color: Colors.redAccent,
+                    color: StatusColors.dangerOf(context),
                     size: 18,
                   ),
                   const SizedBox(width: 8),
@@ -284,7 +290,10 @@ class _UserPersonaPageState extends State<UserPersonaPage>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      UnsavedChangesGuard(isDirty: _isDirty, child: _scaffold(context));
+
+  Widget _scaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
@@ -299,19 +308,25 @@ class _UserPersonaPageState extends State<UserPersonaPage>
         leading: _isEditing
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: _cancelEditing,
+                onPressed: _requestCancel,
               )
             : null,
         actions: _isEditing
             ? null
             : [
                 IconButton(
-                  icon: const Icon(Icons.download, color: Colors.cyanAccent),
+                  icon: Icon(
+                    Icons.download,
+                    color: AppColors.porchAmberOf(context),
+                  ),
                   tooltip: 'Import Persona (JSON)',
                   onPressed: _importPersona,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.upload, color: Colors.amberAccent),
+                  icon: Icon(
+                    Icons.upload,
+                    color: AccentColors.amberOf(context),
+                  ),
                   tooltip: 'Export Personas (JSON)',
                   onPressed: _showExportDialog,
                 ),
@@ -322,7 +337,7 @@ class _UserPersonaPageState extends State<UserPersonaPage>
                   onPressed: () => _startEditing(null),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.porchAmberOf(context),
-                    foregroundColor: AppColors.onChaosAccent,
+                    foregroundColor: AppColors.onAccentOf(context),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
@@ -349,8 +364,30 @@ class _UserPersonaPageState extends State<UserPersonaPage>
           );
         },
         child: _isEditing
-            ? _buildEditForm(context, key: const ValueKey('edit'))
-            : _buildMainView(key: const ValueKey('list')),
+            ? PersonaEditForm(
+                key: const ValueKey('edit'),
+                formKey: _formKey,
+                titleController: _titleController,
+                nameController: _nameController,
+                personaController: _personaController,
+                avatarPath: _avatarPath,
+                birthday: _birthday,
+                onPickAvatar: _pickAvatar,
+                onBirthdayChanged: _setBirthday,
+                onCancel: _requestCancel,
+                onSave: _savePersona,
+              )
+            : PersonaMainView(
+                key: const ValueKey('list'),
+                glow: _headerGlowAnimation,
+                onEdit: _startEditing,
+                onExport: _exportPersona,
+                onDelete: _showDeleteConfirmation,
+                onCreate: () => _startEditing(null),
+                onImport: _importPersona,
+                onMakeCharacter: (persona) =>
+                    makeCharacterFromPersona(context, persona),
+              ),
       ),
     );
   }
@@ -406,8 +443,8 @@ class _UserPersonaPageState extends State<UserPersonaPage>
               Navigator.of(context).pop();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
+              backgroundColor: StatusColors.alertFill,
+              foregroundColor: StatusColors.onFill,
             ),
             child: const Text('Delete'),
           ),

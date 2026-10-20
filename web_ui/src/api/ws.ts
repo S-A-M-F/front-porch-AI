@@ -12,7 +12,12 @@ export type WsEvent = {
   // chargen_error error).
   id?: string | number;
   name?: string;
+  // `settings_changed`: the desktop's resolved app theme (theme/appTheme.ts).
+  theme?: unknown;
   error?: string;
+  // `chargen_error`: the same text as `error` (additive), the provider's
+  // own words when a backend refused the request.
+  message?: string;
   // `chargen_enhance_done` (AI Enhance): which character was enhanced and the
   // unsaved field proposal the client reviews before applying.
   characterId?: string;
@@ -22,6 +27,15 @@ export type WsEvent = {
   index?: number;
   firstMessage?: string;
   alternateGreetings?: string[];
+  // `chargen_profile*` (the creator's Profile step): the three texts, the
+  // facts, which box a rewrite is writing (`field`), and the rest of the
+  // view (`chargen_profile`). `chargen_rewrite_*`: `field` is mesExample or
+  // lorebook; `lorebook` carries the rows.
+  personality?: string;
+  scenario?: string;
+  facts?: unknown;
+  field?: string;
+  lorebook?: unknown;
   // `world_wiki_done`: written lorebook cards, not saved until Preview.
   description?: string;
   climateEnabled?: boolean;
@@ -59,12 +73,17 @@ export type WsEvent = {
   busyWith?: string | null;
   // Backend-reported queue depth (oMLX) — stated neutrally, never attributed.
   queued?: number;
+  // promptCur may be the end of the batch still running (Kobold / LM Studio
+  // print it first); promptConfirmed is what the backend finished reading.
   promptCur?: number | null;
+  promptConfirmed?: number | null;
   promptTotal?: number | null;
-  // Console lines arrive per BATCH; the server interpolates between them
-  // (estFraction) and flags when the console confirmed completion.
+  // Console lines arrive per BATCH; the server estimates between them
+  // (estFraction, secondsLeft) and flags when the backend confirmed
+  // completion.
   promptDone?: boolean;
   estFraction?: number | null;
+  secondsLeft?: number | null;
   genCur?: number | null;
   genTotal?: number | null;
   // `speed_test` event (the Local model card's speed test): how it stands, in

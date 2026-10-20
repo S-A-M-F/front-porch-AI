@@ -24,9 +24,11 @@
 // is the user chat turn and streams [replyPieces] as multiple SSE chunks
 // (proving the incremental decode path).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'fake_backend_chargen.dart';
 import 'fake_backend_studio.dart';
 
 class FakeBackendServer {
@@ -63,12 +65,50 @@ class FakeBackendServer {
   /// Objective task-generation requests served (numbered-list format).
   int objectiveTaskRequests = 0;
 
+  /// Goal-check (objective completion) requests received.
+  int objectiveCheckRequests = 0;
+
+  /// Each goal-check prompt, in call order.
+  final List<String> objectiveCheckPrompts = [];
+
+  /// The goal check's verdict text.
+  String objectiveCheckVerdict = '1: NO';
+
+  /// When set, a goal-check request stays open until this completes before
+  /// it answers; a client that hangs up meanwhile is counted.
+  Completer<void>? holdObjectiveCheck;
+
+  /// With [holdObjectiveCheck]: send the verdict first and hold only the
+  /// stream's end, so the app has the answer but not yet a finished reply.
+  bool objectiveCheckAnswerFirst = false;
+
+  /// Completes on the first goal-check request that reaches the hold.
+  Completer<void> objectiveCheckHeld = Completer<void>();
+
+  /// Goal-check requests whose client hung up while held.
+  int objectiveChecksHungUp = 0;
+
   /// Story pipeline stages served, in order (architect / acts / scenes /
   /// beats / prose) — the story suite asserts the exact sequence.
   final List<String> storyStagesServed = [];
 
+  /// AI Character Creator stages served, in order (fake_backend_chargen).
+  final List<String> chargenStagesServed = [];
+
   /// Tool-transport probes refused (forces the text eval fallback).
   int toolProbeRequests = 0;
+
+  /// Soft-gate climax mode (PR 3): the climax judge answers is_climax=true
+  /// on EVERY ask while set — a sustained scene keeps narrating the
+  /// afterglow — so the soft-mechanics suite gets repeatable verdicts.
+  /// Climax verdicts served, in order to the suites that count them.
+  bool softClimaxRepeats = false;
+  int climaxVerdictsServed = 0;
+
+  /// Mutual climax verdict (PR 5): when set, the climax judge answers
+  /// user_climaxed=true — a GIVEN verdict for the mutual-mechanics suites,
+  /// never a judgement that varies by personality.
+  bool userClimaxVerdict = false;
 
   /// Manual needs-reprocess hook. A completion whose prompt carries
   /// [reprocessMarker] is answered with [reprocessDeltas] instead of the
@@ -79,6 +119,18 @@ class FakeBackendServer {
   String? reprocessMarker;
   Map<String, int> reprocessDeltas = const {};
   int reprocessRequests = 0;
+
+  /// When set, any eval that asks for `relationship_delta` (the bond/trust
+  /// judge and the fused one-shot) is answered with exactly this text and no
+  /// JSON. Prose is a model ignoring the format; an empty string is the
+  /// empty reply the one-shot logs as "Failed — no JSON". Set it back to
+  /// null to let the next turn score normally.
+  String? feelingsJudgeAnswer;
+  int feelingsJudgeAnswersServed = 0;
+
+  /// Every prompt that asked for `relationship_delta`, in order, so a suite
+  /// can prove a re-score asked the judge exactly what the send asked.
+  final List<String> feelingsJudgePrompts = [];
 
   /// Body of the most recent NON-eval chat completion — lets the test prove
   /// the user's message actually reached the outbound prompt.
@@ -257,6 +309,18 @@ class FakeBackendServer {
       await _streamSse(req, studio.pieces);
       return;
     }
+    // ── AI Character Creator stages (fake_backend_chargen.dart) ────────
+    // Greetings are not among them: they take the chat reply below.
+    final chargen = chargenReply(lastContent);
+    if (chargen != null) {
+      chargenStagesServed.add(chargen.stage);
+      await _streamSse(
+        req,
+        chargen.pieces,
+        delay: const Duration(milliseconds: 150),
+      );
+      return;
+    }
     // ── Story pipeline stages ──────────────────────────────────────────
     // Each stage prompt opens with a distinctive role sentence (verified
     // against story_pipeline_service.dart's prompt builders); none of them
@@ -426,8 +490,17 @@ class FakeBackendServer {
       return;
     }
     if (lastContent.contains('Evaluate EACH item below') ||
-        lastContent.contains('report_objective_verdicts')) {
-      await _streamSse(req, ['1: NO']);
+        lastContent.contains('report_objective_sync')) {
+      objectiveCheckRequests++;
+      objectiveCheckPrompts.add(lastContent);
+      final hold = holdObjectiveCheck;
+      if (hold == null) {
+        await _streamSse(req, [objectiveCheckVerdict]);
+      } else if (!await _streamHeldSse(req, [
+        objectiveCheckVerdict,
+      ], hold.future)) {
+        objectiveChecksHungUp++;
+      }
       return;
     }
 
@@ -444,6 +517,16 @@ class FakeBackendServer {
           for (final e in reprocessDeltas.entries) '${e.key}_delta': e.value,
         }),
       ]);
+      return;
+    }
+
+    if (lastContent.contains('relationship_delta')) {
+      feelingsJudgePrompts.add(lastContent);
+    }
+    final feelingsAnswer = feelingsJudgeAnswer;
+    if (feelingsAnswer != null && lastContent.contains('relationship_delta')) {
+      feelingsJudgeAnswersServed++;
+      await _streamSse(req, [feelingsAnswer]);
       return;
     }
 
@@ -482,9 +565,20 @@ class FakeBackendServer {
     // the climax and the character answers with aftermath, which is the common
     // shape in roleplay and the reason that context is in the prompt at all.
     if (lastContent.contains('"is_climax"')) {
-      final climax = lastContent.contains('the wave crests');
+      // Soft-gate mode (PR 3): with [softClimaxRepeats] set the judge
+      // answers true on every ask — a sustained scene keeps narrating the
+      // afterglow — so the soft-mechanics suite gets repeatable verdicts.
+      // The number stays a canned constant: the fake never varies it by
+      // personality, so those suites test the app's MECHANICS on a given
+      // verdict, not the model's judgement (CLAUDE.md "No stub tests").
+      final climax =
+          softClimaxRepeats || lastContent.contains('the wave crests');
       eval['is_climax'] = climax;
       eval['refractory_turns'] = climax ? 6 : 0;
+      // PR 5: the mutual flag rides the same given verdict — stamped only
+      // when the beat climaxed AND the suite set the flag.
+      eval['user_climaxed'] = climax && userClimaxVerdict;
+      if (climax) climaxVerdictsServed++;
     }
     if (lastContent.contains('emotion_intensity')) {
       eval['emotion'] = 'happy';
@@ -509,6 +603,25 @@ class FakeBackendServer {
     // group_smoke, group_realism_wiring, and lorebook_chat all red that way.
     if (lastContent.contains('"with_user"')) {
       eval['with_user'] = true;
+    }
+    // Char→char feelings judge (group turns). Same trap again. It answers
+    // as the keyword scan it replaced did: a reply that names a listed
+    // member warmly (wonderful/adore/friend) moves them +4, the rest none,
+    // so regen_feelings_cadence still pins that a regen doesn't stack it.
+    if (lastContent.contains('"feelings"') ||
+        lastContent.contains('report_cast_feelings')) {
+      final listed =
+          RegExp(
+            r'toward each of these characters changing: (.*?)\.\n',
+          ).firstMatch(lastContent)?.group(1)?.split(', ') ??
+          const <String>[];
+      final reply = lastContent.split("'s reply:\n").last.toLowerCase();
+      final warm = const ['wonderful', 'adore', 'friend'].any(reply.contains);
+      eval['feelings'] = [
+        for (final name in listed)
+          if (warm && reply.contains(name.toLowerCase()))
+            {'name': name, 'delta': 4},
+      ];
     }
 
     // One line per completion so a misclassification is visible in the suite
@@ -586,6 +699,60 @@ class FakeBackendServer {
     }
     req.response.write('data: [DONE]\n\n');
     await req.response.flush();
+  }
+
+  /// Answers [req] with [pieces] once [hold] completes, keeping the
+  /// connection open meanwhile. False when the client hung up first. The
+  /// socket is read directly: a write to a dead HttpResponse neither fails
+  /// nor finishes, so only the socket's end says the client left.
+  Future<bool> _streamHeldSse(
+    HttpRequest req,
+    List<String> pieces,
+    Future<void> hold,
+  ) async {
+    final res = req.response
+      ..persistentConnection = false
+      ..headers.contentType = ContentType(
+        'text',
+        'event-stream',
+        charset: 'utf-8',
+      )
+      ..headers.chunkedTransferEncoding = false;
+    final socket = await res.detachSocket();
+    final gone = Completer<void>();
+    void leave([Object? _]) {
+      if (!gone.isCompleted) gone.complete();
+    }
+
+    socket.listen((_) {}, onDone: leave, onError: leave, cancelOnError: true);
+    void writePieces() {
+      for (final piece in pieces) {
+        socket.write(
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'delta': {'content': piece},
+              },
+            ],
+          })}\n\n',
+        );
+      }
+    }
+
+    if (objectiveCheckAnswerFirst) {
+      writePieces();
+      await socket.flush();
+    }
+    if (!objectiveCheckHeld.isCompleted) objectiveCheckHeld.complete();
+    await Future.any([hold, gone.future]);
+    if (gone.isCompleted) {
+      socket.destroy();
+      return false;
+    }
+    if (!objectiveCheckAnswerFirst) writePieces();
+    socket.write('data: [DONE]\n\n');
+    await socket.close();
+    return true;
   }
 
   Future<void> close() => _server.close(force: true);

@@ -1,15 +1,12 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
-
-part 'prompt_engineering_tab.editors.dart';
+import 'package:front_porch_ai/ui/dialogs/group_settings/prompt_engineering_tab/prompt_engineering_tab.dart';
 
 class GroupPromptEngineeringTab extends StatefulWidget {
   final ChatService chatService;
@@ -26,9 +23,6 @@ class GroupPromptEngineeringTab extends StatefulWidget {
 }
 
 class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
-  /// Public setState bridge for the part-file extension (settings_page pattern).
-  void rebuildState(VoidCallback fn) => setState(fn);
-
   // Group-level controllers / state (edited locally, applied on Save)
   late final StyledTextController _groupSystemController;
   late final StyledTextController _groupAuthorNoteController;
@@ -43,16 +37,7 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
   _perCharSystemPromptControllers = {};
 
   // Per-character accent colors (matches chat sidebar palette)
-  static const List<Color> _charColors = [
-    Color(0xFF8B5CF6), // Purple
-    Color(0xFF10B981), // Emerald
-    Color(0xFFF59E0B), // Amber
-    Color(0xFFEF4444), // Red
-    Color(0xFF3B82F6), // Blue
-    Color(0xFFEC4899), // Pink
-    Color(0xFF14B8A6), // Teal
-    Color(0xFFF97316), // Orange
-  ];
+  static const List<Color> _charColors = LegendColors.groupMembersWide;
 
   Color _charColor(int index) => _charColors[index % _charColors.length];
 
@@ -106,6 +91,53 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
         text: initial,
       );
     });
+  }
+
+  Widget _buildCharacterNoteEditor(CharacterCard c, int index) {
+    final strength = _perCharStrengths.putIfAbsent(
+      c,
+      () => widget.chatService.getAuthorNoteStrengthForGroupCharacter(c),
+    );
+    return GroupCharacterNoteEditor(
+      character: c,
+      accent: _charColor(index),
+      controller: _getOrCreateNoteController(c),
+      strength: strength,
+      onNoteChanged: (text) {
+        widget.chatService.setAuthorNoteForGroupCharacter(c, text);
+      },
+      onStrengthChanged: (newStrength) {
+        setState(() {
+          _perCharStrengths[c] = newStrength;
+        });
+        // Flush to service so it persists on Save / restart
+        final currentNote = _perCharNoteControllers[c]?.text ?? '';
+        widget.chatService.setAuthorNoteForGroupCharacter(
+          c,
+          currentNote,
+          strength: newStrength,
+        );
+      },
+    );
+  }
+
+  Widget _buildCharacterSystemPromptEditor(CharacterCard c, int index) {
+    final promptCtrl = _getOrCreateSystemPromptController(c);
+    return GroupCharacterSystemPromptEditor(
+      character: c,
+      accent: _charColor(index),
+      controller: promptCtrl,
+      onPromptChanged: (text) {
+        widget.chatService.setSystemPromptForGroupCharacter(c, text);
+      },
+      onClear: () {
+        promptCtrl.clear();
+        // A programmatic clear() never fires TextField.onChanged, so
+        // without this the box looked empty while the old override
+        // kept being injected every turn (and came back on reopen).
+        widget.chatService.setSystemPromptForGroupCharacter(c, '');
+      },
+    );
   }
 
   @override
@@ -181,14 +213,14 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
                     Icon(
                       Icons.code,
                       size: 16,
-                      color: AppColors.formMasterAccent,
+                      color: AppColors.formAccentOf(context),
                     ),
                     SizedBox(width: 6),
                     Text(
                       'Group System Prompt',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: AppColors.formMasterAccent,
+                        color: AppColors.formAccentOf(context),
                         fontSize: 13,
                       ),
                     ),
@@ -233,8 +265,8 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(
-                        color: AppColors.formMasterAccent,
+                      borderSide: BorderSide(
+                        color: AppColors.formAccentOf(context),
                       ),
                     ),
                     contentPadding: const EdgeInsets.all(10),
@@ -254,13 +286,17 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
                 // ── Per-Character System Prompts (Group Only) ───────────────
                 Row(
                   children: [
-                    Icon(Icons.code, size: 16, color: Colors.tealAccent),
+                    Icon(
+                      Icons.code,
+                      size: 16,
+                      color: AccentColors.tealOf(context),
+                    ),
                     SizedBox(width: 6),
                     Text(
                       'Per-Character System Prompts (Group Only)',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.tealAccent,
+                        color: AccentColors.tealOf(context),
                         fontSize: 13,
                       ),
                     ),
@@ -288,14 +324,14 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
                     Icon(
                       Icons.person_outline,
                       size: 16,
-                      color: Colors.purpleAccent,
+                      color: AppColors.emotionAccentOf(context),
                     ),
                     SizedBox(width: 6),
                     Text(
                       "Per-Character Author's Notes",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Colors.purpleAccent,
+                        color: AppColors.emotionAccentOf(context),
                         fontSize: 13,
                       ),
                     ),

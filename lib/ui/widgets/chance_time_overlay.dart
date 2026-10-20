@@ -5,12 +5,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/services/macro_resolver.dart';
-import 'package:front_porch_ai/ui/widgets/chance_time/chance_time.dart';
-
-part 'chance_time_overlay.view.dart';
-
-enum _EventCategory { fortune, misfortune, chaos, wildCard }
+import 'package:front_porch_ai/services/chat/chat.dart'
+    show ChaosCategory, ChaosModeService;
+import 'package:front_porch_ai/ui/theme/chance_time_palette.dart';
+import 'package:front_porch_ai/ui/widgets/chance_time_overlay/chance_time_overlay.dart';
 
 /// Full-screen Chance Time overlay.
 ///
@@ -38,19 +36,8 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
   int _landedIndex = 0;
   double _targetAngle = 0;
   String? _charName;
-  _EventCategory? _category;
-
-  // Segment colours (Mario Party palette)
-  static const List<Color> _segmentColors = [
-    Color(0xFFE63946), // red
-    Color(0xFFFF9F1C), // orange
-    Color(0xFF2EC4B6), // teal
-    Color(0xFF9B5DE5), // purple
-    Color(0xFF06D6A0), // green
-    Color(0xFFFF6B9D), // pink
-    Color(0xFFFFD166), // amber
-    Color(0xFF118AB2), // blue
-  ];
+  ChanceTimeRevealEffect? _category;
+  ChaosCategory? _kind;
 
   @override
   void initState() {
@@ -110,145 +97,98 @@ class _ChanceTimeOverlayState extends State<ChanceTimeOverlay>
     _spinController.reset();
     _spinController.duration = const Duration(milliseconds: 3800);
     _spinController.forward().whenComplete(() {
-      final cat = _categorize(_segments[_landedIndex]);
+      final kind = ChaosModeService.categoryOf(_segments[_landedIndex]);
       setState(() {
         _spinning = false;
         _landed = true;
-        _category = cat;
+        _kind = kind;
+        _category = _effectFor(kind);
       });
       _revealController.forward(from: 0);
     });
   }
 
-  // ── Category detection ─────────────────────────────────────────────────────
+  // ── Category ───────────────────────────────────────────────────────────────
 
-  static const _fortuneKeywords = [
-    'found something valuable',
-    'mistaken for someone important',
-    'crowd of admirers',
-    'turned up in the most unexpected',
-    'unexpected compliment',
-    'hidden stash',
-    'pulled off something impressive',
-    'stranger just paid',
-    'arrived somewhere late',
-    'won something',
-    'beautiful view',
-    'accidentally said the perfect',
-    'best hair',
-    'turned completely around',
-    'shortcut or trick',
-    'best seat',
-    'weather turned',
-    'ran into someone',
-    'animal has taken',
-    'made a guess',
-    'overheard something',
-    'arrived to help',
-    'offered more than they asked',
-    'kindness',
-    'well-rested',
-    'best portion',
-    'accomplished something',
-    'charming today',
-    'rooting for them',
-    'unexpected credit',
-  ];
-  static const _misfortuneKeywords = [
-    'urgently needs to use the restroom',
-    'stepped in something extremely unpleasant',
-    'sneezed violently',
-    'sat in something wet',
-    'hiccups',
-    'bit their tongue',
-    'something in their teeth',
-    'ripped in an extremely inconvenient',
-    'knocked something over',
-    'tripped',
-    'involuntary sound',
-    'extremely itchy somewhere',
-    'spilled something on themselves',
-    'stomach is making alarming sounds',
-    'said goodbye to someone and then walked',
-    'confidently greeted someone who has no idea',
-    'waved back at someone who was not',
-    'laughed at something completely inappropriate',
-    'walked into something',
-    'piece of hair or debris',
-    'mark on their face',
-    'squeaking piece',
-    'yawned enormously',
-    'sent a message and immediately regretted',
-    'pretend they remember',
-    'hands are completely full',
-    'dropped something and it rolled',
-    'something in their eye',
-    'nodding along',
-    'pronouncing something wrong',
-    'sneezing fit',
-    'direct and sustained eye contact',
-    'reached for something',
-    'fell asleep briefly',
-    'confident prediction',
-    'forgot where it was going',
-    'uncooperative hair',
-    'involuntary noise while trying to lift',
-    'regretted the food choice',
-    'footwear issue',
-    'mispronounced repeatedly',
-    'backwards or inside-out',
-  ];
-  static const _chaosKeywords = [
-    'bird flew directly',
-    'loud and disruptive noise',
-    'fell over on its own',
-    'unexpected center of a very enthusiastic',
-    'animal has decided',
-    'unusual outfit',
-    'make noise',
-    'gust of wind',
-    'extremely large insect',
-    'lighting wherever',
-    'crowd has formed',
-    'very loud and very one-sided story',
-    'enthusiastic child',
-    'cooking or burning nearby',
-    'broken in a way that is more funny',
-    'uninvited guest or creature',
-    'spontaneously rearranged',
-    'recruit',
-    'loud and personal argument',
-    'small and ridiculous has escalated',
-    'animal is doing exactly what it should not',
-    'accidentally started a trend',
-    'performing something unsolicited',
-    'synchronized into something inexplicably musical',
-    'delivery or package',
-    'definitely fixed has become unfixed',
-    'squeak, rattle, or wobble',
-    'very long and intricate process',
-    'every seat, surface',
-    'counting on to work fine',
-  ];
+  static ChanceTimeRevealEffect _effectFor(ChaosCategory c) => switch (c) {
+    ChaosCategory.fortune => ChanceTimeRevealEffect.fortune,
+    ChaosCategory.misfortune ||
+    ChaosCategory.slapstick ||
+    ChaosCategory.needs => ChanceTimeRevealEffect.misfortune,
+    ChaosCategory.chaos ||
+    ChaosCategory.weather => ChanceTimeRevealEffect.chaos,
+    ChaosCategory.wildCard ||
+    ChaosCategory.social ||
+    ChaosCategory.plotHook ||
+    ChaosCategory.spicy => ChanceTimeRevealEffect.wildCard,
+  };
 
-  _EventCategory _categorize(String event) {
-    final lower = event.toLowerCase();
-    for (final k in _fortuneKeywords) {
-      if (lower.contains(k)) return _EventCategory.fortune;
-    }
-    for (final k in _misfortuneKeywords) {
-      if (lower.contains(k)) return _EventCategory.misfortune;
-    }
-    for (final k in _chaosKeywords) {
-      if (lower.contains(k)) return _EventCategory.chaos;
-    }
-    return _EventCategory.wildCard;
+  String _displayEvent(String raw) => context
+      .read<ChatService>()
+      .resolveChanceTimeEvent(raw, _charName ?? 'Character');
+
+  void _accept() {
+    final svc = context.read<ChatService>();
+    final seg = _segments[_landedIndex];
+    final name = _charName ?? 'Character';
+    // Pop FIRST so the overlay is fully disposed before
+    // _generateResponse fires notifyListeners.
+    Navigator.of(context).pop();
+    svc.applyChanceTimeResult(seg, name);
   }
 
-  String _displayEvent(String raw) => MacroResolver().resolve(
-    raw,
-    MacroContext(characterName: _charName ?? 'Character', userName: ''),
-  );
+  Widget _buildContent() {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
+      decoration: BoxDecoration(
+        color: ChanceTimePalette.backdrop.withValues(alpha: 0.97),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: ChanceTimePalette.gold.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: ChanceTimePalette.gold.withValues(alpha: 0.15),
+            blurRadius: 40,
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ChanceTimeHeader(),
+            const SizedBox(height: 12),
+            ChanceTimeWheel(
+              segments: _segments,
+              spinning: _spinning,
+              landed: _landed,
+              targetAngle: _targetAngle,
+              spinAnimation: _spinning ? _spinAnimation : null,
+            ),
+            const SizedBox(height: 12),
+            if (_landed)
+              ChanceTimeResultCard(
+                event: _displayEvent(_segments[_landedIndex]),
+                effect: _category,
+                kind: _kind,
+                reveal: _revealAnimation,
+                onAccept: _accept,
+              )
+            else
+              ChanceTimeSpinButton(onSpin: _spin),
+            const SizedBox(height: 10),
+            const ChanceTimePressureRow(),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

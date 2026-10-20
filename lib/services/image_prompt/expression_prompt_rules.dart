@@ -1,8 +1,6 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'image_prompt.dart';
-
 class ExpressionPromptReplacement {
   ExpressionPromptReplacement({
     required this.find,
@@ -132,24 +130,3 @@ class ExpressionPromptRules {
     ].join(' ');
   }
 }
-
-String originalExpressionPrompt({
-  required String emotion,
-  required String basePrompt,
-  required bool editMode,
-}) => editMode
-    ? expressionEditInstruction(emotion)
-    : '${kExpressionModifiers[emotion] ?? emotion}, $basePrompt';
-
-String composeExpressionPrompt({
-  required String emotion,
-  required String basePrompt,
-  required bool editMode,
-  required ExpressionPromptRules rules,
-}) => rules.apply(
-  originalExpressionPrompt(
-    emotion: emotion,
-    basePrompt: basePrompt,
-    editMode: editMode,
-  ),
-);

@@ -46,30 +46,115 @@ extension ChatServiceObjectiveTasks on ChatService {
     nsfw: nsfw,
   );
 
-  /// Marks the first uncompleted task matching taskDesc as completed (best-effort side-effect
-  /// for auto-complete in checkTaskCompletionInBackground currentTask YES path).
-  /// (Thin delegation; full mutation logic here in god per plan for step 11 to keep list/db
-  /// mutation thin/stayed in god; leaf calls via cb. Matches toggleTask pattern exactly.)
-  Future<void> markTaskCompleted(Objective obj, String taskDesc) async {
-    final tasks = tasksForObjective(obj);
-    final idx = tasks.indexWhere(
-      (t) => (t['description'] as String) == taskDesc && objectiveTaskIsOpen(t),
+  /// The goal sync's step list: ticks in any order and a rewritten next
+  /// step, written once and rewound together by regen (one tasks_changed op
+  /// holding the pre-sync list).
+  Future<void> _writeSyncedTasks(
+    Objective obj,
+    List<Map<String, dynamic>> tasks,
+  ) => _writeCheckDrivenTasks(obj, tasks);
+
+  /// The sync retires a goal: finished or let go, with when. The turn op
+  /// keeps the status it had so a regen puts the goal back exactly.
+  Future<void> _retireObjectiveFromSync(Objective obj, ObjectiveEnd end) async {
+    // Taken now, while the turn that ended the goal is still running.
+    final cite = _objectiveTurnCite();
+    if (_objectiveTurnOpsArmed) {
+      _recordObjectiveTurnOp({
+        'op': 'deactivated',
+        'id': obj.id,
+        'prevStatus': obj.status,
+      });
+    }
+    await _db.updateObjective(
+      ObjectivesCompanion(
+        id: drift.Value(obj.id),
+        active: const drift.Value(false),
+        status: drift.Value(
+          end == ObjectiveEnd.achieved
+              ? kObjectiveStatusDone
+              : kObjectiveStatusOvertaken,
+        ),
+        endedAt: drift.Value(DateTime.now()),
+      ),
     );
-    if (idx < 0) return;
-    tasks[idx]['completed'] = true;
-    await _writeCheckDrivenTasks(obj, tasks);
+    await _rewardObjectiveEnd(obj, end, cite);
+    await _loadActiveObjectives();
   }
 
-  /// Durable skip: `stale: true`, never `completed: true`. Regen rewinds via
-  /// the same tasks_changed turn-op as a completion.
-  Future<void> markTaskStale(Objective obj, String taskDesc) async {
-    final tasks = tasksForObjective(obj);
-    final idx = tasks.indexWhere(
-      (t) => (t['description'] as String) == taskDesc && objectiveTaskIsOpen(t),
+  /// A goal of the character's own ended: the feeling it brings (unless a
+  /// stronger one stands) and a diary card cited at the turn's reply, so a
+  /// regen or delete takes both back with the goal.
+  Future<void> _rewardObjectiveEnd(
+    Objective obj,
+    ObjectiveEnd end,
+    List<int> cite,
+  ) async {
+    if (!objectiveEarnsRewards(obj)) return;
+    final owner = obj.characterId;
+    final group = _activeGroup != null;
+    if (_realismActiveThisMode) {
+      final current = group ? _mood.memberState(owner) : _mood.state;
+      final next = objectiveRewardMood(
+        current: current,
+        end: end,
+        primary: obj.isPrimary,
+        goal: obj.objective,
+      );
+      if (next != null && !group) {
+        _mood.set(next.label, next.intensity, cause: next.cause);
+      } else if (next != null) {
+        // The owner may not be this turn's speaker, whose stamp is the only
+        // one a regen restores, so the member's old mood rides the turn ops.
+        if (_objectiveTurnOpsArmed) {
+          _recordObjectiveTurnOp({
+            'op': 'mood',
+            'charId': owner,
+            'prev': current.toStamp(),
+          });
+        }
+        _mood.setMember(owner, next);
+        final loaded = _activeCharacter;
+        if (loaded != null && _getCharacterIdFromCard(loaded) == owner) {
+          _mood.set(next.label, next.intensity, cause: next.cause);
+        }
+      }
+    }
+    final sessionId = _currentSessionId;
+    if (!_storageService.memorySettings.journalEnabled || sessionId == null) {
+      return;
+    }
+    final mood = group ? _mood.memberState(owner) : _mood.state;
+    await _journalStore.addCard(
+      sessionId: sessionId,
+      characterId: owner,
+      content: objectiveDiaryLine(end, obj.objective),
+      category: 'moment',
+      kind: 'goal',
+      sourcePositions: cite,
+      storyDay: _timeService.dayCount,
+      storyClock: _timeService.storyClockIso,
+      emotionLabel: mood.isNeutral ? null : mood.label,
+      maxCards: _storageService.memorySettings.journalMaxCards,
     );
-    if (idx < 0) return;
-    tasks[idx]['stale'] = true;
-    await _writeCheckDrivenTasks(obj, tasks);
+  }
+
+  /// The sync sets a goal aside, or wakes it.
+  Future<void> _setObjectiveDormant(Objective obj, bool dormant) async {
+    if (_objectiveTurnOpsArmed) {
+      _recordObjectiveTurnOp({
+        'op': 'status',
+        'id': obj.id,
+        'prev': obj.status,
+      });
+    }
+    await _db.updateObjective(
+      ObjectivesCompanion(
+        id: drift.Value(obj.id),
+        status: drift.Value(dormant ? kObjectiveStatusDormant : null),
+      ),
+    );
+    await _loadActiveObjectives();
   }
 
   Future<void> _writeCheckDrivenTasks(
@@ -121,6 +206,8 @@ extension ChatServiceObjectiveTasks on ChatService {
     if (newDescription.trim().isEmpty) return;
 
     tasks[taskIndex]['description'] = newDescription.trim();
+    // A step the user rewrote starts fresh: the prompt names it again.
+    tasks[taskIndex].remove(kStuckChecksKey);
     await _db.updateObjective(
       ObjectivesCompanion(
         id: drift.Value(obj.id),

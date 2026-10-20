@@ -10,7 +10,6 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'package:front_porch_ai/database/database.dart';
@@ -22,11 +21,11 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_store/world_store.dart';
 import 'package:front_porch_ai/utils/utils.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-part 'world_repository_attach.dart';
-part 'world_repository_purge.dart';
+/// What a person sees when they try to save a world with no name.
+const kWorldNameRequired = 'Give your world a name.';
 
 class WorldRepository extends ChangeNotifier {
   final StorageService _storageService;
@@ -45,8 +44,20 @@ class WorldRepository extends ChangeNotifier {
       List.unmodifiable(_worlds.where((w) => !isCharacterLinkedWorld(w)));
 
   WorldRepository(this._storageService, this._db) {
+    _attachments = WorldChatAttachments(this, () => _db);
+    _purge = CharacterLinkedWorldPurge(
+      repo: this,
+      db: () => _db,
+      storage: _storageService,
+      characters: () => _characterRepository,
+      groups: () => _groupRepository,
+      dropFromCache: (ids) => _worlds.removeWhere((w) => ids.contains(w.id)),
+    );
     _firstLoad = loadWorlds();
   }
+
+  late final WorldChatAttachments _attachments;
+  late final CharacterLinkedWorldPurge _purge;
 
   /// Completes when the initial DB load has filled the in-memory cache.
   /// Await before resolving refs at times that can race app startup (e.g.
@@ -180,7 +191,7 @@ class WorldRepository extends ChangeNotifier {
         ..addAll(dbWorlds.map(_fromRow));
       _resolveAvatarPaths(_worlds);
       // One-time: drop legacy "Aerin's Lorebook" clones so Worlds = places.
-      await _maybePurgeCharacterLinkedWorlds();
+      await _purge.maybePurge();
     } catch (e) {
       debugPrint('Error loading worlds: $e');
     } finally {
@@ -190,7 +201,7 @@ class WorldRepository extends ChangeNotifier {
   }
 
   Future<({int deleted, int skipped})> purgeCharacterLinkedWorlds() =>
-      _purgeCharacterLinkedWorldsImpl();
+      _purge.purge();
 
   /// Rename display name only — attachments use UUID and need no cascade.
   Future<void> renameWorld(model.World world, String newName) async {
@@ -204,7 +215,23 @@ class WorldRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> saveWorld(model.World world) async {
+  /// Saves run one at a time: the create path reads the taken names, picks a
+  /// free "Name (n)", then inserts, and two overlapping creates of one name
+  /// (a double-clicked Create World) would both pick the same "(n)" and the
+  /// second insert would hit the UNIQUE index on `worlds.name`.
+  Future<void> _saveChain = Future<void>.value();
+
+  /// Throws [StateError] ([kWorldNameRequired]) for a blank name: a nameless
+  /// world shows as "?" and cannot be told apart in any picker.
+  Future<void> saveWorld(model.World world) {
+    final run = _saveChain.then((_) => _saveWorld(world));
+    // The caller gets [run]'s error; the chain only needs to keep going.
+    _saveChain = run.then<void>((_) {}, onError: (Object _) {});
+    return run;
+  }
+
+  Future<void> _saveWorld(model.World world) async {
+    if (world.name.trim().isEmpty) throw StateError(kWorldNameRequired);
     if (world.id.isEmpty) {
       world.id = _uuid.v4();
     }
@@ -220,13 +247,13 @@ class WorldRepository extends ChangeNotifier {
     if (existing != null) {
       await _db.updateWorld(_toCompanion(world));
     } else {
+      world.name = world.name.trim();
       // Name collision on create → auto-rename (Keep both).
       final taken = await _db.getWorldByName(world.name);
       if (taken != null && taken.id != world.id) {
-        world.name = uniqueWorldName(
-          world.name,
-          (n) => _worlds.any((w) => w.name == n && w.id != world.id),
-        );
+        // The database, not the cache: the cache can still be loading.
+        final names = {for (final w in await _db.getAllWorlds()) w.name};
+        world.name = uniqueWorldName(world.name, names.contains);
       }
       await _db.insertWorld(_toCompanion(world));
     }
@@ -270,6 +297,8 @@ class WorldRepository extends ChangeNotifier {
     // Fresh local identity; remember provenance.
     world.sourceId ??= world.id.isNotEmpty ? world.id : null;
     world.id = _uuid.v4();
+    // A file with no name imports as "Imported World" (uniqueWorldName), so
+    // saveWorld's blank-name refusal never blocks an import.
     world.name = uniqueWorldName(
       world.name,
       (n) => _worlds.any((w) => w.name == n),
@@ -328,31 +357,31 @@ class WorldRepository extends ChangeNotifier {
   void notify() => notifyListeners();
 
   Future<List<String>> getChatWorldIds(String chatId) =>
-      _getChatWorldIdsImpl(chatId);
+      _attachments.chatWorldIds(chatId);
 
   Future<ChatPlaceSlots> getChatWorldAttachments(String chatId) =>
-      _getChatWorldAttachmentsImpl(chatId);
+      _attachments.chatWorldAttachments(chatId);
 
   Future<List<model.World>> getChatWorlds(String chatId) =>
-      _getChatWorldsImpl(chatId);
+      _attachments.chatWorlds(chatId);
 
   /// Canonical writer: Setting (0..1) + Lore (0..N). Empty both = decided empty.
   Future<void> setChatWorldAttachments(
     String chatId, {
     String? primaryId,
     List<String> loreIds = const [],
-  }) => _setChatWorldAttachmentsImpl(
+  }) => _attachments.setAttachments(
     chatId,
     primaryId: primaryId,
     loreIds: loreIds,
   );
 
   Future<void> setChatWorlds(String chatId, List<String> worldIds) =>
-      _setChatWorldsImpl(chatId, worldIds);
+      _attachments.setFlat(chatId, worldIds);
 
   /// Record that a chat's world attachments are settled without changing them.
   Future<void> markChatWorldsDecided(String chatId) =>
-      _markChatWorldsDecidedImpl(chatId);
+      _attachments.markDecided(chatId);
 
   /// Give a chat the worlds its character carries, but ONLY if the chat has
   /// never had that decision made. Returns true when it seeded.
@@ -362,19 +391,10 @@ class WorldRepository extends ChangeNotifier {
   Future<bool> backfillChatWorldsFromCharacter({
     required String chatId,
     required List<String> characterWorldRefs,
-  }) => _backfillChatWorldsFromCharacterImpl(
+  }) => _attachments.backfillFromCharacter(
     chatId: chatId,
     characterWorldRefs: characterWorldRefs,
   );
-
-  Future<void> attachWorldToChat(
-    String chatId,
-    String worldId, {
-    bool? asPrimary,
-  }) => _attachWorldToChatImpl(chatId, worldId, asPrimary: asPrimary);
-
-  Future<void> detachWorldFromChat(String chatId, String worldId) =>
-      _detachWorldFromChatImpl(chatId, worldId);
 
   /// Attach worlds newly added to a CHARACTER onto that character's existing
   /// chats that don't have any yet.
@@ -392,7 +412,7 @@ class WorldRepository extends ChangeNotifier {
   Future<List<String>> applyAddedCharacterWorldsToChats({
     required String characterId,
     required List<String> addedRefs,
-  }) => _applyAddedCharacterWorldsToChatsImpl(
+  }) => _attachments.applyAddedCharacterWorlds(
     characterId: characterId,
     addedRefs: addedRefs,
   );
@@ -403,22 +423,26 @@ class WorldRepository extends ChangeNotifier {
   Future<void> applyTemplateWorldsToChat(
     String chatId,
     List<String> templateWorldIds,
-  ) => _applyTemplateWorldsToChatImpl(chatId, templateWorldIds);
+  ) => _attachments.applyTemplate(chatId, templateWorldIds);
 
   Future<void> setChatBiome({
     required String chatId,
     required int dayCount,
     required Biome biome,
-  }) => _setChatBiomeImpl(chatId: chatId, dayCount: dayCount, biome: biome);
+  }) => _attachments.setBiome(chatId: chatId, dayCount: dayCount, biome: biome);
 
   /// Raw span rows for [BiomeSchedule] hydrate (ordered by day ASC).
   Future<List<({int effectiveFromDay, String biomeJson})>> getChatBiomeSpanRows(
     String chatId,
-  ) => _getChatBiomeSpanRowsImpl(chatId);
+  ) => _attachments.biomeSpanRows(chatId);
 
   Future<Biome> biomeAt({
     required String chatId,
     required int day,
     Biome? worldDefault,
-  }) => _biomeAtImpl(chatId: chatId, day: day, worldDefault: worldDefault);
+  }) => _attachments.biomeAt(
+    chatId: chatId,
+    day: day,
+    worldDefault: worldDefault,
+  );
 }

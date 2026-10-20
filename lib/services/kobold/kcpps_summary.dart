@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/utils/utils.dart';
 
 import 'kcpps_codec.dart';
+import 'kobold_chat_template.dart';
 import 'kobold_context_verdict.dart';
 import 'kobold_launch_config.dart';
 
@@ -46,7 +47,9 @@ String kcppsShortLine(KcppsRead read) {
   if (read is KcppsBroken) return 'Cannot be read: ${read.reason}';
   final ok = read as KcppsOk;
   final c = ok.config;
-  final unmanaged = ok.unmanagedKeys;
+  final unmanaged = ok.unmanagedKeys
+      .where((key) => !kcppsIsTemplateKey(key))
+      .toList();
   if (unmanaged.isNotEmpty) {
     final model = c.modelPath.isEmpty
         ? 'No model'
@@ -81,6 +84,10 @@ String kvQuantWords(KvQuant q) => switch (q) {
   KvQuant.q5_1 => '5-bit',
   KvQuant.q4_0 => '4-bit',
 };
+
+/// Said wherever the graphics card's memory could not be read (0 MB). A
+/// fit against an unknown size is no fit: no bigger/smaller verdict.
+const kGraphicsMemoryUnknown = 'Graphics memory not detected — fit unknown';
 
 /// 32 as "32 MB", 1024 as "1 GB".
 String koboldMemoryWords(int mb) => mb >= 1024 && mb % 1024 == 0

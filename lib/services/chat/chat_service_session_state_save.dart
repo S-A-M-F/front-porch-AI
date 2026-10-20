@@ -130,6 +130,8 @@ extension ChatServiceSessionStateSave on ChatService {
         'memoryBudgetPercent': _groupMemoryBudgetPercent,
         'characterRAGPriorities': _groupCharacterRAGPriorities,
         'objectives': perCharObjectives,
+        kDirectingSessionKey: _observerMode,
+        ..._directorScene.toJsonFragment(),
         'savedAt': DateTime.now().toIso8601String(),
       });
     } else if (_activeGroup == null && _sceneGuest.ids.isNotEmpty) {
@@ -232,6 +234,8 @@ extension ChatServiceSessionStateSave on ChatService {
         realismEnabled: drift.Value(_realismEnabled),
         characterEmotion: drift.Value(_characterEmotion),
         emotionIntensity: drift.Value(_emotionIntensity),
+        emotionCause: drift.Value(_emotionCause),
+        emotionHeldTurns: drift.Value(_emotionHeldTurns),
         timeOfDay: drift.Value(_timeService.timeOfDay),
         dayCount: drift.Value(_timeService.dayCount),
         startDayOfWeek: drift.Value(_timeService.startDayOfWeekAnchor),
@@ -276,6 +280,20 @@ extension ChatServiceSessionStateSave on ChatService {
           _nsfwService.refractoryMinutesTotal,
         ),
         refractoryOpened: drift.Value(_nsfwService.refractoryOpened),
+        // v59 — the soft gate and its peak stamps (PR 3). Defaults stay
+        // NULL so a hard body's row is byte-identical to a v58 row.
+        refractorySoft: drift.Value(_nsfwService.refractory.soft ? true : null),
+        refractoryPeaks: drift.Value(
+          _nsfwService.refractory.peaks.isEmpty
+              ? null
+              : jsonEncode(_nsfwService.refractory.peaks),
+        ),
+        // v60 — the warmth tail (PR 4). Written while it exists, frozen or
+        // live: a tail asleep under a lock must survive a restart.
+        refractoryTailMinutes: drift.Value(
+          _nsfwService.refractory.tail?.minutes,
+        ),
+        refractoryTailTotal: drift.Value(_nsfwService.refractory.tail?.total),
         trustLevel: drift.Value(_relationshipService.trustLevel),
         activeFixation: drift.Value(_relationshipService.activeFixation),
         fixationLifespan: drift.Value(_relationshipService.fixationLifespan),
@@ -283,6 +301,7 @@ extension ChatServiceSessionStateSave on ChatService {
         withUser: drift.Value(_relationshipService.withUser),
         chaosModeEnabled: drift.Value(_chaosModeService.chaosModeEnabled),
         chaosPressure: drift.Value(_chaosModeService.chaosPressure),
+        chaosNsfwEnabled: drift.Value(_chaosModeService.chaosNsfwEnabled),
         trustRepairPending: drift.Value(
           _relationshipService.pendingTrustRepair,
         ),

@@ -163,7 +163,7 @@ extension ChatServiceAccessorsLiving on ChatService {
       // text setter keeps swipe + realism metadata (chips survive edit).
       msg.text = newText;
       // Persist index — on-screen 0..23 is a tail window, not the diary cite.
-      _invalidateJournalFrom(
+      _timeline.invalidateFrom(
         persistMessagePosition(base: _history.basePosition, index: index),
       );
       await _saveChat();
@@ -195,7 +195,253 @@ extension ChatServiceAccessorsLiving on ChatService {
   String get _realismEvalStreamTextCleanImpl =>
       identical(_realismEvalStreamText, _evalCleanSrc)
       ? _evalCleanOut!
-      : _evalCleanOut = _stripThinkBlocks(
+      : _evalCleanOut = stripEvalThinkBlocks(
           _evalCleanSrc = _realismEvalStreamText,
         );
+}
+
+/// Reprocess Needs (body in needs_reprocess.dart) and the group-realism test
+/// hooks. Public extension members: no fake overrides them.
+extension ChatServiceRealismDoors on ChatService {
+  /// Re-evaluate a message's needs deltas under a user critique; see
+  /// [NeedsReprocess.manualReprocessNeeds] for [onlyNeeds] scoping.
+  Future<bool> manualReprocessNeeds(
+    int index,
+    String critique, {
+    Set<String> onlyNeeds = const <String>{},
+  }) => _needsReprocess.manualReprocessNeeds(
+    index,
+    critique,
+    onlyNeeds: onlyNeeds,
+  );
+
+  /// Revert a prior manual reprocess on the given message.
+  Future<bool> revertNeedsReprocess(int index) =>
+      _needsReprocess.revertNeedsReprocess(index);
+
+  /// Test-only: pin the group speaker the same way `_generateResponse` does
+  /// ([GroupRealismStore.turnSpeakerId]). Do not assign `_activeCharacter`.
+  @visibleForTesting
+  void debugPinTurnSpeakerForRealism(String? charId) {
+    _groupStore.turnSpeakerId = charId;
+  }
+
+  /// Test-only: set the glance bit on a group member slot.
+  @visibleForTesting
+  void debugSetGroupWithUser(String charId, bool? v) {
+    _groupStore.memberForWrite(charId).withUser = v;
+  }
+
+  /// Test-only: live position injection through the wired BehavioralInjection.
+  /// Does not stub `getOccupationBrief`.
+  @visibleForTesting
+  String debugBuildPositionInjection() =>
+      _behavioralInjection.buildPositionInjection();
+
+  /// Test-only: first-speaker [RealismDance.loadIntoScalars] without a turn.
+  @visibleForTesting
+  void debugReloadFirstGroupSpeakerScalars() {
+    if (_groupCharacters.isEmpty) return;
+    _realismDance.loadIntoScalars(
+      _getCharacterIdFromCard(_groupCharacters.first),
+    );
+  }
+
+  /// Test-only: emotion sitting in a group member slot (not live scalars).
+  @visibleForTesting
+  String debugGroupSlotEmotion(String charId) =>
+      _groupRealism[charId]?.emotion ?? '';
+
+  /// Test-only: stored needs for a group member. Empty when the slot has
+  /// never carried a vector (does not invent [NeedsSimulation.needDefaults]).
+  @visibleForTesting
+  Map<String, int> debugGroupNeeds(String charId) =>
+      _groupStore.needsOf(charId);
+
+  /// Test-only: mark the in-flight post-gen as rejected so lite/engine
+  /// finalize can prove they skip wear (same flag `_yieldSettlingTurn` sets).
+  @visibleForTesting
+  void debugRequestPostGenAbort() {
+    _postGenAbortRequested = true;
+  }
+
+  /// Test-only: seed a member slot so a later soft turn can prove it does
+  /// not leak this member's Needs / bond into the guest prompt.
+  @visibleForTesting
+  void debugSeedGroupSpeakerState(
+    String charId, {
+    Map<String, int>? needs,
+    int? longTermTier,
+  }) {
+    if (needs != null) _groupStore.setNeeds(charId, needs);
+    if (longTermTier != null) {
+      _groupStore.memberForWrite(charId).longTermTier = longTermTier;
+    }
+  }
+}
+
+/// Pockets & Wardrobe and Growth Rings doors for the sidebar, the web facade
+/// and the other parts (bodies in [PocketsLedger] and [GrowthDesk]), plus
+/// the Journal / Growth / Pockets builders. Public extension members: no
+/// fake overrides them.
+extension ChatServiceMemoryDoors on ChatService {
+  /// Combined Pockets gate: Porch Life global AND this character's card flag.
+  /// The global is read through the class member first, as the extension
+  /// body always did: the golden FakeChatService answers it (false) and the
+  /// sidebar must not reach the ledger on a fake.
+  bool pocketsEnabledFor(String characterId) =>
+      pocketsFeatureEnabled && _pocketsLedger.pocketsEnabledFor(characterId);
+
+  /// Put one item into a character's kit by hand (gift, conjured, or a
+  /// record correction). The gate is read here first, as the extension body
+  /// did, so a fake with Pockets off returns before reaching the ledger.
+  Future<void> addPocketItem(
+    String characterId, {
+    required PocketSection section,
+    required String name,
+    bool gift = false,
+    bool correction = false,
+  }) async {
+    if (!pocketsEnabledFor(characterId)) return;
+    return _pocketsLedger.addPocketItem(
+      characterId,
+      section: section,
+      name: name,
+      gift: gift,
+      correction: correction,
+    );
+  }
+
+  /// Strike one item off by hand; also retires its item-memory card. No
+  /// record (the class [pocketsFor], which fakes answer) returns first.
+  Future<void> removePocketItem(
+    String characterId, {
+    required PocketSection section,
+    required int index,
+  }) async {
+    if (pocketsFor(characterId) == null) return;
+    return _pocketsLedger.removePocketItem(
+      characterId,
+      section: section,
+      index: index,
+    );
+  }
+
+  /// Persist [p] back to wherever that character's record lives.
+  void setPocketsFor(String characterId, Pockets p) =>
+      _pocketsLedger.setPocketsFor(characterId, p);
+
+  /// What [c]'s card says they START a chat with.
+  Pockets startingPocketsFor(CharacterCard c) =>
+      PocketsLedger.startingPocketsFor(c);
+
+  /// Seed every speaker's card kit unless the chat already has one. Every
+  /// conversation entry path calls this.
+  void seedPocketsFromCards() {
+    if (!pocketsFeatureEnabled) return;
+    _pocketsLedger.seedPocketsFromCards();
+  }
+
+  /// Review parking door for the sidebar banner + review dialog.
+  GrowthReview get growthReview => _growthDesk.growthReview;
+
+  /// Every ring for one owner in the current chat (active first, then past).
+  List<GrowthRingData> growthRingsForOwner(String ownerId) =>
+      _growthDesk.growthRingsForOwner(ownerId);
+
+  /// Active-ring count for badges (group member cards, sidebar).
+  int growthRingCountFor(CharacterCard card) =>
+      _growthDesk.growthRingCountFor(card);
+
+  /// Whether an owner still has an undistilled legacy evolved blob.
+  bool hasLegacyGrowthBlobFor(String ownerId) =>
+      _growthDesk.hasLegacyGrowthBlobFor(ownerId);
+
+  /// Manually plant a pinned, user-authored ring.
+  Future<void> plantGrowthRingFor(
+    String ownerId,
+    String text, {
+    String category = 'trait',
+  }) => _growthDesk.plantGrowthRingFor(ownerId, text, category: category);
+
+  /// Edit a ring's wording/category in place.
+  Future<void> editGrowthRing(
+    GrowthRingData ring, {
+    required String text,
+    String? category,
+  }) => _growthDesk.editGrowthRing(ring, text: text, category: category);
+
+  Future<void> setGrowthRingPinned(String ringId, bool pinned) =>
+      _growthDesk.setGrowthRingPinned(ringId, pinned);
+
+  /// Demote a ring to Past growth (reversible).
+  Future<void> retireGrowthRing(String ringId) =>
+      _growthDesk.retireGrowthRing(ringId);
+
+  /// Bring a Past ring back into the active set.
+  Future<void> unretireGrowthRing(GrowthRingData ring) =>
+      _growthDesk.unretireGrowthRing(ring);
+
+  /// Hard-delete one ring.
+  Future<void> deleteGrowthRing(String ringId) =>
+      _growthDesk.deleteGrowthRing(ringId);
+
+  /// Reset one owner's growth in this chat (rings and legacy blob).
+  Future<void> resetGrowthFor(String ownerId) =>
+      _growthDesk.resetGrowthFor(ownerId);
+
+  /// Manual "Check now". Force-runs even on an empty window.
+  Future<void> forceGrowthPass() => _growthDesk.forceGrowthPass();
+
+  ItemCardJournal _buildItemCardJournal() => ItemCardJournal(
+    messages: _messages,
+    history: _history,
+    currentSessionId: () => _currentSessionId,
+    journalStore: () => _journalStore,
+    db: () => _db,
+    time: () => _timeService,
+    memorySettings: () => _storageService.memorySettings,
+    activeCharacterName: () => _activeCharacter?.name,
+  );
+
+  GrowthDesk _buildGrowthDesk() => GrowthDesk(
+    messages: _messages,
+    macroResolver: _macroResolver,
+    store: () => _growthStore,
+    review: () => _growthReview,
+    service: () => _growthService,
+    journalMaintenance: () => _journalMaintenance,
+    currentSessionId: () => _currentSessionId,
+    activeCharacter: () => _activeCharacter,
+    activeGroup: () => _activeGroup,
+    groupCharacters: () => _groupCharacters,
+    sceneGuestCards: () => _sceneGuest.cards,
+    characterIdFor: _getCharacterIdFromCard,
+    memorySettings: () => _storageService.memorySettings,
+    hasLlm: () => _llmProvider != null,
+    isGrowthPassRunning: () => _isGrowthPassRunning,
+    awaitHistoryHydrated: _awaitHistoryHydrated,
+    setPending: (v) => _pendingRealismMetadata = v,
+    notify: notifyListeners,
+  );
+
+  TimelineInvalidator _buildTimelineInvalidator() => TimelineInvalidator(
+    messages: _messages,
+    currentSessionId: () => _currentSessionId,
+    summary: () => _summary,
+    setSummary: (v) => _summary = v,
+    armRecapClear: () => _recapClearArmed = true,
+    summaryLastIndex: () => _summaryLastIndex,
+    setSummaryLastIndex: (v) => _summaryLastIndex = v,
+    journalStore: () => _journalStore,
+    journalReview: () => _journalReview,
+    journalMaintenance: () => _journalMaintenance,
+    growthStore: () => _growthStore,
+    growthReview: () => _growthReview,
+    growth: () => _growthDesk,
+    itemCards: () => _itemCards,
+    db: () => _db,
+    disposed: () => _disposed,
+    notify: notifyListeners,
+  );
 }

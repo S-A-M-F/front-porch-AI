@@ -89,7 +89,21 @@ class SceneGuestState {
   // the user sends a real message / switches chats.
   CharacterCard? exitUndoGuest;
   ChatMessage? exitUndoMessage;
-  String? exitUndoOfferName;
+  String? _exitUndoOfferName;
+  String? get exitUndoOfferName => _exitUndoOfferName;
+
+  /// Arming an offer also records [exitUndoName]; consuming it does not.
+  set exitUndoOfferName(String? name) {
+    _exitUndoOfferName = name;
+    if (name != null) exitUndoName = name;
+  }
+
+  /// Who the open undo would bring back; not consumed by the SnackBar.
+  String? exitUndoName;
+
+  /// The open undo is {{user}}'s own `/director` step-out, not a guest's or
+  /// member's exit: undoing it deletes the goodbye and leaves Director Mode.
+  bool exitUndoUserStep = false;
 
   /// Set when a FULL group member's `/exit` is awaiting commit. They have said
   /// goodbye and left the live roster, but their DB row/realism/evolution/

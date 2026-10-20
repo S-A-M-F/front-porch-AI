@@ -4,7 +4,7 @@ import 'package:flutter/services.dart' show SpellCheckResults, SuggestionSpan;
 
 import 'package:front_porch_ai/services/services.dart'
     show DesktopSpellCheckService;
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/app_text_field.dart';
 import 'package:front_porch_ai/ui/widgets/styled_text_tokenizer.dart';
 
@@ -154,32 +154,27 @@ class StyledTextController extends TextEditingController
           addSegment(text.substring(lastEnd, match.start), style, lastEnd);
         }
         TextStyle? segStyle;
-        switch (match.type) {
-          case StyledTokenType.dialogue:
-            segStyle = (style ?? const TextStyle()).copyWith(
-              color: AppColors.resolve(
-                context,
-                Colors.amberAccent,
-                const Color(0xFFB45309),
-              ),
-              fontWeight: FontWeight.w500,
-            );
-          case StyledTokenType.action:
-            segStyle = (style ?? const TextStyle()).copyWith(
-              color: AppColors.resolve(
-                context,
-                const Color(0xFF90CAF9),
-                const Color(0xFF1565C0),
-              ),
-            );
-          case StyledTokenType.macro:
-            segStyle = (style ?? const TextStyle()).copyWith(
-              color: AppColors.resolve(
-                context,
-                Colors.tealAccent,
-                const Color(0xFF0D9488),
-              ),
-            );
+        // A preset may colour tokens itself (the creator's studio palette);
+        // every other preset keeps the built-in colours below.
+        final tokenStyler = preset.tokenStyler;
+        if (tokenStyler != null) {
+          segStyle = tokenStyler(context, match.type, style);
+        } else {
+          switch (match.type) {
+            case StyledTokenType.dialogue:
+              segStyle = (style ?? const TextStyle()).copyWith(
+                color: ChatColors.quoteInkOf(context),
+                fontWeight: FontWeight.w500,
+              );
+            case StyledTokenType.action:
+              segStyle = (style ?? const TextStyle()).copyWith(
+                color: ChatColors.narrationInkOf(context),
+              );
+            case StyledTokenType.macro:
+              segStyle = (style ?? const TextStyle()).copyWith(
+                color: ChatColors.macroInkOf(context),
+              );
+          }
         }
         addSegment(match.matchText, segStyle, match.start);
         lastEnd = match.end;
@@ -212,9 +207,9 @@ class StyledTextController extends TextEditingController
       );
     }
 
-    const misspelledTextStyle = TextStyle(
+    final misspelledTextStyle = TextStyle(
       decoration: TextDecoration.underline,
-      decorationColor: Colors.redAccent,
+      decorationColor: StatusColors.dangerOf(context),
       decorationStyle: TextDecorationStyle.wavy,
     );
 

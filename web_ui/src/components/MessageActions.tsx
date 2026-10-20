@@ -5,9 +5,11 @@
 // delete / speak). Extracted from ChatPage to keep that page under the file-size
 // cap.
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, KeyboardEvent, useState } from 'react';
 import { api } from '../api/client';
 import { type Message } from './chatTypes';
+import { ContextBudgetModal } from './ContextBudgetModal';
+import { TokenAlternativesModal } from './TokenAlternativesModal';
 import { SpeakButton } from './VoiceControls';
 import { VariantPickerModal } from './VariantPickerModal';
 
@@ -56,6 +58,8 @@ export function MessageActions({
   const count = m.swipeCount ?? 1;
   const idx = (m.swipeIndex ?? 0) + 1;
   const [picker, setPicker] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const [otherWords, setOtherWords] = useState(false);
   const [critiqueOpen, setCritiqueOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [lookupQuery, setLookupQuery] = useState('');
@@ -106,6 +110,14 @@ export function MessageActions({
     }
     onRegenerate(draft);
   };
+  // Plain Enter stays a new line in the note; Ctrl/⌘+Enter regenerates
+  // (desktop dialog parity). Numpad Enter also reports key 'Enter'.
+  const critiqueKey = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      confirmCritique();
+    }
+  };
   return (
     <>
       <div className={`msg-actions${m.isUser ? ' user' : ''}`}>
@@ -147,12 +159,24 @@ export function MessageActions({
         <button className="icon-btn" title="Generate reply" disabled={busy} onClick={() => onRegenerate()}>⟳</button>
       )}
       {canSpeak && !m.isUser && m.text.trim() !== '' && <SpeakButton text={m.text} />}
+      {!m.isUser && m.hasContext && (
+        <button className="icon-btn" title="Inspect prompt" onClick={() => setInspecting(true)}>📊</button>
+      )}
+      {!m.isUser && m.hasTokenAlts && (
+        <button className="icon-btn" title="Other words" onClick={() => setOtherWords(true)}>🔀</button>
+      )}
       {m.sender !== 'System' && (
         <button className="icon-btn" title="Fork from here" disabled={busy} onClick={onFork}>⑂</button>
       )}
       <button className="icon-btn" title="Edit" disabled={busy} onClick={onEdit}>✎</button>
       <button className="icon-btn" title="Delete" disabled={busy && isLast} onClick={onDelete}>🗑</button>
       </div>
+      {inspecting && (
+        <ContextBudgetModal messageIndex={m.index} onClose={() => setInspecting(false)} />
+      )}
+      {otherWords && (
+        <TokenAlternativesModal messageIndex={m.index} onClose={() => setOtherWords(false)} />
+      )}
       {picker && (
         <VariantPickerModal
           messageIndex={m.index}
@@ -170,6 +194,7 @@ export function MessageActions({
             data-testid="regen-critique-dialog"
             onClick={(e) => e.stopPropagation()}
             onSubmit={confirmCritique}
+            onKeyDown={critiqueKey}
           >
             <div className="drawer-head">
               <span>Regenerate</span>
@@ -224,6 +249,7 @@ export function MessageActions({
               </div>
             )}
             <div className="regen-critique-actions">
+              <span className="muted small regen-critique-chord">⌘/Ctrl+Enter</span>
               <button type="button" className="link-btn" onClick={closeCritique}>Cancel</button>
               <button type="submit">Regenerate</button>
             </div>

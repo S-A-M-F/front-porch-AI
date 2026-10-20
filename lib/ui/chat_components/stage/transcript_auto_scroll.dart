@@ -20,21 +20,34 @@ import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 
-void applyTranscriptAutoScroll(
-  ScrollController controller, {
-  required bool generating,
-}) {
-  // Option B: never pin to newest on send or stream. Do not rewrite
-  // offset on every layout — that was the hold that bucked idle scrub.
-}
-
 enum TranscriptGrowth { open, prepend, other }
 
-String transcriptTipKey(List<ChatMessage> messages) {
-  if (messages.isEmpty) return '';
-  final tip = messages.last;
-  return '${tip.sender}\u0000${tip.text}';
-}
+String transcriptTipKey(List<ChatMessage> messages) =>
+    messages.isEmpty ? '' : _rowKey(messages.last);
+
+/// The oldest row's identity. A prepend puts a new message object first; an
+/// append never does. Identity, not text: an older page can start with the
+/// same words as the old first row.
+String transcriptHeadKey(List<ChatMessage> messages) =>
+    messages.isEmpty ? '' : '${identityHashCode(messages.first)}';
+
+String _rowKey(ChatMessage m) => '${m.sender}\u0000${m.text}';
+
+/// Same tip on a longer list reads as older rows above, unless the head
+/// is known and unchanged: then the rows were added below, and the tip
+/// matches only because the new last line repeats the old one.
+bool isTranscriptPrepend({
+  required int prevLen,
+  required String prevTip,
+  required int nextLen,
+  required String nextTip,
+  String? prevHead,
+  String? nextHead,
+}) =>
+    nextLen > prevLen &&
+    nextTip.isNotEmpty &&
+    nextTip == prevTip &&
+    (prevHead == null || nextHead == null || nextHead != prevHead);
 
 TranscriptGrowth classifyTranscriptGrowth({
   String? sessionId,
@@ -43,13 +56,22 @@ TranscriptGrowth classifyTranscriptGrowth({
   required String prevTip,
   required int nextLen,
   required String nextTip,
+  String? prevHead,
+  String? nextHead,
 }) {
   if (nextLen <= 0) return TranscriptGrowth.other;
   if (prevLen <= 0) return TranscriptGrowth.open;
   if (sessionId != null && sessionId != prevSession) {
     return TranscriptGrowth.open;
   }
-  if (nextLen > prevLen && nextTip.isNotEmpty && nextTip == prevTip) {
+  if (isTranscriptPrepend(
+    prevLen: prevLen,
+    prevTip: prevTip,
+    nextLen: nextLen,
+    nextTip: nextTip,
+    prevHead: prevHead,
+    nextHead: nextHead,
+  )) {
     return TranscriptGrowth.prepend;
   }
   return TranscriptGrowth.other;
@@ -79,7 +101,6 @@ void holdTranscriptAfterPrepend(
 }
 
 /// Stick-if-at-bottom while a reply is streaming on a forward list.
-/// [applyTranscriptAutoScroll] stays a no-op — Rawhide tests call it.
 bool followTranscriptWhileStreaming(
   ScrollController? controller, {
   required bool followEnabled,

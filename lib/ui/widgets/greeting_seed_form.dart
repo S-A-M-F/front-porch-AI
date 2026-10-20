@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/pockets.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/creator_palette.dart';
+import 'package:front_porch_ai/ui/widgets/greeting_seed_form/greeting_seed_form.dart';
 import 'package:front_porch_ai/ui/widgets/identity_chip_lists.dart';
-import 'package:front_porch_ai/ui/widgets/needs_clock_off_note.dart';
-import 'package:front_porch_ai/ui/widgets/slider_with_input.dart';
-import 'package:front_porch_ai/ui/widgets/story_begins_row.dart';
-import 'package:front_porch_ai/ui/widgets/synced_text_field.dart';
-
-part 'greeting_seed_form.sections.dart';
 
 /// Opening-state editor for one alternate greeting.
 ///
@@ -61,16 +56,6 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
     }
   }
 
-  static const _times = [
-    'dawn',
-    'morning',
-    'late_morning',
-    'afternoon',
-    'evening',
-    'night',
-  ];
-  static const _intensities = ['mild', 'moderate', 'strong'];
-
   @override
   Widget build(BuildContext context) {
     final enabled = _uiOn || widget.seed != null;
@@ -81,14 +66,14 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
         _masterToggle(context, enabled),
         if (enabled) ...[
           const SizedBox(height: 20),
-          _timeSection(s),
+          GreetingSeedTimeSection(seed: s, onChanged: widget.onChanged),
           const SizedBox(height: 20),
-          _relationshipSection(s),
+          GreetingSeedRelationshipSection(seed: s, onChanged: widget.onChanged),
           const SizedBox(height: 20),
-          _emotionSection(s),
+          GreetingSeedEmotionSection(seed: s, onChanged: widget.onChanged),
           if (widget.showNeeds) ...[
             const SizedBox(height: 20),
-            _needsSection(s),
+            GreetingSeedNeedsSection(seed: s, onChanged: widget.onChanged),
           ],
           if (widget.showInventory) ...[
             const SizedBox(height: 20),
@@ -108,12 +93,14 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardOf(context),
+        color: context.creatorPalette?.card ?? AppColors.cardOf(context),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: enabled
-              ? AppColors.formMasterAccent.withValues(alpha: 0.4)
-              : AppColors.borderOf(context),
+              ? (context.creatorPalette?.amber ??
+                        AppColors.formAccentOf(context))
+                    .withValues(alpha: 0.4)
+              : context.creatorPalette?.line ?? AppColors.borderOf(context),
         ),
       ),
       child: Row(
@@ -123,17 +110,21 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
             height: 44,
             decoration: BoxDecoration(
               color: enabled
-                  ? AppColors.formMasterAccent.withValues(alpha: 0.2)
-                  : AppColors.surfaceContainerOf(
-                      context,
-                    ).withValues(alpha: 0.6),
+                  ? (context.creatorPalette?.amber ??
+                            AppColors.formAccentOf(context))
+                        .withValues(alpha: 0.2)
+                  : (context.creatorPalette?.raise ??
+                            AppColors.surfaceContainerOf(context))
+                        .withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               Icons.tune,
               color: enabled
-                  ? AppColors.formMasterAccent
-                  : AppColors.iconSecondary(context),
+                  ? context.creatorPalette?.amber ??
+                        AppColors.formAccentOf(context)
+                  : context.creatorPalette?.muted ??
+                        AppColors.iconSecondary(context),
               size: 24,
             ),
           ),
@@ -145,7 +136,9 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
                 Text(
                   'Custom opening state',
                   style: TextStyle(
-                    color: AppColors.textPrimary(context),
+                    color:
+                        context.creatorPalette?.ink ??
+                        AppColors.textPrimary(context),
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -159,8 +152,10 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
                             'greeting.',
                   style: TextStyle(
                     color: enabled
-                        ? AppColors.formMasterAccent
-                        : AppColors.textTertiary(context),
+                        ? context.creatorPalette?.amber ??
+                              AppColors.formAccentOf(context)
+                        : context.creatorPalette?.muted ??
+                              AppColors.textTertiary(context),
                     fontSize: 12,
                   ),
                 ),
@@ -179,66 +174,18 @@ class _GreetingSeedFormState extends State<GreetingSeedForm> {
                 widget.onChanged(null);
               }
             },
-            activeTrackColor: AppColors.formMasterAccent.withValues(alpha: 0.5),
-            activeThumbColor: AppColors.formMasterAccent,
+            activeTrackColor:
+                (context.creatorPalette?.amber ??
+                        AppColors.formAccentOf(context))
+                    .withValues(alpha: 0.5),
+            activeThumbColor:
+                context.creatorPalette?.amber ??
+                AppColors.formAccentOf(context),
           ),
         ],
       ),
     );
   }
-
-  static final _needs =
-      <
-        (
-          String,
-          int? Function(GreetingRealismSeed),
-          GreetingRealismSeed Function(GreetingRealismSeed, int),
-          GreetingRealismSeed Function(GreetingRealismSeed),
-        )
-      >[
-        (
-          'Hunger',
-          (s) => s.needsBaselineHunger,
-          (s, v) => s.copyWith(needsBaselineHunger: v),
-          (s) => s.copyWith(needsBaselineHunger: null),
-        ),
-        (
-          'Bladder',
-          (s) => s.needsBaselineBladder,
-          (s, v) => s.copyWith(needsBaselineBladder: v),
-          (s) => s.copyWith(needsBaselineBladder: null),
-        ),
-        (
-          'Energy',
-          (s) => s.needsBaselineEnergy,
-          (s, v) => s.copyWith(needsBaselineEnergy: v),
-          (s) => s.copyWith(needsBaselineEnergy: null),
-        ),
-        (
-          'Social',
-          (s) => s.needsBaselineSocial,
-          (s, v) => s.copyWith(needsBaselineSocial: v),
-          (s) => s.copyWith(needsBaselineSocial: null),
-        ),
-        (
-          'Fun',
-          (s) => s.needsBaselineFun,
-          (s, v) => s.copyWith(needsBaselineFun: v),
-          (s) => s.copyWith(needsBaselineFun: null),
-        ),
-        (
-          'Hygiene',
-          (s) => s.needsBaselineHygiene,
-          (s, v) => s.copyWith(needsBaselineHygiene: v),
-          (s) => s.copyWith(needsBaselineHygiene: null),
-        ),
-        (
-          'Comfort',
-          (s) => s.needsBaselineComfort,
-          (s, v) => s.copyWith(needsBaselineComfort: v),
-          (s) => s.copyWith(needsBaselineComfort: null),
-        ),
-      ];
 
   List<String> _wornOf(GreetingRealismSeed s) {
     final inv = s.inventory;

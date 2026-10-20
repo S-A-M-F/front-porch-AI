@@ -107,7 +107,9 @@ export function ChatToolsChaos({ t, toggle }: { t: ToolsState; toggle: ToolsTogg
         {t.chaos.enabled && (
           <>
             <div className="stat-line"><span>Pressure</span><span className="muted">{t.chaos.pressure}%{t.chaos.hasPendingEvent ? ' · event ready' : ''}</span></div>
-            <Toggle label="Allow NSFW events" value={t.chaos.nsfwEnabled} onChange={(v) => toggle('chaosNsfw', v)} />
+            {t.chaos.adultAllowed && (
+              <Toggle label="Allow NSFW events" value={t.chaos.nsfwEnabled} onChange={(v) => toggle('chaosNsfw', v)} />
+            )}
             <button
               disabled={t.chaos.hasPendingEvent}
               onClick={() => {
@@ -116,6 +118,13 @@ export function ChatToolsChaos({ t, toggle }: { t: ToolsState; toggle: ToolsTogg
             >
               {t.chaos.hasPendingEvent ? 'EVENT PENDING' : 'SPIN NOW'}
             </button>
+            <div className="stat-line">
+              <span className="muted">
+                {(t.chaos.cooldownTurns ?? 0) > 0
+                  ? `Settling down: no events for ${t.chaos.cooldownTurns} more ${t.chaos.cooldownTurns === 1 ? 'message' : 'messages'}.`
+                  : `Base: ${t.chaos.base ?? 5}% · +${t.chaos.growth ?? 5}% per turn · cap: 100%`}
+              </span>
+            </div>
           </>
         )}
       </div>
@@ -128,7 +137,7 @@ export function ChatToolsNsfw({ t, toggle }: { t: ToolsState; toggle: ToolsToggl
     <details className="tool-section">
       <summary>NSFW</summary>
       <div className="tool-body">
-        <div className="stat-line"><span>Arousal</span><span className="muted">{t.nsfw.arousalTier} · {t.nsfw.arousalLevel}</span></div>
+        <div className="stat-line"><span>Lust</span><span className="muted">{t.nsfw.arousalTier} · {t.nsfw.arousalLevel}</span></div>
         <Toggle label={t.group ? 'NSFW Enhancements (all members)' : 'NSFW Enhancements'} value={t.nsfw.cooldownEnabled} onChange={(v) => toggle('nsfwCooldown', v)} />
         {t.nsfw.cooldownEnabled && t.nsfw.refractoryMinutesRemaining > 0 && (
           <div className="stat-line"><span className="muted">{t.nsfw.refractoryLabel}</span></div>

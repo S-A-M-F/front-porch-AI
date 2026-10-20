@@ -43,6 +43,23 @@ extension ChatServiceObjectiveCompletion on ChatService {
     notifyListeners(); // trigger UI to show spinner
   }
 
+  /// The overlay's "Skip goal check": the check's own request is called off
+  /// and its verdicts are dropped. The reply still comes (the turn path
+  /// awaits the check, which now returns). Turn ops it recorded before the
+  /// call (a quest whose steps were all done) stay, so regen still undoes them.
+  void _skipObjectiveCheckImpl() {
+    switch (_objectiveProposal.skipCheck()) {
+      case ObjectiveSkip.notRunning:
+        return;
+      case ObjectiveSkip.skipped:
+        _setGuestStatus('Goal check skipped. Your goals stay as they were.');
+      case ObjectiveSkip.tooLate:
+        _setGuestStatus(
+          'Too late to skip: the goal check already had its answer.',
+        );
+    }
+  }
+
   /// Synchronous version — awaits the check. Used pre-generation.
   Future<void> _maybeCheckTaskCompletionSync() async {
     // The recurring cost this feature's switch exists to stop: one model call
@@ -55,6 +72,17 @@ extension ChatServiceObjectiveCompletion on ChatService {
     }
 
     _messagesSinceLastCheck++;
+    // A story day crossed since these goals were last synced (an OOC skip
+    // at the start of this send, "next morning", time away) re-plans them
+    // now, whatever the cadence says, and the sync is told how long it has
+    // been (objectives-that-keep-up.md part 2). The clock alone retires
+    // nothing; only the answer does.
+    final charId = _activeObjectives.first.characterId;
+    final replanMinutes = objectiveReplanMinutes(
+      stamp: lastObjectiveSyncStamp(_messages, charId),
+      dayNow: _timeService.dayCount,
+      clockNow: _timeService.clock,
+    );
     // The per-objective cadence the UI exposes is the cadence, full stop.
     // The old realism-on override forced freq to one — a BLOCKING model
     // call, awaited before every reply — onto every single turn the moment
@@ -63,7 +91,7 @@ extension ChatServiceObjectiveCompletion on ChatService {
     final freq =
         primaryObjective?.checkFrequency ??
         _activeObjectives.first.checkFrequency;
-    if (_messagesSinceLastCheck < freq) {
+    if (replanMinutes == null && _messagesSinceLastCheck < freq) {
       // Off-interval, the check still fires the moment the scene actually
       // touches a quest: a completion can only be shown by the exchange, and
       // the check reads exactly this window — so an exchange sharing none of
@@ -81,37 +109,47 @@ extension ChatServiceObjectiveCompletion on ChatService {
         for (final o in _activeObjectives)
           ...openQuestMentionTexts(o.objective, tasksForObjective(o)),
       ];
-      final ignore = <String>{
-        for (final c in [?_activeCharacter, ..._groupCharacters])
-          ...c.name.toLowerCase().split(RegExp(r'[^a-z0-9]+')),
-        ..._userPersonaService.persona.name.toLowerCase().split(
-          RegExp(r'[^a-z0-9]+'),
-        ),
-      }..remove('');
-      if (!objectivesMentionedIn(recentLower, quests, ignore: ignore)) {
+      if (!objectivesMentionedIn(
+        recentLower,
+        quests,
+        ignore: _objectiveIgnoreTokens(),
+      )) {
         return;
       }
       debugPrint('[Objective] Mention gate: quest touched — checking early');
     }
     _messagesSinceLastCheck = 0;
+    if (replanMinutes != null) {
+      debugPrint('[Objective] Story moved ${replanMinutes}m — re-planning');
+    }
 
     // Arm turn-op recording only for THIS turn-path check (see field doc):
     // its completions/retirements belong to the turn being generated and must
     // roll back on regen; manual "Check now" runs the same check unarmed.
     _objectiveTurnOpsArmed = true;
     try {
-      await _checkTaskCompletionInBackground(); // step 11 thin (full in objective_proposal)
+      final outcome = await _objectiveProposal.checkTaskCompletionInBackground(
+        elapsedSpan: replanMinutes == null
+            ? ''
+            : objectiveSpanLine(replanMinutes),
+      );
+      // "Last synced" rides the reply this turn writes: a restart reads it
+      // back; a regen or delete drops it with the sync's own changes.
+      if (outcome == ObjectiveSyncOutcome.applied) {
+        (_pendingRealismMetadata ??=
+            {})[kObjectiveSyncStampKey] = ObjectiveSyncStamp(
+          charId: charId,
+          day: _timeService.dayCount,
+          clockIso: _timeService.storyClockIso,
+        ).toJson();
+      }
     } finally {
       _objectiveTurnOpsArmed = false;
     }
   }
 
-  // Thin delegation (full _checkTaskCompletionInBackground + 2000 budget + central strip in
-  // objective_proposal step 11; objective mgmt coordination / isChecking flag / load / db
-  // updates stayed thin in god per plan for step9/11; "thin delegation here; full objective
-  // proposal in step 11").
   Future<void> _checkTaskCompletionInBackground() =>
-      _objectiveProposal.checkTaskCompletionInBackground();
+      _objectiveProposal.checkTaskCompletionInBackground(countStuck: false);
 
   // ── Objective turn-ops: regen rollback (mirrors the realism delta-revert) ──
   //
@@ -141,22 +179,82 @@ extension ChatServiceObjectiveCompletion on ChatService {
   /// leaves always start from getPendingRealismMetadata(), so the list
   /// survives their read-mutate-set pattern).
   void _recordObjectiveTurnOp(Map<String, dynamic> op) {
-    _pendingRealismMetadata ??= {};
-    final list =
-        (_pendingRealismMetadata!['objective_turn_ops'] ??= <dynamic>[])
-            as List;
+    // Post-reply pass: the reply already exists and the pending metadata
+    // has been handed over, so the op goes straight onto the reply.
+    final reply = _objectiveTurnReply;
+    final Map<String, dynamic> target = reply != null
+        ? (reply.activeMetadata ??= <String, dynamic>{})
+        : (_pendingRealismMetadata ??= <String, dynamic>{});
+    final list = (target['objective_turn_ops'] ??= <dynamic>[]) as List;
     list.add(op);
+  }
+
+  /// A turn's own objective work is running: the pre-reply completion
+  /// check, or the post-reply clock pass. User actions (Check now, the
+  /// today X, a clock nudge) run outside both and never record.
+  bool get _inObjectiveTurn =>
+      _objectiveTurnOpsArmed || _objectiveTurnReply != null;
+
+  /// Receipt for a Journal card the turn writes: the reply being written
+  /// (pre-reply check) or just written (post-reply pass). Deleting,
+  /// regenerating or editing that reply then takes the card with it.
+  /// Outside a turn the card cites nothing.
+  List<int> _objectiveTurnCite() {
+    final base = _history.basePosition;
+    final reply = _objectiveTurnReply;
+    if (reply != null) {
+      final i = _messages.lastIndexWhere((m) => identical(m, reply));
+      return i < 0 ? const [] : [persistMessagePosition(base: base, index: i)];
+    }
+    if (_objectiveTurnOpsArmed) {
+      return [persistMessagePosition(base: base, index: _messages.length)];
+    }
+    return const [];
+  }
+
+  /// Record where the today line stood before the turn moves it, so the
+  /// rewind can hand the sidebar back the line it showed.
+  void _recordTodayPointerOp() {
+    if (!_inObjectiveTurn) return;
+    _recordObjectiveTurnOp({
+      'op': 'today',
+      'id': _todayObjectiveId,
+      'text': _todayObjectiveText,
+      'sentence': todaySentence,
+    });
+  }
+
+  Future<void> _revertTodayPointer(Map entry) async {
+    _todayObjectiveId = entry['id'] as String?;
+    _todayObjectiveText = entry['text'] as String?;
+    setTodaySentence(entry['sentence'] as String?);
+    await _persistTodayObjectiveId(_todayObjectiveId);
   }
 
   /// Invert the rejected message's recorded objective ops (reverse order):
   /// created → deleted, tasks_changed → pre-mutation JSON restored,
-  /// deactivated/evicted → reactivated, demoted → primary restored. Blind
+  /// deactivated/evicted → reactivated, demoted → primary restored, today →
+  /// the held today line put back. Blind
   /// id-addressed updates: a row deleted since (e.g. chat cleanup) no-ops.
   Future<void> _revertObjectiveTurnOps(ChatMessage rejectedMsg) async {
     final raw = rejectedMsg.activeMetadata?['objective_turn_ops'];
     if (raw is! List || raw.isEmpty) return;
     for (final entry in raw.reversed) {
       if (entry is! Map) continue;
+      if (entry['op'] == 'today') {
+        await _revertTodayPointer(entry);
+        continue;
+      }
+      if (entry['op'] == 'mood') {
+        // A group member's mood a goal moved; the speaker's own stamp is
+        // restored by the regen itself.
+        final charId = entry['charId'] as String?;
+        final prev = entry['prev'];
+        if (charId != null && prev is Map) {
+          _mood.writeMemberFromStamp(charId, prev);
+        }
+        continue;
+      }
       final id = entry['id'] as String?;
       if (id == null || id.isEmpty) continue;
       try {
@@ -174,10 +272,26 @@ extension ChatServiceObjectiveCompletion on ChatService {
               );
             }
           case 'deactivated' || 'evicted':
+            // A sync retirement also stamped status and ended_at; put the
+            // status it had back (ops written before v58 carry no key).
+            final restoresStatus = entry.containsKey('prevStatus');
             await _db.updateObjective(
               ObjectivesCompanion(
                 id: drift.Value(id),
                 active: const drift.Value(true),
+                status: restoresStatus
+                    ? drift.Value(entry['prevStatus'] as String?)
+                    : const drift.Value.absent(),
+                endedAt: restoresStatus
+                    ? const drift.Value(null)
+                    : const drift.Value.absent(),
+              ),
+            );
+          case 'status':
+            await _db.updateObjective(
+              ObjectivesCompanion(
+                id: drift.Value(id),
+                status: drift.Value(entry['prev'] as String?),
               ),
             );
           case 'demoted':
@@ -243,7 +357,7 @@ extension ChatServiceObjectiveCompletion on ChatService {
     final isGroupMember =
         _activeGroup != null &&
         _groupCharacters.any((c) => _getCharacterIdFromCard(c) == characterId);
-    if (isGroupMember) _loadGroupRealismIntoScalars(characterId);
+    if (isGroupMember) _realismDance.loadIntoScalars(characterId);
     final ok = await _promiseDebtService.resolveManually(
       sessionId: sessionId,
       characterId: characterId,
@@ -252,7 +366,7 @@ extension ChatServiceObjectiveCompletion on ChatService {
       storyDay: _timeService.dayCount,
       storyClock: _timeService.storyClockIso,
     );
-    if (isGroupMember) _saveScalarsIntoGroupRealism(characterId);
+    if (isGroupMember) _realismDance.saveScalarsIntoGroup(characterId);
     if (ok) await _saveChat();
     return ok;
   }
@@ -275,11 +389,11 @@ extension ChatServiceObjectiveCompletion on ChatService {
     if (!_storageService.memorySettings.journalEnabled) return;
     final sessionId = _currentSessionId;
     if (sessionId == null) return;
-    final charId = _getCurrentSpeakerIdForRealism();
+    final charId = _groupStore.currentSpeakerId();
     if (charId.isEmpty) return;
 
     String characterName = _activeCharacter?.name ?? 'the character';
-    if (_activeGroup != null && !_observerMode) {
+    if (_activeGroup != null) {
       final card = _groupCharacters
           .where((c) => _getCharacterIdFromCard(c) == charId)
           .firstOrNull;

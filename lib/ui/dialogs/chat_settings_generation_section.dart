@@ -28,14 +28,19 @@ class ChatSettingsGenerationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Only what this backend's requests carry; a hidden value is kept.
+    final knobs = samplerKnobsFor(
+      llmProvider.activeBackend,
+      remoteApiUrl: storage.backendSettings.remoteApiUrl,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Generation',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: AppColors.formMasterAccent,
+            color: AppColors.formAccentOf(context),
           ),
         ),
         const SizedBox(height: 8),
@@ -53,20 +58,21 @@ class ChatSettingsGenerationSection extends StatelessWidget {
             onChanged();
           },
         ),
-        SliderWithInput(
-          label: 'Min-P',
-          value: gen.resolveMinP(storage),
-          min: 0.0,
-          max: 1.0,
-          divisions: 100,
-          tooltip:
-              'Filters out unlikely words. Higher = only the most probable words are kept. Start around 0.05–0.1.',
-          context: context,
-          onChanged: (val) {
-            gen.minP = val;
-            onChanged();
-          },
-        ),
+        if (knobs.contains(SamplerKnob.minP))
+          SliderWithInput(
+            label: 'Min-P',
+            value: gen.resolveMinP(storage),
+            min: 0.0,
+            max: 1.0,
+            divisions: 100,
+            tooltip:
+                'Filters out unlikely words. Higher = only the most probable words are kept. Start around 0.05–0.1.',
+            context: context,
+            onChanged: (val) {
+              gen.minP = val;
+              onChanged();
+            },
+          ),
         SliderWithInput(
           label: 'Top-P',
           value: gen.resolveTopP(storage),
@@ -81,51 +87,54 @@ class ChatSettingsGenerationSection extends StatelessWidget {
             onChanged();
           },
         ),
-        SliderWithInput(
-          label: 'Top-K',
-          value: gen.resolveTopK(storage).toDouble(),
-          min: 0,
-          max: 200,
-          divisions: 200,
-          isInteger: true,
-          tooltip:
-              'Limits choices to the K most likely words. 0 = off. 40–100 are typical values when used.',
-          context: context,
-          onChanged: (val) {
-            gen.topK = val.toInt();
-            onChanged();
-          },
-        ),
-        SliderWithInput(
-          label: 'Repeat Penalty',
-          value: gen.resolveRepeatPenalty(storage),
-          min: 1.0,
-          max: 3.0,
-          divisions: 200,
-          tooltip:
-              'Discourages the AI from repeating the same words. Higher = less repetition. 1.1 is a safe default.',
-          context: context,
-          onChanged: (val) {
-            gen.repeatPenalty = val;
-            onChanged();
-          },
-        ),
-        SliderWithInput(
-          label: 'Rep Pen Tokens',
-          value: gen.resolveRepeatPenaltyTokens(storage).toDouble(),
-          min: 0,
-          max: 2048,
-          divisions: 256,
-          isInteger: true,
-          tooltip:
-              'How far back the AI checks for repetition (in tokens). Higher = checks more of the conversation history.',
-          context: context,
-          onChanged: (val) {
-            gen.repeatPenaltyTokens = val.toInt();
-            onChanged();
-          },
-        ),
-        if (llmProvider.activeBackend == BackendType.kobold) ...[
+        if (knobs.contains(SamplerKnob.topK))
+          SliderWithInput(
+            label: 'Top-K',
+            value: gen.resolveTopK(storage).toDouble(),
+            min: 0,
+            max: 200,
+            divisions: 200,
+            isInteger: true,
+            tooltip:
+                'Limits choices to the K most likely words. 0 = off. 40–100 are typical values when used.',
+            context: context,
+            onChanged: (val) {
+              gen.topK = val.toInt();
+              onChanged();
+            },
+          ),
+        if (knobs.contains(SamplerKnob.repeatPenalty))
+          SliderWithInput(
+            label: 'Repeat Penalty',
+            value: gen.resolveRepeatPenalty(storage),
+            min: 1.0,
+            max: 3.0,
+            divisions: 200,
+            tooltip:
+                'Discourages the AI from repeating the same words. Higher = less repetition. 1.1 is a safe default.',
+            context: context,
+            onChanged: (val) {
+              gen.repeatPenalty = val;
+              onChanged();
+            },
+          ),
+        if (knobs.contains(SamplerKnob.repeatPenaltyTokens))
+          SliderWithInput(
+            label: 'Rep Pen Tokens',
+            value: gen.resolveRepeatPenaltyTokens(storage).toDouble(),
+            min: 0,
+            max: 2048,
+            divisions: 256,
+            isInteger: true,
+            tooltip:
+                'How far back the AI checks for repetition (in tokens). Higher = checks more of the conversation history.',
+            context: context,
+            onChanged: (val) {
+              gen.repeatPenaltyTokens = val.toInt();
+              onChanged();
+            },
+          ),
+        if (knobs.contains(SamplerKnob.xtc)) ...[
           SliderWithInput(
             label: 'XTC Threshold',
             value: gen.resolveXtcThreshold(storage),
@@ -154,6 +163,8 @@ class ChatSettingsGenerationSection extends StatelessWidget {
               onChanged();
             },
           ),
+        ],
+        if (knobs.contains(SamplerKnob.dry))
           SliderWithInput(
             label: 'DRY Strength',
             value: gen.resolveDryMultiplier(storage),
@@ -168,7 +179,6 @@ class ChatSettingsGenerationSection extends StatelessWidget {
               onChanged();
             },
           ),
-        ],
         if (!hideOutputTokenLimits) ...[
           SliderWithInput(
             label: 'Max Output Tokens',
@@ -181,21 +191,6 @@ class ChatSettingsGenerationSection extends StatelessWidget {
             context: context,
             onChanged: (val) {
               gen.maxLength = val.toInt();
-              onChanged();
-            },
-          ),
-          SliderWithInput(
-            label: 'Min Output Tokens',
-            value: gen.resolveMinLength(storage).toDouble(),
-            min: 0,
-            max: 512,
-            divisions: 512,
-            isInteger: true,
-            tooltip:
-                'Minimum tokens the AI must write before it can stop. Increase for longer responses.',
-            context: context,
-            onChanged: (val) {
-              gen.minLength = val.toInt();
               onChanged();
             },
           ),
@@ -219,51 +214,60 @@ class ChatSettingsGenerationSection extends StatelessWidget {
             },
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Text(
-              'Dynamic Temperature',
-              style: TextStyle(color: AppColors.textPrimary(context)),
-            ),
-            Tooltip(
-              message:
-                  'Varies temperature randomly within a range each generation for more varied outputs.',
-              child: Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: AppColors.textTertiary(context),
+        ContextSizeWarnings(
+          contextSize: gen.resolveContextSize(storage),
+          // Only where Max Output Tokens is there to change.
+          maxOutput: hideOutputTokenLimits
+              ? null
+              : gen.resolveMaxLength(storage),
+        ),
+        if (knobs.contains(SamplerKnob.dynamicTemp)) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                'Dynamic Temperature',
+                style: TextStyle(color: AppColors.textPrimary(context)),
+              ),
+              Tooltip(
+                message:
+                    'Varies temperature randomly within a range each generation for more varied outputs.',
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: AppColors.textTertiary(context),
+                  ),
                 ),
               ),
-            ),
-            const Spacer(),
-            Switch(
-              value: gen.resolveDynamicTempEnabled(storage),
+              const Spacer(),
+              Switch(
+                value: gen.resolveDynamicTempEnabled(storage),
+                onChanged: (val) {
+                  gen.dynamicTempEnabled = val;
+                  onChanged();
+                },
+                activeTrackColor: AppColors.formAccentOf(context),
+              ),
+            ],
+          ),
+          if (gen.resolveDynamicTempEnabled(storage))
+            SliderWithInput(
+              label: 'Dynatemp Range',
+              value: gen.resolveDynamicTempRange(storage),
+              min: 0.0,
+              max: 2.0,
+              divisions: 20,
+              tooltip:
+                  'How much the temperature can vary around the base temperature.',
+              context: context,
               onChanged: (val) {
-                gen.dynamicTempEnabled = val;
+                gen.dynamicTempRange = val;
                 onChanged();
               },
-              activeTrackColor: AppColors.formMasterAccent,
             ),
-          ],
-        ),
-        if (gen.resolveDynamicTempEnabled(storage))
-          SliderWithInput(
-            label: 'Dynatemp Range',
-            value: gen.resolveDynamicTempRange(storage),
-            min: 0.0,
-            max: 2.0,
-            divisions: 20,
-            tooltip:
-                'How much the temperature can vary around the base temperature.',
-            context: context,
-            onChanged: (val) {
-              gen.dynamicTempRange = val;
-              onChanged();
-            },
-          ),
+        ],
       ],
     );
   }

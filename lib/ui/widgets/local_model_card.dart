@@ -19,7 +19,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'package:front_porch_ai/ui/theme/download_status_colors.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 /// Glassmorphic card displaying a locally installed model.
@@ -58,7 +60,8 @@ class _LocalModelCardState extends State<LocalModelCard> {
   @override
   Widget build(BuildContext context) {
     final vramUsage = widget.model.estimatedVramMb;
-    final usagePercent = widget.availableVramMb > 0
+    final vramKnown = widget.availableVramMb > 0;
+    final usagePercent = vramKnown
         ? (vramUsage / widget.availableVramMb).clamp(0.0, 1.0)
         : 0.0;
 
@@ -74,8 +77,12 @@ class _LocalModelCardState extends State<LocalModelCard> {
               color: AppColors.isLight(context)
                   ? AppColors.cardOf(context)
                   : (_isHovered
-                        ? Colors.indigo.withValues(alpha: 0.12)
-                        : Colors.indigo.withValues(alpha: 0.06)),
+                        ? AppColors.porchAmberOf(
+                            context,
+                          ).withValues(alpha: 0.12)
+                        : AppColors.porchAmberOf(
+                            context,
+                          ).withValues(alpha: 0.06)),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.borderOf(context), width: 1),
             ),
@@ -87,12 +94,14 @@ class _LocalModelCardState extends State<LocalModelCard> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.15),
+                    color: AppColors.porchAmberOf(
+                      context,
+                    ).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
                     Icons.storage_rounded,
-                    color: Color(0xFF40C4FF),
+                    color: DownloadStatusColors.downloading,
                     size: 22,
                   ),
                 ),
@@ -112,12 +121,14 @@ class _LocalModelCardState extends State<LocalModelCard> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: _getQuantColor(
+                              color: ModelColors.quantOf(
+                                context,
                                 widget.model.quantType.colorCategory,
                               ).withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
-                                color: _getQuantColor(
+                                color: ModelColors.quantOf(
+                                  context,
                                   widget.model.quantType.colorCategory,
                                 ).withValues(alpha: 0.3),
                               ),
@@ -125,7 +136,8 @@ class _LocalModelCardState extends State<LocalModelCard> {
                             child: Text(
                               widget.model.quantType.label,
                               style: TextStyle(
-                                color: _getQuantColor(
+                                color: ModelColors.quantOf(
+                                  context,
                                   widget.model.quantType.colorCategory,
                                 ),
                                 fontSize: 10,
@@ -175,36 +187,43 @@ class _LocalModelCardState extends State<LocalModelCard> {
                       ),
                       const SizedBox(height: 8),
 
-                      // VRAM usage bar
-                      Container(
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppColors.resolve(
-                            context,
-                            Colors.white.withValues(alpha: 0.1),
-                            AppColors.borderOf(context).withValues(alpha: 0.3),
+                      // VRAM usage bar. An undetected card (0 MB) gets no
+                      // bar and no percentage: 0% of nothing is no verdict.
+                      if (!vramKnown)
+                        Text(
+                          kGraphicsMemoryUnknown,
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 10,
                           ),
-                          borderRadius: BorderRadius.circular(2),
                         ),
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: usagePercent,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: _getUsageColor(usagePercent),
-                              borderRadius: BorderRadius.circular(2),
+                      if (vramKnown) ...[
+                        Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: InkColors.trackOf(context),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: usagePercent,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _getUsageColor(usagePercent),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${(usagePercent * 100).toStringAsFixed(0)}% of available VRAM',
-                        style: TextStyle(
-                          color: AppColors.textTertiary(context),
-                          fontSize: 10,
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(usagePercent * 100).toStringAsFixed(0)}% of available VRAM',
+                          style: TextStyle(
+                            color: AppColors.textTertiary(context),
+                            fontSize: 10,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -278,28 +297,9 @@ class _LocalModelCardState extends State<LocalModelCard> {
     );
   }
 
-  Color _getQuantColor(String category) {
-    switch (category) {
-      case 'red':
-        return const Color(0xFFFF5252);
-      case 'orange':
-        return const Color(0xFFFFB74D);
-      case 'yellow':
-        return const Color(0xFFFFD54F);
-      case 'green':
-        return const Color(0xFF69F0AE);
-      case 'blue':
-        return const Color(0xFF40C4FF);
-      case 'purple':
-        return const Color(0xFFB388FF);
-      default:
-        return Colors.grey;
-    }
-  }
-
   Color _getUsageColor(double percent) {
-    if (percent > 0.9) return const Color(0xFFFF5252);
-    if (percent > 0.7) return const Color(0xFFFFB74D);
-    return const Color(0xFF69F0AE);
+    if (percent > 0.9) return ModelColors.redOf(context);
+    if (percent > 0.7) return ModelColors.orangeOf(context);
+    return ModelColors.greenOf(context);
   }
 }

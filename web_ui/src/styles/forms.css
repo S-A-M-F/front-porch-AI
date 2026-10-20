@@ -21,7 +21,7 @@
   padding: 7px 0; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
   background: var(--surface-2); color: var(--text); font-size: 0.78rem; font-weight: 700; cursor: pointer;
 }
-.work-day.on { background: var(--accent); border-color: var(--accent); color: #1a1200; }
+.work-day.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .work-brief { min-height: 4.2em; resize: vertical; }
 .realism-field { display: flex; flex-direction: column; gap: 4px; }
 .realism-field > span { font-size: 0.8rem; color: var(--muted); }
@@ -47,6 +47,17 @@
 /* The clock-off line under a Needs switch (NeedsClockOffNote). */
 .needs-clock-off { margin: 2px 0 4px; line-height: 1.4; }
 .pl-child > .needs-clock-off { margin: 0; }
+/* Recovery after intimacy (recovery overhaul PR 2) — the block under the
+   Afterglow switch inside the Optional features card. */
+.recovery-block {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 2px; padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.recovery-head { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.recovery-block > p { margin: 0; }
+.recovery-block > small { line-height: 1.4; }
+.recovery-suggestion { color: var(--accent); }
 .needs-row {
   display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px;
   padding-bottom: 10px; border-bottom: 1px solid var(--border);
@@ -175,3 +186,13 @@
 .macro-modal .macro-area .macro-input { min-height: 50vh; }
 .lore-edit .macro-field { margin: 0; }
 
+
+/* ── Character editor: "Your chats together" ─────────────────── */
+.char-stats-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.char-stat {
+  flex: 1 1 130px; max-width: 180px; padding: 8px 12px;
+  background: var(--surface-2); border-radius: 10px;
+}
+.char-stat-value { font-size: 1rem; font-weight: 600; color: var(--text); }
+.char-stat-label { font-size: 0.78rem; color: var(--muted); }
+.char-stats-note { font-size: 0.75rem; color: var(--muted); margin: 8px 0 0; }

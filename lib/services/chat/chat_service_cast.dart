@@ -18,6 +18,11 @@
 
 part of '../chat_service.dart';
 
+/// Why [ChatServiceCast.canRemoveCastMember] refused a member's exit.
+const kDirectorCastFloorNote =
+    'While you direct, the scene keeps at least two characters. Step back '
+    'in with /director off first.';
+
 /// "One chat, a cast that changes" — cast-shrinking operations (Phase 3):
 /// per-member cleanup on removal, and the automatic collapse of a group back to
 /// a 1:1 with the original library character once only one member remains. Kept
@@ -28,9 +33,12 @@ extension ChatServiceCast on ChatService {
   ///   1. The leaving member narrates their own brief goodbye (no "poof").
   ///   2. They drop out of the LIVE roster, but their DB row, realism, evolution,
   ///      quests and memory are left fully intact, and an UNDO offer is armed.
-  ///   3. The destructive removal (and any auto-collapse to a 1:1) is deferred to
-  ///      [_commitPendingMemberExit], which fires from `sendMessage` the moment the
-  ///      user continues — so [undoLastExit] in the meantime restores them exactly.
+  ///   3. The destructive removal is deferred to [_commitPendingMemberExit],
+  ///      which fires from `sendMessage` the moment the user continues — so
+  ///      [undoLastExit] in the meantime restores them exactly. An exit that
+  ///      leaves one character commits at once instead: the group turns back
+  ///      into a 1:1 there and then, with no UNDO, rather than sitting as a
+  ///      one-member group under the old group header until the next send.
   /// Unlike a Lite guest (never deleted, so undo is trivial), a full member is a
   /// real row; deferring the delete is what makes the undo lossless. Returns true
   /// once the goodbye is staged and the exit is pending.
@@ -45,6 +53,10 @@ extension ChatServiceCast on ChatService {
     // re-check before proceeding (a no-op in the normal single-exit case).
     await _commitPendingMemberExit();
     if (_activeGroup == null) return false;
+    if (!canRemoveCastMember) {
+      _setGuestStatus(kDirectorCastFloorNote, isError: true);
+      return false;
+    }
     final stillMember = _groupCharacters.any(
       (c) => _getCharacterIdFromCard(c) == _getCharacterIdFromCard(member),
     );
@@ -58,18 +70,26 @@ extension ChatServiceCast on ChatService {
         'reply): ${member.name} is leaving the conversation now. Write '
         '${member.name}\'s short, in-character goodbye / exit, in their own '
         'voice and words.';
+    final before = _messages.length;
     try {
       await _generateResponse(GenerationMode.normal);
     } catch (e) {
       debugPrint('[Cast] exit narration for ${member.name} failed: $e');
       _entranceDirective = null; // don't leak into a later turn
     }
+    await _dropSilentStagedTurn(before);
     // 2. Soft-remove from the live roster only — nothing on disk is touched, so
     //    the removal stays fully reversible until the user continues.
     final memberId = _getCharacterIdFromCard(member);
     final remaining = _groupCharacters
         .where((c) => _getCharacterIdFromCard(c) != memberId)
         .toList();
+    if (remaining.length < 2) {
+      _clearExitUndo();
+      await _waitForTurnToSettle();
+      if (await removeCharacterFromGroup(member, groupRepo)) return true;
+      // Still busy: the next send commits it, as for any exit.
+    }
     _groupManager?.refreshCharacters(remaining);
     _sceneGuest.pendingMemberExit = member;
     // 3. Arm the UNDO snackbar; the just-generated goodbye turn is what undo
@@ -83,9 +103,296 @@ extension ChatServiceCast on ChatService {
         ? _messages.last
         : null;
     _sceneGuest.exitUndoOfferName = member.name;
+    _sceneGuest.exitUndoUserStep = false; // UNDO now means this exit
     await _saveChat();
     notifyListeners();
     return true;
+  }
+
+  /// Whether a member may leave now. While the user directs, the scene keeps
+  /// two characters: one left would turn the group back into a 1:1 and end
+  /// Director Mode under the next note.
+  bool get canRemoveCastMember =>
+      _groupCharacters.length > (_directing ? 2 : 1);
+
+  /// `/director`: {{user}} steps out of a group scene to direct it, with the
+  /// same narrated departure and UNDO as a full member's `/exit`. The next
+  /// character reacts to them leaving, then Director Mode comes on. The
+  /// goodbye turn scores nothing (skipSpeakerEval): nobody said anything
+  /// new to anyone, and the judges already scored the last real line.
+  Future<bool> stepUserOffStage() async {
+    if (_activeGroup == null || _observerMode || _isTurnBusy) return false;
+    // An open member-exit undo window closes here, as a send would close it.
+    await _commitPendingMemberExit();
+    _clearExitUndo();
+    if (_activeGroup == null) return false;
+    final name = _userPersonaService.persona.name;
+    final before = _messages.length;
+    _entranceDirective = userStepsOutDirective(name);
+    try {
+      await _generateResponse(GenerationMode.normal, skipSpeakerEval: true);
+    } catch (e) {
+      debugPrint('[Director] step-out narration failed: $e');
+      _entranceDirective = null; // don't leak into a later turn
+    }
+    await _dropSilentStagedTurn(before);
+    _observerMode = true;
+    final last = _messages.lastOrNull;
+    _sceneGuest.exitUndoUserStep = true;
+    _sceneGuest.exitUndoMessage =
+        (_messages.length > before &&
+            last != null &&
+            !last.isUser &&
+            last.sender != 'System')
+        ? last
+        : null;
+    _sceneGuest.exitUndoOfferName = name;
+    await _saveChat();
+    notifyListeners();
+    return true;
+  }
+
+  /// `/director off`: {{user}} walks back in. Director Mode goes off first,
+  /// so the next character sees the user present and greets them. Like the
+  /// goodbye, the greeting turn scores nothing — the last user-side line is
+  /// a director's note, which is not something the user said.
+  Future<bool> stepUserOnStage() async {
+    if (!_directing || _isTurnBusy) return false;
+    _clearExitUndo();
+    _observerMode = false;
+    _entranceDirective = userReturnsDirective(_userPersonaService.persona.name);
+    final before = _messages.length;
+    try {
+      await _generateResponse(GenerationMode.normal, skipSpeakerEval: true);
+    } catch (e) {
+      debugPrint('[Director] step-in narration failed: $e');
+      _entranceDirective = null;
+    }
+    await _dropSilentStagedTurn(before);
+    await _saveChat();
+    notifyListeners();
+    return true;
+  }
+
+  /// Undo for `/director`: delete the goodbye turn (rewinding what it
+  /// applied) and put {{user}} back on stage. False when the open undo is
+  /// someone else's exit.
+  Future<bool> _undoUserStepOut() async {
+    if (!_sceneGuest.exitUndoUserStep) return false;
+    final goodbye = _sceneGuest.exitUndoMessage;
+    _clearExitUndo();
+    if (goodbye != null) {
+      final idx = _messages.indexOf(goodbye);
+      if (idx >= 0) deleteMessage(idx); // removes + reverts realism + saves
+    }
+    _observerMode = false;
+    await _saveChat();
+    _setGuestStatus('You are back in the scene.');
+    notifyListeners();
+    return true;
+  }
+
+  /// The director's pinned scene goal, or empty.
+  String get directorGoal => _directorScene.goal;
+
+  /// The director's private whispers, by member id.
+  Map<String, String> get directorWhispers => _directorScene.whispers;
+
+  /// The whispers for members still in the scene, in cast order.
+  List<({String id, String name, String text})> get directorWhisperRows => [
+    for (final c in _groupCharacters)
+      if (_directorScene.whispers[_getCharacterIdFromCard(c)] case final w?)
+        (id: _getCharacterIdFromCard(c), name: c.name, text: w),
+  ];
+
+  /// Pins [text] as the scene goal; empty clears it. Saved per chat.
+  Future<void> setDirectorGoal(String text) async {
+    if (_activeGroup == null) return;
+    _directorScene.setGoal(text);
+    await _saveChat();
+    notifyListeners();
+  }
+
+  /// Sets the private whisper for the member with [memberId]; empty clears it.
+  Future<void> setDirectorWhisper(String memberId, String text) async {
+    if (_activeGroup == null) return;
+    final known = _groupCharacters.any(
+      (c) => _getCharacterIdFromCard(c) == memberId,
+    );
+    // A stale id can only be cleared; it never gains a whisper.
+    if (!known && text.trim().isNotEmpty) return;
+    _directorScene.setWhisper(memberId, text);
+    await _saveChat();
+    notifyListeners();
+  }
+
+  /// The narrator is writing a beat (a turn in all but name).
+  bool get isNarrating => _narrating;
+
+  /// `/narrate`: one narrator beat lands as a scene card, then the next
+  /// character reacts to it as they would to a note. False when a turn is
+  /// already running, or the user isn't directing. The narrator's call counts
+  /// as a running turn ([_isTurnBusy]), so a note, a cue, an auto-chat tick or
+  /// a chat switch waits for it; a beat that returns to another chat is
+  /// dropped.
+  Future<bool> narrateScene(String hint) async {
+    if (!_directing || _isTurnBusy) return false;
+    final token = _currentSessionId;
+    // The beat closes the undo window the way a note does.
+    await _commitPendingMemberExit();
+    _clearExitUndo();
+    if (_sceneChanged(token) || !_directing || _isTurnBusy) return false;
+    _narrating = true;
+    var landed = '';
+    try {
+      _setGuestStatus('The narrator sets the scene…', sticky: true);
+      final recent = _messages.length > kNarrationHistoryLines
+          ? _messages.sublist(_messages.length - kNarrationHistoryLines)
+          : _messages;
+      final raw = await _llmEvalEngine.fireLLMEval(
+        narrationPrompt(
+          recentLines: [
+            for (final m in recent)
+              if (!m.isStatusBanner && m.sender != 'System')
+                m.toPromptHistoryLine(),
+          ],
+          castNames: [for (final c in _groupCharacters) c.name],
+          hint: hint,
+        ),
+        label: 'narration',
+      );
+      if (_sceneChanged(token)) {
+        _setGuestStatus(null);
+        return true;
+      }
+      final beat = raw == null
+          ? ''
+          : cleanNarration(_llmEvalEngine.stripThinkBlocks(raw));
+      if (beat.isEmpty || !_directing) {
+        _setGuestStatus(
+          '⚠ The narrator had nothing to add. Try again.',
+          isError: true,
+        );
+        return true;
+      }
+      _setGuestStatus(null);
+      _messages.add(narrationMessage(beat));
+      await _saveChat();
+      landed = beat;
+    } catch (e) {
+      debugPrint('[Director] narration failed: $e');
+      _setGuestStatus('⚠ The narrator could not set the scene.', isError: true);
+      return true;
+    } finally {
+      _narrating = false;
+      notifyListeners();
+    }
+    // No await since the flag dropped: the reply raises _isGenerating first.
+    if (landed.isNotEmpty && !_sceneChanged(token)) {
+      await _skipNarratedTime(landed);
+      await _generateResponse(GenerationMode.normal);
+    }
+    return true;
+  }
+
+  /// A beat that skips time moves the clock the way a user's skip line
+  /// does: same turn ownership and regen replay, same settle for a day or
+  /// more. No bridge card: the beat already narrated the gap.
+  Future<void> _skipNarratedTime(String beat) async {
+    if (!_clockRunning) return;
+    final before = _timeService.clock;
+    final skipped = await _timeService.detectOocTimeSkip(beat);
+    await _episodeCrumbs.maybeMint(before, _timeService.clock);
+    if (skipped >= kLongSkipMinutes) LongSkipSettle(_realismScope()).settle();
+  }
+
+  /// A skip of a day or more ([skipped] minutes from [from]): the narrator
+  /// fills in the gap as a card, then the reply follows it. A failed or
+  /// empty bridge is logged and the turn goes on without one. False only
+  /// when the chat changed under the call, so the send stops.
+  Future<bool> _bridgeLongSkip({
+    required DateTime from,
+    required int skipped,
+    required ChatMessage skipLine,
+    required String? token,
+  }) async {
+    if (!_storageService.realismSettings.timeSkipBridgeEnabled) return true;
+    _setGuestStatus('The narrator fills in the time skip…', sticky: true);
+    try {
+      final scene = [
+        for (final m in _messages)
+          if (!identical(m, skipLine)) m,
+      ];
+      final recent = scene.length > kNarrationHistoryLines
+          ? scene.sublist(scene.length - kNarrationHistoryLines)
+          : scene;
+      final raw = await _llmEvalEngine.fireLLMEval(
+        timeSkipBridgePrompt(
+          recentLines: [
+            for (final m in recent)
+              if (!m.isStatusBanner && m.sender != 'System')
+                m.toPromptHistoryLine(),
+          ],
+          castNames: _activeGroup != null
+              ? [for (final c in _groupCharacters) c.name]
+              : [?_activeCharacter?.name],
+          userName: _userPersonaService.persona.name,
+          skipLine: skipLine.text,
+          from: '${skipMomentWords(from)} (${StoryClock.formatClock(from)})',
+          to:
+              '${skipMomentWords(_timeService.clock)} '
+              '(${_timeService.displayClock})',
+          minutes: skipped,
+          context: _timeSkipBridgeContext(),
+        ),
+        label: 'time_skip_bridge',
+      );
+      if (_sceneChanged(token)) return false;
+      final beat = raw == null
+          ? ''
+          : cleanNarration(_llmEvalEngine.stripThinkBlocks(raw));
+      if (beat.isEmpty) {
+        debugPrint('[TimeSkip] bridge came back empty; replying without it');
+        return true;
+      }
+      // The clock is the truth: a bridge claiming more time than it moved
+      // would be one more disagreement for the reply to reconcile.
+      if (bridgeOverstatesSpan(beat, skipped)) {
+        debugPrint(
+          '[TimeSkip] bridge names a longer span than '
+          '${skipSpanWords(skipped)}; replying without it',
+        );
+        return true;
+      }
+      // Stored before the skip line, so the line that skipped stays the
+      // user's turn for every pass that looks for it. The prompt reads it
+      // after that line (bridgesAfterSkipLines).
+      final at = _messages.indexOf(skipLine);
+      _messages.insert(
+        at < 0 ? _messages.length : at,
+        timeSkipBridgeMessage(beat),
+      );
+      await _saveChat();
+      return true;
+    } catch (e) {
+      debugPrint('[TimeSkip] bridge failed, replying without it: $e');
+      return !_sceneChanged(token);
+    } finally {
+      if (!_sceneChanged(token)) _setGuestStatus(null);
+      notifyListeners();
+    }
+  }
+
+  /// A goodbye or greeting that was stopped before it said a word (or only
+  /// thought) is not a turn: it goes, rather than staying as an empty
+  /// "only thoughts" bubble. [before] is the transcript length before it.
+  Future<void> _dropSilentStagedTurn(int before) async {
+    final last = _messages.lastOrNull;
+    if (_messages.length <= before || last == null || last.isUser) return;
+    if (last.displayText.trim().isNotEmpty) return;
+    await _waitForTurnToSettle();
+    final idx = _messages.indexOf(last);
+    if (idx >= 0) await deleteMessage(idx); // + reverts realism, saves
   }
 
   /// Commit a deferred full-member `/exit`: run the real removal (and any
@@ -146,7 +453,7 @@ extension ChatServiceCast on ChatService {
       // Same reasoning for the diary: the removed member's journal cards are
       // keyed by this instance id, so nothing would ever read them again.
       await _moveJournalCards(_currentSessionId!, charId, null);
-      await _refreshGrowthCache();
+      await _growthDesk.refreshCache();
     }
   }
 

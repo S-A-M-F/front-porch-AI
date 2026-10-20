@@ -32,7 +32,7 @@ void main() {
       'other.gguf',
     ]);
     final source = File(
-      'lib/services/comfy_ui_service.catalog.dart',
+      'lib/services/comfy_ui/comfy_catalog_reader.dart',
     ).readAsStringSync();
     expect(source.contains('assembleComfyCatalog'), isTrue);
     expect(source.contains('unetNames:'), isTrue);
@@ -285,5 +285,138 @@ void main() {
       loras: const [DeskLoraCheck('qwen_lora.safetensors', ModelFamily.qwen)],
     );
     expect(namedOnly.kind, StudioReady.ready);
+  });
+
+  test('a leftover LoRA never blocks a Remote API', () {
+    const lora = DeskLoraCheck(
+      'qwen_lora.safetensors',
+      ModelFamily.qwen,
+      metadataBacked: true,
+    );
+    StudioReadiness ready(String backend) => deskReadiness(
+      backend: backend,
+      primaryFile: 'z_image_turbo_bf16.safetensors',
+      objectInfo: null,
+      loras: const [lora],
+    );
+
+    expect(ready('a1111').kind, StudioReady.loraMismatch);
+    expect(ready('remote').kind, StudioReady.ready);
+  });
+
+  group('a file ComfyUI does not list', () {
+    const sdClasses = [
+      'CLIPTextEncode',
+      'EmptyLatentImage',
+      'KSampler',
+      'VAEDecode',
+      'SaveImage',
+      'LoadImage',
+      'VAEEncode',
+    ];
+    Map<String, dynamic> sdInfo(Object ckptSpec, {Object? loraSpec}) => {
+      for (final name in sdClasses) name: <String, dynamic>{},
+      'CheckpointLoaderSimple': {
+        'input': {
+          'required': {'ckpt_name': ckptSpec},
+        },
+      },
+      if (loraSpec != null)
+        'LoraLoader': {
+          'input': {
+            'required': {'lora_name': loraSpec},
+          },
+        },
+    };
+    const stale = 'ponyRealism_V22.safetensors';
+
+    test('no checkpoints at all says so and keeps Generate off', () {
+      final ready = deskReadiness(
+        backend: 'comfyui',
+        primaryFile: stale,
+        objectInfo: sdInfo([<String>[], <String, dynamic>{}]),
+        workflowId: 'sd',
+      );
+      expect(ready.kind, StudioReady.missingFile);
+      expect(generateEnabled(ready), isFalse);
+      expect(ready.message, contains('lists no files'));
+      expect(ready.message, contains('models/checkpoints'));
+      expect(ready.message, contains(stale));
+    });
+
+    test(
+      'a checkpoint missing from the list is refused, a listed one runs',
+      () {
+        StudioReadiness ready(String file, Object spec) => deskReadiness(
+          backend: 'comfyui',
+          primaryFile: file,
+          objectInfo: sdInfo(spec),
+          workflowId: 'sd',
+        );
+        final listed = [
+          ['sdxl.safetensors', r'pony\cyber.safetensors'],
+          <String, dynamic>{},
+        ];
+        expect(ready(stale, listed).kind, StudioReady.missingFile);
+        expect(ready(stale, listed).message, contains('doesn’t have'));
+        expect(ready('sdxl.safetensors', listed).kind, StudioReady.ready);
+        // Windows lists subfolders with backslashes.
+        expect(ready('pony/cyber.safetensors', listed).kind, StudioReady.ready);
+        // The newer COMBO shape is read the same way.
+        final combo = [
+          'COMBO',
+          {
+            'options': ['sdxl.safetensors'],
+          },
+        ];
+        expect(ready(stale, combo).kind, StudioReady.missingFile);
+        expect(ready('sdxl.safetensors', combo).kind, StudioReady.ready);
+      },
+    );
+
+    test('with nothing picked, an empty folder still says so', () {
+      final ready = deskReadiness(
+        backend: 'comfyui',
+        primaryFile: '',
+        objectInfo: sdInfo([<String>[], <String, dynamic>{}]),
+        workflowId: 'sd',
+      );
+      expect(ready.kind, StudioReady.missingFile);
+      expect(ready.message, contains('lists no files'));
+      expect(ready.message, contains('models/checkpoints'));
+      final listed = deskReadiness(
+        backend: 'comfyui',
+        primaryFile: '',
+        objectInfo: sdInfo([
+          ['sdxl.safetensors'],
+          <String, dynamic>{},
+        ]),
+        workflowId: 'sd',
+      );
+      expect(listed.message, isNot(contains('lists no files')));
+    });
+
+    test('a leftover LoRA ComfyUI does not have keeps Generate off', () {
+      const lora = DeskLoraCheck('add-detail-xl.safetensors', ModelFamily.sdxl);
+      StudioReadiness ready(List<String> loras) => deskReadiness(
+        backend: 'comfyui',
+        primaryFile: 'sdxl.safetensors',
+        objectInfo: sdInfo(
+          [
+            ['sdxl.safetensors'],
+            <String, dynamic>{},
+          ],
+          loraSpec: [loras, <String, dynamic>{}],
+        ),
+        workflowId: 'sd',
+        loras: const [lora],
+      );
+      expect(ready(const []).kind, StudioReady.missingFile);
+      expect(ready(const []).message, contains('models/loras'));
+      expect(
+        ready(const ['add-detail-xl.safetensors']).kind,
+        StudioReady.ready,
+      );
+    });
   });
 }

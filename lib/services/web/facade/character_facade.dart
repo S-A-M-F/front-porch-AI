@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -26,9 +25,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chargen/chargen.dart';
 import 'package:front_porch_ai/services/web/util/util.dart';
-
-part 'character_facade.import.dart';
-part 'character_facade.byaf.dart';
+import 'package:front_porch_ai/services/web/facade/character/character.dart';
 
 /// Thin read adapter over the character store for the rewritten web server.
 ///
@@ -49,6 +46,9 @@ class CharacterFacade {
   final CharacterRepository? _repo;
   final FolderService? _folders;
   final ChatService? _chat;
+
+  /// Persona id → picture, for `portraitPersonaId` (wired by the host).
+  String? Function(String personaId)? personaPortrait;
 
   /// List characters with optional search/folder filtering and sort, matching
   /// the legacy `/api/characters` payload.
@@ -97,7 +97,7 @@ class CharacterFacade {
     if (term != null && term.isNotEmpty) {
       characters = characters.where((c) {
         if (c.name.toLowerCase().contains(term)) return true;
-        return _jsonList(
+        return decodeJsonList(
           c.tags,
         ).any((t) => t.toString().toLowerCase().contains(term));
       }).toList();
@@ -149,6 +149,8 @@ class CharacterFacade {
       if (id != null) byDbId[id] = card;
     }
 
+    final placeholderIds = _placeholderPortraitIds(characters, byDbId);
+
     return characters
         .map(
           (c) => {
@@ -159,14 +161,59 @@ class CharacterFacade {
             // `/detail` for the editor, not here, so they're intentionally
             // omitted to keep this list (which loads every character at once)
             // small over a slow uplink.
-            'tags': _jsonList(c.tags),
+            'tags': decodeJsonList(c.tags),
             'hasAvatar': c.imagePath != null && c.imagePath!.isNotEmpty,
+            // The picture is only the flat no-portrait colour: the library
+            // grid draws its placeholder instead (additive field).
+            'placeholderPortrait': placeholderIds.contains(c.id),
             'avatarVersion': _avatarVersion(c.imagePath, c.id, byDbId),
             'folderId': c.folderId ?? '',
             'messageCount': msgCounts[c.id] ?? 0,
           },
         )
         .toList();
+  }
+
+  /// Called (once per batch) when background probes find a no-portrait
+  /// placeholder the last list did not know about. The web host wires it to
+  /// its debounced `library_changed` broadcast so browsers refetch.
+  void Function()? onPlaceholderPortraitsFound;
+
+  /// Ids whose picture is only the flat coloured placeholder a card made
+  /// without a portrait carries. The grid shows their initial, as for a card
+  /// with no picture at all.
+  ///
+  /// Never blocks the list (it is refetched on every library change and
+  /// search keystroke): it answers from the probe cache, counts an unknown
+  /// picture as real, and probes the unknown ones in the background. When
+  /// those find a placeholder, [onPlaceholderPortraitsFound] fires once.
+  Set<String> _placeholderPortraitIds(
+    List<Character> characters,
+    Map<String, CharacterCard> byDbId,
+  ) {
+    final ids = <String>{};
+    final unknown = <Future<bool>>[];
+    for (final c in characters) {
+      final imagePath = c.imagePath;
+      if (imagePath == null || imagePath.isEmpty) continue;
+      final version = _avatarVersion(imagePath, c.id, byDbId);
+      if (version == 0) continue; // nothing on disk to look at
+      final hydrated = byDbId[c.id];
+      final file =
+          (hydrated == null ? null : _repo?.coverImageFileFor(hydrated)) ??
+          File(p.join(_storage.charactersDir.path, p.basename(imagePath)));
+      final known = PlaceholderPortraitProbe.known(file, version: version);
+      if (known == true) ids.add(c.id);
+      if (known == null) {
+        unknown.add(PlaceholderPortraitProbe.check(file, version: version));
+      }
+    }
+    if (unknown.isNotEmpty) {
+      Future.wait(unknown).then((found) {
+        if (found.contains(true)) onPlaceholderPortraitsFound?.call();
+      });
+    }
+    return ids;
   }
 
   /// The avatar's cache-busting version token for the thumbnail URL
@@ -252,8 +299,19 @@ class CharacterFacade {
   /// which re-writes the V2 PNG card and the DB row. Returns false if the
   /// repository isn't wired or the character isn't found. Only keys present in
   /// [fields] are changed.
-  Future<bool> update(String id, Map<String, dynamic> fields) =>
-      _updateImpl(id, fields);
+  Future<bool> update(String id, Map<String, dynamic> fields) async {
+    final repo = _repo;
+    if (repo == null) return false;
+    final card = cardByDbId(id);
+    if (card == null) return false;
+    applyCharacterFields(
+      card,
+      fields,
+      needsSimDefault: _storage.realismSettings.needsSimDefault,
+    );
+    await repo.updateCharacter(card);
+    return true;
+  }
 
   /// The in-memory [CharacterCard] matching library [id] (its dbId), or null.
   /// Used by [update] and [detail] so both source realism/world state from the
@@ -274,8 +332,13 @@ class CharacterFacade {
   /// a V2 PNG (embedding the extensions so the seeds survive — the DB has no
   /// realism columns) with a synthesized placeholder avatar, then add it via the
   /// same [CharacterRepository.addCharacter] path. Returns {id, name} or null.
-  Future<Map<String, dynamic>?> create(Map<String, dynamic> fields) =>
-      _createImpl(fields);
+  Future<Map<String, dynamic>?> create(Map<String, dynamic> fields) async {
+    if (_repo == null) return null;
+    final card = newCharacterFromFields(fields);
+    return card == null
+        ? null
+        : persistNewCard(card, portraitPath: portraitFromFields(fields));
+  }
 
   /// Persist a freshly-built [card] via the canonical path: write a V2 PNG into
   /// the characters dir (synthesizing a placeholder avatar when none is set),
@@ -285,7 +348,27 @@ class CharacterFacade {
   Future<Map<String, dynamic>?> persistNewCard(
     CharacterCard card, {
     List<int>? portraitBytes,
-  }) => _persistNewCardImpl(card, portraitBytes: portraitBytes);
+    String? portraitPath,
+  }) async {
+    final repo = _repo;
+    if (repo == null) return null;
+    return persistCharacterCard(
+      repo,
+      _storage,
+      card,
+      portraitBytes: portraitBytes,
+      portraitPath: portraitPath,
+    );
+  }
+
+  /// The picture of the persona named by `fields['portraitPersonaId']`, if
+  /// any — shared by manual create and AI chargen.
+  String? portraitFromFields(Map<String, dynamic> fields) {
+    final id = fields['portraitPersonaId']?.toString() ?? '';
+    if (id.isEmpty) return null;
+    final path = personaPortrait?.call(id);
+    return path == null || path.isEmpty ? null : path;
+  }
 
   /// Import a character card uploaded from the web (V2 PNG or .byaf). Writes the
   /// bytes to a temp file and reuses the desktop import path
@@ -304,12 +387,15 @@ class CharacterFacade {
     String filename, {
     String collision = 'keepBoth',
     String? replaceId,
-  }) => _importBytesImpl(
-    bytes,
-    filename,
-    collision: collision,
-    replaceId: replaceId,
-  );
+  }) async {
+    final repo = _repo;
+    if (repo == null) return null;
+    return CharacterImporter(
+      repo,
+      _storage,
+      _db,
+    ).importBytes(bytes, filename, collision: collision, replaceId: replaceId);
+  }
 
   /// Resolve the on-disk avatar file for the active character's *current
   /// expression* (mood-driven portrait), or null if expressions aren't in use
@@ -373,13 +459,18 @@ class CharacterFacade {
         'mesExample': c.mesExample,
         'systemPrompt': c.systemPrompt,
         'postHistoryInstructions': c.postHistoryInstructions,
-        'alternateGreetings': _jsonList(c.alternateGreetings),
-        'tags': _jsonList(c.tags),
-        'worldNames': _jsonList(c.worldNames),
-        'lorebook': _normalizeLorebook(c.lorebook),
+        'alternateGreetings': decodeJsonList(c.alternateGreetings),
+        'tags': decodeJsonList(c.tags),
+        'worldNames': decodeJsonList(c.worldNames),
+        'lorebook': normalizeLorebookJson(c.lorebook),
         'ttsVoice': c.ttsVoice,
         'imagePath': c.imagePath,
-        'realism': ext != null ? frontPorchToJson(ext) : null,
+        'realism': ext != null
+            ? frontPorchToJson(
+                ext,
+                needsSimWhenSilent: _storage.realismSettings.needsSimDefault,
+              )
+            : null,
         'narrativePerspective': voice.perspective,
         'narrativeTense': voice.tense,
         'sex': voice.sex,
@@ -392,41 +483,6 @@ class CharacterFacade {
     }
   }
 
-  List<dynamic> _jsonList(String raw) {
-    try {
-      final v = jsonDecode(raw);
-      return v is List ? v : const [];
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  /// Normalize the DB lorebook blob (keys array / comment) into the frontend
-  /// shape (comma-joined key string / name), as the legacy detail handler did.
-  Map<String, dynamic>? _normalizeLorebook(String? raw) {
-    if (raw == null) return null;
-    try {
-      final parsed = jsonDecode(raw);
-      if (parsed is! Map<String, dynamic> || parsed['entries'] is! List) {
-        return parsed is Map<String, dynamic> ? parsed : null;
-      }
-      final entries = (parsed['entries'] as List).map((e) {
-        if (e is! Map<String, dynamic>) return e;
-        final keyStr = e['keys'] is List
-            ? (e['keys'] as List).map((k) => k.toString()).join(', ')
-            : (e['key']?.toString() ?? '');
-        return {
-          'name': e['comment']?.toString() ?? e['name']?.toString() ?? '',
-          'key': keyStr,
-          'content': e['content']?.toString() ?? '',
-          'enabled': e['enabled'] ?? true,
-          'constant': e['constant'] ?? false,
-          'stickyDepth': e['sticky_depth'] ?? e['insertion_order'] ?? 1,
-        };
-      }).toList();
-      return {'entries': entries};
-    } catch (_) {
-      return null;
-    }
-  }
+  /// "Your chats together" for the web character editor.
+  Future<Map<String, dynamic>?> stats(String id) => characterStatsJson(_db, id);
 }

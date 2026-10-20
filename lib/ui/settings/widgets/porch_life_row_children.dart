@@ -18,47 +18,50 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:front_porch_ai/services/chat/chat.dart' show ChaosFrequency;
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 // Sub-controls that ride inside a FeatureRow's `child` slot on the Porch
 // Life tab. Public because a file can only hold private classes for itself.
 
-/// How many consecutive "this quest is no longer relevant" verdicts retire
-/// a quest as stale (not achieved). Task-level stale is immediate.
-class ObjectiveStaleThresholdPicker extends StatelessWidget {
-  const ObjectiveStaleThresholdPicker({super.key, required this.storage});
+/// The "How often" dropdown under Chaos Mode. Shown even with the global
+/// switch off, because a single chat can still turn Chaos on in its sidebar.
+class ChaosFrequencyPicker extends StatelessWidget {
+  const ChaosFrequencyPicker({super.key, required this.storage});
 
   final StorageService storage;
 
+  static String _describe(ChaosFrequency f) => switch (f) {
+    ChaosFrequency.rare => 'Rare — about one event every twelve messages',
+    ChaosFrequency.normal => 'Normal — about one every six or seven',
+    ChaosFrequency.wild => 'Wild — about one every three',
+  };
+
   @override
   Widget build(BuildContext context) {
-    const known = [0, 1, 2, 4];
-    final raw = storage.realismSettings.objectiveStaleThreshold;
     return Row(
       children: [
         Expanded(
           child: Text(
-            'Retire a leftover quest after',
+            'How often',
             style: TextStyle(
               color: AppColors.textSecondary(context),
               fontSize: 12,
             ),
           ),
         ),
-        DropdownButton<int>(
-          value: known.contains(raw) ? raw : 2,
+        DropdownButton<ChaosFrequency>(
+          value: storage.realismSettings.chaosFrequency,
           dropdownColor: AppColors.cardOf(context),
           style: TextStyle(color: AppColors.textPrimary(context), fontSize: 12),
-          items: const [
-            DropdownMenuItem(value: 0, child: Text('never (off)')),
-            DropdownMenuItem(value: 1, child: Text('1 check')),
-            DropdownMenuItem(value: 2, child: Text('2 checks')),
-            DropdownMenuItem(value: 4, child: Text('4 checks')),
+          items: [
+            for (final f in ChaosFrequency.values)
+              DropdownMenuItem(value: f, child: Text(_describe(f))),
           ],
           onChanged: (v) {
             if (v != null) {
-              storage.realismSettings.setObjectiveStaleThreshold(v);
+              storage.realismSettings.setChaosFrequency(v);
             }
           },
         ),
@@ -186,7 +189,7 @@ class _WebSearchKeyFieldState extends State<WebSearchKeyField> {
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.porchAmberOf(context),
-                foregroundColor: AppColors.onChaosAccent,
+                foregroundColor: AppColors.onAccentOf(context),
               ),
               onPressed: _saving ? null : _save,
               child: Text(_saving ? 'Saving…' : 'Save key'),

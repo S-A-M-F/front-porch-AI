@@ -1,0 +1,279 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Front Porch AI is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
+
+import 'package:flutter/foundation.dart';
+
+import 'package:front_porch_ai/services/chat/eval_json_merge.dart';
+import 'package:front_porch_ai/services/chat/fused_eval_fire.dart';
+import 'package:front_porch_ai/services/chat/llm_eval_engine.dart'
+    show recentExchangeThroughLastUser;
+import 'package:front_porch_ai/services/chat/realism_evals/realism_batch_collector.dart';
+import 'package:front_porch_ai/services/chat/realism_evals/realism_eval_support.dart';
+import 'package:front_porch_ai/services/chat/realism_evals.dart';
+import 'package:front_porch_ai/services/chat/realism_prompt_builder.dart';
+import 'package:front_porch_ai/services/chat/realism_tools.dart';
+import 'package:front_porch_ai/utils/utils.dart';
+
+/// The fused one-shot realism eval call (Cluster E) for [RealismEvals].
+/// PUBLIC (not `_private`) — invoked from the chat_service library's god
+/// thins and from test/services/chat/one_shot_parity_test.dart; a private
+/// extension would not resolve outside this library. Split out of
+/// realism_evals.dart verbatim as part of the god-file elimination
+/// campaign; see docs/design/god-file-elimination.md.
+class RealismEvalOneShot {
+  final RealismEvals evals;
+  final RealismEvalSupport support;
+  final RealismBatchCollector batch;
+
+  RealismEvalOneShot({
+    required this.evals,
+    required this.support,
+    required this.batch,
+  });
+
+  /// ── One-Shot Eval (Experimental) ─────────────────────────────────────────
+  /// Fused replacement for _evaluateRelationshipCall + _evaluateSceneStateCall.
+  /// Issues a SINGLE LLM inference that evaluates all realism state fields at
+  /// once, cutting pre-generation blocking overhead from 2 calls to 1.
+  ///
+  /// Enable via Settings → Realism → "One-Shot Eval (Experimental)".
+  /// Not default because some models struggle with the combined prompt length.
+  Future<void> evaluateOneShotCall({void Function(String)? onChunk}) async {
+    if (!evals.getRealismEnabled()) return;
+    if (evals.getActiveCharacter() == null && evals.getActiveGroup() == null) {
+      return;
+    }
+    if (evals.getActiveGroup() != null && evals.getIsObserverMode()) return;
+
+    // The group speaker path sets _activeCharacter before calling this for parity.
+
+    // Keep the eval prompt lean for local models — use fewer messages and a
+    // shorter personality snippet to reduce prefill time on large models.
+    // Bond/emotion/narrative score the USER (through last user). Scene-time
+    // is post-generation now (same call as the multi-call path).
+    final recent = recentExchangeThroughLastUser(evals.getMessages(), take: 6);
+
+    if (evals.getActiveCharacter() == null) {
+      // Group chat or other mode — relationship evals not supported in this path yet
+      return;
+    }
+    final char = evals.getActiveCharacter()!;
+    final charName = char.name;
+    final userName = evals.getUserName();
+
+    final dossier = evals.getCharacterDossier(char);
+    final standing = RealismPromptBuilder.standingContext(
+      charName: charName,
+      userName: userName,
+      shortTermTier: evals.relationshipService.shortTermTierName,
+      longTermTier: evals.relationshipService.longTermTierName,
+      trustTier: evals.relationshipService.trustTierName,
+      trustLevel: evals.relationshipService.trustLevel,
+      emotion: evals.getCharacterEmotion(),
+      emotionIntensity: evals.getEmotionIntensity(),
+      posture: evals.relationshipService.spatialStance,
+      emotionCause: evals.getEmotionCause?.call() ?? '',
+      emotionHeldTurns: evals.getEmotionHeldTurns?.call() ?? 0,
+    );
+    final arousalEnabled = evals.nsfwService.nsfwCooldownEnabled;
+    final labels = evals.getExpressionEnabled()
+        ? EmotionLabels.all
+        : const <String>[];
+    final primary = evals.getPrimaryObjective();
+    final openGoals = [
+      for (final o in evals.getActiveObjectives()) o.objective,
+    ];
+    final recentEnded =
+        await evals.getRecentEndedObjectives?.call() ?? const <String>[];
+
+    // Same shared fragments as the multi-call path (strict one-shot vs normal
+    // parity by construction — the rubric text cannot drift between paths).
+    String buildPrompt({required bool toolsMode}) =>
+        RealismPromptBuilder.oneShotEvalPrompt(
+          preferences: evals.getPreferences?.call() ?? '',
+          charName: charName,
+          userName: userName,
+          dossier: dossier,
+          standing: standing,
+          recent: recent,
+          arousalEnabled: arousalEnabled,
+          arousalLevel: evals.nsfwService.arousalLevel,
+          refractoryMinutesLeft: evals.nsfwService.refractoryMinutesRemaining,
+          clockRunning: evals.nsfwService.clockRunning,
+          refractorySoft: evals.nsfwService.refractory.soft,
+          warmthTailMinutes: evals.nsfwService.refractoryTailMinutes,
+          mutualOpening: evals.getMutualOpening(),
+          pcdActive: evals.getPcdActive(),
+          allowedEmotionLabels: labels,
+          primaryObjective: primary?.objective,
+          ambitions: evals.getAmbitions?.call() ?? const [],
+          openGoals: openGoals,
+          recentEnded: recentEnded,
+          toolsMode: toolsMode,
+        );
+    final prompt = buildPrompt(toolsMode: false);
+
+    final sw = Stopwatch()..start();
+    var parsed = false;
+    try {
+      debugPrint('[Realism:OneShot] Evaluating (fused call)...');
+      // Tools-first with a forced retry, then tight no-headroom text that
+      // stops at schema-complete JSON, then one recovery. Never the
+      // 4000+16000 think hose — and never skip this turn's deltas if any
+      // attempt returns JSON.
+      final raw = await fireFusedRealismEval(
+        probe: evals.probe,
+        backendIdentity: evals.getBackendIdentity(),
+        debugLabel: kOneShotTool,
+        tools: kOneShotEvalTools,
+        buildPrompt: buildPrompt,
+        callToText: (resp) => realismToolCallToJson(kOneShotTool, resp.calls),
+        fireToolEval: evals.fireToolEval,
+        fireTightText:
+            evals.fireTightEval ??
+            (prompt, {onChunk, wallClockTimeout}) async => fusedTextFromRaw(
+              await evals.fireLLMEval(prompt, onChunk: onChunk),
+            ),
+        isCancelled: evals.isEvalCancelled,
+        onChunk: onChunk,
+        toolChoice: kOneShotTool,
+        getPreferTextEvals: evals.getPreferTextEvals,
+      );
+      if (raw == null) {
+        // Clock decide is post-generation now (same time-only call as the
+        // multi-call path). A failed one-shot must not freeze OR pre-move
+        // the clock — the post-reply pass owns both the estimate and the
+        // failure drift.
+        debugPrint(
+          '[Realism:OneShot] Failed — no JSON (${sw.elapsedMilliseconds} ms)',
+        );
+        support.markFeelingsUnscored();
+        return;
+      }
+
+      final searchText = evals.stripThinkBlocks(raw);
+      final text = searchText.isNotEmpty ? searchText : raw;
+
+      if (batch.active) {
+        batch.pending.add({
+          'kind': 'oneShot',
+          'raw': text,
+          'prompt': prompt,
+          'scene': recent,
+          'injections': {
+            'personality': dossier,
+            'standing': standing,
+            if (labels.isNotEmpty)
+              'emotion_constraint': RealismPromptBuilder.emotionLabelConstraint(
+                labels,
+              ),
+          },
+        });
+        return;
+      }
+
+      final effectiveText = await support.verifyAndApply(
+        evalKind: 'oneShot',
+        textAfterStrip: text,
+        promptUsed: prompt,
+        sceneForContext: recent,
+        injections: {
+          'personality': dossier,
+          'standing': standing,
+          if (labels.isNotEmpty)
+            'emotion_constraint': RealismPromptBuilder.emotionLabelConstraint(
+              labels,
+            ),
+        },
+      );
+      final textForOneShot = effectiveText; // rebind
+
+      // ── Relationship / trust / arousal (unified with multi-call path) ──
+      // applyArousal:true — the fused one-shot prompt is the requester of
+      // arousal_delta, and this is its single application (the inline emotion
+      // parse below deliberately does not touch arousal).
+      support.parseAndApplyRelationshipDeltas(
+        textForOneShot,
+        applyArousal: true,
+      );
+      parsed = true;
+
+      // ── Autonomous Objective ──
+      // (All parses below use textForOneShot — the Director-corrected text.
+      // Parsing the raw pre-verification text silently discarded corrections
+      // for everything except the relationship deltas.)
+      // The ONE proposal path, shared with the narrative judge, so one-shot
+      // takes up exactly the goals the four-call path would (and the
+      // Objectives switch, the dedup, the cap and the cooldown hold here too).
+      await support.applyObjectiveProposal(
+        evalJsonString(textForOneShot, 'proposed_objective')?.trim() ?? '',
+        RegExp(
+              r'"serves_ambition"\s*:\s*"?([^",}]*)"?',
+            ).firstMatch(textForOneShot)?.group(1) ??
+            '',
+        textForOneShot,
+      );
+
+      // ── Scene fields ──
+      // The ONE mood apply (cause, hold, easing — mood-with-bite.md), shared
+      // with the emotional judge so the two transports cannot drift. Arousal
+      // was applied above with the relationship deltas.
+      await support.applyEmotionalResults(textForOneShot, applyArousal: false);
+
+      // NO POSTURE HERE. One-shot is a PRE-generation optimisation and
+      // posture stopped being a pre-generation question on 2026-08-08 — it is
+      // now its own post-generation pass, which reads the reply the character
+      // actually wrote (see TimeService.evaluateTimeProgressAndPostureIfNeeded).
+      // Parsing it here would have made one-shot the ONLY mode that still
+      // asserts a stale position into the very reply it precedes, which is a
+      // strict-parity violation on Spatial Stance — the four-call path no
+      // longer sets it here either. test/services/chat/one_shot_parity_test
+      // compares 'stance' across the two paths and would catch a relapse.
+
+      evals.relationshipService.updateFixationFromEvalResult(
+        evalJsonString(textForOneShot, 'fixation_topic') ?? '',
+        isOneShot: true,
+      );
+
+      // Clock decide is post-generation (time-only eval after the reply).
+      // Applying minutes from this fused JSON would double-advance.
+
+      final reason = evalJsonString(textForOneShot, 'reason');
+      debugPrint(
+        '[Realism:OneShot] Done — Emotion: ${evals.getCharacterEmotion()} (${evals.getEmotionIntensity()}), '
+        'Time: ${evals.timeService.timeOfDay}, Reason: ${reason ?? 'unknown'} '
+        '(${sw.elapsedMilliseconds} ms)',
+      );
+
+      // Bundle full state snapshot for time-travel forking (god will persist via
+      // post-eval _saveChat + synthesize in the calling pre-gen / baseline paths;
+      // removing the cb calls here eliminates double save/notify for oneShot vs
+      // multi-call paths and the save-race window).
+      var pending = evals.getPendingRealismMetadata() ?? {};
+      pending['emotion_label'] = evals.getCharacterEmotion();
+      pending['realism_state'] = evals.captureRealismState();
+      evals.setPendingRealismMetadata(pending);
+    } catch (e) {
+      debugPrint(
+        '[Realism:OneShot] Failed: $e — falling back to dual-call on next turn '
+        '(${sw.elapsedMilliseconds} ms)',
+      );
+      if (!parsed) support.markFeelingsUnscored();
+    }
+  }
+}

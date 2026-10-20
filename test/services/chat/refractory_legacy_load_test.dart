@@ -225,4 +225,114 @@ void main() {
       reason: 'speaking: 3 turns = 45 min, less the 30-minute beat',
     );
   });
+
+  // Recovery overhaul PR 3: the soft gate on the v59 columns. A row that
+  // carries them hydrates the soft body with its peak stamps; a v58 row
+  // (columns NULL, added by the ladder) reads a hard lock with no peaks —
+  // exactly what every existing chat means today.
+  test('the v59 soft columns round-trip; NULLs read hard', () async {
+    await chat.setActiveCharacter(
+      CharacterCard(
+        name: 'Mara',
+        firstMessage: 'The porch light hums.',
+        imagePath: 'refr-v59-mara.png',
+        frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
+      )..dbId = 'char-refr-v59',
+    );
+    await chat.setRealismEnabled(true);
+    await chat.setNsfwCooldownEnabled(true);
+    await chat.sendMessage('Evening.');
+    await settle();
+    final id = chat.currentSessionId!;
+
+    await db.customUpdate(
+      'UPDATE sessions SET refractory_minutes_remaining = 9, '
+      'refractory_minutes_total = 15, refractory_opened = 0, '
+      'refractory_soft = 1, refractory_peaks = ? WHERE id = ?',
+      variables: [Variable('[20,0]'), Variable(id)],
+      updates: {db.sessions},
+    );
+    await chat.reloadCurrentSession();
+    expect(
+      chat.nsfwService.refractory,
+      const Refractory(minutes: 9, total: 15, soft: true, peaks: [20, 0]),
+    );
+
+    // Back to the installed base: drop the columns, run the v58→v59 step,
+    // and every body reads the way it did before this PR.
+    for (final c in ['refractory_soft', 'refractory_peaks']) {
+      await db.customStatement('ALTER TABLE sessions DROP COLUMN $c');
+    }
+    await db.migration.onUpgrade(Migrator(db), 58, db.schemaVersion);
+    expect(
+      await column('refractory_soft', id),
+      isNull,
+      reason: 'the v59 step adds NULL — a hard lock, no peaks',
+    );
+    await chat.reloadCurrentSession();
+    expect(
+      chat.nsfwService.refractory,
+      const Refractory(minutes: 9, total: 15),
+    );
+  });
+
+  test(
+    'the v60 tail columns round-trip; NULL and junk read tail-free',
+    () async {
+      await chat.setActiveCharacter(
+        CharacterCard(
+          name: 'Tess',
+          firstMessage: 'The porch light hums.',
+          imagePath: 'refr-v60-tess.png',
+          frontPorchExtensions: FrontPorchExtensions(realismEnabled: true),
+        )..dbId = 'char-refr-v60',
+      );
+      await chat.setRealismEnabled(true);
+      await chat.setNsfwCooldownEnabled(true);
+      await chat.sendMessage('Evening.');
+      await settle();
+      final id = chat.currentSessionId!;
+
+      await db.customUpdate(
+        'UPDATE sessions SET refractory_minutes_remaining = 0, '
+        'refractory_minutes_total = 0, refractory_opened = 0, '
+        'refractory_soft = 1, refractory_peaks = NULL, '
+        'refractory_tail_minutes = 22, refractory_tail_total = 45 '
+        'WHERE id = ?',
+        variables: [Variable(id)],
+        updates: {db.sessions},
+      );
+      await chat.reloadCurrentSession();
+      expect(
+        chat.nsfwService.refractory,
+        const Refractory(soft: true, tail: Refractory(minutes: 22, total: 45)),
+        reason: 'the tail rebuilds as the nested body from its two columns',
+      );
+
+      // Junk minutes read tail-free — a negative tail is no tail.
+      await db.customUpdate(
+        'UPDATE sessions SET refractory_tail_minutes = -5 '
+        'WHERE id = ?',
+        variables: [Variable(id)],
+        updates: {db.sessions},
+      );
+      await chat.reloadCurrentSession();
+      expect(chat.nsfwService.refractoryTailMinutes, 0);
+
+      // Back to the installed base: drop the columns, run the v59→v60 step,
+      // and every body reads tail-free the way it did before this PR.
+      for (final c in ['refractory_tail_minutes', 'refractory_tail_total']) {
+        await db.customStatement('ALTER TABLE sessions DROP COLUMN $c');
+      }
+      await db.migration.onUpgrade(Migrator(db), 59, db.schemaVersion);
+      expect(
+        await column('refractory_tail_minutes', id),
+        isNull,
+        reason: 'the v60 step adds NULL — no tail',
+      );
+      await chat.reloadCurrentSession();
+      expect(chat.nsfwService.refractoryTailMinutes, 0);
+      expect(chat.nsfwService.refractory, const Refractory(soft: true));
+    },
+  );
 }

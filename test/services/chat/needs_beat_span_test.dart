@@ -14,6 +14,8 @@ import 'package:front_porch_ai/services/chat/body_clock.dart';
 import 'package:front_porch_ai/services/chat/chat.dart'
     show RealismVerification, evalJsonBool, evalJsonInt;
 import 'package:front_porch_ai/services/chat/time_service.dart';
+import 'package:front_porch_ai/services/chat/needs_wear.dart'
+    show livedSkipBars;
 
 import 'llm_eval_engine_test.dart' show createTestLlmEvalEngine;
 
@@ -299,5 +301,41 @@ void main() {
     expect(gain.status, 'corrected');
     expect(gain.correctedRaw, contains('"hunger_delta": 2'));
     expect(gain.correctedRaw, isNot(contains('20')));
+  });
+
+  test('a long skip tells the judge the days were lived, not to restore '
+      'sleep for them', () {
+    const dest = 'Thu, Jul 16 · 9:00 AM';
+    final note = needsBeatNote(dest, longSkip: true);
+    expect(note, contains('skipped ahead to $dest'));
+    expect(note, contains('already back at its everyday level'));
+    expect(note, isNot(contains('restore energy')));
+  });
+
+  test('livedSkipBars puts every need that is on at its everyday level', () {
+    final bars = livedSkipBars(
+      current: const {'hunger': 20, 'energy': 5, 'social': 30},
+      everyday: const {'hunger': 80, 'energy': 70, 'social': 60},
+      on: const ['hunger', 'energy'],
+    );
+    expect(bars, {'hunger': 80, 'energy': 70, 'social': 30});
+  });
+
+  test('livedSkipBars never lands hunger, bladder or energy under the skip '
+      'floors, and leaves a musky character as unwashed as they were', () {
+    final bars = livedSkipBars(
+      current: const {'hunger': 5, 'bladder': 5, 'hygiene': 20},
+      everyday: const {'hunger': 10, 'bladder': 30, 'hygiene': 80},
+      on: const ['hunger', 'bladder', 'hygiene'],
+      enjoysLowHygiene: true,
+    );
+    expect(bars, {'hunger': 45, 'bladder': 60, 'hygiene': 20});
+    final dirtier = livedSkipBars(
+      current: const {'hygiene': 90},
+      everyday: const {'hygiene': 30},
+      on: const ['hygiene'],
+      enjoysLowHygiene: true,
+    );
+    expect(dirtier, {'hygiene': 30});
   });
 }

@@ -1,19 +1,22 @@
 // Copyright header standard
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 import '../widgets/eval_pill.dart';
+import 'frozen_backdrop_blur.dart';
 
 class RealismProcessingOverlay extends StatefulWidget {
   final ChatService chatService;
+  final VoidCallback? onMinimize;
   final bool isGreeting;
 
   const RealismProcessingOverlay({
     super.key,
     required this.chatService,
     required this.isGreeting,
+    this.onMinimize,
   });
 
   @override
@@ -63,10 +66,8 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
   @override
   Widget build(BuildContext context) {
     final isGreeting = widget.isGreeting;
-    final accentColor = isGreeting ? Colors.purpleAccent : Colors.cyanAccent;
-    final accentColorDim = isGreeting
-        ? const Color(0xFF7C3AED)
-        : const Color(0xFF06B6D4);
+    // Warm porch in both modes: one amber accent on the theme's surfaces.
+    final accentColor = AppColors.porchAmberOf(context);
     final isVerifying = widget.chatService.isVerifyingRealism;
     final vPass = widget.chatService.verificationPass;
     final vMax = widget.chatService.verificationMaxPasses;
@@ -83,20 +84,16 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
 
     final pills = isGreeting
         ? <EvalPill>[
-            EvalPill(
-              label: 'Emotion',
-              icon: Icons.mood,
-              color: Colors.purpleAccent,
-            ),
+            EvalPill(label: 'Emotion', icon: Icons.mood, color: accentColor),
             EvalPill(
               label: 'Bond',
               icon: Icons.favorite_border,
-              color: Colors.pinkAccent,
+              color: accentColor,
             ),
             EvalPill(
               label: 'Trust',
               icon: Icons.handshake_outlined,
-              color: Colors.blueAccent,
+              color: accentColor,
             ),
           ]
         : <EvalPill>[
@@ -104,27 +101,23 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
               EvalPill(
                 label: 'Objective',
                 icon: Icons.flag,
-                color: Colors.greenAccent,
+                color: accentColor,
               ),
             EvalPill(
               label: 'Relationship',
               icon: Icons.favorite_border,
-              color: Colors.pinkAccent,
+              color: accentColor,
             ),
-            EvalPill(
-              label: 'Emotion',
-              icon: Icons.mood,
-              color: Colors.orangeAccent,
-            ),
+            EvalPill(label: 'Emotion', icon: Icons.mood, color: accentColor),
             EvalPill(
               label: 'Scene',
               icon: Icons.wb_twilight,
-              color: Colors.amber,
+              color: accentColor,
             ),
             EvalPill(
               label: 'Trust',
               icon: Icons.handshake_outlined,
-              color: Colors.blueAccent,
+              color: accentColor,
             ),
           ];
 
@@ -133,55 +126,59 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
         opacity: _fade,
         child: Material(
           type: MaterialType.transparency,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: FrozenBackdropBlur(
+            sigma: 20,
             child: Container(
-              color: Colors.black.withValues(alpha: 0.55),
-              child: Center(
+              // A dark dim in both themes so the panel keeps the focus.
+              color: InkColors.dim(0.55),
+              // Top-anchored, not centred: the card grows when the live
+              // stream arrives, and a centred card would move its
+              // Minimize button out from under the pointer.
+              child: Align(
+                alignment: Alignment.topCenter,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: 680,
                     maxHeight: 580,
                   ),
                   child: Container(
-                    margin: const EdgeInsets.all(24),
+                    margin: const EdgeInsets.fromLTRB(24, 72, 24, 24),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFF0F1729).withValues(alpha: 0.97),
-                          const Color(0xFF080D1A).withValues(alpha: 0.99),
-                        ],
-                      ),
+                      color: AppColors.surfaceOf(context),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: accentColor.withValues(alpha: 0.18),
+                        color: accentColor.withValues(alpha: 0.35),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.7),
+                          color: Colors.black.withValues(
+                            alpha: AppColors.isLight(context) ? 0.18 : 0.6,
+                          ),
                           blurRadius: 60,
                           offset: const Offset(0, 24),
-                        ),
-                        BoxShadow(
-                          color: accentColorDim.withValues(alpha: 0.12),
-                          blurRadius: 80,
-                          spreadRadius: -10,
                         ),
                       ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (widget.onMinimize != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: widget.onMinimize,
+                              icon: const Icon(Icons.minimize),
+                              label: const Text('Minimize evaluation'),
+                            ),
+                          ),
                         // ── Header ───────────────────────────────────────────
                         Container(
                           padding: const EdgeInsets.fromLTRB(28, 26, 28, 20),
                           decoration: BoxDecoration(
                             border: Border(
                               bottom: BorderSide(
-                                color: accentColor.withValues(alpha: 0.1),
+                                color: accentColor.withValues(alpha: 0.2),
                               ),
                             ),
                           ),
@@ -198,15 +195,15 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                     gradient: RadialGradient(
                                       colors: [
                                         accentColor.withValues(
-                                          alpha: 0.45 + 0.2 * _pulse.value,
+                                          alpha: 0.3 + 0.15 * _pulse.value,
                                         ),
-                                        accentColorDim.withValues(alpha: 0.06),
+                                        accentColor.withValues(alpha: 0.04),
                                       ],
                                     ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: accentColor.withValues(
-                                          alpha: 0.2 + 0.18 * _pulse.value,
+                                          alpha: 0.12 + 0.1 * _pulse.value,
                                         ),
                                         blurRadius: 20 + 12 * _pulse.value,
                                         spreadRadius: 2,
@@ -250,10 +247,10 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                   children: [
                                     Text(
                                       title,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.w700,
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary(context),
                                         letterSpacing: 0.3,
                                       ),
                                     ),
@@ -262,7 +259,7 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                       subtitle,
                                       style: TextStyle(
                                         fontSize: 11.5,
-                                        color: Colors.white38,
+                                        color: AppColors.textSecondary(context),
                                         letterSpacing: 0.2,
                                       ),
                                     ),
@@ -321,10 +318,10 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                   16,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF010614),
+                                  color: AppColors.sunkenSurfaceOf(context),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: accentColor.withValues(alpha: 0.07),
+                                    color: accentColor.withValues(alpha: 0.15),
                                   ),
                                 ),
                                 child: Column(
@@ -352,7 +349,7 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                           style: TextStyle(
                                             fontSize: 9,
                                             color: accentColor.withValues(
-                                              alpha: 0.5,
+                                              alpha: 0.85,
                                             ),
                                             fontWeight: FontWeight.w700,
                                             letterSpacing: 1.4,
@@ -375,8 +372,8 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                                   .chatService
                                                   .realismEvalStreamTextClean,
                                               style: TextStyle(
-                                                color: accentColor.withValues(
-                                                  alpha: 0.8,
+                                                color: AppColors.textSecondary(
+                                                  context,
                                                 ),
                                                 fontSize: 11.5,
                                                 fontFamily: 'monospace',
@@ -411,11 +408,15 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                           : () => widget.chatService
                                                 .cancelRealismEval(),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.redAccent,
+                                        backgroundColor: StatusColors.dangerOf(
+                                          context,
+                                        ),
                                       ),
                                       child: const Text(
-                                        'Cancel Realism',
-                                        style: TextStyle(color: Colors.white),
+                                        'Stop this reply',
+                                        style: TextStyle(
+                                          color: StatusColors.onFill,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -435,9 +436,10 @@ class RealismProcessingOverlayState extends State<RealismProcessingOverlay>
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.white.withValues(
-                                    alpha: 0.22 + 0.12 * _pulse.value,
-                                  ),
+                                  color: AppColors.textPrimary(context)
+                                      .withValues(
+                                        alpha: 0.35 + 0.15 * _pulse.value,
+                                      ),
                                   height: 1.65,
                                 ),
                               ),

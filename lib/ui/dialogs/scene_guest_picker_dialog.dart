@@ -22,6 +22,8 @@ import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/utils/utils.dart';
 
 /// Modal character picker for the `/join` flow — choose an existing library
 /// character to bring into the current 1:1 chat as a Scene Guest (Lite NPC).
@@ -37,6 +39,9 @@ class SceneGuestPickerDialog extends StatefulWidget {
     required this.characters,
     required this.resolveImage,
     this.initialFilter = '',
+    this.title = 'Invite a character',
+    this.icon = Icons.group_add,
+    this.emptyText = 'No other characters are available to join.',
   });
 
   /// Candidates eligible to join (host + present guests already removed).
@@ -47,6 +52,11 @@ class SceneGuestPickerDialog extends StatefulWidget {
 
   /// Pre-fills the search box (e.g. the text typed after `/join`).
   final String initialFilter;
+
+  /// The same picker chooses an Image Studio subject from Home.
+  final String title;
+  final IconData icon;
+  final String emptyText;
 
   @override
   State<SceneGuestPickerDialog> createState() => _SceneGuestPickerDialogState();
@@ -79,13 +89,13 @@ class _SceneGuestPickerDialogState extends State<SceneGuestPickerDialog> {
   // Memoized per open dialog: _avatar runs per character row per rebuild,
   // and this dialog rebuilds on every search keystroke — N existsSync per
   // keypress is the io-lint bug class.
-  final Map<String, ImageProvider?> _avatarCache = {};
+  final Map<String, File?> _avatarCache = {};
 
-  ImageProvider? _avatar(CharacterCard c) {
+  File? _avatar(CharacterCard c) {
     return _avatarCache.putIfAbsent(c.name, () {
       final file = widget.resolveImage(c);
       return (file != null && file.existsSync()) // io-ok: memoized per dialog
-          ? FileImage(file)
+          ? file
           : null;
     });
   }
@@ -105,12 +115,12 @@ class _SceneGuestPickerDialogState extends State<SceneGuestPickerDialog> {
               color: accent.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.group_add, color: accent, size: 22),
+            child: Icon(widget.icon, color: accent, size: 22),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Invite a character',
+              widget.title,
               style: TextStyle(
                 color: AppColors.textPrimary(context),
                 fontSize: 18,
@@ -148,7 +158,7 @@ class _SceneGuestPickerDialogState extends State<SceneGuestPickerDialog> {
                   ? Center(
                       child: Text(
                         widget.characters.isEmpty
-                            ? 'No other characters are available to join.'
+                            ? widget.emptyText
                             : 'No characters match “${_search.text.trim()}”.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -173,19 +183,28 @@ class _SceneGuestPickerDialogState extends State<SceneGuestPickerDialog> {
                               padding: const EdgeInsets.all(10),
                               child: Row(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor:
-                                        AppColors.surfaceContainerOf(context),
-                                    backgroundImage: image,
-                                    child: image == null
-                                        ? Icon(
-                                            Icons.person,
-                                            size: 20,
-                                            color:
-                                                AppColors.iconSecondary(context),
-                                          )
-                                        : null,
+                                  // A character made without a portrait shows
+                                  // the person icon, not its flat card colour.
+                                  RealPortrait(
+                                    file: image,
+                                    portrait: (_, file) => CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor:
+                                          AppColors.surfaceContainerOf(context),
+                                      backgroundImage: portraitAvatarImage(
+                                        file,
+                                      ),
+                                    ),
+                                    noPortrait: (_) => CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor:
+                                          AppColors.surfaceContainerOf(context),
+                                      child: Icon(
+                                        Icons.person,
+                                        size: 20,
+                                        color: AppColors.iconSecondary(context),
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -198,16 +217,18 @@ class _SceneGuestPickerDialogState extends State<SceneGuestPickerDialog> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color:
-                                                AppColors.textPrimary(context),
+                                            color: AppColors.textPrimary(
+                                              context,
+                                            ),
                                             fontWeight: FontWeight.w600,
                                             fontSize: 14,
                                           ),
                                         ),
                                         if (desc.isNotEmpty)
                                           Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 2),
+                                            padding: const EdgeInsets.only(
+                                              top: 2,
+                                            ),
                                             child: Text(
                                               desc,
                                               maxLines: 1,

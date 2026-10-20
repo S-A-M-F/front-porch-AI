@@ -8,10 +8,11 @@
 // shared realism_extensions_json helper). Full multi-step on desktop/tablet;
 // the same steps stack compactly on phone.
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { StepIndicator } from '../components/StepIndicator';
+import { PersonaSeedNote, usePersonaSeed } from '../components/library/PersonaConvertDialogs';
 import { LoreEntriesEditor, type LoreEntry } from '../components/LoreEntriesEditor';
 import { AltGreetingsEditor } from '../components/AltGreetingsEditor';
 import { RealismFormSection } from '../components/realism/RealismFormSection';
@@ -19,6 +20,7 @@ import { useAdultThemes } from '../components/realism/useAdultThemes';
 import { usePassageOfTime } from '../components/realism/usePassageOfTime';
 import { NeedsFormSection } from '../components/realism/NeedsFormSection';
 import { type RealismValues, REALISM_DEFAULTS, compactGreetingPairs, inventoryToChips } from '../components/realism/realismTypes';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 
 interface Draft extends RealismValues {
   name: string;
@@ -59,6 +61,28 @@ export function CreateCharacterPage() {
   const [d, setD] = useState<Draft>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // "Make a Character" → Manual: start from a persona.
+  const [params] = useSearchParams();
+  const { seed: personaSeed, error: seedError } = usePersonaSeed(params);
+  const withSeed = (base: Draft): Draft =>
+    personaSeed
+      ? {
+          ...base,
+          name: personaSeed.name,
+          description: personaSeed.description,
+          personality: personaSeed.personality ?? '',
+          birthday: personaSeed.birthday,
+        }
+      : base;
+  useEffect(() => {
+    if (!personaSeed) return;
+    setD(withSeed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personaSeed]);
+  // A persona's seed is where the page starts, not an edit.
+  const { prompt, leaveWithoutAsking } = useUnsavedChanges(
+    JSON.stringify(d) !== JSON.stringify(withSeed(EMPTY)),
+  );
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setD({ ...d, [key]: value });
   const patch = (p: Partial<RealismValues>) => setD({ ...d, ...p });
@@ -74,7 +98,9 @@ export function CreateCharacterPage() {
         tags: d.tags.split(',').map((t) => t.trim()).filter(Boolean),
         alternateGreetings: paired.greetings,
         greetingSeeds: paired.seeds,
+        ...(personaSeed?.hasPortrait ? { portraitPersonaId: personaSeed.personaId } : {}),
       });
+      leaveWithoutAsking();
       // Open the new character so creation is verifiable end-to-end.
       try {
         navigate('/chat?opening=1');
@@ -91,11 +117,14 @@ export function CreateCharacterPage() {
 
   return (
     <div className="page wizard">
+      {prompt}
       <div className="page-head">
         <h2>Create character</h2>
         <button className="ghost" onClick={() => navigate(-1)}>Cancel</button>
       </div>
       <StepIndicator steps={STEPS} current={step} onJump={setStep} />
+      {personaSeed && <PersonaSeedNote seed={personaSeed} />}
+      {seedError && <p className="error">{seedError}</p>}
 
       <div className="wizard-body">
         {step === 0 && (
@@ -163,7 +192,7 @@ export function CreateCharacterPage() {
 
         {step === 4 && (
           <>
-            <RealismFormSection v={d} set={patch} showIntimate={adultThemes} />
+            <RealismFormSection v={d} set={patch} showIntimate={adultThemes} showChargenSuggestion />
             {d.realismEnabled && <NeedsFormSection v={d} set={patch} clockOn={clockOn} />}
           </>
         )}

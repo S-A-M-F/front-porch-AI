@@ -69,21 +69,25 @@ extension ChatServiceGenerationPlanRegister on ChatService {
     // trigger/untrigger rewrote byte 1 of the prompt, so local backends
     // re-prefills the whole transcript. After history, the sticky prefix
     // stays put — same class of move as memories / recap / journal.
-    plan.add(id: 'lore.before', label: 'Lorebook', text: t.loreBefore);
     // Growth, scenario fade, and keyword lore around the card used to sit
     // in the system head. A ring, a fade step, or a trigger rewrote the
     // cached prefix and the whole transcript was re-read. They sit after
     // history now, same seat as lore.before. Growth is not a state-zone
     // member: Continue still sees it.
-    plan.add(id: 'growth', label: 'Character Growth', text: t.growthBlock);
-    plan.add(id: 'lore.after', label: 'Lorebook', text: t.loreAfter);
-    plan.add(
-      id: 'scenario',
-      label: 'Scenario',
-      text: ScenarioFade.wrapForChat(t.scenario, _messages),
-    );
-    plan.add(id: 'lore.ex_top', label: 'Lorebook', text: t.loreExTop);
-    plan.add(id: 'lore.ex_bottom', label: 'Lorebook', text: t.loreExBottom);
+    final afterHistory = openOwnLines([
+      t.loreBefore,
+      t.growthBlock,
+      t.loreAfter,
+      ScenarioFade.wrapForChat(t.scenario, _messages),
+      t.loreExTop,
+      t.loreExBottom,
+    ]);
+    plan.add(id: 'lore.before', label: 'Lorebook', text: afterHistory[0]);
+    plan.add(id: 'growth', label: 'Character Growth', text: afterHistory[1]);
+    plan.add(id: 'lore.after', label: 'Lorebook', text: afterHistory[2]);
+    plan.add(id: 'scenario', label: 'Scenario', text: afterHistory[3]);
+    plan.add(id: 'lore.ex_top', label: 'Lorebook', text: afterHistory[4]);
+    plan.add(id: 'lore.ex_bottom', label: 'Lorebook', text: afterHistory[5]);
     // Retrieved memories sit AFTER the transcript (Phase 3, measured):
     // retrieval changes this block every turn, and a changing block
     // BEFORE the history rewrote the prompt's middle each turn — a full
@@ -155,6 +159,22 @@ extension ChatServiceGenerationPlanRegister on ChatService {
       label: 'Needs Catastrophe',
       text: needsCatastropheBlock,
     );
+    // After a long skip: one plain fact line saying how long it was, right
+    // where the transcript resumes and outside the state frame, so the new
+    // date is not one more note that "may be behind" (time_skip_anchor.dart).
+    plan.add(id: 'time_skip', label: 'Time Skip', text: _timeSkipAnchorBlock());
+    // The latest beat (latestTurnStart), cut off the transcript and rendered
+    // here: the last thing the model reads before the speaker's name is the
+    // turn it answers, not the notes above or its own long replies. Local
+    // models replayed recent beats as new when the state zone sat between
+    // them and the reply. Cache cost: one moved message is re-read per turn;
+    // the transcript prefix before it is untouched.
+    plan.add(
+      id: 'latest_turn',
+      label: 'Chat History',
+      text: '',
+      counted: false, // paid for inside the history budget walk
+    );
     plan.add(
       id: 'idle_cue',
       text: '',
@@ -204,6 +224,8 @@ extension ChatServiceGenerationPlanRegister on ChatService {
     }
     plan.section('chance_time').text = '';
     plan.section('state_frame').text = '';
+    // The partial already answered the skip; Continue drops the time line too.
+    plan.section('time_skip').text = '';
     // Porch Night is registered outside kStateZoneSectionIds (force-ack
     // table-talk, not a permanent state fragment). Leaving it armed made
     // Continue inject "HARD REQUIRED OPENING / first 2–4 sentences" into

@@ -49,7 +49,7 @@ PRs opened against the wrong branch will be asked to move.
 
 ### Prerequisites
 
-- **Flutter 3.47.0** (what CI uses). Dart SDK constraint `^3.10.8`.
+- **Flutter 3.47.7** (what CI uses). Dart SDK constraint `^3.10.8`.
   macOS **12 Monterey** is the floor.
 - [Git](https://git-scm.com/)
 - Windows 10+, macOS 12+, or Linux
@@ -68,8 +68,9 @@ git clone https://github.com/<your-username>/front-porch-AI.git
 cd front-porch-AI
 flutter pub get
 
-# Only if you are working on the web/mobile UI
-cd web_ui && npm ci
+# The web/phone UI the desktop app serves is built, not committed: once
+# after cloning, and again after any change under web_ui/
+cd web_ui && npm ci && npm run build
 ```
 
 Database schema changes also need:
@@ -100,6 +101,13 @@ flutter analyze
 flutter test --concurrency=4 --exclude-tags golden
 flutter test --tags golden              # pixel goldens; authored on Linux
 cd web_ui && npm run lint && npm test   # only if you touched web_ui/
+```
+
+Or the one command that picks those from what your branch changes, and runs
+the browser suite when `web_ui/` changed (a web journey only runs there):
+
+```bash
+tools/preflight.sh
 ```
 
 Linux goldens that a Mac `flutter test` never executes:
@@ -155,8 +163,9 @@ often send a PR back:
   maintainer defers that item on the PR.
 - **Realism/Needs parity.** Observable behaviour must match in a 1:1 chat
   and a group.
-- **Theme system.** `AppColors` only. New chrome accents use
-  `AppColors.formMasterAccent` or `AppColors.porchAmberOf(context)`.
+- **Theme system.** `AppColors` only, through the `*Of(context)` helpers so
+  the app theme applies. New chrome accents use
+  `AppColors.formAccentOf(context)` or `AppColors.porchAmberOf(context)`.
 - **Barrel imports** where a barrel covers the file.
 - **Do not edit `pubspec.yaml` version** — CI/CD normalizes it.
 - **Database schema changes need a plan.** The Drift `onUpgrade` ladder is

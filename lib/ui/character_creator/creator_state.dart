@@ -21,15 +21,16 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_greetings.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_interview.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_profile.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state.models.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state.prefs.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state/creator_form_reset.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_templates.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
-
-part 'creator_state.prefs.dart';
-part 'creator_state.models.dart';
 
 /// Creator mode selection.
 enum CreatorMode { automated, guided, quick }
@@ -37,8 +38,8 @@ enum CreatorMode { automated, guided, quick }
 /// Shared state for the AI character creator wizard: form fields,
 /// controllers, prefs, load/save/reset, step index, and generation.
 class CreatorState extends ChangeNotifier {
-  // Step tracking (0=setup, 1=mode, 2=config, 3=generating, 4=greetings,
-  // 5=realism, 6=review)
+  // Step tracking (0=setup, 1=mode, 2=config, 3=generating, 4=profile,
+  // 5=greetings, 6=realism, 7=review)
   int _currentStep = 0;
   int get currentStep => _currentStep;
   set currentStep(int value) {
@@ -148,10 +149,12 @@ class CreatorState extends ChangeNotifier {
   final loreUrlsController = TextEditingController();
   List<PlatformFile> loreFiles = [];
 
-  // Review editable controllers (lifted)
-  final descController = TextEditingController();
-  final personalityController = TextEditingController();
-  final scenarioController = TextEditingController();
+  /// The profile boxes (the Profile step and Review share them). Replaced by
+  /// styled boxes made with their text when a profile arrives
+  /// ([adoptProfileBoxes]), like the greeting boxes.
+  TextEditingController descController = TextEditingController();
+  TextEditingController personalityController = TextEditingController();
+  TextEditingController scenarioController = TextEditingController();
 
   /// Replaced by [newGreetingBox] when a generated card's greetings arrive,
   /// like the alternates.
@@ -161,88 +164,33 @@ class CreatorState extends ChangeNotifier {
   List<TextEditingController> altGreetingControllers = [];
   List<GreetingRealismSeed?> greetingSeeds = [];
   final greetings = CreatorGreetings();
+  final profile = CreatorProfile();
+  final review = CreatorReview();
+  final interview = CreatorInterview();
+
+  /// The Mode step's templates and the form's `Started from` mark.
+  late final templates = CreatorTemplates(notifyListeners, save: saveState);
 
   /// A generated greeting's box: the character editor's, with spell check
   /// and macro, "dialogue" and *action* colouring. Made with its text, so
   /// no spell-check pass is queued until someone types.
   TextEditingController newGreetingBox([String text = '']) =>
-      StyledTextController(text: text, preset: StyledTextPreset.prose);
+      StyledTextController(text: text, preset: StyledTextPreset.studioProse);
 
-  // SharedPreferences keys (all lifted)
-  static const _prefName = 'chargen_name';
-  static const _prefConcept = 'chargen_concept';
-  static const _prefKeywords = 'chargen_keywords';
-  static const _prefArtStyle = 'chargen_art_style';
-  static const _prefModel = 'chargen_model';
-  static const _prefGreetingLength = 'chargen_greeting_length';
-  static const _prefAltCount = 'chargen_alt_count';
-  static const _prefTone = 'chargen_tone';
-  static const _prefLorebook = 'chargen_lorebook';
-  static const _prefAge = 'chargen_age';
-  static const _prefSex = 'chargen_sex';
-  static const _prefRelationship = 'chargen_relationship';
-  static const _prefPersona = 'chargen_persona';
-  static const _prefQuickScenario = 'chargen_quick_scenario';
-  static const _prefLoreCategories = 'chargen_lore_categories';
-  static const _prefLoreDepth = 'chargen_lore_depth';
-  static const _prefDynamicMacros = 'chargen_dynamic_macros';
-  static const _prefNarrativePerspective = 'chargen_narrative_perspective';
-  static const _prefNarrativeTense = 'chargen_narrative_tense';
-  static const _prefRelationships = 'chargen_relationships';
-  static const _prefCustomRelationship = 'chargen_custom_relationship';
-  static const _prefNsfwEnabled = 'chargen_nsfw_enabled';
-  static const _prefRealismVerificationEnabled =
-      'chargen_realism_verification_enabled';
-  static const _prefRealismVerificationMax = 'chargen_realism_verification_max';
-  static const _prefRealismVerificationStrict =
-      'chargen_realism_verification_strict';
-  static const _prefRealismNeedsDirectorAuthority =
-      'chargen_realism_needs_director_authority';
-  static const _prefBodyType = 'chargen_body_type';
-  static const _prefRace = 'chargen_race';
-  static const _prefCustomRace = 'chargen_custom_race';
-  static const _prefHairLength = 'chargen_hair_length';
-  static const _prefHairStyle = 'chargen_hair_style';
-  static const _prefSkinTone = 'chargen_skin_tone';
-  static const _prefNotableFeatures = 'chargen_notable_features';
-  static const _prefAbsCore = 'chargen_abs_core';
-  static const _prefThighs = 'chargen_thighs';
-  static const _prefHips = 'chargen_hips';
-  static const _prefShoulders = 'chargen_shoulders';
-  static const _prefWaist = 'chargen_waist';
-  static const _prefChestSize = 'chargen_chest_size';
-  static const _prefButtSize = 'chargen_butt_size';
-  static const _prefExperience = 'chargen_experience';
-  static const _prefDominance = 'chargen_dominance';
-  static const _prefKinks = 'chargen_kinks';
-  static const _prefCustomKinks = 'chargen_custom_kinks';
-  static const _prefOutfitVibe = 'chargen_outfit_vibe';
-  static const _prefGenerationDetail = 'chargen_generation_detail';
-  static const _prefBackstoryOrigin = 'chargen_backstory_origin';
-  static const _prefBackstoryTone = 'chargen_backstory_tone';
-  static const _prefBackstoryEra = 'chargen_backstory_era';
-  static const _prefBackstoryNotes = 'chargen_backstory_notes';
-  static const _prefConceptGenerated = 'chargen_concept_generated';
-  static const _prefCreatorMode = 'chargen_creator_mode';
-  static const _prefGuidedVision = 'chargen_guided_vision';
-  static const _prefGuidedAppearance = 'chargen_guided_appearance';
-  static const _prefGuidedHair = 'chargen_guided_hair';
-  static const _prefGuidedFeatures = 'chargen_guided_features';
-  static const _prefGuidedRace = 'chargen_guided_race';
-  static const _prefGuidedPersonality = 'chargen_guided_personality';
-  static const _prefGuidedSpeech = 'chargen_guided_speech';
-  static const _prefGuidedSecret = 'chargen_guided_secret';
-  static const _prefGuidedOrigin = 'chargen_guided_origin';
-  static const _prefGuidedSetting = 'chargen_guided_setting';
-  static const _prefGuidedTone = 'chargen_guided_tone';
-  static const _prefGuidedRelDynamic = 'chargen_guided_rel_dynamic';
-  static const _prefGuidedRelScenario = 'chargen_guided_rel_scenario';
-  static const _prefGuidedNsfwBody = 'chargen_guided_nsfw_body';
-  static const _prefGuidedNsfwExp = 'chargen_guided_nsfw_exp';
-  static const _prefGuidedNsfwDom = 'chargen_guided_nsfw_dom';
-  static const _prefGuidedNsfwKinks = 'chargen_guided_nsfw_kinks';
-  static const _prefGuidedNsfwClothing = 'chargen_guided_nsfw_clothing';
-  static const _prefGuidedNsfwPersonality = 'chargen_guided_nsfw_personality';
+  /// A generated profile: its three boxes become styled boxes made with
+  /// their text (never at construction: the spell-check timer). The old
+  /// boxes may still be on screen this frame.
+  void adoptProfileBoxes(String description, String personality, String scen) {
+    final old = [descController, personalityController, scenarioController];
+    descController = newGreetingBox(description);
+    personalityController = newGreetingBox(personality);
+    scenarioController = newGreetingBox(scen);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in old) {
+        c.dispose();
+      }
+    });
+  }
 
   // Generation state (lifted)
   String generationStatus = '';
@@ -251,6 +199,9 @@ class CreatorState extends ChangeNotifier {
   double progress = 0.0;
   CharacterCard? generatedCard;
   String? imagePrompt;
+
+  /// First-save picture (a persona's); null writes a placeholder.
+  String? portraitSourcePath;
   Map<int, bool> lorebookEntryEnabled = {};
 
   // Quick-mode NSFW flag (synced into [nsfwEnabled] when generation starts).
@@ -270,7 +221,10 @@ class CreatorState extends ChangeNotifier {
   // Realism Engine seed values — written into the saved card's
   // FrontPorchExtensions when [realismStepEnabled] is true. The Realism step
   // edits these; save consumes them. (Verification fields already exist above.)
+  // The switch is not saved with the draft: every visit opens it on Porch
+  // Life's engine switch ([porchLifeRealism]); Clear Everything goes back.
   bool realismStepEnabled = false;
+  bool porchLifeRealism = false;
   int realismShortTermBond = 0;
   int realismLongTermBond = 0;
   int realismTrustLevel = 0;
@@ -293,6 +247,9 @@ class CreatorState extends ChangeNotifier {
   /// sketch §4). Card-resident like the rest of this state.
   List<String> realismAmbitions = const [];
   List<String> realismPlanLines = const [];
+
+  /// The opening task (saved as `currentTask`), from the facts pass.
+  String realismCurrentTask = '';
   String realismOccupation = '';
   String realismOccupationBrief = '';
   String realismBirthday = '';
@@ -305,6 +262,9 @@ class CreatorState extends ChangeNotifier {
   List<String> realismDislikes = const [];
   List<String> realismIntimateInto = const [];
   List<String> realismIntimateNotInto = const [];
+
+  /// Recovery profile from the realism step (Afterglow PR 2); notify-only.
+  RecoveryProfile realismRecovery = const RecoveryProfile();
 
   /// Starting Pockets & Wardrobe as chip text (`sundress (rain-soaked)`).
   /// Notify-only like the identity lists above — saveState() persists none of
@@ -338,6 +298,10 @@ class CreatorState extends ChangeNotifier {
   final gpuLayersController = TextEditingController();
   final contextSizeController = TextEditingController();
   CharacterGenService? activeGenService;
+
+  /// Makes each run's service. A test swaps in one with no retry waits.
+  CharacterGenService Function(LLMService llm) newGenService =
+      CharacterGenService.new;
 
   // Options (lifted statics)
   static const generationDetailOptions = {
@@ -401,17 +365,21 @@ class CreatorState extends ChangeNotifier {
   static const saveDelay = Duration(milliseconds: 500);
   Timer? _saveTimer;
 
-  /// The last save in line. Saves write one after another: a slow first
-  /// save (every key missing) could otherwise finish after a newer one and
-  /// put older text back.
-  Future<void> _saveQueue = Future<void>.value();
+  /// Prefs I/O and its one-at-a-time save queue.
+  final _prefs = CreatorFormPrefs();
+  late final _models = CreatorBackendModels(this);
+
+  /// False for a session seeded from a persona: it never loads or writes the
+  /// saved draft, so the user's own unfinished character is left alone.
+  bool persistDraft = true;
 
   /// Class door — `_CountingCreatorState` in the debounce test `@override`s
   /// this. An extension member is statically dispatched and cannot be.
   /// Drops a pending [scheduleSave]: this save already includes that text.
   Future<void> saveState() {
     _saveTimer?.cancel();
-    return _saveStateImpl();
+    if (!persistDraft) return Future<void>.value();
+    return _prefs.save(this);
   }
 
   /// The typing door: one save once the user pauses, not one per keystroke
@@ -421,12 +389,65 @@ class CreatorState extends ChangeNotifier {
     _saveTimer = Timer(saveDelay, saveState);
   }
 
+  Future<void> loadSavedState() async {
+    await _prefs.load(this, applyMode: (mode) => _creatorMode = mode);
+    notifyListeners();
+  }
+
+  void resetAllFields() {
+    _currentStep = 0;
+    _creatorMode = CreatorMode.automated;
+    clearCreatorForm(this);
+    notifyListeners();
+  }
+
+  /// Clear the core saved-form prefs after a character is successfully created,
+  /// so the next visit starts fresh. Mirrors the original review-step save.
+  Future<void> clearSavedFormPrefsAfterSave() =>
+      persistDraft ? _prefs.clearAfterSave() : Future<void>.value();
+
+  void abortGeneration() => _models.abortGeneration();
+
+  Future<void> loadAvailableModels(LLMProvider llmProvider) =>
+      _models.loadAvailableModels(llmProvider);
+
+  void scanLocalModels(StorageService storage) =>
+      _models.scanLocalModels(storage);
+
+  void scanLocalPresets(StorageService storage) =>
+      _models.scanLocalPresets(storage);
+
+  void initLocalSettingsControllers(StorageService storage) =>
+      _models.initLocalSettingsControllers(storage);
+
+  /// Starts the Realism step's engine switch where Porch Life has it.
+  void seedRealismFromPorchLife(StorageService storage) {
+    porchLifeRealism = storage.realismSettings.realismDefault;
+    realismStepEnabled = porchLifeRealism;
+    notifyListeners();
+  }
+
+  Future<void> reloadKoboldWithModel(
+    String modelPath,
+    LLMProvider llmProvider,
+    StorageService storage,
+    BackendManager backendManager,
+  ) => _models.reloadKoboldWithModel(
+    modelPath,
+    llmProvider,
+    storage,
+    backendManager,
+  );
+
   // Dispose for controllers (called by shell)
   void disposeControllers() {
     // Keep what was typed in the last half second before leaving.
     if (_saveTimer?.isActive ?? false) saveState();
     // A greeting still being written must not land in a disposed box.
     greetings.dispose();
+    profile.dispose();
+    review.dispose();
+    interview.dispose();
     nameController.dispose();
     conceptController.dispose();
     keywordsController.dispose();

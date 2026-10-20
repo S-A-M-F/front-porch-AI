@@ -24,8 +24,12 @@ import {
 /** Running total of visible controls. A sparse screen is fine. */
 let controlsSeen = 0;
 
+// The last four are the story engine's job starters: a sweep tap on one
+// launched a real run in the app, and every tap after it waited out
+// `settle`'s network-idle on a server that never went idle (screens 15 and
+// 18 timing out on CI).
 const SKIP =
-  /delet|remov|sign ?out|log ?out|revoke|reset|wipe|purge|clear|restart|stop|shut ?down|install|download|export|import|upload|backup|restore|disable|unlink|publish|submit|send|generat|continu|imperson|fork|swipe|regen|reprocess|revert|tailscale|pair|connect|scan|retest|spin|accept|attach|photo|mic\b|record|speak|play|save|apply|create|new|duplicat|move|start|run|write|enhanc|build|merge|extract|promot|join|exit|copy|share|pick a file|browse|choose file|refresh|reload|retry|try again|cancel all|pause|resume/i;
+  /delet|remov|sign ?out|log ?out|revoke|reset|wipe|purge|clear|restart|stop|shut ?down|install|download|export|import|upload|backup|restore|disable|unlink|publish|submit|send|generat|continu|imperson|fork|swipe|regen|reprocess|revert|tailscale|pair|connect|scan|retest|spin|accept|attach|photo|mic\b|record|speak|play|save|apply|create|new|duplicat|move|start|run|write|enhanc|build|merge|extract|promot|join|exit|copy|autopilot|distill|outline|interview|share|pick a file|browse|choose file|refresh|reload|retry|try again|cancel all|pause|resume/i;
 const CLOSE = /^(close|cancel|done|×|✕|✖|back|not now|dismiss|ok|got it)$/i;
 const MAX_CLICKS = 70;
 
@@ -50,10 +54,14 @@ const ROUTES: ((i: { character: string; story: string }) => string)[] = [
   () => '/account',
   () => '/remote',
   () => '/models',
+  () => '/images',
   () => '/create',
   () => '/create-ai',
   // The AI creator's Greetings step (#370), opened on a saved character.
   (i) => `/create-ai?greetings=${i.character}`,
+  // The AI creator's Profile step, as a reload finds it (with nothing
+  // pending in the sweep's sandbox it opens the Mode step again).
+  () => '/create-ai?profile=pending',
   () => '/create-group',
   () => '/worlds',
   () => '/worlds/from-wiki',
@@ -99,9 +107,17 @@ async function label(page: Page, id: number): Promise<string> {
     .catch(() => '');
 }
 
-/** Number the clickable, non-link controls not yet numbered. */
+/**
+ * Number the clickable, non-link controls not yet numbered. Numbering from 0
+ * starts the screen over, so it first drops the old numbers: going back to the
+ * same hash route keeps the document, and a control that survived the
+ * re-render would otherwise share its number with a newly mounted one.
+ */
 async function tag(page: Page, from: number): Promise<number> {
   return page.evaluate((start) => {
+    if (start === 0) {
+      document.querySelectorAll('[data-sweep]').forEach((e) => e.removeAttribute('data-sweep'));
+    }
     let n = start;
     for (const el of Array.from(document.querySelectorAll('button, summary, [role="button"]'))) {
       if (el.hasAttribute('data-sweep') || el.closest('.drawer-backdrop, [role="dialog"]')) continue;

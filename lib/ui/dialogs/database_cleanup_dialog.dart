@@ -19,7 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/database/database_cleanup.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 class DatabaseCleanupDialog extends StatefulWidget {
   const DatabaseCleanupDialog({super.key});
@@ -80,9 +80,9 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
+            child: Text(
               'Clean Up',
-              style: TextStyle(color: Colors.redAccent),
+              style: TextStyle(color: StatusColors.dangerOf(ctx)),
             ),
           ),
         ],
@@ -133,9 +133,9 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.cleaning_services,
-            color: AppColors.formMasterAccent,
+            color: AppColors.formAccentOf(context),
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -211,7 +211,9 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
                 ? 'Found $total item${total == 1 ? '' : 's'} needing attention:'
                 : 'Database is clean — no orphaned records found.',
             style: TextStyle(
-              color: total > 0 ? Colors.orangeAccent : Colors.greenAccent,
+              color: total > 0
+                  ? StatusColors.warningOf(context)
+                  : StatusColors.successOf(context),
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -231,8 +233,8 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
               label: Text('Clean All ($total item${total == 1 ? '' : 's'})'),
               onPressed: (!_cleaning && total > 0) ? _runCleanAll : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.formMasterAccent,
-                foregroundColor: AppColors.onChaosAccent,
+                backgroundColor: AppColors.formAccentOf(context),
+                foregroundColor: AppColors.onAccentOf(context),
                 disabledBackgroundColor: AppColors.surfaceContainerOf(context),
                 disabledForegroundColor: AppColors.textTertiary(context),
                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -332,7 +334,7 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: count > 0
-                  ? Colors.orangeAccent.withValues(alpha: 0.15)
+                  ? StatusColors.warningWashOf(context, 0.15)
                   : AppColors.surfaceContainerOf(context),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -342,7 +344,7 @@ class _DatabaseCleanupDialogState extends State<DatabaseCleanupDialog> {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: count > 0
-                    ? Colors.orangeAccent
+                    ? StatusColors.warningOf(context)
                     : AppColors.textTertiary(context),
               ),
             ),

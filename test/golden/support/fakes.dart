@@ -34,6 +34,9 @@ import 'package:front_porch_ai/models/chat_message.dart';
 import 'package:front_porch_ai/models/chat_theme_overrides.dart';
 import 'package:front_porch_ai/models/chat_participant.dart';
 import 'package:front_porch_ai/services/chat/context_viewer_snapshot.dart';
+import 'package:front_porch_ai/services/chat/mood_effects.dart';
+import 'package:front_porch_ai/services/chat/mood_physics.dart';
+import 'package:front_porch_ai/services/chat/objective_rewards.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/chat/weather_engine.dart';
 import 'package:front_porch_ai/services/chat/weather_segments.dart';
@@ -289,9 +292,23 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   @override
   final bool needsSimEnabled;
   @override
+  bool get needsActive => realismEnabled && needsSimEnabled;
+  @override
   final String characterEmotion;
   @override
   final String emotionIntensity;
+
+  // 2026-10-13 (mood with bite): the sidebar row reads the one-line mood
+  // instead of label + intensity. No cause and no hold here, so the line
+  // renders exactly the pixels the goldens already hold ("Affection (strong)").
+  @override
+  String get emotionCause => '';
+  @override
+  int get emotionHeldTurns => 0;
+  @override
+  String get moodLine => moodDisplayLine(
+    MoodState(label: characterEmotion, intensity: emotionIntensity),
+  );
   @override
   final bool isGrowthPassRunning;
   @override
@@ -433,6 +450,8 @@ class FakeChatService extends ChangeNotifier implements ChatService {
   List<Objective> get secondaryObjectives => const [];
   @override
   bool get isCheckingCompletion => false;
+  @override
+  ObjectiveTally get objectiveTally => ObjectiveTally.none;
 
   // Context viewer surface.
   @override
@@ -554,6 +573,8 @@ class FakeChatService extends ChangeNotifier implements ChatService {
 
   @override
   bool? withUserForGroupCharacter(CharacterCard character) => null;
+  @override
+  bool get isTurnBusy => false;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

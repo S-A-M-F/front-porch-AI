@@ -23,7 +23,7 @@ import 'package:front_porch_ai/services/services.dart';
 /// The Greetings step's own state (#370): which greeting is being written and
 /// what has come in so far, each greeting's steer box, and the outfit hint
 /// the Realism step shows after a new first message. Held by `CreatorState`,
-/// which notifies; the work itself is `CreatorGreetingEngine`.
+/// which notifies; the work itself is `CreatorGreetingWriter`.
 class CreatorGreetings {
   /// The most alternates the creator writes or lets you add.
   static const maxAlternates = kMaxAlternateGreetings;
@@ -66,8 +66,11 @@ class CreatorGreetings {
 
   final Map<TextEditingController, TextEditingController> _steers = {};
 
-  /// Back and Next wait while either model call is out.
-  bool get busy => writingIndex != null || rereadingOutfit;
+  /// "Rewrite the greetings from it" is going through every greeting.
+  bool rewritingAll = false;
+
+  /// Back and Next wait while any model call is out.
+  bool get busy => writingIndex != null || rereadingOutfit || rewritingAll;
 
   /// The one-line steer box of the greeting that [box] edits.
   TextEditingController steerFor(TextEditingController box) =>
@@ -116,6 +119,7 @@ class CreatorGreetings {
     outfitGen?.abort();
     outfitGen = null;
     rereadingOutfit = false;
+    rewritingAll = false;
   }
 
   /// The wizard is closing.

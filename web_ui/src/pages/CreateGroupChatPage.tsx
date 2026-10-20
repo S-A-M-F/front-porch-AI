@@ -16,6 +16,8 @@ import {
   type PickerChar,
   type PickerFolder,
 } from '../components/FolderCharacterPicker';
+import { defaultGroupName } from '../groupName';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 
 const STEPS = ['Members', 'Details'];
 
@@ -25,10 +27,14 @@ export function CreateGroupChatPage() {
   const [folders, setFolders] = useState<PickerFolder[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
+  // null until the user types: the name then follows the roster.
+  const [typedName, setTypedName] = useState<string | null>(null);
   const [turnOrder, setTurnOrder] = useState<'roundRobin' | 'random'>('roundRobin');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const { prompt, leaveWithoutAsking } = useUnsavedChanges(
+    selected.length > 0 || typedName !== null || turnOrder !== 'roundRobin',
+  );
 
   useEffect(() => {
     api.get<PickerChar[]>('/api/characters?scope=allCharacters').then(setChars).catch(() => {});
@@ -39,17 +45,13 @@ export function CreateGroupChatPage() {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const selectedChars = chars.filter((c) => selected.includes(c.id));
+  // Named after every member, in the order they were picked, until the user
+  // types a name of their own.
+  const name =
+    typedName ??
+    defaultGroupName(selected.map((id) => chars.find((c) => c.id === id)?.name ?? ''));
   const canAdvance = step !== 0 || selected.length >= 2;
   const canCreate = selected.length >= 2 && name.trim().length > 0;
-
-  // Suggest a default name from the chosen members when reaching the Details step.
-  useEffect(() => {
-    if (step === 1 && !name.trim() && selectedChars.length) {
-      const names = selectedChars.map((c) => c.name);
-      setName(names.slice(0, 3).join(', ') + (names.length > 3 ? ' & more' : ''));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
 
   const create = async () => {
     if (!canCreate || busy) return;
@@ -61,6 +63,7 @@ export function CreateGroupChatPage() {
         memberIds: selected,
         turnOrder,
       });
+      leaveWithoutAsking();
       navigate('/chat?opening=1');
       await api.post('/api/chat/select-group', { groupId: r.id });
       navigate('/chat', { replace: true });
@@ -72,6 +75,7 @@ export function CreateGroupChatPage() {
 
   return (
     <div className="page wizard">
+      {prompt}
       <header className="page-head">
         <button className="ghost" onClick={() => navigate('/')}>← Library</button>
         <h2>👥 New Group</h2>
@@ -96,7 +100,12 @@ export function CreateGroupChatPage() {
           <div className="cg-config">
             <label className="cg-field">
               <span className="cg-field-label">Group name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name this group" />
+              <input
+                value={name}
+                // Clearing the box hands the name back to the roster.
+                onChange={(e) => setTypedName(e.target.value.trim() === '' ? null : e.target.value)}
+                placeholder="Name this group"
+              />
             </label>
             <label className="cg-field">
               <span className="cg-field-label">Turn order</span>

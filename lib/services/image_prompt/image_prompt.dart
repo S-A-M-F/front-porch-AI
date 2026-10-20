@@ -9,3 +9,5 @@ export 'expression_prompt_rules.dart';
 export 'image_gen_context.dart';
 export 'image_prompt_builder.dart';
 export 'visual_source_text.dart';
+export 'expression_intensity.dart';
+export 'expression_prompt_composition.dart';

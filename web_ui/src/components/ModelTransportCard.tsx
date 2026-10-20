@@ -36,7 +36,7 @@ export function ModelTransportCard() {
   };
 
   return (
-    <section className="card pl-section">
+    <section className="card pl-section" data-testid="model-transport-card">
       <h3>Model transport</h3>
       <p className="muted small pl-intro">
         How the engine evaluations (Realism, Journal, Growth Rings) talk to

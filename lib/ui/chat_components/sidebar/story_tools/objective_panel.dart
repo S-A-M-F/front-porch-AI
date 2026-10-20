@@ -17,13 +17,13 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
+import '../../widgets/chat_turn_builder.dart';
 import '../sidebar_tokens.dart';
 import 'objective_add_goal.dart';
 import 'objective_task_row.dart';
@@ -51,8 +51,8 @@ class _ObjectivePanelState extends State<ObjectivePanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ChatService>(
-      builder: (context, chatService, _) {
+    return ChatTurnBuilder(
+      builder: (context, chatService) {
         final pObj = chatService.primaryObjective;
         final secondaries = chatService.secondaryObjectives;
 
@@ -80,6 +80,17 @@ class _ObjectivePanelState extends State<ObjectivePanel> {
                     )
                   : null,
             ),
+            // Their own goals won and let go in this chat.
+            if (!chatService.objectiveTally.isEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                chatService.objectiveTally.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textSecondary(context),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
 
             // Primary Objective Display
@@ -100,8 +111,9 @@ class _ObjectivePanelState extends State<ObjectivePanel> {
                   color: AppColors.taskAccentOf(context).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: AppColors.taskAccentOf(context)
-                        .withValues(alpha: 0.3),
+                    color: AppColors.taskAccentOf(
+                      context,
+                    ).withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -143,6 +155,10 @@ class _ObjectivePanelState extends State<ObjectivePanel> {
                 padding: const EdgeInsets.only(left: 8),
                 child: AmbitionServedChip(servedAmbition: pObj.servedAmbition),
               ),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: ObjectiveSetAsideTag(dormant: objectiveIsDormant(pObj)),
+              ),
 
               // NSFW toggle
               const SizedBox(height: 6),
@@ -166,7 +182,7 @@ class _ObjectivePanelState extends State<ObjectivePanel> {
                     height: 24,
                     child: Switch(
                       value: chatService.objectiveNsfwTasks,
-                      activeThumbColor: AppColors.lustAccentOf(context),
+                      activeTrackColor: AppColors.porchAmberOf(context),
                       onChanged: (v) =>
                           setState(() => chatService.objectiveNsfwTasks = v),
                     ),
@@ -333,8 +349,9 @@ class _ObjectivePanelState extends State<ObjectivePanel> {
                             enabledThumbRadius: 5,
                           ),
                           activeTrackColor: AppColors.textTertiary(context),
-                          inactiveTrackColor: AppColors.borderOf(context)
-                              .withValues(alpha: 0.2),
+                          inactiveTrackColor: AppColors.borderOf(
+                            context,
+                          ).withValues(alpha: 0.2),
                           thumbColor: AppColors.textSecondary(context),
                           overlayShape: SliderComponentShape.noOverlay,
                         ),

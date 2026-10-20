@@ -20,9 +20,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
-
-part 'download_queue_panel.controls.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'package:front_porch_ai/ui/widgets/download_queue_panel/download_queue_panel.dart';
 
 /// Collapsible panel showing active downloads with controls.
 class DownloadQueuePanel extends StatefulWidget {
@@ -129,7 +128,7 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
           decoration: BoxDecoration(
             color: AppColors.isLight(context)
                 ? AppColors.surfaceContainerOf(context)
-                : Colors.indigo.withValues(alpha: 0.1),
+                : AppColors.porchAmberOf(context).withValues(alpha: 0.1),
             border: Border(top: BorderSide(color: AppColors.borderOf(context))),
           ),
           child: Column(
@@ -149,12 +148,14 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.2),
+                          color: AppColors.porchAmberOf(
+                            context,
+                          ).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.download_rounded,
-                          color: Color(0xFF40C4FF),
+                          color: DownloadStatusColors.downloadingOf(context),
                           size: 18,
                         ),
                       ),
@@ -176,7 +177,7 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${_formatSpeed(widget.overallSpeed)} • ${(widget.overallProgress * 100).toStringAsFixed(1)}% complete',
+                              '${formatDownloadSpeed(widget.overallSpeed)} • ${(widget.overallProgress * 100).toStringAsFixed(1)}% complete',
                               style: TextStyle(
                                 color: AppColors.textTertiary(context),
                                 fontSize: 10,
@@ -221,13 +222,9 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
               LinearProgressIndicator(
                 value: widget.overallProgress,
                 minHeight: 3,
-                backgroundColor: AppColors.resolve(
-                  context,
-                  Colors.white.withValues(alpha: 0.05),
-                  AppColors.borderOf(context).withValues(alpha: 0.3),
-                ),
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFF40C4FF),
+                backgroundColor: InkColors.trackOf(context, dark: 0.05),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  DownloadStatusColors.downloadingOf(context),
                 ),
               ),
 
@@ -266,19 +263,9 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.resolve(
-          context,
-          Colors.white.withValues(alpha: 0.03),
-          Colors.black.withValues(alpha: 0.02),
-        ),
+        color: InkColors.rowFillOf(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColors.resolve(
-            context,
-            Colors.white.withValues(alpha: 0.05),
-            AppColors.borderOf(context),
-          ),
-        ),
+        border: Border.all(color: InkColors.rowEdgeOf(context)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -287,12 +274,12 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
             children: [
               // Status icon
               Icon(
-                _getStatusIcon(task.state),
+                downloadStatusIcon(task.state),
                 color:
                     (task.state == DownloadTaskState.pending ||
                         task.state == DownloadTaskState.cancelled)
                     ? AppColors.iconSecondary(context)
-                    : _getStatusColor(task.state),
+                    : downloadStatusColor(context, task.state),
                 size: 16,
               ),
               const SizedBox(width: 8),
@@ -320,8 +307,7 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
                             (task.state == DownloadTaskState.pending ||
                                 task.state == DownloadTaskState.cancelled)
                             ? AppColors.textTertiary(context)
-                            : _getStatusColor(task.state)
-                                  .withValues(alpha: 0.7),
+                            : downloadStatusInk(context, task.state),
                         fontSize: 10,
                       ),
                     ),
@@ -330,7 +316,12 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
               ),
 
               // Controls
-              _buildTaskControls(task),
+              DownloadTaskControls(
+                task: task,
+                onPause: widget.onPause,
+                onResume: widget.onResume,
+                onCancel: widget.onCancel,
+              ),
             ],
           ),
 
@@ -341,13 +332,9 @@ class _DownloadQueuePanelState extends State<DownloadQueuePanel>
             LinearProgressIndicator(
               value: task.progress,
               minHeight: 3,
-              backgroundColor: AppColors.resolve(
-                context,
-                Colors.white.withValues(alpha: 0.1),
-                AppColors.borderOf(context).withValues(alpha: 0.3),
-              ),
+              backgroundColor: InkColors.trackOf(context),
               valueColor: AlwaysStoppedAnimation<Color>(
-                _getStatusColor(task.state),
+                downloadStatusColor(context, task.state),
               ),
             ),
           ],

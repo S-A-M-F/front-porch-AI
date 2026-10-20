@@ -30,27 +30,33 @@ export function renderRpInline(
   text: string,
   keyBase: string,
   stripMarkers = true,
+  mark?: (plain: string, key: string, offset: number) => ReactNode,
+  baseOffset = 0,
 ): ReactNode[] {
+  // [offset] is where [plain] starts in the caller's string, so ⌘F marks can
+  // paint the server's ranges; stripped `*` / `**` shift the start.
+  const run = (plain: string, key: string, offset: number): ReactNode =>
+    mark ? mark(plain, key, baseOffset + offset) : plain;
   const out: ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   INLINE_RE.lastIndex = 0;
   while ((m = INLINE_RE.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m.index > last) out.push(run(text.slice(last, m.index), `${keyBase}-p${last}`, last));
     const key = `${keyBase}-${m.index}`;
     if (m[1]) {
       out.push(
-        <span key={key} className="act bold">{stripMarkers ? m[1].slice(2, -2) : m[1]}</span>,
+        <span key={key} className="act bold">{run(stripMarkers ? m[1].slice(2, -2) : m[1], `${key}-b`, m.index + (stripMarkers ? 2 : 0))}</span>,
       );
     } else if (m[2]) {
       out.push(
-        <span key={key} className="act">{stripMarkers ? m[2].slice(1, -1) : m[2]}</span>,
+        <span key={key} className="act">{run(stripMarkers ? m[2].slice(1, -1) : m[2], `${key}-a`, m.index + (stripMarkers ? 1 : 0))}</span>,
       );
     } else {
-      out.push(<span key={key} className="dlg">{m[3]}</span>);
+      out.push(<span key={key} className="dlg">{run(m[3], `${key}-d`, m.index)}</span>);
     }
     last = m.index + m[0].length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(run(text.slice(last), `${keyBase}-p${last}`, last));
   return out;
 }

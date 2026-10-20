@@ -30,11 +30,7 @@ class LoreDepthEntry {
   final int depth;
   final int? role;
   final String content;
-  const LoreDepthEntry({
-    required this.depth,
-    required this.content,
-    this.role,
-  });
+  const LoreDepthEntry({required this.depth, required this.content, this.role});
 }
 
 /// Max messages-from-end @depth lore may sit (release-audit L1, 2026-08-11).
@@ -56,21 +52,41 @@ List<String> spliceDepthLore(
   List<String> lines,
   List<LoreDepthEntry> depthLore,
 ) {
-  if (depthLore.isEmpty) return lines;
+  final split = spliceDepthLoreSplit(lines, depthLore, tailCount: 0);
+  return [...split.body, ...split.tail];
+}
+
+/// [spliceDepthLore], cut before the last [tailCount] lines. [tail] holds
+/// those lines plus any lore that lands among or after them (depth 0 rides
+/// with the newest line); lore at exactly depth [tailCount] stays at the end
+/// of [body]. Depths count against the WHOLE list, so the cut never moves
+/// where an entry sits relative to the messages.
+({List<String> body, List<String> tail}) spliceDepthLoreSplit(
+  List<String> lines,
+  List<LoreDepthEntry> depthLore, {
+  required int tailCount,
+}) {
+  final cut = lines.length - tailCount.clamp(0, lines.length);
+  if (depthLore.isEmpty) {
+    return (body: lines.sublist(0, cut), tail: lines.sublist(cut));
+  }
   final atFromEnd = <int, List<String>>{};
   for (final d in depthLore) {
-    final maxFromEnd =
-        lines.length < kDepthLoreMaxFromEnd ? lines.length : kDepthLoreMaxFromEnd;
+    final maxFromEnd = lines.length < kDepthLoreMaxFromEnd
+        ? lines.length
+        : kDepthLoreMaxFromEnd;
     final clamped = d.depth > maxFromEnd ? maxFromEnd : d.depth;
     atFromEnd.putIfAbsent(clamped, () => []).add(d.content);
   }
   final out = <String>[];
+  var split = 0;
   for (var i = 0; i <= lines.length; i++) {
     final insert = atFromEnd[lines.length - i];
     if (insert != null) out.addAll(insert);
+    if (i == cut) split = out.length;
     if (i < lines.length) out.add(lines[i]);
   }
-  return out;
+  return (body: out.sublist(0, split), tail: out.sublist(split));
 }
 
 /// Positioned lore buckets, ready for the prompt assemblers. Every string is
@@ -87,6 +103,9 @@ class LoreInjectionResult {
   /// Display names of entries dropped by the token budget.
   final List<String> overflowDropped;
 
+  /// "Name (source)" of every entry this result injects, for the turn log.
+  final List<String> injected;
+
   /// The effective lore budget (min of percent-of-context and the cap) this
   /// result was built under — the sidebar meter's denominator.
   final int budgetTokens;
@@ -100,6 +119,7 @@ class LoreInjectionResult {
     this.examplesBottom = '',
     this.depthEntries = const [],
     this.overflowDropped = const [],
+    this.injected = const [],
     this.budgetTokens = 0,
   });
 
@@ -107,7 +127,8 @@ class LoreInjectionResult {
   /// accounting; the real tokenizer still governs history budgeting because
   /// these strings land inside the fixed content that gets counted there).
   int get approxTokens {
-    var chars = beforeChar.length +
+    var chars =
+        beforeChar.length +
         afterChar.length +
         authorNoteTop.length +
         authorNoteBottom.length +
@@ -233,9 +254,8 @@ class LorebookInjector {
     }
 
     // Weighted random, deterministic while the active membership holds.
-    final membershipKey = (members.map((m) => loreEntryHash(m.entry)).toList()
-          ..sort())
-        .join(',');
+    final membershipKey =
+        (members.map((m) => loreEntryHash(m.entry)).toList()..sort()).join(',');
     final rng = Random(fnv1a32('$sessionSeed|$groupName|$membershipKey'));
     final totalWeight = members.fold<int>(
       0,
@@ -345,6 +365,10 @@ class LorebookInjector {
           ),
       ],
       overflowDropped: overflow,
+      injected: [
+        for (final ref in included)
+          '${ref.entry.displayName} (${ref.sourceLabel})',
+      ],
       budgetTokens: effectiveBudget,
     );
   }

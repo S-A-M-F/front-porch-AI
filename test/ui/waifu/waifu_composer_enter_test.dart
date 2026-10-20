@@ -59,6 +59,11 @@ void main() {
     expect(sent, 2);
   });
 
+  // This bare tree has no LLMProvider or OpenCodeManager, so the page has
+  // no harness. The app always provides LLMProvider, so only a test tree
+  // reaches this branch. Enter still runs the send; the branch now says
+  // nothing went out and keeps the words, where it used to post a user
+  // line nobody answered.
   testWidgets('Enter in the box sends the task', (tester) async {
     final session = WaifuSession(
       folderRoot: '/tmp/throwaway-waifu',
@@ -72,6 +77,8 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(session.transcript, isNotEmpty);
-    expect(session.transcript.last.text, 'hello waifu');
+    expect(session.transcript.last.kind, WaifuMsgKind.stage);
+    expect(session.transcript.last.detail, kWaifuNoModel);
+    expect(find.text('hello waifu'), findsOneWidget);
   });
 }

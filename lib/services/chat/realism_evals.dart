@@ -17,24 +17,16 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:convert';
-
-import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage;
 import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/services/chat/llm_eval_engine.dart'
-    show recentExchange, recentExchangeThroughLastUser;
 import 'package:front_porch_ai/services/chat/relationship_service.dart';
 import 'package:front_porch_ai/services/chat/nsfw_service.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/chat/fused_eval_fire.dart';
 import 'package:front_porch_ai/services/chat/pass_support.dart';
-import 'package:front_porch_ai/services/chat/realism_prompt_builder.dart';
-import 'package:front_porch_ai/services/chat/realism_tools.dart';
-import 'package:front_porch_ai/services/chat/today_line_tag.dart';
+import 'package:front_porch_ai/services/chat/realism_evals/realism_evals.dart';
 import 'package:front_porch_ai/services/chat/realism_verification.dart';
-import 'package:front_porch_ai/utils/utils.dart';
 
 // The per-eval delta limit constants (kMin/kMaxRelationshipDelta etc.) live in
 // realism_prompt_builder.dart next to the prompt text that interpolates them.
@@ -49,15 +41,27 @@ export 'package:front_porch_ai/services/chat/realism_prompt_builder.dart'
         kMinArousalDelta,
         kMaxArousalDelta;
 
-part 'realism_evals.support.dart';
-part 'realism_evals.calls.dart';
-part 'realism_evals.one_shot.dart';
+/// Stamped on a reply when the bond/trust judge ran but its answer could not
+/// be read. Without it the bubble showed "Bond unchanged" for a turn nobody
+/// scored. A readable answer (even a zero) removes it.
+const String kFeelingsUnscoredMeta = 'feelings_unscored';
+
+/// Copy on the chip and its hover. The phone's ChipsRow gets both from the
+/// chip feed (`chat_facade.dart`) and keeps a copy only as a fallback.
+const String kFeelingsUnscoredLabel = 'Feelings not scored this time';
+const String kFeelingsUnscoredTip =
+    "The model's answer couldn't be read, so bond and trust stayed where "
+    'they were. To try again and keep this reply, tap Manual Reprocess and '
+    'pick Feelings.';
 
 /// The five realism evaluation calls (relationship, emotional state,
 /// physical state, narrative, one-shot): prompt builders, orchestration,
 /// parse, and apply. One-shot must match the multi-call path for the
 /// fields it covers. Group speakers impersonate through ChatService
 /// load/save scalars before the eval.
+bool _noMutualOpening() => false;
+bool _noPcdActive() => false;
+
 class RealismEvals {
   final Future<String?> Function(
     String prompt, {
@@ -131,17 +135,26 @@ class RealismEvals {
   // originals with zero LLM cost or captures); apply then drives the normal _parseAndApplyRelationshipDeltas
   // etc. so bond/trust/arousal (Lust) chips, emotion, fixation, and autonomous objectives are produced exactly
   // as the direct paths. Physical stays delegated; oneShot path stays single-eval for now.
-  bool _batchCollectActive = false;
-  final List<Map<String, dynamic>> _pendingBatchEvals =
-      []; // kind, stripped, prompt, scene, injections (for batch director after mains)
+  final RealismBatchCollector _batch = RealismBatchCollector();
+  late final RealismEvalSupport _support = RealismEvalSupport(this);
+  late final RealismEvalCalls _calls = RealismEvalCalls(
+    evals: this,
+    support: _support,
+    batch: _batch,
+  );
+  late final RealismEvalOneShot _oneShot = RealismEvalOneShot(
+    evals: this,
+    support: _support,
+    batch: _batch,
+  );
 
   void beginCollectForBatchedVerification() {
-    _batchCollectActive = true;
-    _pendingBatchEvals.clear();
+    _batch.active = true;
+    _batch.pending.clear();
   }
 
   Future<void> finalizeBatchedRealismVerifications() async {
-    _batchCollectActive = false;
+    _batch.active = false;
     // Do NOT clear _pendingBatchEvals here.
     // God (chat_service) follows with:
     //   final collected = _realismEvals.getCollectedForBatch();
@@ -160,13 +173,13 @@ class RealismEvals {
   }
 
   List<Map<String, dynamic>> getCollectedForBatch() =>
-      List<Map<String, dynamic>>.from(_pendingBatchEvals);
+      List<Map<String, dynamic>>.from(_batch.pending);
 
   Future<void> applyBatchResults(
     Map<String, VerificationResult> results,
   ) async {
     // Snapshot to survive any concurrent mutation and to allow apply to clear at end.
-    final pending = List<Map<String, dynamic>>.from(_pendingBatchEvals);
+    final pending = List<Map<String, dynamic>>.from(_batch.pending);
     for (final p in pending) {
       final kind = p['kind'] as String;
       final raw = p['raw'] as String;
@@ -176,29 +189,29 @@ class RealismEvals {
         // _parseAndApplyRelationshipDeltas): the eval that REQUESTS
         // arousal_delta applies it, nobody else.
         case 'relationship':
-          _parseAndApplyRelationshipDeltas(eff, applyArousal: false);
+          _support.parseAndApplyRelationshipDeltas(eff, applyArousal: false);
           break;
         case 'emotional_state':
-          await _applyEmotionalResults(eff, applyArousal: true);
+          await _support.applyEmotionalResults(eff, applyArousal: true);
           break;
         case 'narrative':
-          await _applyNarrativeResults(eff);
+          await _support.applyNarrativeResults(eff);
           break;
         case 'oneShot':
           // Future-proof: oneShot path currently bypasses batch collection (god only begins
           // collect in the !oneShot 4-eval branch), but if collected treat as combined.
           // Both appliers read the SAME fused text here, so exactly one of
           // them may own arousal — the old true/true pair applied it twice.
-          _parseAndApplyRelationshipDeltas(eff, applyArousal: true);
-          await _applyEmotionalResults(eff, applyArousal: false);
-          await _applyNarrativeResults(eff);
+          _support.parseAndApplyRelationshipDeltas(eff, applyArousal: true);
+          await _support.applyEmotionalResults(eff, applyArousal: false);
+          await _support.applyNarrativeResults(eff);
           // posture/fixation/objective/reason handled inside _applyNarrative + rel parse
           break;
         default:
           break;
       }
     }
-    _pendingBatchEvals.clear();
+    _batch.pending.clear();
   }
 
   // Messages for recent context in evals
@@ -215,6 +228,14 @@ class RealismEvals {
   final void Function(String) setCharacterEmotion;
   final String Function() getEmotionIntensity;
   final void Function(String) setEmotionIntensity;
+
+  /// The mood's cause and hold count (docs/design/mood-with-bite.md).
+  /// Optional: a host that does not wire them judges with no cause and a
+  /// fresh hold every turn, which is exactly how the judge ran before.
+  final String Function()? getEmotionCause;
+  final void Function(String)? setEmotionCause;
+  final int Function()? getEmotionHeldTurns;
+  final void Function(int)? setEmotionHeldTurns;
 
   // Services for owned state (avoids duplicating scalars/cbs in god for this leaf)
   final RelationshipService relationshipService;
@@ -265,6 +286,27 @@ class RealismEvals {
   /// When true, one-shot tools/prompt include `today_sentence`. Default off.
   final bool Function()? getPlannerEnabled;
 
+  /// PR 5: whether the afterglow OPENING turn's climax verdict said
+  /// {{user}} came too ([ChatService._mutualAfterglowOpening] — stamp-backed,
+  /// never inferred). Colors one sentence of the refractory note; the
+  /// default (false, no wiring) ships today's note verbatim.
+  final bool Function() getMutualOpening;
+
+  /// PR 8: whether the reply being generated is inside a grey-drift
+  /// (post-coital dysphoria) window for the speaker. When true, the emotion
+  /// eval note invites a wistful/tearful read with an unnameable cause and
+  /// pins that bond/trust are unmoved. Default (no wiring) ships today's
+  /// emotion section verbatim.
+  final bool Function() getPcdActive;
+
+  /// The proposal gate's inputs (objectives-that-keep-up.md part 3), all
+  /// optional: unwired means no "lately" line, no cooldown, no cap and no
+  /// name tokens ignored, which is how a bare test host has always run.
+  final Future<List<String>> Function()? getRecentEndedObjectives;
+  final Set<String> Function()? getObjectiveIgnoreTokens;
+  final bool Function()? isSideQuestCooldownActive;
+  final int Function()? getSideQuestCap;
+
   final Future<void> Function(
     String objectiveText, {
     bool isPrimary,
@@ -297,18 +339,56 @@ class RealismEvals {
     required this.setCharacterEmotion,
     required this.getEmotionIntensity,
     required this.setEmotionIntensity,
+    this.getEmotionCause,
+    this.setEmotionCause,
+    this.getEmotionHeldTurns,
+    this.setEmotionHeldTurns,
     required this.relationshipService,
     required this.nsfwService,
     required this.timeService,
     required this.getExpressionEnabled,
     required this.getCharacterDossier,
     this.getObjectivesEnabled,
+    this.getRecentEndedObjectives,
+    this.getObjectiveIgnoreTokens,
+    this.isSideQuestCooldownActive,
+    this.getSideQuestCap,
     required this.getPrimaryObjective,
     required this.getActiveObjectives,
     this.getAmbitions,
     this.getPreferences,
     this.getPlannerEnabled,
+    this.getMutualOpening = _noMutualOpening,
+    this.getPcdActive = _noPcdActive,
     required this.setObjective,
     this.verifyRealismOutput,
   });
+
+  // ── The 5 realism eval calls (bodies in realism_evals/) ──
+
+  Future<void> evaluateRelationshipCall({void Function(String)? onChunk}) =>
+      _calls.evaluateRelationshipCall(onChunk: onChunk);
+
+  Future<void> evaluateEmotionalStateCall({void Function(String)? onChunk}) =>
+      _calls.evaluateEmotionalStateCall(onChunk: onChunk);
+
+  Future<void> evaluatePhysicalStateCall({
+    void Function(String)? onChunk,
+    bool timeOnly = false,
+    bool postureOnly = false,
+    bool skipClockAdvance = false,
+    bool skipTodayEval = false,
+  }) => _calls.evaluatePhysicalStateCall(
+    onChunk: onChunk,
+    timeOnly: timeOnly,
+    postureOnly: postureOnly,
+    skipClockAdvance: skipClockAdvance,
+    skipTodayEval: skipTodayEval,
+  );
+
+  Future<void> evaluateNarrativeCall({void Function(String)? onChunk}) =>
+      _calls.evaluateNarrativeCall(onChunk: onChunk);
+
+  Future<void> evaluateOneShotCall({void Function(String)? onChunk}) =>
+      _oneShot.evaluateOneShotCall(onChunk: onChunk);
 }

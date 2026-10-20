@@ -19,6 +19,7 @@
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart';
 
+import 'package:front_porch_ai/services/services.dart' show FeelingsRescore;
 import 'package:front_porch_ai/services/web/facade/chat_facade.dart';
 import 'package:front_porch_ai/services/web/util/util.dart';
 
@@ -47,7 +48,6 @@ class WebChatRoutes {
     router.post('/api/chat/chance-time/spin', _spinChanceTime);
     router.post('/api/chat/stop', _stop);
     router.post('/api/chat/regenerate', _regenerate);
-    router.post('/api/chat/cancel-realism', _cancelRealism);
     router.post('/api/chat/continue', _continue);
     router.post('/api/chat/fork', _fork);
     router.post('/api/chat/impersonate', _impersonate);
@@ -60,6 +60,7 @@ class WebChatRoutes {
     router.post('/api/chat/image-review', _imageReview);
     router.post('/api/chat/tool-test', _toolTest);
     router.post('/api/chat/reprocess-needs', _reprocessNeeds);
+    router.post('/api/chat/reprocess-feelings', _reprocessFeelings);
     router.post('/api/chat/revert-needs-reprocess', _revertNeedsReprocess);
     router.post('/api/chat/author-note', _authorNote);
     router.post('/api/chat/theme-overrides', _setThemeOverrides);
@@ -75,8 +76,18 @@ class WebChatRoutes {
   shelf.Response _state(shelf.Request request) =>
       JsonResponse.ok(_facade.state());
 
-  shelf.Response _contextBudget(shelf.Request request) =>
-      JsonResponse.ok(_facade.contextBudget());
+  shelf.Response _contextBudget(shelf.Request request) {
+    final raw = request.url.queryParameters['index'];
+    final index = raw == null ? null : int.tryParse(raw);
+    if (raw != null && index == null) {
+      return JsonResponse.badRequest('index must be a number');
+    }
+    final body = _facade.contextBudget(index: index);
+    if (body == null) {
+      return JsonResponse.error(404, 'No prompt was kept for that reply');
+    }
+    return JsonResponse.ok(body);
+  }
 
   Future<shelf.Response> _refreshContextBudget(shelf.Request request) async =>
       JsonResponse.ok(await _facade.refreshContextBudget());
@@ -253,6 +264,12 @@ class WebChatRoutes {
     }
     final testing = _facade.sendRefusal(text, withImage: image != null);
     if (testing != null) return JsonResponse.badRequest(testing);
+    // A send the app would drop (a reply or the narrator still running)
+    // comes back to the phone with the reason, rather than vanishing.
+    final busy = _facade.sendBusyReason;
+    if (busy != null) {
+      return JsonResponse.error(409, '$busy Send it again once it finishes.');
+    }
     final lookupBlock = _facade.lookupCommandBlock(text);
     if (lookupBlock != null) return JsonResponse.badRequest(lookupBlock);
     _facade.send(text, imageBytes: image);
@@ -288,11 +305,6 @@ class WebChatRoutes {
       webQuery: body['webQuery']?.toString(),
       wikiQuery: body['wikiQuery']?.toString(),
     );
-    return JsonResponse.ok({'status': 'ok'});
-  }
-
-  shelf.Response _cancelRealism(shelf.Request request) {
-    _facade.cancelRealismEval();
     return JsonResponse.ok({'status': 'ok'});
   }
 
@@ -419,6 +431,24 @@ class WebChatRoutes {
     );
     if (!ok) return JsonResponse.error(409, 'Message cannot be reprocessed');
     return JsonResponse.ok({'status': 'ok'});
+  }
+
+  Future<shelf.Response> _reprocessFeelings(shelf.Request request) async {
+    final body = await _json(request);
+    final index = body['index'];
+    if (index is! int) return JsonResponse.badRequest('index is required');
+    return switch (await _facade.reprocessFeelings(index)) {
+      FeelingsRescore.scored => JsonResponse.ok({'status': 'ok'}),
+      FeelingsRescore.refused => JsonResponse.error(
+        409,
+        "This reply can't be scored again right now.",
+      ),
+      FeelingsRescore.unreadable => JsonResponse.error(
+        409,
+        "The model's answer couldn't be read, so this reply keeps the "
+        'feelings it had. You can try again.',
+      ),
+    };
   }
 
   Future<shelf.Response> _revertNeedsReprocess(shelf.Request request) async {

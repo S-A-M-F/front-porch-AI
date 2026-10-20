@@ -32,7 +32,8 @@ extension ChatServiceSpeakerObjectives on ChatService {
       chatId: _currentSessionId,
     );
     _activeObjectives = objs.where((o) => o.active).toList();
-    _rebindTodayObjectiveFromDb();
+    _objectiveTally = objectiveTallyFrom(charId, objs);
+    await _rebindTodayObjectiveFromDb();
     notifyListeners();
   }
 
@@ -121,6 +122,7 @@ extension ChatServiceSpeakerObjectives on ChatService {
     final speaker = nextCharacter ?? _groupCharacters.firstOrNull;
     if (speaker == null) {
       _activeObjectives = [];
+      _objectiveTally = ObjectiveTally.none;
       _messagesSinceLastCheck = 0;
       _isCheckingCompletion = false;
       _summaryPaused =
@@ -140,7 +142,8 @@ extension ChatServiceSpeakerObjectives on ChatService {
     );
 
     _activeObjectives = objs.where((o) => o.active).toList();
-    _rebindTodayObjectiveFromDb();
+    _objectiveTally = objectiveTallyFrom(charId, objs);
+    await _rebindTodayObjectiveFromDb();
     notifyListeners();
   }
 
@@ -170,7 +173,20 @@ extension ChatServiceSpeakerObjectives on ChatService {
     final task = ext?.currentTask.trim() ?? '';
     if (task.isEmpty) return;
     Future.microtask(() async {
-      await setObjective(task, isPrimary: true, targetCharacter: target);
+      // Not twice: a chat that already has this goal open keeps the one it
+      // has (the library had one chat holding five copies of the same task).
+      final who = target ?? _activeCharacter;
+      if (who != null) {
+        final open = await getActiveObjectivesFor(who);
+        final same = task.toLowerCase();
+        if (open.any((o) => o.objective.trim().toLowerCase() == same)) return;
+      }
+      await setObjective(
+        task,
+        isPrimary: true,
+        targetCharacter: target,
+        origin: kObjectiveOriginCard,
+      );
       debugPrint(
         '[ChatService] Imported authored task'
         '${target != null ? ' for ${target.name}' : ''}: $task',
@@ -222,6 +238,10 @@ extension ChatServiceSpeakerObjectives on ChatService {
               injectionDepth: drift.Value(
                 (objMap['injectionDepth'] as num?)?.toInt() ?? 4,
               ),
+              // A group card's goals were authored with the card.
+              origin: drift.Value(
+                objMap['origin'] as String? ?? kObjectiveOriginCard,
+              ),
             ),
           );
         }
@@ -262,11 +282,11 @@ extension ChatServiceSpeakerObjectives on ChatService {
       body();
       return;
     }
-    _saveScalarsIntoGroupRealism(sid);
+    _realismDance.saveScalarsIntoGroup(sid);
     try {
       body();
     } finally {
-      _loadGroupRealismIntoScalars(sid);
+      _realismDance.loadIntoScalars(sid);
     }
   }
 
@@ -290,10 +310,10 @@ extension ChatServiceSpeakerObjectives on ChatService {
     if (speaker == null) return;
     final sid = _getCharacterIdFromCard(speaker);
     if (sid.isEmpty) return;
-    final hadStoredNeeds = _getGroupNeeds(sid).isNotEmpty;
+    final hadStoredNeeds = _groupStore.needsOf(sid).isNotEmpty;
     final state = msg.activeMetadata?['realism_state'];
     final stampHasNeeds = state is Map && state['needs'] is Map;
-    _loadGroupRealismIntoScalars(sid);
+    _realismDance.loadIntoScalars(sid);
     _restoreRealismStateFromMessage(
       msg,
       groupSpeakerId: sid,
@@ -305,7 +325,7 @@ extension ChatServiceSpeakerObjectives on ChatService {
       // so the save below can't materialize invented needs into their entry.
       _needsSimulation.restoreFromSnapshot(const {'vector': <String, int>{}});
     }
-    _saveScalarsIntoGroupRealism(sid);
+    _realismDance.saveScalarsIntoGroup(sid);
   }
 
   /// [groupSpeakerId] names the member being rewound so the two registers
@@ -334,7 +354,7 @@ extension ChatServiceSpeakerObjectives on ChatService {
     // Default false. Regen/swipe/delete never pass true — the tip
     // after is the clock. Fork/import pass true only as applyTipClock.
     if (restoreClock) {
-      _applyTipClock();
+      _clockReader.applyTipClock();
     }
 
     if (state == null) {
@@ -348,10 +368,7 @@ extension ChatServiceSpeakerObjectives on ChatService {
       state,
       groupSpeakerId: groupSpeakerId,
     );
-    _characterEmotion =
-        state['characterEmotion'] as String? ?? _characterEmotion;
-    _emotionIntensity =
-        state['emotionIntensity'] as String? ?? _emotionIntensity;
+    _mood.restoreFromStamp(state);
 
     _nsfwService.restoreNsfwFromRealismState(state);
 
@@ -378,8 +395,8 @@ extension ChatServiceSpeakerObjectives on ChatService {
     // Owner key MUST be the message speaker (groupSpeakerId when rewinding a
     // group member), never bare `_activeCharacter` — after post-gen the
     // active pointer is often someone else, so restore used to write
-    // speaker A's kit onto B (audit P1.7). `_restorePocketsFromStamp` already
-    // keys by stamp `char`; this realism_state path is the dual for no-op /
+    // speaker A's kit onto B (audit P1.7).
+    // `_pocketsRewinds.restoreFromStamp` already keys by stamp `char`; this realism_state path is the dual for no-op /
     // stamp-less turns that only carry pockets inside realism_state.
     final pocketsSnap = state['pockets'];
     if (pocketsSnap is Map) {
@@ -388,7 +405,7 @@ extension ChatServiceSpeakerObjectives on ChatService {
           : (_activeCharacter != null
                 ? _getCharacterIdFromCard(_activeCharacter!)
                 : '');
-      if (ownerId.isNotEmpty && _pocketsWriteAllowed(ownerId)) {
+      if (ownerId.isNotEmpty && _pocketsLedger.pocketsWriteAllowed(ownerId)) {
         setPocketsFor(ownerId, Pockets.fromJson(pocketsSnap));
       }
     }
@@ -403,7 +420,7 @@ extension ChatServiceSpeakerObjectives on ChatService {
   /// NeedsImpactEvaluator (simple model + optional Director authority review loop).
   /// Orchestration (guards, group impersonation dance + loadGroupRealismIntoScalars
   /// before call so prompts see correct $charName/personality/stance, preTurn
-  /// snapshot for chips, post _saveScalarsIntoGroupRealism + attach needs_deltas,
+  /// snapshot for chips, post RealismDance.saveScalarsIntoGroup + attach needs_deltas,
   /// (orchestration + impersonation dance in god; full in evaluator).
   Future<void> _runPostGenNeedsChecks(String responseText) async {
     // During AFK, store current needs vector so the evaluator can include it
@@ -415,7 +432,10 @@ extension ChatServiceSpeakerObjectives on ChatService {
         needsSimulation.vector,
       );
     }
-    _needsImpactEvaluator.beatNote = needsBeatNote(_timeService.needsSpanLabel);
+    _needsImpactEvaluator.beatNote = needsBeatNote(
+      _timeService.needsSpanLabel,
+      longSkip: _timeService.bodyBeatLongSkip,
+    );
     await _needsImpactEvaluator.evaluateAndApply(responseText, isAfk: wasAfk);
     // During time away, clear the scene-level reason so each need's own
     // reason shows on the chip.

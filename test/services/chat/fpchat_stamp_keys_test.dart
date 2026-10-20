@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/services/chat/fpchat_format.dart';
+import 'package:front_porch_ai/services/chat/refractory.dart';
 import 'package:front_porch_ai/services/chat_service.dart';
 import 'package:front_porch_ai/services/kobold_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
@@ -58,6 +59,27 @@ void main() {
   });
 
   tearDown(() => disposeChatThenCloseDb(chat, db));
+
+  // Recovery overhaul PR 3: a soft body's snapshot grows two keys, and the
+  // awareness list must already cover them — the same trap the turn-count
+  // keys once sprang.
+  test('soft-gate keys ride the fpchat capture (PR 3)', () {
+    chat.nsfwService.setNsfwCooldownEnabled(true);
+    chat.nsfwService.setRefractory(
+      const Refractory(minutes: 12, total: 15, soft: true, peaks: [20, 0]),
+    );
+    final captured = chat.debugCaptureRealismStateForFpchat();
+    expect(captured[RefractoryKeys.soft], true);
+    expect(captured[RefractoryKeys.peaks], [20, 0]);
+    final unknown = captured.keys.toSet().difference(
+      kFpchatRealismStateCoreKeys,
+    );
+    expect(
+      unknown,
+      isEmpty,
+      reason: 'soft + peaks must be listed in the core-keys set',
+    );
+  });
 
   test('live capture keys are covered by kFpchatRealismStateCoreKeys', () {
     final captured = chat.debugCaptureRealismStateForFpchat();

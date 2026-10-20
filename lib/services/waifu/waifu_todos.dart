@@ -19,6 +19,10 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
+import 'package:front_porch_ai/services/image/civitai_download.dart'
+    show writeFileAtomically;
 import 'package:front_porch_ai/services/waifu/waifu_brand.dart';
 import 'package:path/path.dart' as p;
 
@@ -64,6 +68,14 @@ String waifuTodoMark(String raw) {
   }
 }
 
+/// What a screen reader says for a [waifuTodoMark], instead of the raw
+/// OpenCode status.
+String waifuTodoSpoken(String mark) => switch (mark) {
+  'completed' => 'Done',
+  'in_progress' => 'In progress',
+  _ => 'To do',
+};
+
 class WaifuTodos {
   final items = <WaifuTodo>[];
 
@@ -107,7 +119,8 @@ File waifuTodosFile(String folderRoot) =>
 Future<void> waifuSaveTodos(String folderRoot, WaifuTodos todos) async {
   final file = waifuTodosFile(folderRoot);
   await file.parent.create(recursive: true);
-  await file.writeAsString(
+  await writeFileAtomically(
+    file,
     const JsonEncoder.withIndent('  ').convert(todos.toJson()),
   );
 }
@@ -118,5 +131,10 @@ Future<void> waifuLoadTodos(String folderRoot, WaifuTodos todos) async {
   try {
     final decoded = jsonDecode(await file.readAsString());
     if (decoded is List) todos.write(decoded);
-  } catch (_) {}
+  } on FormatException catch (e) {
+    debugPrint('[waifu] unreadable ${file.path}, todos start empty: $e');
+  } on FileSystemException catch (e) {
+    // The task list is a side file: losing it must not block the session.
+    debugPrint('[waifu] unreadable ${file.path}, todos start empty: $e');
+  }
 }

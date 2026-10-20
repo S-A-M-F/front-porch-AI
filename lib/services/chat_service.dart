@@ -52,15 +52,17 @@ import 'package:front_porch_ai/services/group_turn_manager.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
 import 'package:front_porch_ai/database/database.dart' hide AvatarImage, World;
-import 'package:front_porch_ai/services/expression_classifier.dart'; // top-level for ExpressionClassifierService type in @Dep shim (pre-existing)
+import 'package:front_porch_ai/services/expression_classifier.dart';
 import 'package:front_porch_ai/services/live_gen_progress.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/prompt_injection.dart';
 import 'package:front_porch_ai/services/macro_resolver.dart';
 import 'package:drift/drift.dart' as drift;
 
+export 'chat/realism_snapshot.dart'
+    show kSpatialStancePreTurn, kWithUserPreTurn;
+
 part 'chat/chat_service_group_read.dart';
 part 'chat/chat_service_group_settings.dart';
-part 'chat/chat_service_growth.dart';
 part 'chat/chat_service_sillytavern.dart';
 part 'chat/chat_service_import_seed.dart';
 part 'chat/chat_service_import_walk.dart';
@@ -68,17 +70,13 @@ part 'chat/chat_service_chat_package.dart';
 part 'chat/chat_service_chat_package_import.dart';
 part 'chat/chat_service_enhance_chats.dart';
 part 'chat/chat_service_package_extras.dart';
-part 'chat/chat_service_group_realism_helpers.dart';
 part 'chat/chat_service_history.dart';
 part 'chat/chat_service_group_membership.dart';
 part 'chat/chat_service_group_members.dart';
 part 'chat/chat_service_group_lite.dart';
 part 'chat/chat_service_reprocess.dart';
 part 'chat/chat_service_regen_revert.dart';
-part 'chat/chat_service_message_clock.dart';
-part 'chat/chat_service_message_clock_write.dart';
-part 'chat/chat_service_needs_reprocess.dart';
-part 'chat/chat_service_needs_reprocess_target.dart';
+part 'chat/chat_service_reprocess_choice.dart';
 part 'chat/chat_service_chat_entry.dart';
 part 'chat/chat_service_group_entry.dart';
 part 'chat/chat_service_session_state.dart';
@@ -87,12 +85,10 @@ part 'chat/chat_service_session_state_save.dart';
 part 'chat/chat_service_session_load.dart';
 part 'chat/chat_service_session_hydrate.dart';
 part 'chat/chat_service_session_window.dart';
-part 'chat/chat_service_realism_evals.dart';
 part 'chat/chat_service_actions.dart';
 part 'chat/chat_service_objectives.dart';
 part 'chat/chat_service_objective_tasks.dart';
 part 'chat/chat_service_objective_completion.dart';
-part 'chat/chat_service_realism_dance.dart';
 part 'chat/chat_service_speaker_objectives.dart';
 part 'chat/chat_service_impersonate.dart';
 part 'chat/chat_service_session_manage.dart';
@@ -109,15 +105,6 @@ part 'chat/chat_service_generation_stream.dart';
 part 'chat/chat_service_generation_stream_accessors.dart';
 part 'chat/chat_service_generation_postgen.dart';
 part 'chat/chat_service_generation_postgen_engine.dart';
-part 'chat/chat_service_pockets.dart';
-part 'chat/chat_service_pockets_pass.dart';
-part 'chat/chat_service_item_cards.dart';
-part 'chat/chat_service_birthday.dart';
-part 'chat/chat_service_episode_crumbs.dart';
-part 'chat/chat_service_night_skip.dart';
-part 'chat/chat_service_reply_facts.dart';
-part 'chat/chat_service_mood.dart';
-part 'chat/chat_service_climax.dart';
 part 'chat/chat_service_cast.dart';
 part 'chat/chat_service_cast_shrink.dart';
 part 'chat/chat_service_images.dart';
@@ -139,12 +126,10 @@ part 'chat/chat_service_wiring_memory.dart';
 part 'chat/chat_service_wiring_injection.dart';
 part 'chat/chat_service_wiring_injection_leaves.dart';
 part 'chat/chat_service_send.dart';
-part 'chat/chat_service_body_wear.dart';
 part 'chat/chat_service_send_handoff.dart';
 part 'chat/chat_service_turn_flow.dart';
 part 'chat/chat_service_away_pulse.dart';
 part 'chat/chat_service_message_ops.dart';
-part 'chat/chat_service_timeline.dart';
 part 'chat/chat_service_guest_flow.dart';
 part 'chat/chat_service_accessors.dart';
 part 'chat/chat_service_accessors_living.dart';
@@ -152,14 +137,10 @@ part 'chat/chat_service_today_sentence.dart';
 part 'chat/chat_service_planner_resolve.dart';
 part 'chat/chat_service_defaults.dart';
 part 'chat/chat_service_fields.dart';
-part 'chat/chat_service_group_realism_fields.dart';
 
 // Realism-eval cancel flag + GBNF note live in chat_service_defaults.dart.
 class ChatService extends ChangeNotifier
-    with
-        ChatServiceTodaySentence,
-        ChatServiceFieldBag,
-        ChatServiceGroupRealismFields {
+    with ChatServiceTodaySentence, ChatServiceFieldBag {
   final KoboldService _koboldService;
   final UserPersonaService _userPersonaService;
   final StorageService _storageService;
@@ -179,12 +160,16 @@ class ChatService extends ChangeNotifier
   List<Objective> get secondaryObjectives =>
       _activeObjectives.where((o) => !o.isPrimary).toList();
 
-  /// Whether a completion check is currently running.
-  ///
+  /// The loaded character's goals won and let go in this chat. On the class
+  /// so [FakeChatService] can override it.
+  ObjectiveTally get objectiveTally => _objectiveTally;
+
+  /// Whether a completion check is running, and the overlay's Skip for it.
   /// Kept in the class body (not the objectives extension) because
-  /// [FakeChatService] overrides it in golden tests — extension members are
+  /// [FakeChatService] overrides them in tests — extension members are
   /// statically dispatched and cannot be overridden.
   bool get isCheckingCompletion => _isCheckingCompletion;
+  void skipObjectiveCheck() => _skipObjectiveCheckImpl();
 
   /// Web-facade fakes override this; body in chat_service_accessors.dart.
   Future<void> addGeneratedImageMessage(
@@ -214,6 +199,10 @@ class ChatService extends ChangeNotifier
   late final _lorebookScanner = _buildLorebookScanner();
   late final _lorebookInjector = _buildLorebookInjector();
   late final _timeService = _buildTimeService();
+  late final _clockReader = StoryClockReader(_storyClockScope());
+  late final _clockWriter = _buildClockWriter();
+  late final _episodeCrumbs = _buildEpisodeCrumbs();
+  late final _birthdaySync = _buildBirthdaySync();
 
   Biome get activeChatBiome => _biomeSchedule.biomeAt(_timeService.dayCount);
   late final _chaosModeService = _buildChaosModeService();
@@ -221,6 +210,21 @@ class ChatService extends ChangeNotifier
   late final _wikiSearchService = _buildWikiSearchService();
   late final _nsfwService = _buildNsfwService();
   late final _needsSimulation = _buildNeedsSimulation();
+  late final _groupStore = _buildGroupStore();
+  late final _needsPass = _buildNeedsPass();
+  late final _needsRewinds = _buildNeedsRewinds();
+  late final _needsReprocess = _buildNeedsReprocess();
+  late final _standingMood = _buildStandingMood();
+  // The pre-reply quest check runs before the generating flag rises, so the
+  // objective-turn window counts as busy too: a mood the planner moves there
+  // rides the reply's capture, never a patch of the previous reply.
+  late final _mood = MoodRegisters(
+    _realismScope(),
+    isTurnBusy: () => _isTurnBusy || _inObjectiveTurn,
+  );
+  late final _realismSnapshot = _buildRealismSnapshot();
+  late final _realismJudges = _buildRealismJudges();
+  late final _realismDance = _buildRealismDance();
   late final _relationshipService = _buildRelationshipService();
   late final _expressionService = _buildExpressionService();
   late final _authorNoteBuilder = _buildAuthorNoteBuilder();
@@ -255,40 +259,17 @@ class ChatService extends ChangeNotifier
   /// switch only (see PocketsEval for why it depends on nothing else).
   late final _inventoryInjection = _buildInventoryInjection();
 
-  /// The Pockets detection pass. Its own eval by design — see PocketsEval.
-  late final _pocketsEval = _buildPocketsEval();
+  late final _pocketsLedger = _buildPocketsLedger();
+  late final _pocketsRewinds = _buildPocketsRewinds();
+  late final _pocketsPass = _buildPocketsPass();
+  late final _itemCards = _buildItemCardJournal();
+  late final _replyFacts = _buildReplyFacts();
+  late final _afterglow = _buildAfterglowPass();
 
-  /// Afterglow's climax check. Its own pass — see ClimaxEval.
-  late final _climaxEval = _buildClimaxEval();
-
-  // `_pockets` / `_replyFactsRaw` live on ChatServiceFieldBag (extensions
-  // cannot declare fields). pocketsFor / characterIdFor stay HERE — FakeChatService
-  // can only override class members.
-
-  /// The record for [characterId], whichever mode the chat is in — the ONE
-  /// read every Pockets surface uses, so 1:1 and group cannot diverge about
-  /// whose pockets are whose.
-  ///
-  /// **Absent when the feature is off, and that is the whole gate.** The design
-  /// doc's rule is "off means off: no eval fires, no injection block is built,
-  /// and the sidebar panel is absent — not greyed, absent", and putting it here
-  /// is what makes that true by construction rather than by three call sites
-  /// remembering to ask. Two of them did remember (the injection wiring and the
-  /// web facade) and the sidebar did not, so a chat that had run with Pockets ON
-  /// went on showing its Wardrobe row after the switch went down — a panel for a
-  /// disabled feature, and a desktop/web split, since the web facade hid it
-  /// correctly.
-  ///
-  /// This HIDES, it never erases. `_pockets` and the per-member records are left
-  /// exactly as they were, the v47 save wire writes `_pockets` directly, and the
-  /// load wire restores it directly — all deliberately outside this gate — so
-  /// switching Pockets off and back on finds everything they were carrying still
-  /// there. The rewind path likewise writes through `setPocketsFor`, not here.
-  Pockets? pocketsFor(String characterId) {
-    if (!pocketsEnabledFor(characterId)) return null;
-    if (_activeGroup == null) return _pockets;
-    return _groupRealism[characterId]?.pockets;
-  }
+  /// Pockets' one read (off hides, never erases); body in
+  /// [PocketsLedger.pocketsFor]. Class member: FakeChatService overrides it.
+  Pockets? pocketsFor(String characterId) =>
+      _pocketsLedger.pocketsFor(characterId);
 
   /// The one Pockets switch, exposed for UI gating. [pocketsFor] returning
   /// null cannot distinguish "feature off" (panel absent) from "no record
@@ -333,6 +314,8 @@ class ChatService extends ChangeNotifier
   late final _growthStore = _buildGrowthStore();
   late final _growthReview = _buildGrowthReview();
   late final _growthService = _buildGrowthService();
+  late final _growthDesk = _buildGrowthDesk();
+  late final _timeline = _buildTimelineInvalidator();
 
   CharacterCard? get activeCharacter => _activeCharacter;
   List<ChatMessage> get messages => List.unmodifiable(_messages);
@@ -346,6 +329,10 @@ class ChatService extends ChangeNotifier
   /// See [isSettlingTurn] and the mirror in `_sendCurrentMessage`.
   bool get isGenerating => _isGenerating;
   bool get isImporting => _isImporting;
+
+  /// A reply, its post-gen settle, an import or narration is running: the
+  /// window cast edits (Away / Back) refuse. Class member so fakes pin it.
+  bool get isTurnBusy => _isTurnBusy;
   String? get currentSessionId => _currentSessionId;
 
   double get generationProgress => _generationProgress;
@@ -404,6 +391,7 @@ class ChatService extends ChangeNotifier
   Map<String, String> get lastPromptSections => _contextBudget.sections;
   ContextBudgetSource get promptBudgetSource => _contextBudget.source;
   DateTime? get promptBudgetAssembledAt => _contextBudget.assembledAt;
+  int get promptDroppedMessages => _contextBudget.droppedMessages;
   Future<void> estimateContextBudgetNow() => _estimateContextBudgetNow();
   int get contextSize =>
       _sessionGenSettings.resolveContextSize(_storageService);
@@ -441,13 +429,12 @@ class ChatService extends ChangeNotifier
   bool get objectivesActive => _objectivesActiveImpl;
   MemoryService? get memoryService => _memoryService;
   Map<String, dynamic>? get lastRagReceipt => _lastRagReceiptImpl;
-  String get standingMoodSummary => standingMoodSummaryImpl;
+  String get standingMoodSummary => _standingMood.summary;
 
   bool get isEvaluatingRealism => _isEvaluatingRealism;
   bool get isProcessingGreeting => _isProcessingGreeting;
 
-  // Verifier phase (for overlay header "🕵️ Verifying Realism output" + pass progress, and bubble chip data source).
-  // God coordination only; leaf drives via cb thins (no new god void _).
+  // Verifier phase: the overlay header, pass progress, and the bubble chip.
   bool get isVerifyingRealism => _isVerifyingRealism;
   int get verificationPass => _verificationPass;
   int get verificationMaxPasses => _verificationMaxPasses;
@@ -459,11 +446,14 @@ class ChatService extends ChangeNotifier
   /// chat_service_accessors.dart.
   String get realismEvalStreamTextClean => _realismEvalStreamTextCleanImpl;
   String get characterEmotion => _characterEmotion;
-
   String get emotionIntensity => _emotionIntensity;
+  String get emotionCause => _emotionCause;
+  int get emotionHeldTurns => _emotionHeldTurns;
+  String get moodLine => _mood.displayLine;
 
-  /// Per-session Needs (Sims-style) simulation active. Seeded from the card.
+  /// The chat's Needs switch; [needsActive] is the gate Needs run behind.
   bool get needsSimEnabled => _needsSimEnabled;
+  bool get needsActive => _needsPass.active;
 
   /// Writes Porch Life Passage of Time — the live clock gate. Class-pinned
   /// so goldens/fakes can override.

@@ -36,7 +36,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 MODE="${1:-golden}"
-IMG="${FPAI_CI_IMAGE:-fpai-golden:3.47.0}"
+IMG="${FPAI_CI_IMAGE:-fpai-golden:3.47.7}"
 VOL=fpai-ci-workspace
 # The pub cache MUST persist across steps: every `docker run --rm` is a fresh
 # container, and without this volume the cache `flutter pub get` builds is
@@ -45,6 +45,18 @@ VOL=fpai-ci-workspace
 # compiling objective_c's native-asset hook).
 PUBVOL=fpai-pub-cache
 PLATFORM=linux/amd64
+
+# The WebUI bundle is built, not tracked; the server tests inside the image
+# serve it from this tree (the image has no node). Build it here first.
+if [ ! -f assets/web_app/index.html ]; then
+  if command -v npm >/dev/null 2>&1 && [ -d web_ui/node_modules ]; then
+    echo "── building the WebUI bundle (assets/web_app was empty)…"
+    ( cd web_ui && npm run build ) || { echo "the WebUI bundle did not build" >&2; exit 1; }
+  else
+    echo "assets/web_app/index.html is missing: run 'cd web_ui && npm ci && npm run build' first." >&2
+    exit 1
+  fi
+fi
 
 # Stale-base refusal (see the header). Before any Docker work, for every mode.
 if [ "${FPAI_ALLOW_STALE_BASE:-0}" = "1" ]; then

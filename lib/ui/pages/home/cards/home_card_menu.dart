@@ -73,7 +73,7 @@ List<PopupMenuItem<String>> characterCardMenuItems(
       context,
       value: 'chat_history',
       icon: Icons.history,
-      label: 'Chat History',
+      label: 'Manage Chats',
     ),
     homeCardMenuItem(
       context,
@@ -101,6 +101,13 @@ List<PopupMenuItem<String>> characterCardMenuItems(
       value: 'duplicate',
       icon: Icons.copy,
       label: 'Duplicate Character',
+    ),
+    // SillyTavern's "Convert to Persona": a copy you can play as.
+    homeCardMenuItem(
+      context,
+      value: 'use_as_persona',
+      icon: Icons.switch_account,
+      label: 'Use as Persona',
     ),
     homeCardMenuItem(
       context,
@@ -162,7 +169,7 @@ List<PopupMenuItem<String>> groupCardMenuItems(
       context,
       value: 'chat_history',
       icon: Icons.history,
-      label: 'Chat History',
+      label: 'Manage Chats',
     ),
     homeCardMenuItem(
       context,

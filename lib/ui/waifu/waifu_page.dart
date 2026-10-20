@@ -17,12 +17,14 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/waifu/waifu.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
@@ -30,18 +32,18 @@ import 'package:front_porch_ai/ui/waifu/waifu_ask_dialog.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_coworker_face.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_language_help.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_mcp_bind.dart';
+import 'package:front_porch_ai/ui/waifu/waifu_photo_vision.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_question_dialog.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_composer.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_session_chrome.dart';
+import 'package:front_porch_ai/ui/waifu/waifu_session_controller.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_session_scope.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_sidebar.dart';
+import 'package:front_porch_ai/ui/waifu/waifu_status_line.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_transcript.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_whole_disk_dialog.dart';
 import 'package:front_porch_ai/ui/waifu/waifu_work_strip.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/services/capability/capability.dart';
-
-part 'waifu_page_image.dart';
 
 /// Waifu Coder session. Send forwards to managed OpenCode. No Continue, no regen.
 class WaifuPage extends StatefulWidget {
@@ -59,61 +61,42 @@ class WaifuPage extends StatefulWidget {
 
 class _WaifuPageState extends State<WaifuPage> {
   final _composer = TextEditingController();
-  WaifuHarness? _created;
+  WaifuSessionController? _bound;
   double _sidebarWidth = SidebarTokens.widthFromEnvironment();
-  var _parked = false;
-  Uint8List? _pendingImage;
-  bool? _pendingVisionOk;
-  String? _pendingBlindReason;
 
-  @override
-  void initState() {
-    super.initState();
-    widget.harness?.onChanged = _refresh;
-  }
+  WaifuSession get _session => widget.session;
+  WaifuSessionController get _controller => _bound!;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _syncToolsSupported(context);
-    if (_parked) return;
-    _parked = true;
-    try {
-      final storage = Provider.of<StorageService>(context, listen: false);
-      String? apiUrl;
-      try {
-        final llm = Provider.of<LLMProvider>(context, listen: false);
-        if (llm.activeBackend == BackendType.omlx) {
-          apiUrl = 'http://localhost:8000/v1';
-        } else if (llm.activeBackend == BackendType.openRouter) {
-          apiUrl = llm.openRouterService.apiUrl;
-        }
-      } catch (_) {}
-      widget.session.contextBudget = waifuResolveContextBudget(
-        porchContextSize: widget.session.genSettings.resolveContextSize(
-          storage,
-        ),
-        apiUrl: apiUrl,
-      );
-    } catch (_) {}
-    waifuArmSessionMeter(
-      session: widget.session,
-      harness: _harnessOf(context),
-      store: _storeOf(context),
-      mcpToolCount: _libraryToolCount(context),
+    final first = _bound == null;
+    if (first) {
+      _bound = WaifuSessionController(
+        session: widget.session,
+        store: waifuStoreForContext(context, injected: widget.store),
+      )..onError = _showError;
+      _controller.addListener(_refresh);
+    }
+    final supported = _toolsSupportedOf(context);
+    if (supported != null) _controller.setToolsSupported(supported);
+    unawaited(
+      _controller.followLibraryCard(
+        waifuLibraryCard(context, _session.coworker, listen: true),
+      ),
     );
+    if (!first) return;
+    _controller.attach(_bindHarness(context));
+    final budget = _contextBudgetFor(_session.genSettings);
+    if (budget != null) _controller.setContextBudget(budget);
+    unawaited(_controller.armMeter(mcpToolCount: _libraryToolCount(context)));
   }
 
   @override
   void dispose() {
     _composer.dispose();
-    widget.session.langs?.killAll();
-    final h = widget.harness ?? _created;
-    if (h != null) {
-      h.onChanged = null;
-      h.abort();
-    }
-    unawaited(releasePorchToolsMcp());
+    _controller.removeListener(_refresh);
+    _controller.dispose();
     super.dispose();
   }
 
@@ -121,64 +104,110 @@ class _WaifuPageState extends State<WaifuPage> {
     if (mounted) setState(() {});
   }
 
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Null when this tree has no storage to size against.
+  int? _contextBudgetFor(ChatGenerationSettings settings) {
+    final StorageService storage;
+    try {
+      storage = Provider.of<StorageService>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+    String? apiUrl;
+    try {
+      final llm = Provider.of<LLMProvider>(context, listen: false);
+      if (llm.activeBackend == BackendType.omlx) {
+        apiUrl = 'http://localhost:8000/v1';
+      } else if (llm.activeBackend == BackendType.openRouter) {
+        apiUrl = llm.openRouterService.apiUrl;
+      }
+    } on ProviderNotFoundException {
+      // No LLM provider in this tree: use the Porch context size.
+    }
+    return waifuResolveContextBudget(
+      porchContextSize: settings.resolveContextSize(storage),
+      apiUrl: apiUrl,
+    );
+  }
+
   int _libraryToolCount(BuildContext context) {
-    if (!widget.session.mcpOptIn) return 0;
+    if (!_session.mcpOptIn) return 0;
     try {
       final storage = Provider.of<StorageService>(context, listen: false);
       return waifuLoadedToolCardCount(storage.toolsDir);
-    } catch (_) {
+    } on ProviderNotFoundException {
+      return 0;
+    } on FileSystemException catch (e) {
+      debugPrint('[Waifu] Tool card count failed: $e');
       return 0;
     }
   }
 
-  void _syncToolsSupported(BuildContext context) {
+  /// Null when this tree has no ChatService to ask.
+  bool? _toolsSupportedOf(BuildContext context) {
     try {
       final chat = Provider.of<ChatService>(context, listen: false);
-      widget.session.toolsSupported = waifuResolveToolsSupported(
+      return waifuResolveToolsSupported(
         knownUnsupported: chat.toolCallSupport.name == 'unsupported',
         paused: chat.toolCallingPaused,
       );
-    } catch (_) {}
+    } on ProviderNotFoundException {
+      return null;
+    }
   }
 
-  void _onThemeChanged() {
-    unawaited(_storeOf(context)?.saveLast(widget.session));
-    _refresh();
+  Future<void> _attachImage() async {
+    final bytes = await pickChatImageAttachment(context);
+    if (bytes == null || !mounted) return;
+    await _acceptImageBytes(bytes);
   }
 
-  void rebuildState(VoidCallback fn) => setState(fn);
+  Future<void> _acceptImageBytes(Uint8List bytes) async {
+    _controller.holdImage(bytes);
+    final vision = await resolveWaifuPhotoVision(context);
+    if (vision == null) return;
+    _controller.setVision(
+      bytes,
+      ok: vision.supported,
+      blindReason: vision.blindReason,
+    );
+  }
 
-  WaifuStore? _storeOf(BuildContext context) =>
-      waifuStoreForContext(context, injected: widget.store);
-
-  WaifuHarness? _harnessOf(BuildContext context) {
+  /// Test trees with neither LLMProvider nor OpenCodeManager get no
+  /// harness; Send then says nothing went out.
+  WaifuHarness? _bindHarness(BuildContext context) {
     final injected = widget.harness;
     if (injected != null) return injected;
-    if (_created != null) return _created;
     LLMProvider? provider;
     OpenCodeManager? oc;
     try {
       oc = Provider.of<OpenCodeManager>(context, listen: false);
-    } catch (_) {}
+    } on ProviderNotFoundException {
+      // OpenCode is optional; the harness falls back to the LLM provider.
+    }
     try {
       provider = Provider.of<LLMProvider>(context, listen: false);
-    } catch (_) {
+    } on ProviderNotFoundException {
       if (oc == null) return null;
     }
-    return _created = waifuBindSessionHarness(
-      session: widget.session,
+    return waifuBindSessionHarness(
+      session: _session,
       provider: provider,
       manager: oc,
-      store: _storeOf(context),
-      onChanged: _refresh,
+      store: _controller.store,
       onAsk: _ask,
       onQuestion: _askQuestion,
-      mcpConfigOf: () =>
-          waifuOpenCodeMcpMap(context, optIn: widget.session.mcpOptIn),
+      mcpConfigOf: () => waifuOpenCodeMcpMap(context, optIn: _session.mcpOptIn),
       skillsDirOf: () {
         try {
           return Provider.of<StorageService>(context, listen: false).skillsDir;
-        } catch (_) {
+        } on ProviderNotFoundException {
           return null;
         }
       },
@@ -190,7 +219,11 @@ class _WaifuPageState extends State<WaifuPage> {
     final result = await showDialog<WaifuAskDecision>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WaifuAskDialog(request: request),
+      builder: (_) => WaifuAskDialog(
+        request: request,
+        name: WaifuStage.of(_session).name,
+        portrait: waifuCoworkerFace(context, _session.coworker),
+      ),
     );
     return result ?? WaifuAskDecision.deny;
   }
@@ -200,93 +233,64 @@ class _WaifuPageState extends State<WaifuPage> {
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WaifuQuestionDialog(request: request),
+      builder: (_) => WaifuQuestionDialog(
+        request: request,
+        name: WaifuStage.of(_session).name,
+        portrait: waifuCoworkerFace(context, _session.coworker),
+      ),
     );
     return result ?? '';
   }
 
-  Future<void> _setMode(WaifuMode mode) async {
-    if (widget.session.mode == mode) return;
-    setState(() => widget.session.mode = mode);
-    (widget.harness ?? _created)?.refreshMeter();
-  }
-
   Future<void> _setPathMode(WaifuPathMode next) async {
-    if (widget.session.pathMode == next) return;
+    if (_session.pathMode == next) return;
     if (next == WaifuPathMode.wholeDisk) {
       final ok = await showWaifuWholeDiskHonesty(context);
       if (!ok || !mounted) return;
     }
-    final h = widget.harness ?? _created;
-    if (h != null) {
-      h.applyPathMode(next);
-    } else {
-      widget.session.pathMode = next;
-    }
-    await _storeOf(context)?.saveLast(widget.session);
-    if (mounted) setState(() {});
+    await _controller.setPathMode(next);
   }
 
-  WaifuLangRuntime _langsOf(BuildContext context) {
-    final existing = widget.session.langs;
-    if (existing != null) return existing;
-    String dir = p.join(widget.session.folderRoot, kWaifuDotDir, 'lang');
+  void _onGenSettings(ChatGenerationSettings next) {
+    unawaited(
+      _controller.setGenSettings(next, contextBudget: _contextBudgetFor(next)),
+    );
+  }
+
+  String _langDirOf(BuildContext context) {
+    var dir = p.join(_session.folderRoot, kWaifuDotDir, 'lang');
     try {
       final storage = Provider.of<StorageService>(context, listen: false);
       final root = storage.rootPath;
       if (root != null && root.isNotEmpty) {
         dir = p.join(waifuStoreDirectory(root), 'lang');
       }
-    } catch (_) {}
-    return widget.session.langs = WaifuLangRuntime(directory: dir);
+    } on ProviderNotFoundException {
+      // No storage in this tree: keep languages beside the session folder.
+    }
+    return dir;
   }
 
   void _openLanguageHelp() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => WaifuLanguageHelp(
-          langs: _langsOf(context),
-          suggested: widget.session.suggestedLangs,
+          langs: _controller.langs(() => _langDirOf(context)),
+          suggested: _session.suggestedLangs,
         ),
       ),
     );
   }
 
-  Future<void> _send() async {
-    final text = _composer.text.trim();
-    final photo = _pendingImage;
-    if (text.isEmpty && photo == null) return;
-    _composer.clear();
-    String? imagePath;
-    if (photo != null) {
-      imagePath = await waifuSaveInboxPhoto(widget.session.folderRoot, photo);
-      setState(() {
-        _pendingImage = null;
-        _pendingVisionOk = null;
-        _pendingBlindReason = null;
-      });
-    }
-    final harness = _harnessOf(context);
-    if (harness == null) {
-      setState(() {
-        widget.session.transcript.add(
-          WaifuMessage.user(
-            text.isEmpty ? '(photo)' : text,
-            imagePath: imagePath,
-          ),
-        );
-      });
-      return;
-    }
-    await harness.send(text, imagePng: photo, imagePath: imagePath);
-  }
+  Future<void> _send() =>
+      _controller.send(_composer.text, onAccepted: _composer.clear);
 
   @override
   Widget build(BuildContext context) {
-    final session = widget.session;
+    final session = _session;
+    final c = _controller;
     final amber = AppColors.porchAmberOf(context);
-    final harness = _harnessOf(context);
-    final coworker = session.coworker.name;
+    final harness = c.harness;
     return Scaffold(
       backgroundColor: AppColors.backgroundOf(context),
       appBar: AppBar(
@@ -323,7 +327,10 @@ class _WaifuPageState extends State<WaifuPage> {
                 if (!session.toolsSupported)
                   const WaifuToolsUnsupportedBanner(),
                 Expanded(
-                  child: WaifuTranscript(session: session, coworker: coworker),
+                  child: WaifuTranscript(
+                    session: session,
+                    coworker: session.coworker.name,
+                  ),
                 ),
                 if (waifuTurnReceiptVisible(
                   lastWrite: session.lastWrite,
@@ -331,33 +338,27 @@ class _WaifuPageState extends State<WaifuPage> {
                 ))
                   WaifuWorkStrip(
                     record: session.lastWrite ?? session.turnWrites.last,
+                    name: WaifuStage.of(session).name,
                     writes: session.turnWrites,
                     verifiedPaths: session.turnVerifyPaths,
-                    onClose: () => setState(() {
-                      session.lastWrite = null;
-                      session.turnWrites.clear();
-                      session.turnVerifyPaths.clear();
-                    }),
+                    onClose: c.dismissReceipt,
                   ),
+                WaifuStatusLine(session: session),
                 WaifuComposer(
                   controller: _composer,
                   session: session,
                   onSend: _send,
-                  onStop: () => _harnessOf(context)?.abort(),
-                  onQueueChanged: _refresh,
-                  onUndo: () => (widget.harness ?? _created)?.undo(),
-                  onRedo: () => (widget.harness ?? _created)?.redo(),
-                  canUndo: (widget.harness ?? _created)?.canUndo == true,
-                  canRedo: (widget.harness ?? _created)?.canRedo == true,
-                  pendingImage: _pendingImage,
-                  visionOk: _pendingVisionOk,
-                  blindReason: _pendingBlindReason,
+                  onStop: c.abort,
+                  onRemoveQueued: c.removeQueued,
+                  onUndo: c.undo,
+                  onRedo: c.redo,
+                  canUndo: c.canUndo,
+                  canRedo: c.canRedo,
+                  pendingImage: c.pendingImage,
+                  visionOk: c.visionOk,
+                  blindReason: c.blindReason,
                   onAttach: _attachImage,
-                  onRemoveImage: () => setState(() {
-                    _pendingImage = null;
-                    _pendingVisionOk = null;
-                    _pendingBlindReason = null;
-                  }),
+                  onRemoveImage: c.dropImage,
                   onDropImage: _acceptImageBytes,
                 ),
               ],
@@ -369,25 +370,14 @@ class _WaifuPageState extends State<WaifuPage> {
             child: WaifuSidebar(
               session: session,
               portrait: waifuCoworkerFace(context, session.coworker),
-              onMode: _setMode,
+              onMode: c.setMode,
               onPathMode: _setPathMode,
-              onPreserveThinking: (v) {
-                setState(() => session.preserveThinking = v);
-                (widget.harness ?? _created)?.refreshMeter();
-                unawaited(_storeOf(context)?.saveLast(session));
-              },
-              onToolsOptIn: (v) {
-                setState(() => session.mcpOptIn = v);
-                final h = widget.harness ?? _created;
-                if (h != null) h.mcpOptIn = v;
-                if (!v) unawaited(releasePorchToolsMcp());
-                unawaited(_storeOf(context)?.saveLast(session));
-              },
+              onPreserveThinking: c.setPreserveThinking,
+              onToolsOptIn: c.setToolsOptIn,
               harness: harness,
-              onThemeChanged: _onThemeChanged,
-              onCompact: harness == null
-                  ? null
-                  : () => unawaited(harness.compact()),
+              onThemeOverrides: c.setThemeOverrides,
+              onGenSettings: _onGenSettings,
+              onCompact: harness == null ? null : c.compact,
             ),
           ),
         ],

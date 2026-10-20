@@ -22,6 +22,10 @@ const SLASH_COMMANDS: { cmd: string; args: string; desc: string }[] = [
   { cmd: '/promote', args: '[name]', desc: 'Named: that guest becomes a full member. Bare: a 1:1 becomes a group; guests stay Guest until you Promote them' },
   { cmd: '/speak', args: '[name]', desc: 'Anyone on the porch (host, guest, or group member) takes a turn now' },
   { cmd: '/exit', args: '[name]', desc: 'A guest leaves (narrated); in a group, removes that full member by name' },
+  { cmd: '/director', args: '[off]', desc: 'Step out of a group scene to direct it; /director off steps you back in' },
+  { cmd: '/whisper', args: '<name> <direction> | /whisper <name> off', desc: 'While directing: a private direction only that character sees, until you clear it' },
+  { cmd: '/goal', args: '<where the scene should go> | /goal off', desc: 'While directing: pin a scene goal the cast steers toward every turn' },
+  { cmd: '/narrate', args: '[what happens]', desc: 'While directing: a narrator describes the scene, then the cast reacts' },
   { cmd: '/turnorder', args: '[random | <name>, …]', desc: 'Set how a group takes turns: round-robin, random, or an explicit order' },
   { cmd: '/scan', args: '', desc: 'Scan the scene for a new recurring character to add' },
   { cmd: '/expression', args: '[emotion]', desc: "Set the character's expression; omit the emotion to clear it" },
@@ -67,6 +71,7 @@ export function ChatComposer({
   onImpersonate,
   apiReady = true,
   apiHint,
+  directing = false,
 }: {
   onSend: (text: string, imageBase64?: string) => void;
   onStop: () => void;
@@ -88,6 +93,8 @@ export function ChatComposer({
   /** Why the host's start of KoboldCpp was refused: said above the box while
    *  there is no connection (additive; the host may not send it). */
   apiHint?: string | null;
+  /** Director Mode: the line is a note to the cast, not the user speaking. */
+  directing?: boolean;
 }) {
   const [draft, setDraftState] = useState('');
   const setDraft = useCallback(
@@ -198,6 +205,9 @@ export function ChatComposer({
   const send = () => {
     const text = draft.trim();
     if (!text && !photo) return;
+    // Enter while a reply streams: the app would drop the line, so it stays
+    // in the box, as on the desktop.
+    if (isGenerating) return;
     const pending = photo;
     setDraft('');
     setSlashDismissed(false);
@@ -367,7 +377,7 @@ export function ChatComposer({
               send();
             }
           }}
-          placeholder={apiReady ? 'Message…' : 'No API connection'}
+          placeholder={!apiReady ? 'No API connection' : directing ? 'Direct the scene…' : 'Message…'}
           className={`composer-input${apiReady ? '' : ' no-api'}`}
           rows={1}
         />

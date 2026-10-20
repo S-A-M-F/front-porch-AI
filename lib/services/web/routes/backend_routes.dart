@@ -19,12 +19,10 @@
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart';
 
-import 'package:front_porch_ai/services/image/studio_model_roots.dart';
+import 'package:front_porch_ai/services/image/image.dart';
 import 'package:front_porch_ai/services/kobold/kobold.dart';
 import 'package:front_porch_ai/services/web/facade/facades.dart';
-import 'package:front_porch_ai/services/web/routes/civitai_routes.dart';
-import 'package:front_porch_ai/services/web/routes/expression_pack_routes.dart';
-import 'package:front_porch_ai/services/web/routes/image_desk_routes.dart';
+import 'package:front_porch_ai/services/web/routes/routes.dart';
 import 'package:front_porch_ai/services/web/util/util.dart';
 import 'package:front_porch_ai/services/web/web_server_deps.dart';
 
@@ -44,9 +42,11 @@ class WebBackendRoutes {
       router.post('/api/backend/restart', _restart);
       router.post('/api/backend/stop', _stop);
       router.post('/api/backend/engine/install', _installEngine);
+      router.post('/api/backend/engine/check', _recheckEngine);
       router.get('/api/backend/models', _models);
       router.post('/api/backend/models/switch', _switchModel);
       router.get('/api/backend/local-model', _localModel);
+      KoboldChatTemplateRoutes(backend, router);
       router.post('/api/backend/local-model/preset', _setChatPreset);
       router.post('/api/backend/local-model/context', _setLocalContext);
       router.post('/api/backend/models/delete', _deleteModel);
@@ -82,8 +82,10 @@ class WebBackendRoutes {
       router.post('/api/image/studio/installed', _imageInstalled);
       router.get('/api/image/comfy-workflow-slots', _imageComfyWorkflowSlots);
       router.get('/api/image/models', _imageRemoteModels);
+      router.get('/api/image/remote-panel', _imageRemotePanel);
       ImageDeskRoutes(router, deps: _deps, image: image);
       ExpressionPackRoutes(router, image: image);
+      ImageBatchRoutes(router, image: image);
       CivitaiRoutes(
         router,
         auth: _deps.auth,
@@ -117,6 +119,9 @@ class WebBackendRoutes {
   /// installed / already downloading / remote backend selected).
   Future<shelf.Response> _installEngine(shelf.Request r) async =>
       JsonResponse.ok(await _backend!.installEngine());
+
+  Future<shelf.Response> _recheckEngine(shelf.Request r) async =>
+      JsonResponse.ok(await _backend!.recheckEngine());
 
   Future<shelf.Response> _models(shelf.Request r) async =>
       JsonResponse.ok({'models': await _backend!.localModels()});
@@ -441,6 +446,16 @@ class WebBackendRoutes {
 
   Future<shelf.Response> _imageRemoteModels(shelf.Request r) async =>
       JsonResponse.ok(await _image!.remoteModels());
+
+  Future<shelf.Response> _imageRemotePanel(shelf.Request r) async {
+    final q = r.url.queryParameters;
+    return JsonResponse.ok(
+      await _image!.remotePanel(
+        edit: q['mode'] == 'edit',
+        refresh: q['refresh'] == '1',
+      ),
+    );
+  }
 
   Future<shelf.Response> _imageSaved(shelf.Request r, String name) async {
     final file = _image!.savedImageFile(name);

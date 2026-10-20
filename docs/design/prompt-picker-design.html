@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Picker + Settings Layout — Design Review</title>
+<style>
+  :root {
+    --bg: #1B1611; --surface: #1F1913; --card: #251E17; --container: #30271E;
+    --border: #3E3328; --inset: #1A1510;
+    --ink: #EFE6DA; --muted: #A89A89; --faint: #7A6E62;
+    --terracotta: #E29578; --honey: #E9C46A; --amber: #F4A259;
+    --blue: #3B82F6; --teal: #4DB6AC;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 24px; max-width: 1280px; margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 20px; font-size: 13px; }
+  .sub code { color: var(--honey); background: var(--inset); padding: 1px 5px; border-radius: 4px; }
+
+  /* top nav */
+  .designnav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .designnav button {
+    background: var(--card); color: var(--muted); border: 1px solid var(--border);
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  .designnav button.active { background: var(--container); color: var(--terracotta); border-color: var(--terracotta); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar .lbl { color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .chip {
+    background: var(--card); border: 1px solid var(--border); color: var(--muted);
+    padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: 12px;
+  }
+  .chip.on { background: var(--container); color: var(--honey); border-color: var(--honey); }
+
+  /* dialog */
+  .stage { background: #14110E; border: 1px solid var(--border); border-radius: 12px; padding: 28px; display: flex; justify-content: center; }
+  .stage.phone { padding: 12px; }
+  .dialog {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    width: 100%; max-width: 860px; display: flex; flex-direction: column;
+    max-height: 85vh; overflow: hidden;
+    box-shadow: 0 18px 60px rgba(0,0,0,.55);
+  }
+  .stage.phone .dialog { max-width: 393px; max-height: 780px; }
+  .dlg-head { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+  .dlg-head h2 { font-size: 16px; }
+  .dlg-head .who { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .dlg-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+  .dlg-foot {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; background: var(--card);
+  }
+  .dlg-foot .grow { flex: 1; }
+  .dlg-foot label { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .btn { border: none; border-radius: 8px; padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn.primary { background: var(--amber); color: #241505; }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+
+  /* segmented */
+  .seg { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .seg button {
+    flex: 1; min-width: 140px; background: var(--inset); border: 1px solid var(--border);
+    color: var(--muted); padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600;
+  }
+  .seg button.on { background: var(--container); color: var(--terracotta); border-color: var(--terracotta); }
+  .seg button small { display: block; font-weight: 400; color: var(--faint); font-size: 10.5px; margin-top: 2px; }
+  .seg button.on small { color: var(--muted); }
+
+  /* panes */
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stage.phone .panes { grid-template-columns: 1fr; }
+  .pane { background: var(--inset); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; }
+  .pane.dim { opacity: .45; }
+  .pane.sel { border-color: var(--honey); }
+  .pane-head {
+    padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; color: var(--muted); background: var(--card); border-radius: 10px 10px 0 0;
+  }
+  .pane-head .tag { margin-left: auto; font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .tag.base { background: var(--container); color: var(--honey); }
+  .pane-body { padding: 12px; overflow-y: auto; max-height: 220px; white-space: pre-wrap; font-size: 12px; color: var(--ink); }
+  .stage.phone .pane-body { max-height: 160px; }
+
+  /* resolved */
+  .resolved { margin-top: 14px; background: var(--inset); border: 1px solid var(--border); border-radius: 10px; }
+  .resolved .pane-head { border-radius: 10px 10px 0 0; }
+  .resolved .pane-body { max-height: 180px; }
+  .stage.phone .resolved .pane-body { max-height: 140px; }
+  .amend { border-left: 3px solid var(--terracotta); padding-left: 8px; color: var(--terracotta); }
+  .budget { color: var(--faint); font-size: 11px; padding: 6px 12px; border-top: 1px solid var(--border); }
+  .budget b { color: var(--teal); }
+
+  /* settings mocks */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
+  .mock { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .mock-head { padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .mock-head .pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .pill.bad { background: #7F1D1D; color: #FEE2E2; }
+  .pill.good { background: #064E3B; color: #A7F3D0; }
+  .mock-body { padding: 16px; }
+  .tabsrow { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; }
+  .tabsrow span { padding: 7px 12px; font-size: 12px; color: var(--faint); white-space: nowrap; }
+  .tabsrow span.on { color: var(--terracotta); border-bottom: 2px solid var(--terracotta); }
+  .sec { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--terracotta); margin: 16px 0 8px; }
+  .sec:first-child { margin-top: 0; }
+  .help { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .field { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--ink); width: 100%; }
+  .field textarea { width: 100%; background: transparent; border: none; color: var(--ink); font: inherit; resize: vertical; min-height: 54px; outline: none; }
+  .field .flabel { color: var(--honey); font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+  .field .fhelp { color: var(--faint); font-size: 11px; margin-top: 4px; }
+  .accordion { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+  .accordion .t { font-weight: 700; font-size: 13px; }
+  .accordion .s { color: var(--muted); font-size: 11.5px; }
+  .accordion .chev { margin-left: auto; color: var(--faint); }
+  .moved { position: relative; }
+  .moved::after {
+    content: "MOVED"; position: absolute; top: -7px; right: 10px; background: var(--honey); color: #241505;
+    font-size: 9px; font-weight: 800; padding: 1px 7px; border-radius: 999px; letter-spacing: .05em;
+  }
+  .websec { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: var(--card); }
+  .websec h4 { font-size: 13px; margin-bottom: 6px; }
+  .websec .items { color: var(--muted); font-size: 12px; }
+  .websec .items li { margin-left: 18px; }
+  .note { background: var(--inset); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; color: var(--muted); font-size: 12.5px; margin-top: 16px; }
+  .note b { color: var(--honey); }
+  .q { color: var(--terracotta); font-weight: 700; }
+</style>
+</head>
+<body>
+  <h1>Prompt Picker &amp; Settings Layout</h1>
+  <p class="sub">Design review companion to <code>docs/design/chat-prompt-picker-sow.md</code> · builds on PR #546 · palette from <code>AppColors</code></p>
+
+  <div class="designnav">
+    <button class="active" data-panel="picker">1 · Prompt Picker</button>
+    <button data-panel="settings">2 · Settings — General (before / after)</button>
+    <button data-panel="web">3 · Web Parity Layout</button>
+  </div>
+
+  <!-- ═══════════ 1 · PICKER ═══════════ -->
+  <div class="panel active" id="panel-picker">
+    <div class="toolbar">
+      <span class="lbl">Viewport</span>
+      <button class="chip on" id="vp-desktop">Desktop</button>
+      <button class="chip" id="vp-phone">Phone (393px)</button>
+      <span class="lbl" style="margin-left:16px">Try a preset — the resolved preview and budget update live</span>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="dialog">
+        <div class="dlg-head">
+          <h2>Choose the system prompt for this chat</h2>
+          <div class="who">New chat with <b>Wren Ashford</b> · her card ships its own system prompt. Your global amendments apply unless you turn them off.</div>
+        </div>
+        <div class="dlg-body">
+          <div class="seg" id="seg">
+            <button class="on" data-mode="card+amend">Card + my amendments<small>Recommended · what happens today</small></button>
+            <button data-mode="card">Card only<small>Author's prompt, nothing added</small></button>
+            <button data-mode="user">My prompt<small>Replaces the card's prompt</small></button>
+          </div>
+
+          <div class="panes">
+            <div class="pane" id="pane-card">
+              <div class="pane-head">Character card prompt <span class="tag base" id="tag-card" style="display:none">BASE</span></div>
+              <div class="pane-body" id="body-card"></div>
+            </div>
+            <div class="pane" id="pane-user">
+              <div class="pane-head">Your prompt (Settings → General) <span class="tag base" id="tag-user" style="display:none">BASE</span></div>
+              <div class="pane-body" id="body-user"></div>
+            </div>
+          </div>
+
+          <div class="resolved">
+            <div class="pane-head">What gets sent <span style="margin-left:auto;color:var(--faint);font-weight:400" id="mode-label"></span></div>
+            <div class="pane-body" id="body-resolved"></div>
+            <div class="budget" id="budget"></div>
+          </div>
+        </div>
+        <div class="dlg-foot">
+          <label><input type="checkbox" id="remember"> Remember my choice for Wren</label>
+          <span class="grow"></span>
+          <button class="btn ghost">Ask me every chat</button>
+          <button class="btn primary">Start chat</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Overflow contract:</b> the dialog is capped at 85% viewport height; the body scrolls, the footer buttons never leave the screen.
+      Panes show both prompts <b>in full</b> — long cards scroll inside their pane instead of pushing the dialog past the screen.
+      On phone the panes stack and each pane's scroll shrinks. <span class="q">Open question:</span> should "My prompt" also offer inline editing here, or only jump to Settings?
+    </div>
+  </div>
+
+  <!-- ═══════════ 2 · SETTINGS ═══════════ -->
+  <div class="panel" id="panel-settings">
+    <div class="cols">
+      <div>
+        <div class="mock">
+          <div class="mock-head">BEFORE — as PR #546 landed <span class="pill bad">prompt family split across tabs</span></div>
+          <div class="mock-body">
+            <div class="tabsrow"><span>General</span><span class="on">Generation</span><span>Porch Life</span><span>Voice &amp; Media</span><span>Backend</span><span>Advanced</span></div>
+            <div class="accordion moved" style="margin-bottom:14px">
+              <div>
+                <div class="t">Global prompt additions</div>
+                <div class="s">Extra instructions for every character and chat model.</div>
+              </div>
+              <span class="chev">▾</span>
+            </div>
+            <div class="sec">Thinking</div>
+            <div class="field"><div class="flabel">Reasoning</div></div>
+            <div class="sec" style="margin-top:12px">Generation Parameters</div>
+            <div class="field"><div class="flabel">Temperature · Min-P · Top-P · Top-K …</div></div>
+            <div style="margin-top:14px;color:var(--faint);font-size:11.5px">… while the Fallback system prompt box sits alone in the General tab.</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="mock">
+          <div class="mock-head">AFTER — Phase 0 <span class="pill good">one prompt family, one place</span></div>
+          <div class="mock-body">
+            <div class="tabsrow"><span class="on">General</span><span>Porch Life</span><span>Generation</span><span>Voice &amp; Media</span><span>Backend</span><span>Advanced</span></div>
+            <div class="sec">Chat Appearance</div>
+            <div class="field"><div class="flabel">Message side · streaming · reading size · colors · theme</div></div>
+            <div class="sec">Fallback system prompt</div>
+            <div class="help">Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.</div>
+            <div class="field"><textarea>You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns…</textarea></div>
+            <div class="sec" style="color:var(--honey)">Global prompt additions</div>
+            <div class="help">Saved automatically. Leave blank to disable. Both fields support {{char}} and {{user}}.</div>
+            <div class="field" style="margin-bottom:10px">
+              <div class="flabel">Additional system instructions</div>
+              <textarea>Never speak or act for {{user}}. Keep replies under 250 words.</textarea>
+              <div class="fhelp">Appended to the selected system prompt, including character and group prompts.</div>
+            </div>
+            <div class="field">
+              <div class="flabel">Additional post-history instructions</div>
+              <textarea>End every reply with an action or a line of dialogue.</textarea>
+              <div class="fhelp">Appended after existing post-history instructions.</div>
+            </div>
+            <div class="sec">About &amp; License</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      Flat sub-section under the fallback box — no accordion (it would be the only one in Settings). The sub-heading uses
+      <code>SectionHeader</code> styling with the honey accent to mark it as the additions' own block.
+      <span class="q">Open question:</span> honey vs terracotta for the sub-heading, and does the additions block get a subtle left border to tie it visually to the fallback box above?
+    </div>
+  </div>
+
+  <!-- ═══════════ 3 · WEB ═══════════ -->
+  <div class="panel" id="panel-web">
+    <div class="mock">
+      <div class="mock-head">Web Settings — single scroll, sections mirror the six Dart tabs <span class="pill good">Dart is standard-bearer</span></div>
+      <div class="mock-body" style="max-width:760px">
+        <div class="websec moved"><h4>General</h4><div class="items"><ul>
+          <li>Chat appearance (message side · streaming · reading size · colors · theme — grouped, not loose cards)</li>
+          <li><b>Fallback system prompt</b> + <b>Global prompt additions</b> (both fields)</li>
+          <li>User personas</li>
+        </ul></div></div>
+        <div class="websec"><h4>Porch Life</h4><div class="items">Engine defaults · Passage of Time · Objectives · Journal</div></div>
+        <div class="websec moved"><h4>Generation</h4><div class="items"><ul>
+          <li>Thinking · parameters · output limits · stop sequences · banned phrases · sanitizer</li>
+          <li><b>Model transport</b> (was a loose card below the fold)</li>
+        </ul></div></div>
+        <div class="websec"><h4>Voice &amp; Media</h4><div class="items">TTS · STT · expression images · voice call</div></div>
+        <div class="websec moved"><h4>Backend</h4><div class="items"><ul>
+          <li><b>Chat speech</b> (was at the top of the page)</li>
+          <li>Kobold / oMLX / remote API · <b>idle unload</b> · <b>keep recent chats</b></li>
+        </ul></div></div>
+        <div class="websec"><h4>Advanced</h4><div class="items">Reclaim disk space · diagnostics · About &amp; License</div></div>
+      </div>
+    </div>
+    <div class="note">
+      Parity = grouping, order, and naming — web keeps its single-scroll layout, no tabs.
+      Every <b>MOVED</b> item needs its e2e selector checked. The parity manifest (setting-key → section JSON,
+      guarded by a Dart test + a Vitest guard) is what stops this drifting again.
+      <span class="q">Open question:</span> do web sections get anchor links / a sticky section index, given the page length?
+    </div>
+  </div>
+
+<script>
+const CARD = `You are Wren Ashford — a 34-year-old botanist who inherited her grandmother's failing greenhouse on the edge of a coastal town. You speak in warm, slightly tired sentences, with dry humor that surfaces when you're uncomfortable. You notice plants the way other people notice faces.
+
+Behavioral rules:
+- Wren never volunteers her fears; they leak out sideways through the greenhouse metaphor.
+- She is generous with strangers and guarded with regulars.
+- When the story pressures her, she busies her hands — repotting, pruning, wiping glass.
+- She never lies about facts, only about feelings.
+
+Voice: present tense, sensory-forward, short paragraphs. Reference salt air, peat, rust, the particular green of old glass. Never narrate her inner monologue outright; let it show in what she tends to and what she avoids.`;
+
+const USER = `You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.
+
+Engage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.
+
+Write in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.
+
+Maintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.`;
+
+const AMEND = `Never speak or act for {{user}}. Keep replies under 250 words. Address {{user}} by name at least once per reply.`;
+
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const macro = s => esc(s).replace(/\{\{char\}\}/g,'<b style="color:var(--honey)">Wren</b>').replace(/\{\{user\}\}/g,'<b style="color:var(--honey)">Sam</b>');
+const tokens = s => Math.round(s.length/4);
+
+let mode = 'card+amend';
+function render() {
+  const useCard = mode !== 'user', useAmend = mode !== 'card';
+  document.getElementById('body-card').innerHTML = macro(CARD);
+  document.getElementById('body-user').innerHTML = macro(USER);
+  document.getElementById('pane-card').className = 'pane ' + (useCard ? 'sel' : 'dim');
+  document.getElementById('pane-user').className = 'pane ' + (!useCard ? 'sel' : 'dim');
+  document.getElementById('tag-card').style.display = useCard ? '' : 'none';
+  document.getElementById('tag-user').style.display = !useCard ? '' : 'none';
+  const base = useCard ? CARD : USER;
+  const baseName = useCard ? 'card prompt' : 'your prompt';
+  let html = macro(base);
+  if (useAmend) html += '\n\n<span class="amend">' + macro(AMEND) + '  ← global amendment</span>';
+  document.getElementById('body-resolved').innerHTML = html;
+  document.getElementById('mode-label').textContent = 'base: ' + baseName + (useAmend ? ' + amendment' : ' · no amendment');
+  const t = tokens(base) + (useAmend ? tokens(AMEND) : 0);
+  document.getElementById('budget').innerHTML = '≈ <b>' + t + ' tokens</b> counted against the context budget before history trimming · macros resolved per speaker';
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+}
+document.querySelectorAll('#seg button').forEach(b => b.addEventListener('click', () => { mode = b.dataset.mode; render(); }));
+document.getElementById('vp-desktop').addEventListener('click', () => {
+  document.getElementById('stage').classList.remove('phone');
+  document.getElementById('vp-desktop').classList.add('on'); document.getElementById('vp-phone').classList.remove('on');
+});
+document.getElementById('vp-phone').addEventListener('click', () => {
+  document.getElementById('stage').classList.add('phone');
+  document.getElementById('vp-phone').classList.add('on'); document.getElementById('vp-desktop').classList.remove('on');
+});
+document.querySelectorAll('.designnav button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.designnav button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById('panel-' + b.dataset.panel).classList.add('active');
+}));
+render();
+</script>
+</body>
+</html>

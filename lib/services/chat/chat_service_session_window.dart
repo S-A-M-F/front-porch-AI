@@ -14,9 +14,6 @@ extension ChatServiceSessionWindow on ChatService {
   bool get isBackfillingHistory => _history.isBackfilling;
   bool get hasOlderHistory => _history.hasMore;
 
-  Future<int> countSessionsForCharacterId(String characterId) =>
-      _db.countSessionsForCharacter(characterId);
-
   /// True when the picker must open. Uses the card's UUID internally —
   /// the home tap handler must not pass that UUID to [getSessionsForId].
   Future<bool> hasMultipleSavedSessions(CharacterCard card) async {
@@ -146,7 +143,7 @@ extension ChatServiceSessionWindow on ChatService {
     // After basePosition/hasMore so the last page sees a complete
     // history. A bad stamp cast must not skip the rest of open.
     try {
-      _backfillLoadedSlotClocks();
+      _clockReader.backfillLoadedSlotClocks();
     } catch (e, st) {
       debugPrint('[Clock] page backfill failed: $e\n$st');
     }
@@ -161,5 +158,78 @@ extension ChatServiceSessionWindow on ChatService {
     if (sid == null || !_history.hasMore) return;
     await _prependOlderPage(sid, _history.epoch);
     notifyListeners();
+  }
+}
+
+/// ⌘F find-in-chat over the open session. Lives beside the backfill it
+/// waits on: a count taken mid-backfill would disagree with the list.
+extension ChatServiceFind on ChatService {
+  /// Scan the OPEN session's visible text for the find bar. Waits for the
+  /// history backfill first (partial results are not usable — same
+  /// [_awaitHistoryHydrated] contract RAG and Journal honour), so hit
+  /// indices and the rendered list can never disagree from a prepend.
+  /// Status banners are skipped: they render through their own widget, so a
+  /// count with no highlight would break "search what you see".
+  Future<ChatFindOutcome> findInTranscript(
+    String query, {
+    bool regexMode = false,
+    bool caseSensitive = false,
+  }) async {
+    final epoch = _history.epoch;
+    final sessionId = _currentSessionId;
+    if (sessionId == null) return const ChatFindOutcome();
+    final spec = compileChatQuery(
+      query,
+      regexMode: regexMode,
+      caseSensitive: caseSensitive,
+    );
+    if (spec.bad) return const ChatFindOutcome(badPattern: true);
+    await _awaitHistoryHydrated();
+    if (epoch != _history.epoch || _currentSessionId != sessionId) {
+      return const ChatFindOutcome(stale: true);
+    }
+    final visible = [
+      for (final m in _messages)
+        (text: m.isStatusBanner ? '' : m.displayText, sender: m.sender),
+    ];
+    // A plain query is an escaped literal and cannot backtrack. A raw regex
+    // can, and so can a many-star glob on a long unbroken token, so both
+    // run on the killable isolate.
+    final List<ChatFindMatch>? matches;
+    try {
+      matches = regexMode || spec.wordBounded
+          ? await scanTranscriptBounded(
+              visible,
+              query,
+              regexMode: regexMode,
+              caseSensitive: caseSensitive,
+            )
+          : scanTranscript(visible, spec);
+    } on StateError catch (e) {
+      // The pattern compiled but the scan itself failed: say "bad pattern"
+      // rather than pretending it was merely slow.
+      debugPrint('find-in-chat: $e');
+      return const ChatFindOutcome(badPattern: true);
+    }
+    if (epoch != _history.epoch || _currentSessionId != sessionId) {
+      return const ChatFindOutcome(stale: true);
+    }
+    if (matches == null) {
+      return ChatFindOutcome(tooSlow: true, totalMessages: visible.length);
+    }
+    return ChatFindOutcome(
+      matches: matches,
+      capped: matches.length >= kFindMatchCap,
+      totalMessages: visible.length,
+    );
+  }
+
+  /// Session total for the backfill-wait progress line ("2,400 / 11,382").
+  /// Cheap COUNT; the backfill itself only notifies when it finishes, so the
+  /// bar polls loaded-vs-total while it waits.
+  Future<int> countAllMessages() async {
+    final sessionId = _currentSessionId;
+    if (sessionId == null) return 0;
+    return _db.countMessagesForSession(sessionId);
   }
 }

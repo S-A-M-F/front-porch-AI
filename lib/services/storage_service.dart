@@ -54,7 +54,8 @@ class StorageService extends ChangeNotifier {
   late final GenerationSettings _generationSettings = GenerationSettings();
   late final BackendSettings _backendSettings = BackendSettings()
     ..engineFolder = () => binDir.path;
-  late final UiSettings _uiSettings = UiSettings();
+  late final AppearanceSettings _appearance = AppearanceSettings();
+  late final UiSettings _uiSettings = UiSettings(_appearance);
   late final TtsSettings _ttsSettings = TtsSettings();
   late final SttSettings _sttSettings = SttSettings();
   late final ImageGenSettings _imageGenSettings = ImageGenSettings();
@@ -71,6 +72,8 @@ class StorageService extends ChangeNotifier {
   // Getter ensures live values after setRootPath / setCustomModelsPath.
   AppDirectories get directories =>
       AppDirectories(rootPath: _rootPath, customModelsPath: _customModelsPath);
+
+  final rootRelocation = RootRelocationGate();
 
   String? get rootPath => _rootPath;
   String? get customModelsPath => _customModelsPath;
@@ -112,6 +115,7 @@ class StorageService extends ChangeNotifier {
   GenerationSettings get generationSettings => _generationSettings;
   BackendSettings get backendSettings => _backendSettings;
   UiSettings get uiSettings => _uiSettings;
+  AppearanceSettings get appearance => _appearance;
   TtsSettings get ttsSettings => _ttsSettings;
   SttSettings get sttSettings => _sttSettings;
   ImageGenSettings get imageGenSettings => _imageGenSettings;
@@ -154,7 +158,31 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
-  StorageService() {
+  /// [bootPrefs], read in main() before runApp, loads the appearance and UI
+  /// settings now, so the first frame is already in the saved theme.
+  StorageService({SharedPreferences? bootPrefs}) {
+    if (bootPrefs != null) {
+      // Guarded like _init's loads: a mistyped prefs value keeps the
+      // defaults instead of failing the first build. _init loads again.
+      void guarded(void Function() load) {
+        try {
+          load();
+        } catch (e) {
+          debugPrint('[Storage] boot settings load failed, defaults kept: $e');
+        }
+      }
+
+      guarded(
+        () => _appearance
+          ..initializeBase(bootPrefs, notifyListeners)
+          ..load(),
+      );
+      guarded(
+        () => _uiSettings
+          ..initializeBase(bootPrefs, notifyListeners)
+          ..load(),
+      );
+    }
     _init();
   }
 
@@ -189,6 +217,7 @@ class StorageService extends ChangeNotifier {
     }
     _generationSettings.initializeBase(null, notifyListeners);
     _backendSettings.initializeBase(null, notifyListeners);
+    _appearance.initializeBase(null, notifyListeners);
     _uiSettings.initializeBase(null, notifyListeners);
     _ttsSettings.initializeBase(null, notifyListeners);
     _sttSettings.initializeBase(null, notifyListeners);
@@ -203,6 +232,7 @@ class StorageService extends ChangeNotifier {
     _toolVerdictSettings.initializeBase(null, notifyListeners);
     _generationSettings.load();
     _backendSettings.load();
+    _appearance.load();
     _uiSettings.load();
     _ttsSettings.load();
     _sttSettings.load();
@@ -266,7 +296,7 @@ class StorageService extends ChangeNotifier {
     // Swallowing it is the whole recovery — we do NOT relocate to the default
     // root any more. Relocating split the app in two: AppDatabase.instance()
     // already opened `<persisted root>/KoboldManager` back in main()'s
-    // _openDatabaseGuarded (a failure THERE ends the launch in DbInitErrorApp),
+    // openDatabaseGuarded (a failure THERE ends the launch in DbInitErrorApp),
     // so reaching this line proves the persisted root took the database (the
     // one exception is a pre-release FRONT_PORCH_AI_DATA_DIR run, where a dev
     // has deliberately split the two roots already).
@@ -304,6 +334,7 @@ class StorageService extends ChangeNotifier {
     // Single notify surface preserved (see plan "Why not multiple ChangeNotifiers").
     _generationSettings.initializeBase(_prefs, notifyListeners);
     _backendSettings.initializeBase(_prefs, notifyListeners);
+    _appearance.initializeBase(_prefs, notifyListeners);
     _uiSettings.initializeBase(_prefs, notifyListeners);
     _ttsSettings.initializeBase(_prefs, notifyListeners);
     _sttSettings.initializeBase(_prefs, notifyListeners);
@@ -325,6 +356,7 @@ class StorageService extends ChangeNotifier {
     try {
       _generationSettings.load();
       _backendSettings.load();
+      _appearance.load();
       _uiSettings.load();
       _ttsSettings.load();
       _sttSettings.load();
@@ -371,7 +403,20 @@ class StorageService extends ChangeNotifier {
 
   /// Change the root installation directory and relocate all data files.
   /// Returns null on success, or a human-readable reason on refusal.
-  Future<String?> setRootPath(String pathStr) async {
+  Future<String?> setRootPath(
+    String pathStr, {
+    Future<void> Function()? beforeMove,
+    Future<void> Function()? afterMove,
+  }) => rootRelocation.move(() async {
+    try {
+      await beforeMove?.call();
+      return await _relocateRoot(pathStr);
+    } finally {
+      await afterMove?.call();
+    }
+  });
+
+  Future<String?> _relocateRoot(String pathStr) async {
     final oldRoot = _rootPath;
     if (oldRoot == pathStr) return null;
 

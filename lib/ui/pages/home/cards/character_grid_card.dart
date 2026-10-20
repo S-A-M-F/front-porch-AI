@@ -21,15 +21,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/pages/home/cards/character_grid_card_face.dart';
 import 'package:front_porch_ai/ui/pages/home/cards/home_card_menu.dart';
 import 'package:front_porch_ai/ui/pages/home/cards/library_drag_ghost.dart';
 import 'package:front_porch_ai/ui/pages/home/cards/library_drag_payload.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/character_card_grid.dart'
     show kFolderDragHoldDelay;
 import 'package:front_porch_ai/utils/utils.dart';
-
-part 'character_grid_card.body.dart';
 
 /// A single character card in the home grid: draggable (for folder organizing),
 /// selectable, with the avatar/name/message-count body and a right-click
@@ -83,31 +83,6 @@ class CharacterGridCard extends StatelessWidget {
   /// Delegates to the canonical stable group ID.
   String _getCharacterIdFromCard(CharacterCard card) => card.stableGroupId;
 
-  Widget _coverImage(BuildContext context, File file, {required double size}) {
-    return Image.file(
-      file,
-      key: ValueKey(
-        '${character.dbId ?? character.name}|${file.path}|$imageCacheEpoch',
-      ),
-      fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
-      gaplessPlayback: false,
-      // Decode at grid-tile size, not source size: ~1024² portraits are
-      // ~4 MB decoded EACH, which thrashed the 100 MB image cache on any
-      // decent-sized library and forced re-decodes on every scroll. 512px
-      // covers the largest tile at 2x DPR at a quarter of the memory.
-      cacheWidth: 512,
-      errorBuilder: (_, _, _) => Container(
-        color: AppColors.surfaceContainerOf(context),
-        child: Icon(
-          Icons.person,
-          size: size,
-          color: AppColors.iconSecondary(context),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final picks = dragSelection;
@@ -152,7 +127,12 @@ class CharacterGridCard extends StatelessWidget {
   }
 
   Widget _ghostCover(BuildContext context) => character.imagePath != null
-      ? _coverImage(context, onResolveCharImage(character), size: 32)
+      ? CharacterGridCardCover(
+          character: character,
+          file: onResolveCharImage(character),
+          imageCacheEpoch: imageCacheEpoch,
+          size: 32,
+        )
       : ColoredBox(
           color: AppColors.surfaceContainerOf(context),
           child: Icon(
@@ -170,9 +150,16 @@ class CharacterGridCard extends StatelessWidget {
       child: Card(
         color: AppColors.cardOf(context),
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: AppCorners.of(context).circular(12),
+        ),
         child: character.imagePath != null
-            ? _coverImage(context, onResolveCharImage(character), size: 48)
+            ? CharacterGridCardCover(
+                character: character,
+                file: onResolveCharImage(character),
+                imageCacheEpoch: imageCacheEpoch,
+                size: 48,
+              )
             : Icon(
                 Icons.person,
                 size: 64,
@@ -194,7 +181,7 @@ class CharacterGridCard extends StatelessWidget {
       style: TextStyle(
         fontSize: 9,
         fontWeight: FontWeight.bold,
-        color: Colors.white,
+        color: StatusColors.onFill,
       ),
     ),
   );
@@ -213,7 +200,7 @@ class CharacterGridCard extends StatelessWidget {
       color: AppColors.cardOf(context),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppCorners.of(context).circular(16),
         side: BorderSide(
           color: isSelectedCard
               ? AppColors.porchTerracottaOf(context)
@@ -245,9 +232,19 @@ class CharacterGridCard extends StatelessWidget {
                   final isTiny = constraints.maxWidth < 160;
 
                   if (isTiny) {
-                    return _tinyBody(context, character);
+                    return CharacterGridCardTinyBody(
+                      character: character,
+                      onResolveCharImage: onResolveCharImage,
+                      imageCacheEpoch: imageCacheEpoch,
+                    );
                   }
-                  return _fullBody(context, character, msgCount, isCompact);
+                  return CharacterGridCardFullBody(
+                    character: character,
+                    onResolveCharImage: onResolveCharImage,
+                    imageCacheEpoch: imageCacheEpoch,
+                    msgCount: msgCount,
+                    isCompact: isCompact,
+                  );
                 },
               ),
             ),
@@ -264,27 +261,23 @@ class CharacterGridCard extends StatelessWidget {
                       ? (isOrganizing
                             ? AppColors.porchHoneyOf(context)
                             : AppColors.porchTerracottaOf(context))
-                      : AppColors.resolve(
-                          context,
-                          Colors.black54,
-                          Colors.black12,
-                        ),
+                      : InkColors.checkWellOf(context),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isSelectedCard
                         ? (isOrganizing
                               ? AppColors.porchHoneyOf(context)
                               : AppColors.porchTerracottaOf(context))
-                        : AppColors.resolve(
-                            context,
-                            Colors.white38,
-                            Colors.black38,
-                          ),
+                        : InkColors.checkRimOf(context),
                     width: 2,
                   ),
                 ),
                 child: isSelectedCard
-                    ? const Icon(Icons.check, size: 16, color: Colors.white)
+                    ? const Icon(
+                        Icons.check,
+                        size: 16,
+                        color: StatusColors.onFill,
+                      )
                     : null,
               ),
             ),

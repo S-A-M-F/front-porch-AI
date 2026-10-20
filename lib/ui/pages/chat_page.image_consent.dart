@@ -18,20 +18,38 @@
 //
 // The external-image consent flow: the one-time "allow images from the
 // internet?" dialog (risk list + per-character persisted consent) that
-// MessageBubble raises via onRequestImagePermission. Extracted verbatim from
-// the build() closure in chat_page.dart (god-file campaign, Tranche A).
+// MessageBubble raises via onRequestImagePermission.
 
-part of 'chat_page.dart';
+import 'dart:async';
 
-extension _ChatPageImageConsent on _ChatPageState {
-  /// Verbatim the old onRequestImagePermission closure body.
-  Future<bool> _requestExternalImagePermission() async {
-    if (_externalImagesAllowed != null) {
-      return _externalImagesAllowed!;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+
+/// The chat page's answer to "may this chat load images from the internet?".
+/// [allowed] is null until asked; [onDecided] rebuilds the owning page after
+/// [allowed] changes (only while the page is still mounted).
+class ExternalImageConsent {
+  ExternalImageConsent({required this.onDecided});
+
+  final VoidCallback onDecided;
+
+  /// Null = not decided yet this page; feeds MessageBubble.
+  bool? allowed;
+  bool _checked = false;
+
+  /// Raise the consent dialog (or answer from the persisted per-character
+  /// consent) from the chat page's [context].
+  Future<bool> request(BuildContext context) async {
+    if (allowed != null) {
+      return allowed!;
     }
     // Check persisted consent first
-    if (!_imageConsentChecked) {
-      _imageConsentChecked = true;
+    if (!_checked) {
+      _checked = true;
       final prefs = await SharedPreferences.getInstance();
       final consented = prefs.getStringList('image_consent_characters') ?? [];
       final charName =
@@ -41,8 +59,9 @@ extension _ChatPageImageConsent on _ChatPageState {
           ).activeCharacter?.name ??
           '';
       if (charName.isNotEmpty && consented.contains(charName)) {
-        if (mounted) {
-          rebuildState(() => _externalImagesAllowed = true);
+        if (context.mounted) {
+          allowed = true;
+          onDecided();
         }
         return true;
       }
@@ -51,17 +70,17 @@ extension _ChatPageImageConsent on _ChatPageState {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.cardOf(ctx),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: const Icon(
+        icon: Icon(
           Icons.shield_outlined,
-          color: Colors.orangeAccent,
+          color: StatusColors.warningOf(ctx),
           size: 36,
         ),
-        title: const Text(
+        title: Text(
           'External Image Detected',
           style: TextStyle(
-            color: Colors.white,
+            color: AppColors.textPrimary(ctx),
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -70,25 +89,28 @@ extension _ChatPageImageConsent on _ChatPageState {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'This message contains images hosted on an external server. '
               'Loading them carries security risks:',
               style: TextStyle(
-                color: Colors.white70,
+                color: AppColors.textSecondary(ctx),
                 fontSize: 13,
                 height: 1.5,
               ),
             ),
             const SizedBox(height: 12),
             _buildRiskItem(
+              ctx,
               Icons.visibility,
               'Your IP address will be exposed to the image host',
             ),
             _buildRiskItem(
+              ctx,
               Icons.bug_report,
               'Maliciously crafted images could potentially exploit vulnerabilities',
             ),
             _buildRiskItem(
+              ctx,
               Icons.track_changes,
               'The URL may be used for tracking',
             ),
@@ -96,7 +118,7 @@ extension _ChatPageImageConsent on _ChatPageState {
             Text(
               'The source has not been verified as safe.',
               style: TextStyle(
-                color: Colors.orangeAccent.withValues(alpha: 0.8),
+                color: StatusColors.warningOf(ctx).withValues(alpha: 0.8),
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -106,24 +128,24 @@ extension _ChatPageImageConsent on _ChatPageState {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Block Images',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppColors.textSecondary(ctx)),
             ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orangeAccent,
-              foregroundColor: Colors.black87,
+              backgroundColor: StatusColors.warningFill,
+              foregroundColor: StatusColors.onWarningFill,
             ),
             child: const Text('Accept Risk & Load'),
           ),
         ],
       ),
     );
-    final allowed = result ?? false;
-    if (allowed) {
+    final decided = result ?? false;
+    if (decided) {
       // Persist consent for this character
       final prefs = await SharedPreferences.getInstance();
       final charName =
@@ -140,26 +162,27 @@ extension _ChatPageImageConsent on _ChatPageState {
         }
       }
     }
-    if (mounted) {
-      rebuildState(() => _externalImagesAllowed = allowed);
+    if (context.mounted) {
+      allowed = decided;
+      onDecided();
     }
-    return allowed;
+    return decided;
   }
 }
 
-Widget _buildRiskItem(IconData icon, String text) {
+Widget _buildRiskItem(BuildContext context, IconData icon, String text) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: Colors.orangeAccent),
+        Icon(icon, size: 16, color: StatusColors.warningOf(context)),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
-              color: Colors.white60,
+            style: TextStyle(
+              color: AppColors.textSecondary(context),
               fontSize: 12,
               height: 1.4,
             ),

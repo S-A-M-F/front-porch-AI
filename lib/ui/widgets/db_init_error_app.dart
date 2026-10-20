@@ -17,10 +17,11 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Last-resort screen shown when startup dies before the real app can run.
-/// Deliberately self-contained — it runs before the theme/AppColors exist, so
-/// it hardcodes a dark bootstrap palette rather than depend on any provider.
+/// Deliberately self-contained — it runs before the theme exists, so it pins
+/// `AppColors` consts directly rather than depend on any provider or ThemeData.
 ///
 /// Two variants, because two very different failures land here and the advice
 /// for one is useless for the other:
@@ -63,7 +64,7 @@ class DbInitErrorApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: AppColors.background,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -74,6 +75,7 @@ class DbInitErrorApp extends StatelessWidget {
                   settingsFileCorrupt
                       ? Icons.settings_backup_restore_rounded
                       : Icons.storage_rounded,
+                  // theme-keep: shown before settings load, so no theme.
                   color: Colors.orangeAccent,
                   size: 48,
                 ),
@@ -82,6 +84,7 @@ class DbInitErrorApp extends StatelessWidget {
                   title,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
+                    // theme-keep: shown before settings load, so no theme.
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -91,6 +94,7 @@ class DbInitErrorApp extends StatelessWidget {
                 Text(
                   advice,
                   textAlign: TextAlign.center,
+                  // theme-keep: shown before settings load, so no theme.
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
                 const SizedBox(height: 20),
@@ -99,6 +103,7 @@ class DbInitErrorApp extends StatelessWidget {
                   textAlign: TextAlign.center,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,
+                  // theme-keep: shown before settings load, so no theme.
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
               ],

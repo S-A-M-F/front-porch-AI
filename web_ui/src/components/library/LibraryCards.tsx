@@ -44,7 +44,7 @@ export function CharacterCard({
     >
       <button className="lib-open" onClick={() => (selecting ? onToggleSelect() : onOpen())}>
         <div className="lib-art">
-          {char.hasAvatar ? (
+          {char.hasAvatar && !char.placeholderPortrait ? (
             <img
               src={api.avatarUrl(`/api/characters/${char.id}/avatar`, 400, char.avatarVersion)}
               alt=""
@@ -182,7 +182,7 @@ export function GroupCard({
       <button className="lib-open" onClick={() => (selecting ? onToggleSelect() : onOpen())}>
         <div className="lib-art group-art" data-count={Math.min(group.members.length, 4)}>
           {group.members.slice(0, 4).map((m) =>
-            m.hasAvatar ? (
+            m.hasAvatar && !m.placeholderPortrait ? (
               <img
                 key={m.id}
                 src={api.avatarUrl(

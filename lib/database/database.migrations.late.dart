@@ -274,6 +274,96 @@ extension _AppDatabaseMigrationLate on AppDatabase {
         }
       }
     }
+    if (from < 56) {
+      // v55→v56: a 1:1 chat's Chaos "spicy events" switch was never saved, so
+      // it reset on every load. DEFAULT 0 matches what every existing chat
+      // already read back. Additive, so a downgrade keeps reading sessions.
+      try {
+        await customStatement(
+          'ALTER TABLE sessions ADD COLUMN '
+          'chaos_nsfw_enabled INTEGER NOT NULL DEFAULT 0',
+        );
+        debugPrint('[DB] v56: added sessions.chaos_nsfw_enabled');
+      } catch (_) {
+        // already present (re-run / dual-version)
+      }
+    }
+    if (from < 57) {
+      // v56→v57: the mood gains a cause and a hold count
+      // (docs/design/mood-with-bite.md). Defaults match what every existing
+      // chat reads today: no cause, a fresh feeling. Additive, so a downgrade
+      // keeps reading sessions.
+      for (final ddl in const [
+        "ALTER TABLE sessions ADD COLUMN emotion_cause TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE sessions ADD COLUMN emotion_held_turns '
+            'INTEGER NOT NULL DEFAULT 0',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v57: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+    }
+    if (from < 58) {
+      // v57→v58: objectives keep up (docs/design/objectives-that-keep-up.md).
+      // All nullable, so a downgrade keeps reading objectives. Origin is
+      // backfilled the way the rows were made: a quest that serves an
+      // ambition came from the judge, everything else from the user.
+      for (final ddl in const [
+        'ALTER TABLE objectives ADD COLUMN origin TEXT',
+        'ALTER TABLE objectives ADD COLUMN status TEXT',
+        'ALTER TABLE objectives ADD COLUMN ended_at INTEGER',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v58: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+      await customStatement(
+        "UPDATE objectives SET origin = CASE WHEN served_ambition IS NOT NULL "
+        "THEN 'character' ELSE 'user' END WHERE origin IS NULL",
+      );
+    }
+    if (from < 59) {
+      // v58→v59: the soft gate (recovery overhaul PR 3). A tenderness-
+      // window flag and this hour's peak stamps (JSON minutes, oldest
+      // first) ride the sessions row beside the minute columns. NULL for
+      // every existing row is right — it reads a hard lock with no peaks,
+      // exactly what those chats mean today. Additive, so a downgrade to
+      // v58 keeps reading sessions; the columns are ignored.
+      for (final ddl in const [
+        'ALTER TABLE sessions ADD COLUMN refractory_soft INTEGER',
+        'ALTER TABLE sessions ADD COLUMN refractory_peaks TEXT',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v59: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+    }
+    if (from < 60) {
+      // v59→v60: the warmth tail (recovery overhaul PR 4). Minutes owed
+      // and the seeded length ride the sessions row. NULL for every
+      // existing row is right — a pre-tail body has no tail. Additive, so
+      // a downgrade to v59 keeps reading sessions; the columns are ignored.
+      for (final ddl in const [
+        'ALTER TABLE sessions ADD COLUMN refractory_tail_minutes INTEGER',
+        'ALTER TABLE sessions ADD COLUMN refractory_tail_total INTEGER',
+      ]) {
+        try {
+          await customStatement(ddl);
+          debugPrint('[DB] v60: $ddl');
+        } catch (_) {
+          // already present (re-run / dual-version)
+        }
+      }
+    }
   }
 
   /// True only when this pass actually created `chat_worlds.is_primary`.

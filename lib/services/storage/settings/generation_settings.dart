@@ -18,6 +18,8 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:front_porch_ai/models/models.dart';
 
 import 'settings_base.dart';
@@ -33,6 +35,13 @@ class GenerationSettings with SettingsBase {
       "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";
 
   String _systemPrompt = defaultSystemPrompt;
+  String _additionalSystemPrompt = '';
+  String _additionalPostHistoryInstructions = '';
+
+  /// Prompt-picker SOW: stableGroupId → preset ('card+amend' | 'card' |
+  /// 'user'). A character with an entry never gets asked again; the entry
+  /// is applied to each new chat instead.
+  Map<String, String> _promptPickerChoices = {};
   double _minP = 0.1;
   // 0.9 matches what the transport always hardcoded before Top-P became a
   // real setting, so existing chats feel identical until the slider moves.
@@ -67,6 +76,7 @@ class GenerationSettings with SettingsBase {
   // 16k default context (backend_settings.dart) absorbs comfortably.
   int _maxLength = 2048;
   int _minLength = 0;
+
   /// Shipped default stop strings. Public + const so the prioritized stop
   /// builder (lib/services/chat/stop_sequences.dart) can tell user-added
   /// custom stops (higher priority) apart from these defaults (lowest
@@ -94,10 +104,50 @@ class GenerationSettings with SettingsBase {
 
   bool _outputSanitizerEnabled = false;
   bool _sanitiseExistingHistory = false;
-  List<OutputSanitizerRule> _outputSanitizerRules =
-      List.of(kDefaultSanitizerRules);
+  List<OutputSanitizerRule> _outputSanitizerRules = List.of(
+    kDefaultSanitizerRules,
+  );
 
   String get systemPrompt => _systemPrompt;
+  String get additionalSystemPrompt => _additionalSystemPrompt;
+  String get additionalPostHistoryInstructions =>
+      _additionalPostHistoryInstructions;
+
+  Map<String, String> get promptPickerChoices =>
+      Map.unmodifiable(_promptPickerChoices);
+
+  Future<void> setPromptPickerChoice(String characterKey, String preset) async {
+    _promptPickerChoices[characterKey] = preset;
+    await prefs?.setString(
+      k('prompt_picker_choices'),
+      jsonEncode(_promptPickerChoices),
+    );
+    notify();
+  }
+
+  Future<void> clearPromptPickerChoice(String characterKey) async {
+    if (_promptPickerChoices.remove(characterKey) == null) return;
+    await prefs?.setString(
+      k('prompt_picker_choices'),
+      jsonEncode(_promptPickerChoices),
+    );
+    notify();
+  }
+
+  String withSystemPromptAddition(String base) =>
+      _appendPrompt(base, _additionalSystemPrompt);
+  String withPostHistoryAddition(String base) =>
+      _additionalPostHistoryInstructions.trim().isEmpty
+      ? base
+      : '${_appendPrompt(base, _additionalPostHistoryInstructions)}\n';
+
+  static String _appendPrompt(String base, String addition) {
+    if (addition.trim().isEmpty) return base;
+    return base.trim().isEmpty
+        ? addition.trim()
+        : '${base.trimRight()}\n\n${addition.trim()}';
+  }
+
   double get minP => _minP;
   double get topP => _topP;
   int get topK => _topK;
@@ -122,6 +172,21 @@ class GenerationSettings with SettingsBase {
       List.unmodifiable(_outputSanitizerRules);
 
   void load() {
+    _additionalSystemPrompt =
+        prefs?.getString(k('additional_system_prompt')) ?? '';
+    _additionalPostHistoryInstructions =
+        prefs?.getString(k('additional_post_history_instructions')) ?? '';
+    final pickerJson = prefs?.getString(k('prompt_picker_choices'));
+    if (pickerJson != null) {
+      try {
+        _promptPickerChoices = (jsonDecode(pickerJson) as Map)
+            .cast<String, String>();
+      } catch (e) {
+        // Corrupt data: every new chat asks again rather than failing load.
+        debugPrint('[GenerationSettings] unreadable prompt_picker_choices: $e');
+      }
+    }
+
     _systemPrompt = prefs?.getString(k('system_prompt')) ?? _systemPrompt;
     _minP = prefs?.getDouble(k('min_p')) ?? _minP;
     _topP = prefs?.getDouble(k('top_p')) ?? _topP;
@@ -138,7 +203,8 @@ class GenerationSettings with SettingsBase {
     _dynamicResponses =
         prefs?.getBool(k('dynamic_responses')) ?? _dynamicResponses;
     _dynamicResponseInterval =
-        prefs?.getInt(k('dynamic_response_interval')) ?? _dynamicResponseInterval;
+        prefs?.getInt(k('dynamic_response_interval')) ??
+        _dynamicResponseInterval;
     _dynamicResponsePacePeriods =
         (prefs?.getInt(k('dynamic_response_pace_periods')) ?? 1).clamp(1, 6);
     _dynamicResponseMaxMessages =
@@ -164,7 +230,8 @@ class GenerationSettings with SettingsBase {
     }
 
     _outputSanitizerEnabled =
-        prefs?.getBool(k('output_sanitizer_enabled')) ?? _outputSanitizerEnabled;
+        prefs?.getBool(k('output_sanitizer_enabled')) ??
+        _outputSanitizerEnabled;
     _sanitiseExistingHistory =
         prefs?.getBool(k('sanitise_existing_history')) ??
         _sanitiseExistingHistory;
@@ -178,6 +245,18 @@ class GenerationSettings with SettingsBase {
         // Keep default on corrupt data
       }
     }
+  }
+
+  Future<void> setAdditionalSystemPrompt(String value) async {
+    await prefs?.setString(k('additional_system_prompt'), value);
+    _additionalSystemPrompt = value;
+    notify();
+  }
+
+  Future<void> setAdditionalPostHistoryInstructions(String value) async {
+    await prefs?.setString(k('additional_post_history_instructions'), value);
+    _additionalPostHistoryInstructions = value;
+    notify();
   }
 
   Future<void> setSystemPrompt(String value) async {

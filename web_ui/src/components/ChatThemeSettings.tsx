@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import type { ChatThemeOverrides, ChatThemePreset } from './chatTypes';
 import { ReadingSizeSlider } from './ReadingSizeSettings';
+import { userBubbleDialogueColor } from '../chatColors';
 
 // Mirror of the 10 desktop presets (ChatThemePreset.presets).
 const PRESETS: ChatThemePreset[] = [
@@ -107,7 +108,16 @@ export function resolveThemeColors(
     '--chat-ai-bubble': aiBubble,
     '--chat-ai-text': aiText,
     '--chat-dialogue': dialogue,
+    // Quotes inside the user's own bubble: readable on that bubble unless
+    // the user picked the dialogue colour for this chat.
+    '--chat-user-dialogue': userBubbleDialogueColor(
+      dialogue,
+      userBubble,
+      userText,
+      !!overrides.dialogueColor,
+    ),
     '--chat-action': action,
+    '--chat-user-action': userBubbleDialogueColor(action, userBubble, userText, !!overrides.actionColor),
     // Also set the base vars that the CSS .dlg/.act rules consume.
     '--dialogue': dialogue,
     '--action': action,

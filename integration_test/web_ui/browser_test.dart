@@ -228,6 +228,9 @@ void main() {
     final sandbox = Directory.systemTemp.createTempSync('fpai_webui_');
     PathProviderPlatform.instance = SandboxPathProvider(sandbox.path);
     final backend = await FakeBackendServer.start(replyPieces: _kReplyPieces);
+    // Keep a goal check visible until the browser uses Skip, so the progress
+    // journey can exercise the real app's controls without racing a fast eval.
+    backend.holdObjectiveCheck = Completer<void>();
     WebServerHost? host;
     Process? playwright;
     HttpClient? http;
@@ -335,7 +338,12 @@ void main() {
       await storage.backendSettings.setBackendType('openRouter');
       // A local model and a preset for the "Local model" journey; chat stays
       // on the stand-in backend.
-      await seedLocalModel(storage, _repoRoot());
+      await seedLocalModel(
+        storage,
+        _repoRoot(),
+        // ignore: use_build_context_synchronously — root MainLayout element.
+        hardware: Provider.of<HardwareService>(ctx, listen: false),
+      );
       // A preset the host will not start KoboldCpp from (it asks for a list of
       // programs to run and a public tunnel), for the journey that picks it on
       // the phone and is refused. It names no model, so nothing else follows it.

@@ -25,9 +25,6 @@ import 'package:front_porch_ai/services/waifu/waifu_lang_runtime.dart';
 import 'package:front_porch_ai/services/waifu/waifu_sit_down.dart';
 import 'package:front_porch_ai/services/waifu/waifu_todos.dart';
 
-/// Recap lines are not spoken by the user or the coworker.
-bool waifuIsPromptRecap(WaifuMessage m) => m.kind == WaifuMsgKind.recap;
-
 String waifuTitleFrom(String task) {
   final t = task.trim().replaceAll(RegExp(r'\s+'), ' ');
   if (t.isEmpty) return kWaifuCoderName;
@@ -63,7 +60,9 @@ class WaifuWriteRecord {
   final String after;
 }
 
-enum WaifuMsgKind { user, assistant, tool, recap }
+/// [stage] is narration about the turn (stopped, reverted, an error), not
+/// a line the coworker said. It is painted apart and never spoken.
+enum WaifuMsgKind { user, assistant, tool, recap, stage }
 
 /// Kind from disk. [kindName] wins; else hidden recap; else isUser.
 /// Never sniffs message text — a typed `[Session compact]` stays a user line.
@@ -98,6 +97,7 @@ class WaifuMessage {
     this.toolPath,
     this.toolCallId,
     this.toolArgs,
+    this.detail,
   }) : kind =
            kind ??
            (hidden
@@ -126,6 +126,9 @@ class WaifuMessage {
 
   const WaifuMessage.recap(String text)
     : this(kind: WaifuMsgKind.recap, text: text);
+
+  const WaifuMessage.stage(String line, {String? detail})
+    : this(kind: WaifuMsgKind.stage, text: line, detail: detail);
 
   const WaifuMessage.tool({
     required String name,
@@ -157,6 +160,9 @@ class WaifuMessage {
   final String? toolCallId;
   final Map<String, dynamic>? toolArgs;
 
+  /// The plain technical line under a [WaifuMsgKind.stage] row.
+  final String? detail;
+
   bool get isUser => kind == WaifuMsgKind.user;
 
   /// Prompt-only (session recap). Not painted as a bubble.
@@ -183,6 +189,7 @@ class WaifuMessage {
       toolPath: toolPath,
       toolCallId: toolCallId,
       toolArgs: toolArgs,
+      detail: detail,
     );
   }
 
@@ -239,7 +246,9 @@ class WaifuSession {
        todos = todos ?? WaifuTodos();
 
   final String folderRoot;
-  final CharacterCard coworker;
+
+  /// Replaced when the library card is edited, so her voice follows it.
+  CharacterCard coworker;
   WaifuMode mode;
   WaifuPathMode pathMode;
   String title;
@@ -262,10 +271,17 @@ class WaifuSession {
   bool mcpOptIn;
   bool preserveThinking;
 
+  /// OpenCode's own session, so a relaunch resumes the model's history
+  /// instead of starting a stranger behind the same transcript.
+  String? openCodeSessionId;
+
   /// Sit-down / live probe. False fail-closes the loop — no silent coding.
   bool toolsSupported;
   ChatThemeOverrides themeOverrides;
-  final ChatGenerationSettings genSettings = ChatGenerationSettings();
+
+  /// Chat Settings for this project. Only the context size reaches Waifu
+  /// Coder today (the meter's budget); the rest is kept for the dialog.
+  ChatGenerationSettings genSettings = ChatGenerationSettings();
   int contextBudget = 8192;
   int tokensUsed = 0;
 
@@ -273,5 +289,6 @@ class WaifuSession {
   bool tokensFromApi = false;
   int compactPasses = 0;
 
+  /// Every tool chip in the transcript, oldest first.
   List<WaifuToolChip> get toolChips => [for (final m in transcript) ...m.chips];
 }

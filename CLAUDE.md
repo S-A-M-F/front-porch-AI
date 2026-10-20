@@ -13,6 +13,30 @@ will rot, point at the live source instead of pinning it here.
 
 ---
 
+## Definition of done (read this first)
+
+A PR is done when a machine has checked it. People only judge looks.
+
+- **Hand-check items are tests.** Each line under `## Hand-check` in the PR
+  description names the test that does it, or starts `eye-only:` (looks,
+  real OS dialogs, hardware). Smoke does the `eye-only:` lines and looks at
+  the changed screens; it never re-runs what a test already does.
+- **A desktop journey gets its web twin** when the feature is on both.
+- **Create / save buttons:** the test calls `doubleTapNoFrame`
+  (`test/helpers/double_tap.dart`) and asserts exactly one write.
+- **Clocks:** code comparing against "now" takes it from the caller or an
+  injectable clock. A test never pins a date that the code under test
+  compares with the real clock (#559 went red on its own date).
+- **New screen, panel or sidebar:** check it at 400px and 1440px wide and
+  in a short window. Any overflow fails. Top-level pages and the chat are
+  swept by `integration_test/layout_sweep_test.dart`; give a new page a stop
+  there.
+- **Rendered text** never shows `{{char}}`, `{{user}}` or a raw enum name.
+- **Never commit screenshots of real chats or user data.** Evidence images
+  go in the PR thread, not the repo.
+
+---
+
 ## Product
 
 Front Porch AI is a Flutter desktop app (Windows / Linux / macOS) for
@@ -48,6 +72,12 @@ flutter analyze
 dart format path/to/the_file_you_edited.dart
   # Only files you already edited. NEVER `dart format .`
 
+# Before a push: the checks the branch needs, chosen from what it changes
+# (analyze on changed Dart, the hygiene ratchets, the branch's own tests,
+# web lint/vitest/bundle when web_ui changed, --browser for the Playwright
+# suite). An integration of two branches runs every suite either one had.
+tools/preflight.sh
+
 # What the CI `test` job runs
 flutter test --concurrency=4 --exclude-tags golden
 
@@ -72,16 +102,19 @@ cd web_ui && npm run lint && npm test   # CI `web-tests` (tsc + react-hooks esli
 flutter test integration_test/web_ui/browser_test.dart -d macos
 # FPAI_E2E_HOLD=1 on that command keeps the sandboxed app serving; then
 # `cd web_ui && npm run e2e` with the env in web_ui/e2e/.auth/server.json
-cd web_ui && npm run build              # writes ../assets/web_app — required
-                                        # after ANY web_ui change or the
-                                        # desktop app serves the old bundle
+cd web_ui && npm ci && npm run build    # writes ../assets/web_app. The bundle
+                                        # is built, not tracked: once after a
+                                        # clone and after ANY web_ui change,
+                                        # or the desktop app serves nothing
+                                        # (CI, the nightly and the release
+                                        # build it themselves)
 
 flutter build linux
 flutter build windows
 ./scripts/build-macos.sh
 ```
 
-CI Flutter is **3.47.0**. Dart SDK constraint is `^3.10.8`.
+CI Flutter is **3.47.7**. Dart SDK constraint is `^3.10.8`.
 
 ---
 
@@ -109,9 +142,9 @@ integration_test/           # One suite per *_test.dart file
 ```
 
 **ChatService is a `part` library.** Behaviour lives under
-`lib/services/chat/`. Grep that directory when hunting a method. Count
-`part` lines in `chat_service.dart` if you need a number — it changes when
-files split.
+`lib/services/chat/`. Grep that directory when hunting a method. Its part
+list is frozen (see Size law): new ChatService code goes into an existing
+part or a leaf class under `lib/services/chat/`, never a new part.
 
 Fake-pinned members stay on the **class** as one-line forwarders. Golden
 fakes override the class member; moving the body onto an extension-only
@@ -149,6 +182,18 @@ Do not invent a second 500-line gate. Generated protobuf / `.g.dart` /
 `grpc/generated` are excluded from `god_file_ratchet_test.dart` (generated
 size is the other test).
 
+**No mechanical part files.** Never split a file into `part` files to get
+under 500 lines. Extract a real class, widget, or plain-Dart helper with
+explicit inputs instead. No new `part` directive anywhere. The Drift library
+(`lib/database/database.dart`) and the ChatService shell
+(`lib/services/chat_service.dart` + `lib/services/chat/chat_service_*.dart`)
+keep their existing parts; every other part file (`main.*.dart` included) is
+legacy and gets unwound. Every library's part count is frozen and only goes
+down.
+`part 'x.g.dart';` codegen is not a split. CI:
+`test/hygiene/part_file_ratchet_test.dart` + `test/baselines/part_files.json`
+— lower an entry in the same change that removes a part.
+
 ---
 
 ## Style
@@ -166,9 +211,17 @@ size is the other test).
 - Sync I/O (`existsSync`, `readAs*Sync`, `Process.runSync`, …) is banned in
   widget `build` / per-frame paths. CI `io-lint` fails **new** sync I/O under
   `lib/ui/**` unless the line has `// io-ok: <reason>`.
-- UI uses `AppColors` only. New chrome accents:
-  `AppColors.formMasterAccent` or `AppColors.porchAmberOf(context)`;
-  `AppColors.onChaosAccent` on solid amber. CI `theme-lint` fails new
+- UI uses `AppColors` only, through the `*Of(context)` helpers that read
+  the app theme (`AppPalette`). New chrome accents:
+  `AppColors.formAccentOf(context)` or `AppColors.porchAmberOf(context)`;
+  `AppColors.onAccentOf(context)` on a solid accent fill. A bare palette
+  constant (`formMasterAccent`, `onChaosAccent`, …) in UI code stays Porch
+  under every theme. Status hues (danger, warning, success, info) come from
+  `StatusColors`, dims and faint lines from `InkColors`, the chips under a
+  reply from `RealismColors`, chat-only hues from `ChatColors`, sidebar
+  destinations from `NavColors`, model quant and fit hues from
+  `ModelColors`, a page's feature hues (Director amber, Realism teal)
+  from `AccentColors`, all in `lib/ui/theme/`. CI `theme-lint` fails new
   `Colors.blueAccent` under `lib/` unless `// theme-keep: <reason>` and the
   colour is a genuine semantic status hue the maintainer approved **in this
   conversation**. Two ratchets in `test/hygiene/` (`raw_colors_ratchet_test`,
@@ -212,6 +265,13 @@ finds the kit still there.
 **`objectivesActive` is a live AND** — per-chat `_objectivesEnabled` AND
 `realismSettings.objectivesEnabled`. Not a stored AND at seed time. Flipping
 the global off must take effect on the next turn.
+
+**Needs run behind one gate.** `NeedsPass._needsActive`, read as
+`NeedsPass.active` (`lib/services/chat/needs_pass.dart`) = Realism engine AND
+the chat's Needs switch AND the global `needsSimDefault` read live. Every
+run (stamp, prompt lines, judge, clock wear, chip, Reprocess) reads it;
+the stored `_needsSimEnabled` is only for seeding, saving and rewinding
+state. `test/hygiene/needs_gate_ratchet_test.dart` enforces it.
 
 **Clock.** Passage of time needs a **model call**, not the Realism Engine.
 `_clockRunning` is Porch Life `passageOfTimeDefault` **live** — the same
@@ -361,12 +421,17 @@ branch's copy.
 |-----|------------|
 | `analyze` | Analyzer issues in **changed** `.dart` files |
 | `test` | Unit/widget tests (`--concurrency=4 --exclude-tags golden`) |
-| `e2e-smoke` | A suite under `integration_test/*_test.dart` fails (one process per file, 5 shards × 3 OSes) |
+| `e2e-smoke` | A suite under `integration_test/*_test.dart` fails (one process per file, 5 shards; Linux on PRs, macOS + Windows on Rawhide/main pushes, all three on the schedule) |
 | `web-tests` | `npm run lint` / `npm test` in `web_ui/` |
 | `web-e2e` | Playwright sweep + journeys against the real app (`integration_test/web_ui/browser_test.dart`); also runs on Rawhide/main pushes |
 | `theme-lint` | New raw `Colors.blueAccent` under `lib/` |
 | `io-lint` | New sync I/O under `lib/ui/` |
 | `golden` | Pixel golden drift (Linux image) |
+| `PR rules` (`pr-rules.yml`) | A UI PR's `## Hand-check` lines don't each name a test or start `eye-only:`; a PR adds pictures outside goldens, `assets/`, `docs/screenshots/` (label `approved-images`) |
+
+A **draft** PR runs only the cheap jobs; `e2e-smoke`, `web-e2e`, `golden`
+and `stoop-live` start when it leaves draft, and never run on a docs-only
+PR. Open PRs as drafts; the merge queue takes them out of draft in order.
 
 `full-lint` is scheduled / branch-push and is **not** a hard PR gate (it
 ends `|| true`). Do not tell contributors the whole tree is analyzed on
@@ -376,7 +441,11 @@ every PR.
 deleting an existing test, golden, baseline, `test/deps/dependency_floors.json`,
 anything under `.github/`, `scripts/ci-local.sh`, or `analysis_options.yaml`
 fails until a maintainer applies **`approved-test-change`**. Adding a **new**
-test file never blocks. `integration_test/support/` (harness, no asserts) is
+test file never blocks, and neither does an edit to an existing `_test.dart`
+that deletes nothing and only adds whole `test(` / `testWidgets(` / `group(`
+calls (and imports). Touching a helper, fake or `setUp` the old tests use
+still needs the label, and so does any edit to a golden test file or one that
+mentions `autoUpdateGoldenFiles`, `goldenFileComparator` or `HttpOverrides`. `integration_test/support/` (harness, no asserts) is
 reported, not blocked.
 
 The dependency-floor test fails if `pubspec.lock` moves a package
@@ -392,6 +461,10 @@ Do not edit `pubspec.yaml` version — CI/CD normalizes releases.
 - A new guard must be **proven red** (break the fix, see fail) then green.
   If deleting the product call site still leaves the test green, it is
   decoration — say so or fix the test. Do not ship that test.
+- A new guard goes in the **existing** test file for its feature (append a
+  `test(` or `group(`). Start a new file only for a feature that has none.
+  Every test file is its own compile and launch in CI, and one-bug files
+  doubled the suite's file count in three weeks.
 - Prefer one broad interaction / E2E journey over another pure unit of a
   helper. Goldens answer “does it look right”; a tap answers “can a user do
   this.”

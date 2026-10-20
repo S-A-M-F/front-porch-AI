@@ -202,19 +202,64 @@ Clock off: each reply counts as 15 minutes toward the refractory only, so it end
 
 ## Clock off
 
-With Passage of Time off there is no story time, so nothing wears. This is version 1's behaviour, kept on purpose: the user turned time off, so the body is not on a clock.
+With Passage of Time off there is no story time to wear from, so the reply
+itself is the beat (the maintainer's ruling of 2026-10-08, final: clock on
+works as this document says; clock off works as version 1 did). Every reply,
+the speaker's hunger, bladder and energy tick a fixed step — hunger 2,
+bladder 3, energy 3, version 1's per-turn rates — and the judge scores the
+reply's events on top. Everything is per action: no pace, no carry, no
+off-screen floors, and in a group only the speaker ticks (version 1 ticked
+the speaker, not the room). The tick runs through the same stamps as the
+clock's wear, so regen charges it once, a swipe shows the body that beat
+left, and a delete gives it back. Version 2 as first shipped made clock
+off "events only", so a chat with the clock off sat still between events;
+that was not version 1's behaviour and it is gone.
 
 | | Clock on | Clock off |
 | --- | --- | --- |
-| Hunger, bladder, energy | wear with story time, plus events | events only |
+| Hunger, bladder, energy | wear with story time, plus events | a fixed step per reply, plus events |
 | Social, fun, hygiene, comfort | events only | events only |
-| Gets hungry, tired or needs a bathroom from time alone | yes, when a person would | never; only if the story says so |
-| Hitting 0 | from on-screen hours they could not act on | only if events push a bar there |
-| Prompt lines, bands, pace, per-need switches, Redo, Director, regen, delete | all work | all work |
-| Chip under the reply | `1 hr 20 min · lunch` | `lunch` only |
+| Gets hungry, tired or needs a bathroom from time alone | yes, when a person would | yes, a little every reply |
+| Who wears on a reply, in a group | everyone present, by the beat's minutes | the speaker only |
+| Hitting 0 | from on-screen hours they could not act on | from replies that never fed or rested them |
+| Prompt lines, bands, pace, per-need switches, Redo, Director, regen, delete | all work | all work (pace is a clock setting and does nothing here) |
+| Chip under the reply | `1 hr 20 min · lunch` | `lunch`, or "Natural decay" when only the tick moved the bar |
 | Refractory | story minutes | 15 min per reply |
 
-One line of copy, desktop and phone, under the Needs switch wherever it appears (chat sidebar gear, character editor and creators, an alternate greeting's Needs block, group Needs tab, group creation, Settings → Porch Life), shown only while the clock is off: **"With Passage of time off, needs change only when the story says so."** Without it a user who turns the clock off and sees the bars sit still thinks Needs is broken. "Off" is the Porch Life Passage of Time switch (`passageOfTimeDefault`), the live clock gate; the line shows whether or not that Needs switch is itself on.
+One line of copy, desktop and phone, under the Needs switch wherever it appears (chat sidebar gear, character editor and creators, an alternate greeting's Needs block, group Needs tab, group creation, Settings → Porch Life), shown only while the clock is off: **"With Passage of time off, hunger, bathroom and energy wear a little each reply; the rest move only when the story says so."** "Off" is the Porch Life Passage of Time switch (`passageOfTimeDefault`), the live clock gate; the line shows whether or not that Needs switch is itself on.
+
+## Realism Engine off, and the global Needs switch
+
+Needs require the Realism Engine (the Porch Life tab says so): with the
+engine off no judge runs and the clock wears nothing either, so the bars
+hold and the reply carries no needs stamp or chip, only the time chip,
+which Passage of Time owns on its own. Version 2 as shipped in v1.5.0 let
+the clock wear the body with the engine off ("Needs answers to its own
+switch"), and a user with Realism off saw "Bladder −1" under a reply; the
+rule went back on 2026-10-08. The global Needs switch (Settings → Porch
+Life) is read live, the way Objectives read theirs, so turning it off
+takes effect on the next turn rather than the next time the chat opens.
+
+One gate, one place. `NeedsPass._needsActive` in
+`lib/services/chat/needs_pass.dart` is that AND (engine,
+the chat's switch, the global switch live), and it is the only way Needs
+run: the pre-turn stamp (`NeedsPass.stampPreTurn`, 1:1 and group), the prompt
+lines, the judge, the clock's wear, the chip under the reply and
+Reprocess Needs all read it. The stored per-chat switch
+(`_needsSimEnabled`) still decides whether a chat *keeps* Needs state —
+seeding the bars when a chat opens or a member joins, saving them with
+the session, rewinding a regen or a delete to the stamp it has — because
+those are not runs: a chat with the engine off keeps its bars where they
+were, and finds them again when the engine comes back. Kept is not shown:
+the bars (the desktop sidebar, a group member's card, the phone's feed)
+show from the public `needsActive`, so with any of the three off they
+hide rather than sit frozen and read as live (the maintainer's ruling,
+2026-10-08). Realism does not need Needs: with Needs off, bond, trust and
+mood still run and show.
+`test/hygiene/needs_gate_ratchet_test.dart` holds that line: the gate is
+defined once, a condition on the stored switch outside the named
+state-and-rewind files fails the build, and so does the UI showing the
+bars from the public switch.
 
 ## What you will see, and what does not change
 

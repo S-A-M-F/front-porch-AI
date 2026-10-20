@@ -37,8 +37,8 @@ import 'time_strip.dart';
 import 'presence_word.dart';
 
 /// 🎭 Character State — the first warm-porch accordion: everything about who
-/// the character *is right now* in one card. 1:1 shows the emotion line,
-/// the unified bond/trust/lust bars (BondBars — the nsfw_section merge),
+/// the character *is right now* in one card. 1:1 shows the unified
+/// bond/trust/lust bars (BondBars — the nsfw_section merge),
 /// fixation, needs grid, and the time strip; group mode shows the focused
 /// member's GroupMemberCard (which renders the same shared bar widgets) plus
 /// the shared time strip. The gear opens an inline settings flyout
@@ -174,65 +174,7 @@ class CharacterStateGroupState extends State<CharacterStateGroup> {
             ),
           if (widget.isGroup && widget.groupMemberCard != null)
             widget.groupMemberCard!,
-          // ── Standing Mood ──
-          // OUTSIDE the realismOn gate on purpose. Standing Mood depends on
-          // nothing (it is derived from needs, the clock and the weather, none
-          // of which need the engine), so gating it here would be the exact
-          // dead-switch bug the Porch Life tab exists to end: the feature would
-          // still be colouring every reply while the user had no way to see it.
-          //
-          // It reads "Came in …" so it can never be mistaken for a reaction to
-          // something the user did — which is the whole point of the feature.
-          if (chat.standingMoodSummary.isNotEmpty) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.cloud_queue,
-                  size: 13,
-                  color: AppColors.textTertiary(context),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    'Came in ${chat.standingMoodSummary}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontStyle: FontStyle.italic,
-                      color: AppColors.textTertiary(context),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-          ],
           if (!widget.isGroup && realismOn) ...[
-            // ── Emotion line ──
-            if (chat.characterEmotion.isNotEmpty) ...[
-              Row(
-                children: [
-                  Text(
-                    _emotionEmoji(chat.characterEmotion),
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      '${chat.characterEmotion.substring(0, 1).toUpperCase()}'
-                      '${chat.characterEmotion.substring(1)} '
-                      '(${chat.emotionIntensity})',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary(context),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-            ],
             // ── Unified bars (bond / trust / lust) ──
             BondBars(chat: chat),
             // ── Fixation (replaces the old always-on chat_page banner; the
@@ -246,13 +188,11 @@ class CharacterStateGroupState extends State<CharacterStateGroup> {
               ),
             ],
           ],
-          // Needs answers to its own switch, not the Realism header. Sitting
-          // inside that branch hid the bars on a brand-new 1:1 whose Porch
-          // Life Realism default is still off while Needs (card + chat gear)
-          // was already on — the same dead-switch class Ambitions/Pockets
-          // were lifted out of.
+          // The bars show while Needs run: the gate (Realism, this chat's
+          // Needs switch, the Porch Life one), not the stored switch, or
+          // they sit frozen with Needs off and read as live.
           if (!widget.isGroup &&
-              chat.needsSimEnabled &&
+              chat.needsActive &&
               chat.needsSimulation.vector.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
@@ -373,55 +313,5 @@ class CharacterStateGroupState extends State<CharacterStateGroup> {
         ],
       ),
     );
-  }
-
-  /// Emotion → emoji (ported verbatim from the old realism_section so the
-  /// nuanced-word coverage doesn't change).
-  String _emotionEmoji(String emotion) {
-    switch (emotion.toLowerCase()) {
-      case 'amused':
-      case 'playful':
-      case 'happy':
-        return '😄';
-      case 'angry':
-      case 'furious':
-        return '😠';
-      case 'sad':
-      case 'melancholy':
-        return '😢';
-      case 'anxious':
-      case 'nervous':
-      case 'worried':
-        return '😰';
-      case 'excited':
-      case 'thrilled':
-        return '🤩';
-      case 'flirtatious':
-      case 'aroused':
-        return '😏';
-      case 'calm':
-      case 'relaxed':
-      case 'content':
-        return '😌';
-      case 'suspicious':
-      case 'wary':
-        return '🤨';
-      case 'fearful':
-      case 'scared':
-        return '😨';
-      case 'embarrassed':
-      case 'flustered':
-        return '😳';
-      case 'annoyed':
-      case 'irritated':
-        return '😤';
-      case 'confused':
-      case 'conflicted':
-        return '😕';
-      case 'protective':
-        return '🛡️';
-      default:
-        return '🎭';
-    }
   }
 }

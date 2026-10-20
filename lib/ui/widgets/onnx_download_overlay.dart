@@ -19,6 +19,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/utils/utils.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 /// Glassmorphic overlay widget showing ONNX model download progress.
 ///
@@ -71,12 +73,6 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
     _lastTimestamp = DateTime.now();
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
-  }
-
   String _formatETA(OnnxDownloadProgress progress) {
     if (_currentSpeed <= 0) return '...';
     final remaining = progress.total - progress.downloaded;
@@ -97,7 +93,7 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
 
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withValues(alpha: 0.3),
+        color: InkColors.dim(0.3),
         child: Center(
           child: Material(
             color: Colors.transparent,
@@ -105,10 +101,10 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
               width: 380,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
+                color: InkColors.glassOf(context),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.18),
+                  color: InkColors.glassEdgeOf(context),
                   width: 1,
                 ),
                 boxShadow: [
@@ -125,7 +121,7 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
                   Text(
                     'Downloading Emotion Model',
                     style: TextStyle(
-                      color: const Color(0xFF1DE9B6),
+                      color: StatusColors.progressOf(context),
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                     ),
@@ -134,7 +130,7 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
                   Text(
                     progress.file,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: InkColors.mutedTextOf(context, 0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -143,9 +139,9 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
                     value: progress.fraction,
                     minHeight: 6,
                     borderRadius: BorderRadius.circular(3),
-                    backgroundColor: Colors.white.withValues(alpha: 0.1),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFF1DE9B6),
+                    backgroundColor: InkColors.trackOf(context),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      StatusColors.progressOf(context),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -153,16 +149,16 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '${_formatBytes(progress.downloaded)} / ${_formatBytes(progress.total)}',
+                        '${formatBytes(progress.downloaded)} / ${formatBytes(progress.total)}',
                         style: TextStyle(
-                          color: const Color(0xFF1DE9B6),
+                          color: StatusColors.progressOf(context),
                           fontSize: 13,
                         ),
                       ),
                       Text(
                         '${(progress.fraction * 100).toStringAsFixed(0)}%',
                         style: TextStyle(
-                          color: const Color(0xFF1DE9B6),
+                          color: StatusColors.progressOf(context),
                           fontSize: 13,
                         ),
                       ),
@@ -173,16 +169,16 @@ class _OnnxDownloadOverlayState extends State<OnnxDownloadOverlay> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Speed: ${_formatBytes(_currentSpeed.toInt())}/s',
+                        'Speed: ${formatBytes(_currentSpeed.toInt())}/s',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: InkColors.mutedTextOf(context, 0.7),
                           fontSize: 12,
                         ),
                       ),
                       Text(
                         'ETA: ${_formatETA(progress)}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: InkColors.mutedTextOf(context, 0.7),
                           fontSize: 12,
                         ),
                       ),

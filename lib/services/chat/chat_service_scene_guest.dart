@@ -86,6 +86,7 @@ extension ChatServiceSceneGuest on ChatService {
         _groupCharacters,
         promptText,
       );
+      if (target != null) _releaseHeldAway(target);
       if (target != null && !_groupSpeakerSkips(target)) {
         debugPrint(
           '[Cast] @-mention: ${target.name} forced as this turn\'s speaker.',
@@ -140,6 +141,12 @@ extension ChatServiceSceneGuest on ChatService {
   }) {
     _sceneGuest.statusClearTimer?.cancel();
     _sceneGuest.statusClearTimer = null;
+    // The banner draws its own warning icon, so a '⚠' lead-in would show
+    // twice; it still marks the line as an error.
+    if (msg != null && msg.startsWith('⚠')) {
+      msg = msg.substring(1).trimLeft();
+      isError = true;
+    }
     _sceneGuest.activityStatus = msg;
     _sceneGuest.activityIsError = isError;
     notifyListeners();
@@ -153,6 +160,39 @@ extension ChatServiceSceneGuest on ChatService {
         },
       );
     }
+  }
+
+  /// The Realism overlay's Stop button ended the turn. A kept reply gets the
+  /// short status line; a turn left with no reply gets [stoppedReplyNotice],
+  /// which stays until the chat moves on. A greeting read (no turn) gets
+  /// neither.
+  void _noteStoppedReply({required bool replyKept}) {
+    if (replyKept) {
+      _setGuestStatus('Reply kept. Scene time and needs weren\'t updated.');
+    } else if (_isEvaluatingRealism && _messages.isNotEmpty) {
+      _stoppedReplyAnchor = _messages.last;
+    }
+  }
+
+  /// Plain words for a reply the user stopped before it was written; null
+  /// when there is none. Gone once anything follows the line it was stopped
+  /// on, another chat opens, Try again starts, or the user dismisses it.
+  String? get stoppedReplyNotice {
+    final anchor = _stoppedReplyAnchor;
+    if (anchor == null || _messages.isEmpty) return null;
+    if (!identical(_messages.last, anchor)) return null;
+    return 'You stopped this reply before it was written.';
+  }
+
+  /// Try again regenerates the trailing user line, so it is offered only
+  /// while the chat still ends on one.
+  bool get canRetryStoppedReply =>
+      stoppedReplyNotice != null && _messages.last.isUser;
+
+  void dismissStoppedReplyNotice() {
+    if (_stoppedReplyAnchor == null) return;
+    _stoppedReplyAnchor = null;
+    notifyListeners();
   }
 
   /// Clear the transient Scene Guest banner/busy/evict state. Called at every
@@ -371,6 +411,14 @@ extension ChatServiceSceneGuest on ChatService {
 
   /// Name to show in the UNDO SnackBar (null = nothing to offer).
   String? get exitUndoOfferName => _sceneGuest.exitUndoOfferName;
+
+  /// Who the open `/exit` undo would bring back, until it closes (a send, a
+  /// chat switch or the undo itself). Unlike [exitUndoOfferName] nothing
+  /// consumes it, so the web client can show its own UNDO.
+  String? get exitUndoName => _sceneGuest.exitUndoName;
+
+  /// The open undo is the user's own step out to direct.
+  bool get exitUndoIsUserStep => _sceneGuest.exitUndoUserStep;
 
   /// Consume the one-shot UNDO offer (the SnackBar was shown); the undo itself
   /// stays available via [undoLastExit] until invalidated.

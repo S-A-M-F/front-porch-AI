@@ -20,8 +20,9 @@ import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/ui/pages/worlds/climate_editor_widgets.dart';
+import 'package:front_porch_ai/ui/pages/worlds/climate_skin_draft.dart';
 import 'package:front_porch_ai/ui/pages/worlds/climate_emoji_picker.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 /// One rename row from the artifact's "Rename the weather" list: a surface
 /// card laid out as `Condition → [emoji] [new name / flavour] [stance pill]`.
@@ -51,24 +52,23 @@ class SkinEditRow extends StatelessWidget {
   final ValueChanged<WeatherStance?> onStance;
 
   InputDecoration _dec(BuildContext context, String hint) => InputDecoration(
-        isDense: true,
-        hintText: hint,
-        counterText: '',
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        hintStyle: TextStyle(
-          fontSize: 11.5,
-          color: AppColors.textTertiary(context),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(7),
-          borderSide: BorderSide(color: AppColors.borderOf(context)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(7),
-          borderSide: BorderSide(color: AppColors.porchAmberOf(context)),
-        ),
-      );
+    isDense: true,
+    hintText: hint,
+    counterText: '',
+    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    hintStyle: TextStyle(
+      fontSize: 11.5,
+      color: AppColors.textTertiary(context),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(7),
+      borderSide: BorderSide(color: AppColors.borderOf(context)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(7),
+      borderSide: BorderSide(color: AppColors.porchAmberOf(context)),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -99,16 +99,14 @@ class SkinEditRow extends StatelessWidget {
                   '$stockEmoji ${condition[0].toUpperCase()}${condition.substring(1)} →',
                   style: TextStyle(
                     fontSize: 12.5,
-                    color: AppColors.textTertiary(context),
+                    color: AppColors.textPrimary(context),
                   ),
                 ),
               ),
               // The mockup's emoji cell, as a picker: tap to choose from the
               // curated weird-weather set (or type any emoji inside it).
               Tooltip(
-                message: draft.active
-                    ? 'Pick an emoji'
-                    : 'Type a rename first',
+                message: draft.active ? 'Pick an emoji' : 'Type a rename first',
                 child: InkWell(
                   borderRadius: BorderRadius.circular(7),
                   onTap: draft.active
@@ -132,7 +130,8 @@ class SkinEditRow extends StatelessWidget {
                     child: Opacity(
                       opacity: draft.active && draft.emoji.isNotEmpty
                           ? 1.0
-                          : 0.35,
+                          // Dim, not gone: 0.35 vanished on light cards.
+                          : 0.6,
                       child: Text(
                         draft.emoji.isNotEmpty ? draft.emoji : '🌪️',
                         style: const TextStyle(fontSize: 14),
@@ -181,7 +180,10 @@ class SkinEditRow extends StatelessWidget {
             Text(
               'A renamed weather needs a danger level — otherwise characters '
               'would picnic in ${draft.label.trim()}.',
-              style: const TextStyle(fontSize: 12, color: kClimateDanger),
+              style: TextStyle(
+                fontSize: 12,
+                color: StatusColors.climateDangerOf(context),
+              ),
             ),
           ],
         ],
@@ -194,7 +196,7 @@ class SkinEditRow extends StatelessWidget {
   /// while missing.
   Widget _stancePill(BuildContext context, bool missingStance) {
     final color = missingStance
-        ? kClimateDanger
+        ? StatusColors.climateDangerOf(context)
         : stanceColor(context, draft.stance);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 2),

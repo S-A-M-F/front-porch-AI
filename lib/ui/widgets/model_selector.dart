@@ -1,18 +1,18 @@
 import 'dart:io';
 import 'package:path/path.dart' as path_lib;
 import 'package:flutter/material.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 /// The model a model list starts on when none is chosen yet: the last-used one
-/// when [models] has it (the Local model card names that one), otherwise the
-/// first. Null when there are no models.
+/// when [models] has it (the Local model card names that one). Null otherwise,
+/// so the list says "Choose a model" instead of showing a file the user never
+/// picked as if it were chosen.
 String? modelListStart(List<FileSystemEntity> models, String? lastUsed) {
-  final paths = [for (final m in models) m.path];
-  if (paths.isEmpty) return null;
-  return paths.firstWhere(
-    (m) => lastUsed != null && path_lib.equals(m, lastUsed),
-    orElse: () => paths.first,
-  );
+  if (lastUsed == null) return null;
+  for (final m in models) {
+    if (path_lib.equals(m.path, lastUsed)) return m.path;
+  }
+  return null;
 }
 
 /// A dropdown for selecting a model file with "Managed by kcpps" support.
@@ -51,7 +51,10 @@ class ModelSelector extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     if (!showManagedByKcpps && models.isEmpty) {
-      return Text(emptyMessage, style: const TextStyle(color: Colors.orange));
+      return Text(
+        emptyMessage,
+        style: TextStyle(color: StatusColors.cautionOf(context)),
+      );
     }
 
     final rawPaths = models
@@ -81,17 +84,13 @@ class ModelSelector extends StatelessWidget {
       );
     }
 
-    String currentValue;
-    if (showManagedByKcpps && selectedModelPath == null) {
-      currentValue = '';
-    } else if (selectedModelPath != null &&
-        items.any((i) => i.value == selectedModelPath)) {
-      currentValue = selectedModelPath!;
-    } else if (items.isNotEmpty) {
-      currentValue = items.first.value ?? _managedSentinel;
-    } else {
-      currentValue = _managedSentinel;
-    }
+    // Nothing chosen shows the hint, never the first file: the Local model
+    // card says "No model chosen" then, and Start would load what is shown.
+    final String? currentValue = selectedModelPath != null
+        ? path_lib.normalize(selectedModelPath!)
+        : showManagedByKcpps
+        ? _managedSentinel
+        : null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -102,13 +101,17 @@ class ModelSelector extends StatelessWidget {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: currentValue,
+          hint: Text(
+            'Choose a model',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
           isExpanded: true,
           dropdownColor: colors,
           style:
               textTheme.bodyMedium?.apply(
                 color: AppColors.textPrimary(context),
               ) ??
-              const TextStyle(color: Colors.black87),
+              TextStyle(color: AppColors.textPrimary(context)),
           icon: Icon(
             Icons.arrow_drop_down,
             color: AppColors.textSecondary(context),

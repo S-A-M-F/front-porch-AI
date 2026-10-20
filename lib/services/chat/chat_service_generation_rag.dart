@@ -208,10 +208,12 @@ extension ChatServiceGenerationRag on ChatService {
                     )
                   : null,
           };
+          final today = _clockRunning ? _timeService.dayCount : null;
           String lineFor(RetrievedMemory m) => formatRagLine(
             m.content,
             day: days[m],
             otherChat: m.sessionId != sessionForStamps,
+            today: today,
           );
           final included = <RetrievedMemory>[];
           int usedTokens = 0;
@@ -238,6 +240,7 @@ extension ChatServiceGenerationRag on ChatService {
                   currentSessionId: sessionForStamps,
                   days: days,
                   reachingForQuote: reaching,
+                  today: today,
                 );
             t.memoriesBlock = buildBlock(included);
 
@@ -280,8 +283,10 @@ extension ChatServiceGenerationRag on ChatService {
               final rebudget = await _buildChatHistoryWithBudget(
                 t.historyBudget - memTokens,
                 depthLore: t.loreDepth,
+                splitLatestTurn: true,
               );
               t.history = rebudget.history;
+              t.latestTurn = rebudget.latestTurn;
               // Keep the retrieval's inContextStart lag (spec: messages
               // evicted by this second walk become retrievable next turn);
               // the budget map below reports the final dropped count.

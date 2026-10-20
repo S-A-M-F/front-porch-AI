@@ -18,6 +18,7 @@ class GroupTurnManager extends ChangeNotifier {
   List<CharacterCard> _characters = [];
   int _turnIndex = 0;
   String? _forcedNextSpeakerId;
+  ({int index, String? forcedId, String regenId})? _regenHold;
   bool _observerMode = false;
   bool _autoPlayActive = false;
 
@@ -64,15 +65,18 @@ class GroupTurnManager extends ChangeNotifier {
       throw StateError('No active group');
     }
 
-    // Forced override wins and is one-shot
+    // Forced override wins and is one-shot. A hand-picked turn is still a
+    // turn: round robin carries on with whoever follows the speaker.
     if (_forcedNextSpeakerId != null) {
-      final forced = _characters.firstWhere(
+      final idx = _characters.indexWhere(
         (c) => _getId(c) == _forcedNextSpeakerId,
-        orElse: () => _characters.first,
       );
       _forcedNextSpeakerId = null;
+      if (idx >= 0 && _group!.turnOrder == TurnOrder.roundRobin) {
+        _turnIndex = (idx + 1) % _characters.length;
+      }
       notifyListeners();
-      return forced;
+      return _characters[idx >= 0 ? idx : 0];
     }
 
     if (_group!.turnOrder == TurnOrder.random) {
@@ -108,15 +112,55 @@ class GroupTurnManager extends ChangeNotifier {
   }
 
   /// Advance the round-robin turn pointer (if applicable) as if the given
-  /// character has just completed their turn. Used after a regeneration to
-  /// ensure the next natural speaker is the correct subsequent character
-  /// rather than repeating the regenerated speaker.
+  /// character has just completed their turn (an entrance, a `/speak`, or a
+  /// member skipped as away). Not for regenerations: [beginRegeneration] and
+  /// [endRegeneration] hold and put back the rotation there.
   /// Safe no-op for random turn order or non-round-robin groups.
   void advanceAfterRegeneration(CharacterCard character) {
     if (!isActive || _characters.isEmpty) return;
+    if (_group!.turnOrder != TurnOrder.roundRobin) return;
     final idx = _characters.indexWhere((c) => c.name == character.name);
     if (idx < 0) return;
     _turnIndex = (idx + 1) % _characters.length;
+    notifyListeners();
+  }
+
+  /// Force [character] to re-speak the reply being regenerated, remembering
+  /// the rotation so [endRegeneration] can put it back: a regen redoes a
+  /// turn, it does not take one.
+  void beginRegeneration(CharacterCard character) {
+    if (!isActive) return;
+    final before = (index: _turnIndex, forcedId: _forcedNextSpeakerId);
+    setNextSpeaker(character);
+    final regenId = _forcedNextSpeakerId;
+    if (regenId == null) return;
+    _regenHold ??= (
+      index: before.index,
+      forcedId: before.forcedId,
+      regenId: regenId,
+    );
+  }
+
+  /// Put the rotation back as [beginRegeneration] found it, whether the
+  /// regen succeeded or not. A speaker picked during the regen stands.
+  void endRegeneration() {
+    final hold = _regenHold;
+    _regenHold = null;
+    if (hold == null || _forcedNextSpeakerId != hold.regenId) return;
+    restoreRotation((index: hold.index, forcedId: hold.forcedId));
+  }
+
+  /// Where the rotation stands, for [restoreRotation].
+  ({int index, String? forcedId}) get rotation =>
+      (index: _turnIndex, forcedId: _forcedNextSpeakerId);
+
+  /// Put back a [rotation] taken before a pick whose turn wrote no reply
+  /// (stopped, refused or failed): that member is still up next.
+  void restoreRotation(({int index, String? forcedId}) r) {
+    _turnIndex = _characters.isEmpty ? 0 : r.index % _characters.length;
+    _forcedNextSpeakerId = _characters.any((c) => _getId(c) == r.forcedId)
+        ? r.forcedId
+        : null;
     notifyListeners();
   }
 
@@ -125,6 +169,7 @@ class GroupTurnManager extends ChangeNotifier {
   void resetTurnState() {
     _turnIndex = 0;
     _forcedNextSpeakerId = null;
+    _regenHold = null;
     notifyListeners();
   }
 
@@ -140,6 +185,7 @@ class GroupTurnManager extends ChangeNotifier {
     _characters = List.of(resolvedCharacters);
     _turnIndex = 0;
     _forcedNextSpeakerId = null;
+    _regenHold = null;
     _observerMode = startInDirectorMode;
     _autoPlayActive = false;
     notifyListeners();
@@ -151,6 +197,7 @@ class GroupTurnManager extends ChangeNotifier {
     _characters = [];
     _turnIndex = 0;
     _forcedNextSpeakerId = null;
+    _regenHold = null;
     _observerMode = false;
     _autoPlayActive = false;
     notifyListeners();
@@ -164,12 +211,22 @@ class GroupTurnManager extends ChangeNotifier {
   }
 
   /// Re-resolve the character list after the character repository changes
-  /// (add/remove/rename). Clamps indices and drops a forced ID if its
-  /// character is no longer present.
+  /// (add/remove/rename). The upcoming round-robin speaker keeps the turn
+  /// when still present (a member leaving ahead of them must not skip them);
+  /// otherwise the index is clamped. Drops a forced ID if its character is
+  /// no longer present.
   void refreshCharacters(List<CharacterCard> newResolvedList) {
+    final upcoming = _characters.isEmpty
+        ? null
+        : _characters[_turnIndex % _characters.length];
     _characters = List.of(newResolvedList);
 
-    if (_characters.isNotEmpty) {
+    final kept = upcoming == null
+        ? -1
+        : _characters.indexWhere((c) => _sameMember(c, upcoming));
+    if (kept >= 0) {
+      _turnIndex = kept;
+    } else if (_characters.isNotEmpty) {
       _turnIndex = _turnIndex % _characters.length;
     } else {
       _turnIndex = 0;
@@ -206,6 +263,13 @@ class GroupTurnManager extends ChangeNotifier {
   }
 
   // ── Internal helpers ───────────────────────────────────────────────────
+
+  /// Group members carry their row id; avatar-less ones share an empty
+  /// [_getId], so the row id is compared first.
+  bool _sameMember(CharacterCard a, CharacterCard b) {
+    if (a.dbId != null && b.dbId != null) return a.dbId == b.dbId;
+    return _getId(a) == _getId(b);
+  }
 
   String _getId(CharacterCard card) {
     if (card.imagePath != null) {

@@ -53,8 +53,9 @@ import 'porch_life_mcp_web_card.dart';
 ///
 /// Needs got its global switch here (`needsSimDefault`, 2026-08-07): it had
 /// none at all, so the tab had nothing to show for the app's most visible
-/// simulation. It AND-gates the card's own setting — default true, so nothing
-/// changes until a user deliberately turns it off.
+/// simulation. It decides for a card that says nothing about Needs and
+/// AND-gates a card that does (an explicit false on the card still wins).
+/// Default true.
 ///
 /// Dependency truths per the maintainer: Needs and Afterglow genuinely REQUIRE
 /// the engine.
@@ -119,6 +120,21 @@ class PorchLifeTab extends StatelessWidget {
               onChanged: storage.realismSettings.setPassageOfTimeDefault,
             ),
             FeatureRow(
+              icon: Icons.fast_forward_outlined,
+              label: 'Time-skip bridge',
+              need: FeatureNeed.needs,
+              dependsOn: 'Passage of Time',
+              satisfied: timeOn,
+              blurb:
+                  'When a message skips a day or more ("two weeks '
+                  'later"), a short narrator card fills in how those days '
+                  'went before the character replies. One short AI call, '
+                  'only on a turn that skips that far. Off, the skip still '
+                  'happens, just without the card.',
+              value: realism.timeSkipBridgeEnabled,
+              onChanged: realism.setTimeSkipBridgeEnabled,
+            ),
+            FeatureRow(
               icon: Icons.cloud_outlined,
               label: 'Story Weather',
               need: FeatureNeed.needs,
@@ -137,7 +153,7 @@ class PorchLifeTab extends StatelessWidget {
               label: 'Temperatures in °F',
               need: FeatureNeed.needs,
               dependsOn: 'Story Weather',
-              satisfied: weatherOn,
+              satisfied: timeOn && weatherOn,
               blurb:
                   'Display only — characters always experience weather in '
                   'words ("coat-and-gloves cold"), never numbers.',
@@ -268,13 +284,12 @@ class PorchLifeTab extends StatelessWidget {
               blurb:
                   'Short-lived quests a character works toward — set your own, '
                   'or let them decide what they want. Needs nothing else to '
-                  'run, but it does check in with the AI to see whether a task '
-                  'got done: every turn while the Realism Engine is on, and '
-                  'every few messages while it is off. Switching this off is '
-                  'the way to stop that cost — your quests are kept either way.',
+                  'run, but it does check in with the AI every few messages '
+                  '(and after a time skip) to see where each goal stands. '
+                  'Switching this off is the way to stop that cost — your '
+                  'quests are kept either way.',
               value: objectivesOn,
               onChanged: storage.realismSettings.setObjectivesEnabled,
-              child: ObjectiveStaleThresholdPicker(storage: storage),
             ),
             FeatureRow(
               icon: Icons.flag_outlined,
@@ -320,13 +335,14 @@ class PorchLifeTab extends StatelessWidget {
               blurb:
                   'Pressure builds quietly as a scene goes on, and every so '
                   'often something happens that neither of you planned — a '
-                  'knock at the door, a spilled drink, weather turning. The '
-                  '2026-08-07 audit confirmed it runs perfectly well with the '
-                  'Realism Engine off; it was only ever filed next to it. '
-                  'Switching it on here turns it on for new chats and groups; '
-                  'each chat can still overrule it in the sidebar.',
+                  'knock at the door, a spilled drink, weather turning. It '
+                  'works with or without the Realism Engine. Switching it on '
+                  'here turns it on for new chats and groups; each chat can '
+                  'still overrule it in the sidebar.',
               value: realism.chaosModeDefault,
               onChanged: realism.setChaosModeDefault,
+              showChildWhenOff: true,
+              child: ChaosFrequencyPicker(storage: storage),
             ),
             FeatureRow(
               icon: Icons.history,
@@ -378,9 +394,10 @@ class PorchLifeTab extends StatelessWidget {
                     'instead of resetting — so intimacy keeps a believable '
                     'rhythm and a character is not instantly ready to go '
                     'again. The engine is what scores desire, so this cannot '
-                    'run without it — and nothing else, despite what it used '
-                    'to do. Uses one short extra AI request per reply to '
-                    'notice a climax, so it costs a little more on a paid API.',
+                    'run without it. Uses one short extra AI request per reply '
+                    'to notice a climax, so it costs a little more on a paid '
+                    'API. Multiorgasmic characters feel a tenderness window '
+                    'instead of a lock.',
                 value: storage.realismSettings.nsfwCooldownDefault,
                 onChanged: storage.realismSettings.setNsfwCooldownDefault,
               ),

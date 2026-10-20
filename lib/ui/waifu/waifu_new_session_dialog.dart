@@ -68,7 +68,7 @@ class WaifuNewSessionDialog extends StatelessWidget {
             child: Text(
               initial.toUpperCase(),
               style: TextStyle(
-                color: AppColors.onChaosAccent,
+                color: AppColors.onAccentOf(context),
                 fontWeight: FontWeight.w900,
                 fontSize: 28,
               ),
@@ -76,7 +76,7 @@ class WaifuNewSessionDialog extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            'Last time you sat down with $name. Same coworker, or someone new?',
+            'Last time you worked with $name. Same coworker, or someone new?',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textSecondary(context)),
           ),
@@ -85,7 +85,8 @@ class WaifuNewSessionDialog extends StatelessWidget {
       actions: [
         TextButton(
           key: const Key('waifu-new-session-pick'),
-          onPressed: () => Navigator.pop(context, WaifuNewSessionChoice.pickNew),
+          onPressed: () =>
+              Navigator.pop(context, WaifuNewSessionChoice.pickNew),
           child: Text(
             'Pick a new character',
             style: TextStyle(color: honey, fontWeight: FontWeight.w700),
@@ -95,7 +96,7 @@ class WaifuNewSessionDialog extends StatelessWidget {
           key: const Key('waifu-new-session-same'),
           style: FilledButton.styleFrom(
             backgroundColor: amber,
-            foregroundColor: AppColors.onChaosAccent,
+            foregroundColor: AppColors.onAccentOf(context),
           ),
           onPressed: () =>
               Navigator.pop(context, WaifuNewSessionChoice.sameCharacter),

@@ -18,6 +18,21 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       getPrimaryObjective: () => primaryObjective,
       tasksForObjective: (o) => tasksForObjective(o),
       getSecondaryObjectives: () => secondaryObjectives,
+      getStreakLine: () =>
+          objectivesActive ? objectiveStreakLine(_objectiveTally.recent) : null,
+      // In a group only the goal owner's replies count; the ids match because
+      // both are _getCharacterIdFromCard.
+      isResting: (o) =>
+          o is Objective &&
+          objectiveFixated(
+            messages: _messages,
+            questTexts: openQuestMentionTexts(
+              o.objective,
+              tasksForObjective(o),
+            ),
+            speakerId: _activeGroup != null ? o.characterId : null,
+            ignore: _objectiveIgnoreTokens(),
+          ),
     );
   }
 
@@ -25,14 +40,14 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
     return RelationshipInjection(
       relationshipService: _relationshipService,
       getRealismEnabled: () => _realismEnabled,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getActiveCharacter: () => _activeCharacter,
       getShouldTrackInterCharacterRelationships: () =>
           _shouldTrackInterCharacterRelationships,
       getGroupInt: (charId, key, {int defaultValue = 0}) =>
-          _groupIntOr(charId, key, defaultValue),
+          _groupStore.intOr(charId, key, defaultValue),
       getCharacterIdFromCard: _getCharacterIdFromCard,
       getInterCharacterRelationships:
           _relationshipService.getInterCharacterRelationships,
@@ -44,6 +59,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       getRealismEnabled: () => _realismEnabled,
       getCharacterEmotion: () => _characterEmotion,
       getEmotionIntensity: () => _emotionIntensity,
+      getEmotionCause: () => _emotionCause,
+      getEmotionHeldTurns: () => _emotionHeldTurns,
     );
   }
 
@@ -51,10 +68,11 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
     return BehavioralInjection(
       relationshipService: _relationshipService,
       getRealismEnabled: () => _realismEnabled,
-      getOccupation: () => _workFieldsForCurrentSpeaker().occupation,
-      getHours: () => _workFieldsForCurrentSpeaker().hours,
-      getOccupationBrief: () => _workFieldsForCurrentSpeaker().occupationBrief,
-      getWorkDays: () => _workFieldsForCurrentSpeaker().workDays,
+      getOccupation: () => _groupStore.workFieldsForCurrentSpeaker().occupation,
+      getHours: () => _groupStore.workFieldsForCurrentSpeaker().hours,
+      getOccupationBrief: () =>
+          _groupStore.workFieldsForCurrentSpeaker().occupationBrief,
+      getWorkDays: () => _groupStore.workFieldsForCurrentSpeaker().workDays,
       getClockMinutes: () => _timeService.clockMinutes,
       getWeekday: () => _timeService.clock.weekday,
       getIsGroup: () => _activeGroup != null,
@@ -134,8 +152,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       getClockMinutes: () => _timeService.clockMinutes,
       getWeekday: () => _timeService.clock.weekday,
       getActiveCharacter: () => _activeCharacter,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
     );
@@ -146,8 +164,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       ambitionService: _ambitionService,
       getSessionId: () => _currentSessionId,
       getActiveCharacter: () => _activeCharacter,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
     );
@@ -156,8 +174,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
   PreferencesInjection _buildPreferencesInjection() {
     return PreferencesInjection(
       getActiveCharacter: () => _activeCharacter,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
       // The install's 18+ master switch — the SAME one that shows or hides
@@ -180,8 +198,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
   InventoryInjection _buildInventoryInjection() {
     return InventoryInjection(
       getActiveCharacter: () => _activeCharacter,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
       // Off means off: with the switch down the record is never read, so the
@@ -193,38 +211,20 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       // pass/sidebar/facade (all on storySetAside day now) or the injection
       // would hide an outfit the record still holds after midnight.
       getCurrentDay: () => _timeService.morningAnchoredDayCount,
-      // Get-and-mark: a prompt that carries an intro flags it so the NEXT
-      // user turn drops it (see _dropConsumedItemIntros). Marking here and
-      // clearing there is what lets a regen rebuild reproduce the reaction.
-      takePendingIntros: (charId) {
-        // Session filter: only intros added in THIS chat fire — an add made
-        // in another session stays queued for that chat (see the session
-        // stamp on _PendingItemIntro). Mark included only what fired.
-        final list = _pendingItemIntrosOf[this]?[charId]
-            ?.where((n) => n.session == _currentSessionId)
-            .toList();
-        if (list == null || list.isEmpty) {
-          return const <({String item, bool gift, PocketSection section})>[];
-        }
-        for (final n in list) {
-          n.included = true;
-        }
-        return [
-          for (final n in list)
-            (item: n.item, gift: n.gift, section: n.section),
-        ];
-      },
+      // Get-and-mark, session-filtered; see PocketsLedger.takePendingIntros.
+      takePendingIntros: (charId) => _pocketsLedger.takePendingIntros(charId),
       getUserName: () => _userPersonaService.persona.name,
     );
   }
 
   PromiseDebtInjection _buildPromiseDebtInjection() {
     return PromiseDebtInjection(
+      getCurrentStoryDay: () => _clockRunning ? _timeService.dayCount : null,
       promiseDebtService: _promiseDebtService,
       getSessionId: () => _currentSessionId,
       getActiveCharacter: () => _activeCharacter,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
       getUserName: () => _userPersonaService.persona.name,
@@ -236,11 +236,60 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       nsfwService: _nsfwService,
       getRealismEnabled: () => _realismEnabled,
       getActiveCharacter: () => _activeCharacter,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
+      getMutualOpening: _mutualAfterglowOpening,
+      getPcdActive: _pcdActive,
     );
+  }
+
+  /// PR 8: is this body's grey-drift window open — the opening turn plus
+  /// their next two replies, counted from message history so regen and
+  /// delete rewind it for free. One stamp-backed truth feeds both the
+  /// ladder rung (opening branch only) and the emotion-eval note (the
+  /// full window). Guests and roster-mates are excluded the way the
+  /// mutual scan already excludes them.
+  bool _pcdActive() {
+    return pcdWindowActive(
+      messages: _messages,
+      speakerId: _activeGroup != null ? _groupStore.currentSpeakerId() : null,
+      isUser: (m) => m.isUser || _isGuestAuthoredMessage(m),
+      climaxStamped: (m) => m.activeMetadata?['climax_triggered'] == true,
+      pcdStamped: (m) => m.activeMetadata?['pcd'] == true,
+      speakerOf: (m) {
+        final card = _resolveGroupSpeakerForMessage(m);
+        return card == null ? null : _getCharacterIdFromCard(card);
+      },
+    );
+  }
+
+  /// PR 5: the mutual afterglow opening — the SAME beat's climax verdict
+  /// said {{user}} came too. True only while the afterglow opening turn runs
+  /// AND this speaker's latest climax-stamped reply carries `user_climaxed`.
+  /// Never inferred: pre-PR-5 replies simply have no stamp, and a
+  /// roster-mate's mutual beat is not this body's warmth.
+  bool _mutualAfterglowOpening() {
+    if (!_nsfwService.isOpeningAfterglowTurn) return false;
+    final group = _activeGroup != null;
+    for (final m in _messages.reversed) {
+      if (m.isUser) continue;
+      // A scene guest's prose is not the host's body (M7 review): the
+      // mutual beat belongs to the character the lock is counting.
+      if (_isGuestAuthoredMessage(m)) continue;
+      final meta = m.activeMetadata;
+      if (meta?['climax_triggered'] != true) continue;
+      if (group) {
+        final card = _resolveGroupSpeakerForMessage(m);
+        if (card == null ||
+            _getCharacterIdFromCard(card) != _groupStore.currentSpeakerId()) {
+          continue;
+        }
+      }
+      return meta?['user_climaxed'] == true;
+    }
+    return false;
   }
 
   ChaosInjection _buildChaosInjection() {
@@ -253,13 +302,13 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
   NeedsInjection _buildNeedsInjection() {
     return NeedsInjection(
       needsSimulation: _needsSimulation,
-      getNeedsSimEnabled: () => _needsSimEnabled,
+      getNeedsSimEnabled: () => _needsPass.active,
       getRealismEnabled: () => _realismEnabled,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getEnjoysLowHygiene: () => enjoysLowHygiene,
-      getGroupNeeds: _getGroupNeeds,
+      getGroupNeeds: _groupStore.needsOf,
       getCharacterIdFromCard: _getCharacterIdFromCard,
       getNeedsOff: () =>
           _activeCharacter?.frontPorchExtensions?.needsOff ?? const [],
@@ -285,7 +334,7 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       // Injecting it would bill the user, forever, for a line that cannot
       // change and describes a mechanism that is switched off.
       // Standing Mood: free (pure derivation), gated inside the leaf.
-      getStandingMood: buildStandingMoodInjection,
+      getStandingMood: () => _standingMood.injection,
       getAmbitionsEnabled: () =>
           _storageService.realismSettings.ambitionsEnabled && objectivesActive,
       getPromisesEnabled: () =>
@@ -319,6 +368,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
       // always did, while the fragments that are not realism features keep
       // reaching the model in every mode.
       getRealismEnabled: () => _realismActiveThisMode,
+      getOffStageLive: () =>
+          _directing && _realismEnabled && !_autoResponseInProgress,
       getClockRunningOverride: () => _clockRunning,
       // One-shot, opt-in (default OFF), coarse-worded, speculation-forbidding —
       // living-time-features.md §2 "Privacy by design". Lifted here from the
@@ -333,8 +384,8 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
         final phrase = absencePhrase;
         return phrase == null ? null : AbsenceTracker.ackNote(phrase);
       },
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       getGroupCharacters: () => _groupCharacters,
       getActiveCharacter: () => _activeCharacter,
       getCharacterIdFromCard: _getCharacterIdFromCard,

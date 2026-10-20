@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/time_skip_bridge.dart';
 
 /// Index of the latest user message, or the last message when there is no
 /// user line. Overflow history must start here: a Scene Guest chime-in
@@ -28,6 +29,26 @@ int overflowHistoryStart(List<ChatMessage> messages) {
     if (messages[i].isUser) return i;
   }
   return messages.length - 1;
+}
+
+/// Most messages a reply prompt moves after the state zone as the latest
+/// beat. A group can run several replies past the user's last line; past
+/// this many, only the newest stay together so the moved block (re-read
+/// in full every turn) stays small.
+const int kLatestTurnMaxMessages = 4;
+
+/// Where the latest beat starts: the latest user line and everything after
+/// it ([overflowHistoryStart]), capped to the newest
+/// [kLatestTurnMaxMessages]. A reply prompt renders these last, right
+/// before the speaker's name, so a small local model answers THIS turn
+/// instead of the long replies and state notes it read on the way down.
+/// A time-skip bridge stored just before that line belongs to the beat:
+/// the prompt reads it after the skip line ([bridgesAfterSkipLines]).
+int latestTurnStart(List<ChatMessage> messages) {
+  var start = overflowHistoryStart(messages);
+  if (start > 0 && isTimeSkipBridge(messages[start - 1])) start--;
+  final floor = messages.length - kLatestTurnMaxMessages;
+  return start > floor ? start : floor;
 }
 
 /// Clip + sanitize a cited line so it cannot break out of the guest-turn

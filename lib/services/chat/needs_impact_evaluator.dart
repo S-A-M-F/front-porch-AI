@@ -22,10 +22,10 @@ import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/body_clock.dart';
+import 'package:front_porch_ai/services/chat/eval_json_merge.dart';
+import 'package:front_porch_ai/services/chat/needs_impact_evaluator/needs_impact_bound.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/realism_verification.dart';
-
-part 'needs_impact_bound.dart';
 
 /// Plain leaf for needs impact.
 ///
@@ -161,7 +161,7 @@ class NeedsImpactEvaluator {
             evalKind: 'needs_impact',
             rawOutput: text,
             sceneResponse: responseText,
-            // Pass a needs snapshot shape consistent with what _captureRealismState
+            // Pass a needs snapshot shape consistent with what RealismSnapshot.capture
             // embeds in realism_state['needs'] (and what timeline/restore paths expect).
             // At this point in evaluateAndApply the sim.vector is still the pre-impact one.
             preState: {
@@ -202,10 +202,7 @@ class NeedsImpactEvaluator {
       final deltas = _parseNeedDeltas(effectiveText);
       _boundDeltas(deltas);
 
-      final reasonMatch = RegExp(
-        r'"reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(effectiveText);
-      final reason = reasonMatch?.group(1)?.trim();
+      final reason = evalJsonString(effectiveText, 'reason')?.trim();
 
       final impact = NeedsImpact(
         deltas: deltas,
@@ -255,6 +252,12 @@ class NeedsImpactEvaluator {
     }
     return deltas;
   }
+
+  void _boundDeltas(Map<String, int> deltas) => boundSceneNeedDeltas(
+    deltas,
+    ext: getActiveCharacter()?.frontPorchExtensions,
+    vector: needsSimulation.vector,
+  );
 
   int? _extractInt(String text, String key) {
     final re = RegExp('"$key"\\s*:\\s*(-?\\d+)');
@@ -350,10 +353,7 @@ class NeedsImpactEvaluator {
           ? deltas
           : (Map<String, int>.from(oldDeltas)..addAll(deltas));
 
-      final reasonMatch = RegExp(
-        r'"reason"\s*:\s*"([^"]*)"',
-      ).firstMatch(effectiveText);
-      final reason = reasonMatch?.group(1)?.trim();
+      final reason = evalJsonString(effectiveText, 'reason')?.trim();
 
       final impact = NeedsImpact(
         deltas: effective,

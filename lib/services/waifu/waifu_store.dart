@@ -16,10 +16,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/image/civitai_download.dart'
+    show writeFileAtomically;
 import 'package:front_porch_ai/services/waifu/waifu_jail.dart';
 import 'package:front_porch_ai/services/waifu/waifu_session.dart';
 import 'package:front_porch_ai/services/waifu/waifu_sit_down.dart';
@@ -66,6 +71,8 @@ Map<String, dynamic> _coworkerMap(CharacterCard c) => {
   'systemPrompt': c.systemPrompt,
   'mesExample': c.mesExample,
   if (c.imagePath != null) 'imagePath': c.imagePath,
+  // Lets a resumed session find its library card after a rename.
+  if (c.dbId != null) 'dbId': c.dbId,
 };
 
 CharacterCard _coworkerFrom(Map map) => CharacterCard(
@@ -75,33 +82,69 @@ CharacterCard _coworkerFrom(Map map) => CharacterCard(
   systemPrompt: map['systemPrompt']?.toString() ?? '',
   mesExample: map['mesExample']?.toString() ?? '',
   imagePath: map['imagePath']?.toString(),
+  dbId: _nonEmpty(map['dbId']),
 );
 
+String? _nonEmpty(Object? raw) {
+  final s = raw?.toString().trim() ?? '';
+  return s.isEmpty ? null : s;
+}
+
+/// A saved session file that exists but cannot be read back.
+class WaifuSessionUnreadable implements Exception {
+  const WaifuSessionUnreadable(this.path, this.cause);
+
+  final String path;
+  final Object cause;
+
+  /// Shown to the user; [path] and [cause] are logged where it is thrown.
+  @override
+  String toString() =>
+      'its saved session is damaged. Use Forget this project to start over.';
+}
+
+String _json(Object value) => const JsonEncoder.withIndent('  ').convert(value);
+
 /// JSON under a data dir — not the chat `messages` / `sessions` tables.
+/// Every file is written whole or not at all, and writes run one at a
+/// time so two quick saves cannot interleave the project list.
 class WaifuStore {
   WaifuStore(this.directory);
 
   final String directory;
+
+  /// One write queue per data folder, shared by every store on it: the
+  /// page, the wizard and the turn runner each hold their own store.
+  static final _queues = <String, Future<void>>{};
+
+  Future<void> _serial(Future<void> Function() write) {
+    final key = p.normalize(directory);
+    final next = (_queues[key] ?? Future<void>.value()).then((_) => write());
+    final tail = next.then<void>((_) {}, onError: (Object _) {});
+    _queues[key] = tail;
+    unawaited(
+      tail.then((_) {
+        if (identical(_queues[key], tail)) _queues.remove(key);
+      }),
+    );
+    return next;
+  }
 
   File get _lastFile => File(p.join(directory, kWaifuLastFile));
   File get _indexFile => File(p.join(directory, kWaifuProjectsFile));
   File _sessionFile(String folder) =>
       File(p.join(directory, 'sessions', '${waifuSessionSlug(folder)}.json'));
 
-  Future<void> saveLast(WaifuSession session) async {
-    await Directory(directory).create(recursive: true);
-    final map = _sessionMap(session);
-    await _lastFile.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(map),
-    );
+  Future<void> saveLast(WaifuSession session) => _serial(() async {
     await Directory(p.join(directory, 'sessions')).create(recursive: true);
-    await _sessionFile(
-      session.folderRoot,
-    ).writeAsString(const JsonEncoder.withIndent('  ').convert(map));
+    final text = _json(_sessionMap(session));
+    await writeFileAtomically(_lastFile, text);
+    await writeFileAtomically(_sessionFile(session.folderRoot), text);
     await waifuSaveTodos(session.folderRoot, session.todos);
     await _upsertIndex(session);
-  }
+  });
 
+  /// The most recently touched project's session, else the last-open file.
   Future<WaifuSession?> loadLast() async {
     final projects = await listProjects();
     if (projects.isNotEmpty) {
@@ -115,11 +158,18 @@ class WaifuStore {
     return _readIndex();
   }
 
+  /// Null when nothing is saved for [folderRoot]. Throws
+  /// [WaifuSessionUnreadable] when its file is there but damaged.
   Future<WaifuSession?> loadSession(String folderRoot) async {
     final own = await _readSessionFile(_sessionFile(folderRoot));
     if (own != null) return own;
-    final last = await _readSessionFile(_lastFile);
-    if (last != null && last.folderRoot == folderRoot) return last;
+    try {
+      final last = await _readSessionFile(_lastFile);
+      if (last != null && last.folderRoot == folderRoot) return last;
+    } on WaifuSessionUnreadable catch (e) {
+      // The last-open file may belong to another folder: not this one's fault.
+      debugPrint('[waifu] skipped $kWaifuLastFile: $e');
+    }
     return null;
   }
 
@@ -133,7 +183,8 @@ class WaifuStore {
       if (map is! Map) return null;
       if (map['folderRoot']?.toString() != folderRoot) return null;
       return waifuPorchConsentFromMap(map);
-    } catch (_) {
+    } on FormatException catch (e) {
+      debugPrint('[waifu] unreadable $kWaifuLastFile, consent asked again: $e');
       return null;
     }
   }
@@ -144,20 +195,35 @@ class WaifuStore {
       final map = jsonDecode(await file.readAsString());
       if (map is! Map) return null;
       return waifuPorchConsentFromMap(map);
-    } catch (_) {
+    } on FormatException catch (e) {
+      debugPrint('[waifu] unreadable ${file.path}, consent asked again: $e');
       return null;
     }
   }
 
-  Future<void> forgetProject(String folderRoot) async {
+  /// Removes every copy of [folderRoot]'s session, including the last-open
+  /// file that [loadSession], [loadLast] and [loadPorchConsent] fall back to.
+  Future<void> forgetProject(String folderRoot) => _serial(() async {
     final file = _sessionFile(folderRoot);
     if (await file.exists()) await file.delete();
+    if (await _lastFolderRoot() == folderRoot) await _lastFile.delete();
     final projects = await listProjects();
     final next = [
       for (final p in projects)
         if (p.folderRoot != folderRoot) p,
     ];
     await _writeIndex(next);
+  });
+
+  Future<String?> _lastFolderRoot() async {
+    if (!await _lastFile.exists()) return null;
+    try {
+      final map = jsonDecode(await _lastFile.readAsString());
+      return map is Map ? map['folderRoot']?.toString() : null;
+    } catch (e) {
+      debugPrint('[waifu] unreadable $kWaifuLastFile: $e');
+      return null;
+    }
   }
 
   Map<String, dynamic> _sessionMap(WaifuSession session) => {
@@ -168,12 +234,15 @@ class WaifuStore {
     'honestyAccepted': true,
     'mcpOptIn': session.mcpOptIn,
     'preserveThinking': session.preserveThinking,
+    'openCodeSessionId': ?session.openCodeSessionId,
     'toolsSupported': session.toolsSupported,
     'tokensUsed': session.tokensUsed,
     'contextBudget': session.contextBudget,
     'tokensFromApi': session.tokensFromApi,
     'compactPasses': session.compactPasses,
     'themeOverrides': session.themeOverrides.toJson(),
+    if (session.genSettings.hasOverrides)
+      'genSettings': session.genSettings.toJson(),
     'coworker': _coworkerMap(session.coworker),
     'transcript': [
       for (final m in session.transcript)
@@ -189,6 +258,7 @@ class WaifuStore {
           if (m.toolPath != null) 'toolPath': m.toolPath,
           if (m.toolCallId != null) 'toolCallId': m.toolCallId,
           if (m.toolArgs != null) 'toolArgs': m.toolArgs,
+          if (m.detail != null) 'detail': m.detail,
         },
     ],
   };
@@ -220,9 +290,7 @@ class WaifuStore {
           'coworker': _coworkerMap(p.coworker),
         },
     ];
-    await _indexFile.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(list),
-    );
+    await writeFileAtomically(_indexFile, _json(list));
   }
 
   Future<List<WaifuProject>> _readIndex() async {
@@ -249,14 +317,28 @@ class WaifuStore {
       }
       out.sort((a, b) => b.touchedMs.compareTo(a.touchedMs));
       return out;
-    } catch (_) {
+    } catch (e) {
+      // Keep the damaged list: the next save rewrites projects.json.
+      final keep = '${_indexFile.path}.unreadable';
+      debugPrint('[waifu] unreadable $kWaifuProjectsFile, kept as $keep: $e');
+      try {
+        await _indexFile.copy(keep);
+      } on FileSystemException catch (copyError) {
+        debugPrint('[waifu] could not keep $keep: $copyError');
+      }
       return const [];
     }
   }
 
   Future<void> _migrateLastIntoIndex() async {
     if (await _indexFile.exists()) return;
-    final last = await _readSessionFile(_lastFile);
+    final WaifuSession? last;
+    try {
+      last = await _readSessionFile(_lastFile);
+    } on WaifuSessionUnreadable catch (e) {
+      debugPrint('[waifu] not migrating $kWaifuLastFile: $e');
+      return;
+    }
     if (last == null) return;
     await _writeIndex([
       WaifuProject(
@@ -269,9 +351,7 @@ class WaifuStore {
     await Directory(p.join(directory, 'sessions')).create(recursive: true);
     final sessionFile = _sessionFile(last.folderRoot);
     if (!await sessionFile.exists()) {
-      await sessionFile.writeAsString(
-        const JsonEncoder.withIndent('  ').convert(_sessionMap(last)),
-      );
+      await writeFileAtomically(sessionFile, _json(_sessionMap(last)));
     }
   }
 
@@ -279,11 +359,11 @@ class WaifuStore {
     if (!await file.exists()) return null;
     try {
       final map = jsonDecode(await file.readAsString());
-      if (map is! Map) return null;
+      if (map is! Map) throw const FormatException('not a JSON object');
       final coworker = map['coworker'];
-      if (coworker is! Map) return null;
+      if (coworker is! Map) throw const FormatException('no coworker');
       final folder = map['folderRoot']?.toString() ?? '';
-      if (folder.isEmpty) return null;
+      if (folder.isEmpty) throw const FormatException('no folder');
       final modeName = map['mode']?.toString() ?? 'build';
       final mode = WaifuMode.values.firstWhere(
         (m) => m.name == modeName,
@@ -317,6 +397,7 @@ class WaifuStore {
               toolArgs: e['toolArgs'] is Map
                   ? Map<String, dynamic>.from(e['toolArgs'] as Map)
                   : null,
+              detail: e['detail']?.toString(),
             ),
           );
         }
@@ -354,10 +435,17 @@ class WaifuStore {
             )
             ..tokensUsed = used < 0 ? 0 : used
             ..tokensFromApi = map['tokensFromApi'] == true
+            ..openCodeSessionId = _nonEmpty(map['openCodeSessionId'])
             ..compactPasses = (map['compactPasses'] as num?)?.toInt() ?? 0
             ..contextBudget = (budgetRaw != null && budgetRaw > 0)
                 ? budgetRaw
                 : 8192;
+      final gen = map['genSettings'];
+      if (gen is Map) {
+        session.genSettings = ChatGenerationSettings.fromJson(
+          Map<String, dynamic>.from(gen),
+        );
+      }
       final traces = map['toolTraces'];
       if (traces is List) {
         for (final t in traces) {
@@ -381,8 +469,9 @@ class WaifuStore {
         await waifuLoadTodos(folder, session.todos);
       }
       return session;
-    } catch (_) {
-      return null;
+    } catch (e) {
+      debugPrint('[waifu] unreadable session ${file.path}: $e');
+      throw WaifuSessionUnreadable(file.path, e);
     }
   }
 }

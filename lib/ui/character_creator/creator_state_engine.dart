@@ -22,15 +22,15 @@ import 'package:path/path.dart' as p;
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/chat.dart' show Pockets;
-import 'package:front_porch_ai/services/lore_extraction_service.dart';
-import 'package:front_porch_ai/ui/character_creator/chargen_json.dart';
-import 'package:front_porch_ai/ui/character_creator/creator_greetings.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_profile.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.core.dart';
 
-part 'creator_state_engine.tools.dart';
-part 'creator_state_engine.modes.dart';
-part 'creator_state_engine.core.dart';
-part 'creator_state_engine.greetings.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.greetings.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.modes.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.profile.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.review.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state_engine.tools.dart';
 
 /// The real generation + save engine for the AI character creator, restored
 /// faithfully from the pre-refactor implementation. Lives as an extension so
@@ -42,16 +42,17 @@ part 'creator_state_engine.greetings.dart';
 /// responsibility (the steps own the context); the engine returns the data they
 /// need (e.g. `saveCharacter` returns success, `expandNarrative` returns text).
 ///
-/// The three mode entry points funnel through a single `_runGeneration` core so
-/// the LLM-service resolution, persona context, world-lore extraction, and
-/// post-generation wiring exist once instead of being triplicated.
+/// The three mode entry points funnel through a single
+/// `CreatorGenerationCore.run` so the LLM-service resolution, persona
+/// context, world-lore extraction, and post-generation wiring exist once
+/// instead of being triplicated.
 ///
-/// This file holds the save/portrait spine only; the field-tool generators
-/// (`expandNarrative`/`randomizeName`/`randomizeConcept`) live in the public
-/// `CreatorEngineTools` extension (creator_state_engine.tools.dart), the mode
-/// assemblers in `_CreatorModes` (creator_state_engine.modes.dart), and the
-/// shared generation core in `_CreatorCore` (creator_state_engine.core.dart) —
-/// all parts of this library so they can share private state access.
+/// This file holds the save/portrait spine and the public doors; the work
+/// lives in classes that take the state explicitly: `CreatorFieldTools`
+/// (creator_state_engine.tools.dart), `CreatorModeAssemblers`
+/// (creator_state_engine.modes.dart) over `CreatorGenerationCore`
+/// (creator_state_engine.core.dart), and `CreatorGreetingWriter`
+/// (creator_state_engine.greetings.dart).
 extension CreatorEngine on CreatorState {
   // ── Public entry points ──────────────────────────────────────────────
 
@@ -61,15 +62,115 @@ extension CreatorEngine on CreatorState {
     required StorageService storage,
     required UserPersonaService personaService,
   }) {
+    final modes = CreatorModeAssemblers(this);
     switch (creatorMode) {
       case CreatorMode.quick:
-        return _generateQuick(llmProvider, storage, personaService);
+        return modes.quick(llmProvider, storage, personaService);
       case CreatorMode.guided:
-        return _generateGuided(llmProvider, storage, personaService);
+        return modes.guided(llmProvider, storage, personaService);
       case CreatorMode.automated:
-        return _generateAutomated(llmProvider, storage, personaService);
+        return modes.automated(llmProvider, storage, personaService);
     }
   }
+
+  // ── Profile step (creator_state_engine.profile.dart, .core.dart) ────
+
+  /// Next on the Profile step: write the rest (Phase B) and land on
+  /// Greetings.
+  Future<void> continueGeneration({required LLMProvider llmProvider}) =>
+      CreatorGenerationCore(this).continueGeneration(llmProvider);
+
+  /// Rewrite the profile, steered by the rewrite card's steer box.
+  Future<void> rewriteProfile({required LLMProvider llmProvider}) =>
+      CreatorProfileWriter(this).rewriteProfile(llmProvider: llmProvider);
+
+  /// Stop the profile rewrite; the old text stays.
+  void stopProfile() => CreatorProfileWriter(this).stopProfile();
+
+  /// Re-read the facts card from the profile as it is now.
+  Future<void> rereadFacts({required LLMProvider llmProvider}) =>
+      CreatorProfileWriter(this).rereadFacts(llmProvider: llmProvider);
+
+  // ── Review rewrites (creator_state_engine.review.dart) ───────────────
+
+  /// New example dialogue, steered by its steer box.
+  Future<void> regenerateExampleDialogue({required LLMProvider llmProvider}) =>
+      CreatorReviewRewriter(
+        this,
+      ).regenerateExampleDialogue(llmProvider: llmProvider);
+
+  /// A new lorebook that keeps entries edited by hand.
+  Future<void> rewriteLorebook({required LLMProvider llmProvider}) =>
+      CreatorReviewRewriter(this).rewriteLorebook(llmProvider: llmProvider);
+
+  /// Stop one Review rewrite; its card keeps what it had.
+  void stopReviewRewrite(ReviewRewrite kind) =>
+      CreatorReviewRewriter(this).stop(kind);
+
+  // ── Field tools (creator_state_engine.tools.dart) ────────────────────
+
+  /// (Guided) Expand all filled fields into a cohesive description. Returns the
+  /// generated text; the step shows an accept/reject dialog and, if accepted,
+  /// writes it into [CreatorState.guidedVisionController].
+  Future<String?> expandNarrative({
+    required LLMProvider llmProvider,
+    required StorageService storage,
+  }) => CreatorFieldTools(
+    this,
+  ).expandNarrative(llmProvider: llmProvider, storage: storage);
+
+  /// Generate a single creative character name into the name box.
+  Future<void> randomizeName({
+    required LLMProvider llmProvider,
+    required StorageService storage,
+  }) => CreatorFieldTools(
+    this,
+  ).randomizeName(llmProvider: llmProvider, storage: storage);
+
+  /// (Automated) Generate a description into the concept box.
+  Future<void> randomizeConcept({
+    required LLMProvider llmProvider,
+    required StorageService storage,
+  }) => CreatorFieldTools(
+    this,
+  ).randomizeConcept(llmProvider: llmProvider, storage: storage);
+
+  // ── Greetings step (creator_state_engine.greetings.dart) ─────────────
+
+  /// Rewrite greeting [index] (0 = the first message, 1 and up = the
+  /// alternates), steered by that greeting's steer box when it has text.
+  Future<void> regenerateGreeting({
+    required LLMProvider llmProvider,
+    required int index,
+  }) => CreatorGreetingWriter(
+    this,
+  ).regenerateGreeting(llmProvider: llmProvider, index: index);
+
+  /// Write a new alternate right away, up to the alternates cap.
+  Future<void> addGreeting({required LLMProvider llmProvider}) =>
+      CreatorGreetingWriter(this).addGreeting(llmProvider: llmProvider);
+
+  /// Delete alternate [index] (1 and up) with its starting state.
+  void deleteAlternate(int index) =>
+      CreatorGreetingWriter(this).deleteAlternate(index);
+
+  /// Stop the greeting being written.
+  void stopGreeting() => CreatorGreetingWriter(this).stopGreeting();
+
+  /// Fill the Realism step's outfit from the current first message.
+  Future<void> rereadOutfit({required LLMProvider llmProvider}) =>
+      CreatorGreetingWriter(this).rereadOutfit(llmProvider: llmProvider);
+
+  /// "Keep this outfit": the outfit now stands for today's first message.
+  void keepOutfit() => CreatorGreetingWriter(this).keepOutfit();
+
+  /// "Rewrite the greetings from it": every greeting, from the profile as
+  /// it is now.
+  Future<void> rewriteAllGreetings({required LLMProvider llmProvider}) =>
+      CreatorGreetingWriter(this).rewriteAll(llmProvider: llmProvider);
+
+  /// "Keep them": the greetings stand for the profile as it reads now.
+  void keepGreetings() => CreatorGreetingWriter(this).keepGreetings();
 
   /// Persist the generated (and possibly edited) card. Returns true on success;
   /// the caller shows the SnackBar and pops on true, or surfaces [engineError]
@@ -114,6 +215,7 @@ extension CreatorEngine on CreatorState {
         enjoysLowHygiene: realismEnjoysLowHygiene,
         ambitions: realismAmbitions,
         planLines: realismPlanLines,
+        currentTask: realismCurrentTask,
         occupation: realismOccupation,
         occupationBrief: realismOccupationBrief,
         hours: realismHours,
@@ -123,6 +225,10 @@ extension CreatorEngine on CreatorState {
         dislikes: realismDislikes,
         intimateInto: realismIntimateInto,
         intimateNotInto: realismIntimateNotInto,
+        // Structured sex from the template form (persisted at chargen, plan
+        // PR 2) + the recovery profile authored on the realism step.
+        sex: normalizeCharacterSex(sexController.text),
+        recovery: realismRecovery,
         // Same shared normalizer as the other two authoring surfaces.
         inventory: Pockets.cardJsonFrom(
           worn: realismWorn,
@@ -156,6 +262,11 @@ extension CreatorEngine on CreatorState {
       fpExt.ensureStableId();
       card.frontPorchExtensions = fpExt;
 
+      // The same stamp the web create writes, so the web review reads a
+      // desktop-made character's interview (or its skip) the same way.
+      final paused = profile.paused;
+      if (paused != null) stampCreatorInputs(card, paused.inputs, '');
+
       // Drop lorebook entries the user unchecked in the Review step.
       final lore = card.lorebook;
       if (lore != null && lorebookEntryEnabled.isNotEmpty) {
@@ -179,7 +290,11 @@ extension CreatorEngine on CreatorState {
             .replaceAll(' ', '_');
         final imagePath = p.join(charDir.path, '${safeName}_$epoch.png');
         card.imagePath = imagePath;
-        await V2CardService().saveCardAsPng(card, imagePath, null);
+        await V2CardService().saveCardAsPng(
+          card,
+          imagePath,
+          portraitSourcePath,
+        );
         await repo.addCharacter(card);
       } else {
         // Already persisted (the Portrait & Avatars panel saves before it

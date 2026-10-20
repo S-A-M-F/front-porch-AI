@@ -61,28 +61,51 @@ class ChatDriver {
     (w) => w is MessageBubble && identical(w.message, msg),
   );
 
-  /// [bubbleFor], revealed by scrolling. The reversed list VIRTUALIZES, so
-  /// an old message's bubble may not be built at all until dragged into
-  /// view (the macOS leg of message_actions' first CI run). Positive drags
-  /// reveal older messages in the reversed list; the negative tail is
-  /// insurance.
+  /// [bubbleFor], revealed by scrolling. The transcript (`ListView`, keyed
+  /// `transcript-listview`, oldest at the top, opened at the bottom)
+  /// VIRTUALIZES: an older message's bubble is not built until it is in
+  /// view. The list is moved through its own ScrollPosition, a viewport at
+  /// a time toward the top and then the bottom, until the bubble is built
+  /// or both ends have been reached. Pointer drags were the old way, and
+  /// on every CI platform they moved the list by nothing at all, so the
+  /// greeting of a five-message chat stayed unbuilt (message_actions).
   Future<Finder> revealBubbleFor(ChatMessage msg) async {
     final f = bubbleFor(msg);
     if (f.evaluate().isNotEmpty) return f;
+    await pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey('transcript-listview')),
+      timeout: const Duration(seconds: 30),
+    );
     final scrollable = find
-        .ancestor(
-          of: find.byType(MessageBubble).first,
+        .descendant(
+          of: find.byKey(const ValueKey('transcript-listview')),
           matching: find.byType(Scrollable),
         )
         .first;
-    const drags = [
-      300.0, 300.0, 300.0, 300.0, 300.0, 300.0, //
-      -300.0, -300.0, -300.0, -300.0, -300.0, -300.0,
-    ];
-    for (final dy in drags) {
+    final position = tester.state<ScrollableState>(scrollable).position;
+    final step = position.viewportDimension > 0
+        ? position.viewportDimension * 0.8
+        : 400.0;
+    final deadline = DateTime.now().add(
+      const Duration(seconds: 45) * kCiTimeoutScale,
+    );
+    for (final towardTop in const [true, false]) {
+      while (f.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
+        final target = towardTop
+            ? position.pixels - step
+            : position.pixels + step;
+        final clamped = target.clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        );
+        if (clamped == position.pixels) break; // this end is reached
+        position.jumpTo(clamped);
+        for (var i = 0; i < 3 && f.evaluate().isEmpty; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
       if (f.evaluate().isNotEmpty) break;
-      await tester.drag(scrollable, Offset(0, dy));
-      await tester.pump(const Duration(milliseconds: 250));
     }
     // fail(), never an assertion: support/ is harness, not evidence
     // (e2e_support_has_no_assertions_test bans the assertion marker here,
@@ -91,9 +114,19 @@ class ChatDriver {
     // false pass: callers immediately dead-end on the empty finder and
     // time out loudly in their own waits.
     if (f.evaluate().isEmpty) {
+      final shown = find
+          .byType(MessageBubble)
+          .evaluate()
+          .map((e) => (e.widget as MessageBubble).message)
+          .map(
+            (m) => '"${m.text.length > 24 ? m.text.substring(0, 24) : m.text}"',
+          )
+          .join(', ');
       fail(
         'the bubble for "${msg.text}" was not reachable by scrolling '
-        'the chat list',
+        'the chat list; the list holds ${chatService.messages.length} message(s), '
+        'the caller\'s object is ${chatService.messages.any((m) => identical(m, msg)) ? 'still' : 'no longer'} '
+        'in it, and the bubbles built are: $shown',
       );
     }
     return f;

@@ -7,6 +7,7 @@
 // password.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import {
   baseConfig, blur, button, calls, choose, click, container, createElement, field, gets, mount,
   posts, readyFacts, refuse, reset, serve, settle, sheetText, text, type, unmount,
@@ -253,5 +254,47 @@ describe('Choose file', () => {
     expect(sheetText()).toContain('That file is too large to use.');
     expect(posts('/api/image/studio/graph')).toHaveLength(0);
     expect(button('Use this graph')).toBeUndefined();
+  });
+});
+
+describe('Batch tab', () => {
+  it('sits beside Create, Edit and Expression pack and swaps the desk for the batch workspace', async () => {
+    await boot({ batch: createElement('p', null, 'Batch workspace') });
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent);
+    expect(tabs).toEqual(['Create', 'Edit', 'Expression pack', 'Batch']);
+    expect(text()).not.toContain('Batch workspace');
+
+    click('Batch');
+    await settle();
+
+    expect(text()).toContain('Batch workspace');
+    expect(container.querySelector<HTMLElement>('.fp-desk-body')?.style.display).toBe('none');
+    click('Create');
+    await settle();
+    expect(container.querySelector<HTMLElement>('#studio-batch-panel')?.hidden).toBe(true);
+    expect(container.querySelector<HTMLElement>('.fp-desk-body')?.style.display).toBe('');
+  });
+
+  it('keeps the batch workspace mounted when another tab is opened, so its setup survives', async () => {
+    const Setup = () => {
+      const [picked, setPicked] = useState('none');
+      return createElement('button', { type: 'button', onClick: () => setPicked('Ada') }, `Picked: ${picked}`);
+    };
+    await boot({ batch: createElement(Setup) });
+    click('Batch');
+    await settle();
+    click('Picked: none');
+    await settle();
+    click('Create');
+    await settle();
+    click('Batch');
+    await settle();
+    expect(text()).toContain('Picked: Ada');
+  });
+
+  it('is absent where the desk has no batch workspace', async () => {
+    await boot();
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent);
+    expect(tabs).toEqual(['Create', 'Edit', 'Expression pack']);
   });
 });

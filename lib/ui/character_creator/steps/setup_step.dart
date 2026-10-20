@@ -9,11 +9,10 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/setup_backend_picker.dart';
 import 'package:front_porch_ai/ui/settings/dialogs/model_search_dialog.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/theme/creator_palette.dart';
 
-part 'setup_step_fields.dart';
-part 'setup_step_status_dot.dart';
+import 'package:front_porch_ai/ui/character_creator/steps/setup_step_fields.dart';
+import 'package:front_porch_ai/ui/character_creator/steps/setup_step_status_dot.dart';
 
 /// Step 0: Backend & Model setup (lifted pure from _buildSetupStep).
 class SetupStep extends StatelessWidget {
@@ -27,7 +26,8 @@ class SetupStep extends StatelessWidget {
     final activeBackend = llmProvider.activeBackend;
     final isKobold = activeBackend == BackendType.kobold;
 
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       key: const ValueKey('setup'),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -39,21 +39,21 @@ class SetupStep extends StatelessWidget {
               Text(
                 'Backend & Model Setup',
                 style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary(context),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: CreatorPalette.of(context).ink,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Choose your AI backend and model before configuring your character.',
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textSecondary(context),
+                  color: CreatorPalette.of(context).muted,
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
 
               SetupBackendPicker(state: state),
               const SizedBox(height: 24),
@@ -62,7 +62,7 @@ class SetupStep extends StatelessWidget {
               // tappable selector field + searchable dialog (the one the user liked for API/oMLX).
               // This reuses the existing model picker UX for local .gguf files too.
               if (isKobold) ...[
-                _inputLabel(context, 'Local Model (.gguf)', required: false),
+                const SetupInputLabel('Local Model (.gguf)', required: false),
                 const SizedBox(height: 8),
                 // Identical styled picker field as remote/oMLX
                 InkWell(
@@ -102,7 +102,7 @@ class SetupStep extends StatelessWidget {
                       );
                     }
                   },
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -110,9 +110,11 @@ class SetupStep extends StatelessWidget {
                       vertical: 14,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerOf(context),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderOf(context)),
+                      color: CreatorPalette.of(context).fieldFill,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: CreatorPalette.of(context).line,
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -123,7 +125,7 @@ class SetupStep extends StatelessWidget {
                               Text(
                                 'Model',
                                 style: TextStyle(
-                                  color: AppColors.textTertiary(context),
+                                  color: CreatorPalette.of(context).muted,
                                   fontSize: 11,
                                 ),
                               ),
@@ -134,8 +136,8 @@ class SetupStep extends StatelessWidget {
                                     : p.basename(state.selectedLocalModelPath),
                                 style: TextStyle(
                                   color: state.selectedLocalModelPath.isEmpty
-                                      ? AppColors.textTertiary(context)
-                                      : AppColors.textPrimary(context),
+                                      ? CreatorPalette.of(context).muted
+                                      : CreatorPalette.of(context).ink,
                                   fontSize: 14,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -145,7 +147,7 @@ class SetupStep extends StatelessWidget {
                         ),
                         Icon(
                           Icons.arrow_drop_down,
-                          color: AppColors.iconSecondary(context),
+                          color: CreatorPalette.of(context).muted,
                         ),
                       ],
                     ),
@@ -160,11 +162,11 @@ class SetupStep extends StatelessWidget {
                         phase == KoboldPhase.starting ||
                         phase == KoboldPhase.loading;
                     final dotColor = switch (phase) {
-                      KoboldPhase.ready => Colors.green.shade300,
-                      KoboldPhase.unloaded => AppColors.slateFaintOf(ctx),
+                      KoboldPhase.ready => CreatorPalette.of(ctx).ok,
+                      KoboldPhase.unloaded => CreatorPalette.of(ctx).faint,
                       KoboldPhase.starting ||
-                      KoboldPhase.loading => Colors.orange.shade300,
-                      KoboldPhase.stopped => Colors.red.shade300,
+                      KoboldPhase.loading => CreatorPalette.of(ctx).warn,
+                      KoboldPhase.stopped => CreatorPalette.of(ctx).bad,
                     };
                     final label = switch (phase) {
                       KoboldPhase.ready => 'Ready',
@@ -176,7 +178,7 @@ class SetupStep extends StatelessWidget {
                     };
                     return Row(
                       children: [
-                        _BackendStatusDot(
+                        BackendStatusDot(
                           color: dotColor,
                           isBlinking: isTransitioning,
                         ),
@@ -194,10 +196,10 @@ class SetupStep extends StatelessWidget {
                   builder: (context, setLocalState) {
                     return Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
+                        color: CreatorPalette.of(context).card,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.07),
+                          color: CreatorPalette.of(context).line,
                         ),
                       ),
                       child: Column(
@@ -216,9 +218,9 @@ class SetupStep extends StatelessWidget {
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.tune,
-                                    color: Color(0xFF00D4AA),
+                                    color: CreatorPalette.of(context).amber,
                                     size: 18,
                                   ),
                                   const SizedBox(width: 10),
@@ -235,9 +237,9 @@ class SetupStep extends StatelessWidget {
                                         ? 0.5
                                         : 0,
                                     duration: const Duration(milliseconds: 200),
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.keyboard_arrow_down,
-                                      color: Colors.white54,
+                                      color: CreatorPalette.of(context).muted,
                                       size: 20,
                                     ),
                                   ),
@@ -247,10 +249,7 @@ class SetupStep extends StatelessWidget {
                           ),
                           AnimatedCrossFade(
                             firstChild: const SizedBox(height: 0),
-                            secondChild: _buildExtraSettingsBody(
-                              context,
-                              state,
-                            ),
+                            secondChild: SetupExtraSettingsBody(state: state),
                             crossFadeState: state.extraSettingsExpanded
                                 ? CrossFadeState.showSecond
                                 : CrossFadeState.showFirst,
@@ -315,9 +314,9 @@ class SetupStep extends StatelessWidget {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isAnyRunning
-                              ? Colors.redAccent
-                              : Colors.green.shade700,
-                          foregroundColor: Colors.white,
+                              ? CreatorPalette.of(ctx).bad
+                              : CreatorPalette.of(ctx).amber,
+                          foregroundColor: CreatorPalette.of(ctx).amberInk,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                       ),
@@ -326,8 +325,7 @@ class SetupStep extends StatelessWidget {
                 ),
               ] else ...[
                 // API (remote) and oMLX — searchable model picker.
-                _inputLabel(
-                  context,
+                SetupInputLabel(
                   activeBackend == BackendType.omlx
                       ? 'oMLX Model'
                       : 'Remote Model',
@@ -370,7 +368,7 @@ class SetupStep extends StatelessWidget {
                       });
                     }
                   },
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -378,9 +376,11 @@ class SetupStep extends StatelessWidget {
                       vertical: 14,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerOf(context),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderOf(context)),
+                      color: CreatorPalette.of(context).fieldFill,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: CreatorPalette.of(context).line,
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -391,7 +391,7 @@ class SetupStep extends StatelessWidget {
                               Text(
                                 'Model',
                                 style: TextStyle(
-                                  color: AppColors.textTertiary(context),
+                                  color: CreatorPalette.of(context).muted,
                                   fontSize: 11,
                                 ),
                               ),
@@ -402,8 +402,8 @@ class SetupStep extends StatelessWidget {
                                     : state.selectedModelId,
                                 style: TextStyle(
                                   color: state.selectedModelId.isEmpty
-                                      ? AppColors.textTertiary(context)
-                                      : AppColors.textPrimary(context),
+                                      ? CreatorPalette.of(context).muted
+                                      : CreatorPalette.of(context).ink,
                                   fontSize: 14,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -413,7 +413,7 @@ class SetupStep extends StatelessWidget {
                         ),
                         Icon(
                           Icons.arrow_drop_down,
-                          color: AppColors.iconSecondary(context),
+                          color: CreatorPalette.of(context).muted,
                         ),
                       ],
                     ),
@@ -426,7 +426,7 @@ class SetupStep extends StatelessWidget {
                 'The selected backend and model will be used for all AI generation in this wizard.',
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.textTertiary(context),
+                  color: CreatorPalette.of(context).muted,
                 ),
               ),
             ],

@@ -29,13 +29,16 @@ import 'package:front_porch_ai/ui/waifu/waifu_stop_bar.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 /// Bare Enter sends. Shift+Enter (or a held-down repeat) stays a newline.
+/// While an input method is composing, Enter belongs to it: it commits the
+/// candidate rather than sending half a word.
 KeyEventResult waifuComposerKeyEvent(
   KeyEvent event, {
   required bool shiftPressed,
   required bool enabled,
   required VoidCallback onSend,
+  bool composing = false,
 }) {
-  if (!enabled) return KeyEventResult.ignored;
+  if (!enabled || composing) return KeyEventResult.ignored;
   if (event is! KeyDownEvent) return KeyEventResult.ignored;
   if (event.logicalKey != LogicalKeyboardKey.enter &&
       event.logicalKey != LogicalKeyboardKey.numpadEnter) {
@@ -54,7 +57,7 @@ class WaifuComposer extends StatelessWidget {
     required this.session,
     required this.onSend,
     required this.onStop,
-    this.onQueueChanged,
+    this.onRemoveQueued,
     required this.onUndo,
     required this.onRedo,
     this.canUndo = false,
@@ -71,7 +74,7 @@ class WaifuComposer extends StatelessWidget {
   final WaifuSession session;
   final VoidCallback onSend;
   final VoidCallback onStop;
-  final VoidCallback? onQueueChanged;
+  final ValueChanged<int>? onRemoveQueued;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final bool canUndo;
@@ -116,12 +119,9 @@ class WaifuComposer extends StatelessWidget {
                         session.queued[i].text,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      onDeleted: onQueueChanged == null
+                      onDeleted: onRemoveQueued == null
                           ? null
-                          : () {
-                              session.queued.removeAt(i);
-                              onQueueChanged!();
-                            },
+                          : () => onRemoveQueued!(i),
                       backgroundColor: AppColors.surfaceContainerOf(context),
                       side: BorderSide(color: AppColors.borderOf(context)),
                       labelStyle: TextStyle(
@@ -142,7 +142,9 @@ class WaifuComposer extends StatelessWidget {
                     listen: false,
                   ).rootPath;
                   LocalCaptionService.instance.configure(root);
-                } catch (_) {}
+                } on ProviderNotFoundException {
+                  // No storage in this tree: the chip shows without captions.
+                }
                 return PendingImageChip(
                   bytes: pendingImage!,
                   visionOk: visionOk,
@@ -172,6 +174,7 @@ class WaifuComposer extends StatelessWidget {
                       event,
                       shiftPressed: HardwareKeyboard.instance.isShiftPressed,
                       enabled: true,
+                      composing: controller.value.isComposingRangeValid,
                       onSend: onSend,
                     ),
                     child: TextField(

@@ -18,6 +18,7 @@
 
 import 'package:front_porch_ai/models/models.dart';
 import 'speaker_resolution.dart';
+import 'story_when.dart';
 import 'package:front_porch_ai/services/chat/promise_debt_service.dart';
 
 /// Words-only fragment: open commitments weighing on the speaker (Train B).
@@ -38,7 +39,12 @@ class PromiseDebtInjection with SpeakerCardResolver {
   final String Function(CharacterCard) getCharacterIdFromCard;
   final String Function() getUserName;
 
+  /// Today's story day, or null when the clock is stopped: promises then
+  /// render undated ("made Day 1 — 2 weeks ago" needs a running clock).
+  final int? Function()? getCurrentStoryDay;
+
   PromiseDebtInjection({
+    this.getCurrentStoryDay,
     required this.promiseDebtService,
     required this.getSessionId,
     required this.getActiveCharacter,
@@ -55,20 +61,24 @@ class PromiseDebtInjection with SpeakerCardResolver {
     if (card == null || sessionId == null) return '';
     final charId = getCharacterIdFromCard(card);
     promiseDebtService.ensureCacheWarm(sessionId, charId);
-    final open =
-        promiseDebtService.cachedOpen(sessionId, charId) ?? const [];
+    final open = promiseDebtService.cachedOpen(sessionId, charId) ?? const [];
     if (open.isEmpty) return '';
     // Anti-nag cadence: riding EVERY prompt made characters bring promises
     // up every turn — see PromiseDebtService.shouldInjectNow.
     if (!promiseDebtService.shouldInjectNow(sessionId, charId)) return '';
 
     final user = getUserName();
+    final today = getCurrentStoryDay?.call();
     final parts = <String>[];
     for (final p in open.take(2)) {
+      final made = p.storyDay;
+      final age = today == null || made == null
+          ? ''
+          : ' (made Day $made — ${storyDaysAgo(today - made)})';
       if (p.party == 'user') {
-        parts.add('$user still owes them this word: ${p.text}');
+        parts.add('$user still owes them this word: ${p.text}$age');
       } else {
-        parts.add('they still owe $user this word: ${p.text}');
+        parts.add('they still owe $user this word: ${p.text}$age');
       }
     }
     if (parts.isEmpty) return '';

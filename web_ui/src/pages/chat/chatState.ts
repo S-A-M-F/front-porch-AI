@@ -6,6 +6,8 @@
 
 import { type CastMember } from '../../components/CastBar';
 import { type ToolSupport } from '../../components/ToolCallingPill';
+import { type PromptSourceState } from '../../components/PromptSource';
+import { type DirectorState, type ExitUndo } from '../../components/DirectorStrip';
 import {
   type ChatThemeOverrides,
   type LoreEntry,
@@ -33,6 +35,8 @@ export interface ChatState {
   groupId?: string | null;
   realism?: Realism;
   lorebook?: LoreEntry[];
+  /** The group's stored lorebook could not be read (its entries are unused). */
+  groupLorebookUnreadable?: boolean;
   loreTokens?: number;
   loreBudget?: number;
   loreOverflow?: string[];
@@ -47,6 +51,12 @@ export interface ChatState {
   summary?: string;
   cast?: CastMember[];
   guestActivity?: { status: string | null; isError: boolean; busy: boolean };
+  // Director Mode and the open /exit UNDO (additive; absent on older apps).
+  director?: DirectorState;
+  exitUndo?: ExitUndo | null;
+  // A reply stopped from the Realism overlay (additive). Stays until the chat
+  // moves on or it is dismissed via POST /api/chat/stopped-reply/dismiss.
+  stoppedReply?: { notice: string; canRetry: boolean } | null;
   pendingDetection?: string | null;
   pendingPicker?: { filter: string; full: boolean } | null;
   // Chaos "Chance Time" park state: while pending, the engine is frozen waiting
@@ -60,6 +70,9 @@ export interface ChatState {
   toolSupport?: ToolSupport;
   // Per-chat theme overrides (preset + font/color/background/border).
   themeOverrides?: ChatThemeOverrides;
+  // Per-chat system prompt source (1:1 only) and the new-chat picker's
+  // prompts while a new chat waits on it (additive; omitted in groups).
+  promptSource?: PromptSourceState;
   // Host LLM connection (additive — older desktops omit it).
   llmReady?: boolean;
   // Why the host's start of KoboldCpp was refused, in place of "No API

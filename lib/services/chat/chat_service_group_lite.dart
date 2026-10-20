@@ -36,6 +36,15 @@ extension ChatServiceGroupLite on ChatService {
   bool _isLiteTurn(_GenTurn t) =>
       t.guestSpeaker != null || _speakerIsSoft(t.speakingCharacter);
 
+  /// After the clock commits; body in [AfterglowPass.tickAfterClock]. A lite
+  /// beat (guest or soft member) has no speaker refractory to open.
+  void _tickRefractoryAfterClock(_GenTurn t) => _afterglow.tickAfterClock(
+    t.mode,
+    speakerIdOf: () =>
+        _isLiteTurn(t) ? null : _getCharacterIdFromCard(t.speakingCharacter),
+    reply: () => t.streamTarget,
+  );
+
   bool _sceneNameTaken(String name) {
     final wanted = name.trim().toLowerCase();
     return presentSceneNames(
@@ -88,8 +97,13 @@ extension ChatServiceGroupLite on ChatService {
       );
     }
     await _reloadGroupRoster();
-    if (_needsSimEnabled && mid.isNotEmpty && _getGroupNeeds(mid).isEmpty) {
-      _setGroupNeeds(mid, NeedsSimulation.baselinesFromExtensions(cleared));
+    if (_needsSimEnabled &&
+        mid.isNotEmpty &&
+        _groupStore.needsOf(mid).isEmpty) {
+      _groupStore.setNeeds(
+        mid,
+        NeedsSimulation.baselinesFromExtensions(cleared),
+      );
     }
     if (mid.isNotEmpty) {
       _relationshipService.ensureInterCharacterRelationshipsSeeded(mid);

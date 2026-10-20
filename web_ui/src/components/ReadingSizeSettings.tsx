@@ -44,7 +44,7 @@ export function ReadingSizeSlider() {
 
 export function ReadingSizeSettings() {
   return (
-    <section className="card">
+    <section className="card" data-testid="reading-size-card">
       <h3>Reading size</h3>
       <p className="reading-blurb">
         Chat bubbles, the composer, message edit, and sidebar help. Buttons and

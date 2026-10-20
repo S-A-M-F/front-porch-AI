@@ -33,6 +33,7 @@ import 'journal_memory/journal_memory_group.dart';
 import 'porch_accordion.dart';
 import 'sidebar_tokens.dart';
 import 'story_tools/story_tools.dart';
+import '../widgets/chat_turn_builder.dart';
 import 'tool_calling_pill.dart';
 import 'wiki_panel.dart';
 
@@ -61,6 +62,10 @@ class SidebarBody extends StatefulWidget {
   /// OPEN_SECTION=edit: ChatPage opens the in-chat Edit Character dialog.
   final VoidCallback? onOpenEditFromEnv;
 
+  /// Scrolls first, above every section (the Director panel): tall content
+  /// here scrolls with the sidebar instead of squeezing it.
+  final Widget? header;
+
   const SidebarBody({
     super.key,
     required this.chatService,
@@ -70,6 +75,7 @@ class SidebarBody extends StatefulWidget {
     required this.resolveCharImage,
     this.draft,
     this.onOpenEditFromEnv,
+    this.header,
   });
 
   @override
@@ -142,8 +148,8 @@ class _SidebarBodyState extends State<SidebarBody> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ChatService>(
-      builder: (context, chat, _) {
+    return ChatTurnBuilder(
+      builder: (context, chat) {
         // Listening: evolution/journal/one-shot toggles live on storage and
         // must repaint the panels (each old section listened individually).
         final storage = Provider.of<StorageService>(context);
@@ -155,6 +161,7 @@ class _SidebarBodyState extends State<SidebarBody> {
         return ListView(
           padding: const EdgeInsets.all(12),
           children: [
+            ?widget.header,
             // Tool-calling capability of the current model, always visible —
             // users shouldn't have to guess why evals silently run in text
             // mode (and it retests itself on model/backend switches).
@@ -279,7 +286,10 @@ class _SidebarBodyState extends State<SidebarBody> {
     final character = focused.card;
     final cast = chat.cast;
     final idx = cast.indexWhere((p) => p.id == focused.id);
-    final canRemove = chat.groupCharacters.length > 1 && !chat.isGenerating;
+    // Two or more members, or three while directing (one left would end
+    // Director Mode); removing the second-to-last otherwise collapses the
+    // group back to a 1:1.
+    final canRemove = chat.canRemoveCastMember && !chat.isGenerating;
     return GroupMemberCard(
       character: character,
       chatService: chat,
@@ -291,8 +301,6 @@ class _SidebarBodyState extends State<SidebarBody> {
           ? widget.resolveCharImage(character.imagePath!)
           : null,
       ringCount: chat.growthRingCountFor(character),
-      // > 1 (not > 2): removing the second-to-last member is allowed and
-      // auto-collapses the group back to a 1:1.
       canRemove: canRemove,
       onRemove: canRemove
           ? () async {

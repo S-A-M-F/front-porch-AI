@@ -82,9 +82,7 @@ extension ChatServiceImportSeed on ChatService {
             _storageService.realismSettings.chaosModeDefault,
         false,
       );
-      _needsSimEnabled =
-          extSeed.needsSimEnabled &&
-          _storageService.realismSettings.needsSimDefault;
+      _needsSimEnabled = _needsPass.seedNeedsSim(extSeed.needsSimChoice);
       _objectivesEnabled = _storageService.realismSettings.objectivesEnabled;
       _enjoysLowHygiene = extSeed.enjoysLowHygiene;
       if (_needsSimEnabled) {
@@ -159,7 +157,7 @@ extension ChatServiceImportSeed on ChatService {
             });
         if (_needsSimEnabled) {
           // Placeholder vector only — the first per-speaker
-          // _loadGroupRealismIntoScalars replaces it with that member's own
+          // RealismDance.loadIntoScalars replaces it with that member's own
           // needs. Same flat baseline both group twins use.
           _needsSimulation.initializeFreshWithDefaults(const {
             'hunger': 80,
@@ -201,6 +199,8 @@ extension ChatServiceImportSeed on ChatService {
         ..._relationshipService.captureCadenceAndFeelings(),
       'character_emotion': _characterEmotion,
       'emotion_intensity': _emotionIntensity,
+      'emotion_cause': _emotionCause,
+      'emotion_held_turns': _emotionHeldTurns,
       'active_fixation': _relationshipService.activeFixation,
       'fixation_lifespan': _relationshipService.fixationLifespan,
       'spatial_stance': _relationshipService.spatialStance,
@@ -208,6 +208,13 @@ extension ChatServiceImportSeed on ChatService {
       'refractory_minutes_remaining': _nsfwService.refractoryMinutesRemaining,
       'refractory_minutes_total': _nsfwService.refractoryMinutesTotal,
       'refractory_opened': _nsfwService.refractoryOpened,
+      if (_nsfwService.refractory.soft) 'refractory_soft': true,
+      if (_nsfwService.refractory.peaks.isNotEmpty)
+        'refractory_peaks': _nsfwService.refractory.peaks,
+      if (_nsfwService.refractory.tail case final tail?) ...{
+        'refractory_tail_minutes': tail.minutes,
+        'refractory_tail_total': tail.total,
+      },
       'time_of_day': _timeService.timeOfDay,
       'day_count': _timeService.dayCount,
       'start_day_of_week': _timeService.startDayOfWeekAnchor,
@@ -215,6 +222,7 @@ extension ChatServiceImportSeed on ChatService {
       'story_start_date': _timeService.storyStartDateIso,
       'chaos_mode_enabled': _chaosModeService.chaosModeEnabled,
       'chaos_pressure': _chaosModeService.chaosPressure,
+      'chaos_nsfw_enabled': _chaosModeService.chaosNsfwEnabled,
       'needs_vector': Map<String, int>.from(_needsSimulation.vector),
       if (_pockets != null) 'pockets': _pockets!.toJson(),
       if (_activeGroup != null)
@@ -264,6 +272,9 @@ extension ChatServiceImportSeed on ChatService {
         'characterEmotion': head['character_emotion'],
       if (head['emotion_intensity'] != null)
         'emotionIntensity': head['emotion_intensity'],
+      if (head['emotion_cause'] != null) 'emotionCause': head['emotion_cause'],
+      if (head['emotion_held_turns'] != null)
+        'emotionHeldTurns': head['emotion_held_turns'],
       if (head['active_fixation'] != null)
         'activeFixation': head['active_fixation'],
       if (head['fixation_lifespan'] != null)
@@ -277,6 +288,20 @@ extension ChatServiceImportSeed on ChatService {
         RefractoryKeys.total: head['refractory_minutes_total'],
       if (head['refractory_opened'] != null)
         RefractoryKeys.opened: head['refractory_opened'],
+      // PR 3 soft gate: absent reads hard lock / no peaks, so files saved
+      // before it restore exactly as they did.
+      if (head['refractory_soft'] != null)
+        RefractoryKeys.soft: head['refractory_soft'],
+      if (head['refractory_peaks'] != null)
+        RefractoryKeys.peaks: head['refractory_peaks'],
+      // PR 4 warmth tail: the two head keys rebuild the nested body;
+      // absent means no tail, so pre-tail files restore exactly as before.
+      if (head['refractory_tail_minutes'] != null)
+        RefractoryKeys.tail: {
+          RefractoryKeys.minutes: head['refractory_tail_minutes'],
+          RefractoryKeys.total:
+              head['refractory_tail_total'] ?? head['refractory_tail_minutes'],
+        },
       // Files saved before minutes: turns, read once as turns × 15.
       if (head['cooldown_turns_remaining'] != null)
         RefractoryKeys.legacyTurns: head['cooldown_turns_remaining'],
@@ -322,7 +347,7 @@ extension ChatServiceImportSeed on ChatService {
       );
       _restoreRealismStateFromMessage(synth, restoreClock: false);
     }
-    _syncLoadedSlotClocks();
+    _clockWriter.syncLoadedSlotClocks();
 
     // 1:1 suitcase kit is captured from raw `_pockets` (HIDES≠erase).
     // Phase-0 nulled it so the prior open chat cannot bleed; the gated
@@ -340,7 +365,7 @@ extension ChatServiceImportSeed on ChatService {
     if (head['chaos_mode_enabled'] is bool) {
       _chaosModeService.seedFromGroupOrExt(
         head['chaos_mode_enabled'] as bool,
-        false,
+        head['chaos_nsfw_enabled'] == true,
       );
     }
     final pressure = (head['chaos_pressure'] as num?)?.toInt();

@@ -21,12 +21,13 @@ import 'package:path/path.dart' as p;
 
 import 'package:front_porch_ai/services/capability/capability.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/guarded_picker.dart';
+import 'package:front_porch_ai/ui/widgets/vision_projector_field/vision_projector_field.dart';
 import 'package:front_porch_ai/utils/gguf_vision.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
-part 'vision_projector_field.remote.dart';
+export 'vision_projector_field/vision_projector_field.dart';
 
 /// Optional "Vision projector (mmproj)" control for a local GGUF model.
 ///
@@ -317,11 +318,7 @@ class _VisionProjectorFieldState extends State<VisionProjectorField> {
                       ? AppColors.textTertiary(context)
                       : (exists
                             ? AppColors.textPrimary(context)
-                            : AppColors.resolve(
-                                context,
-                                Colors.redAccent,
-                                Colors.red.shade700,
-                              )),
+                            : StatusColors.dangerOf(context)),
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

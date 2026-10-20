@@ -39,6 +39,9 @@ class _Engine extends ChangeNotifier implements BackendManager {
   String? get backendPath => '/engine/koboldcpp';
 
   @override
+  Future<String?> engineForStart() async => backendPath;
+
+  @override
   bool get isDownloading => false;
 
   @override
@@ -93,6 +96,9 @@ void main() {
 
     final storage = FakeStorageService();
     storage.backendSettings.setBackendType('local');
+    // The model in use, so the list starts on it: an unused list starts on
+    // nothing ("Choose a model"), never on the first file.
+    storage.backendSettings.setLastUsedModelPath(model.path);
     if (preset != null) {
       storage.backendSettings.setActiveKcppsPath(preset!.path);
     }

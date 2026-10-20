@@ -15,21 +15,46 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
+//
+// The ChatPage app bar, including the sidebar toggle.
 
-part of 'chat_page.dart';
+import 'dart:io';
 
-/// App bar chrome, including the sidebar toggle.
-extension _ChatPageSidebarHost on _ChatPageState {
-  /// Single AppBar for every chat. Driven by the unified [ChatService.cast]:
-  /// a cast of one renders the classic single-character header (avatar + name +
-  /// description); a cast of two or more renders stacked avatars (with emotion
-  /// rings when group realism is active) + a "N characters" subtitle. This is
-  /// the same header whether the extra speakers are full group members or Scene
-  /// Guests, so a 1:1 that gains a guest visually becomes a multi-speaker chat.
-  PreferredSizeWidget _buildAppBar(
-    BuildContext context,
-    ChatService chatService,
-  ) {
+import 'package:flutter/material.dart';
+
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/utils/utils.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+
+/// Single AppBar for every chat. Driven by the unified [ChatService.cast]:
+/// a cast of one renders the classic single-character header (avatar + name);
+/// a cast of two or more renders stacked avatars (with emotion
+/// rings when group realism is active) + a "N characters" subtitle. This is
+/// the same header whether the extra speakers are full group members or Scene
+/// Guests, so a 1:1 that gains a guest visually becomes a multi-speaker chat.
+class ChatPageAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const ChatPageAppBar({
+    super.key,
+    required this.chatService,
+    required this.coverFor,
+    required this.sidebarOpen,
+    required this.onToggleSidebar,
+  });
+
+  final ChatService chatService;
+  final File? Function(ChatService chat, CharacterCard card) coverFor;
+  final bool sidebarOpen;
+  final VoidCallback onToggleSidebar;
+
+  /// What the inner [AppBar] asks for (no toolbarHeight, no bottom).
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
     final cast = chatService.cast;
     final group = chatService.activeGroup;
     final isMulti = cast.length > 1;
@@ -37,11 +62,18 @@ extension _ChatPageSidebarHost on _ChatPageState {
     final Widget avatars;
     if (!isMulti) {
       final card = cast.isNotEmpty ? cast.first.card : null;
-      final cover = card == null ? null : _coverFor(chatService, card);
-      avatars = CircleAvatar(
-        backgroundImage: cover != null ? FileImage(cover) : null,
-        onBackgroundImageError: cover != null ? (_, _) {} : null,
-        child: cover == null ? const Icon(Icons.person) : null,
+      final cover = card == null ? null : coverFor(chatService, card);
+      // No portrait, or only the flat placeholder: the person icon.
+      avatars = RealPortrait(
+        file: cover,
+        portrait: (_, file) => CircleAvatar(
+          backgroundImage: portraitAvatarImage(file),
+          onBackgroundImageError: (_, _) {},
+        ),
+        noPortrait: (_) => CircleAvatar(
+          backgroundColor: AppColors.surfaceContainerOf(context),
+          child: Icon(Icons.person, color: AppColors.iconSecondary(context)),
+        ),
       );
     } else {
       final shown = cast.length.clamp(0, 4);
@@ -81,23 +113,27 @@ extension _ChatPageSidebarHost on _ChatPageState {
                         ),
                         child: Builder(
                           builder: (_) {
-                            final cover = _coverFor(chatService, card);
-                            return CircleAvatar(
-                              radius: 16,
-                              backgroundColor:
-                                  _ChatPageState._groupCharacterColor(i),
-                              backgroundImage: cover != null
-                                  ? FileImage(cover)
-                                  : null,
-                              child: cover == null
-                                  ? Text(
-                                      card.name.isNotEmpty ? card.name[0] : '?',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    )
-                                  : null,
+                            final color = groupCharacterColor(i);
+                            // No portrait, or only the flat placeholder: the
+                            // member's initial.
+                            return RealPortrait(
+                              file: coverFor(chatService, card),
+                              portrait: (_, file) => CircleAvatar(
+                                radius: 16,
+                                backgroundColor: color,
+                                backgroundImage: portraitAvatarImage(file),
+                              ),
+                              noPortrait: (_) => CircleAvatar(
+                                radius: 16,
+                                backgroundColor: color,
+                                child: Text(
+                                  card.name.isNotEmpty ? card.name[0] : '?',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                             );
                           },
                         ),
@@ -112,17 +148,13 @@ extension _ChatPageSidebarHost on _ChatPageState {
     }
 
     final title = group?.name ?? (cast.isNotEmpty ? cast.first.name : '');
-    final String? subtitle;
-    if (isMulti) {
-      subtitle = group != null
-          ? '${cast.length} characters • ${group.turnOrder.name}'
-          : '${cast.length} characters';
-    } else {
-      final desc = cast.isNotEmpty ? cast.first.card.description : '';
-      subtitle = desc.isEmpty
-          ? null
-          : (desc.length > 30 ? '${desc.substring(0, 30)}...' : desc);
-    }
+    // A cast of one shows the name alone: a 30-character cut of the card
+    // description told the reader nothing, and the card is a tap away.
+    final String? subtitle = !isMulti
+        ? null
+        : group != null
+        ? '${cast.length} characters • ${group.turnOrder.name}'
+        : '${cast.length} characters';
 
     return AppBar(
       backgroundColor: AppColors.surfaceOf(context),
@@ -161,15 +193,11 @@ extension _ChatPageSidebarHost on _ChatPageState {
       actions: [
         IconButton(
           icon: Icon(
-            _sidebarWidth > 0 ? Icons.last_page : Icons.first_page,
+            sidebarOpen ? Icons.last_page : Icons.first_page,
             color: AppColors.iconSecondary(context),
           ),
           tooltip: 'Toggle Sidebar',
-          onPressed: () => rebuildState(
-            () => _sidebarWidth = _sidebarWidth > 0
-                ? 0
-                : SidebarTokens.widthFromEnvironment(),
-          ),
+          onPressed: onToggleSidebar,
         ),
         const SizedBox(width: 8),
       ],

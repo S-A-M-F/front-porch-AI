@@ -32,8 +32,17 @@ extension ChatServiceObjectives on ChatService {
 
   /// Load the active objectives for the current session from DB.
   Future<void> _loadActiveObjectives() async {
+    if (_activeCharacter == null &&
+        _activeGroup != null &&
+        _currentSessionId != null) {
+      // A group has no active character between turns. Its lists load per
+      // speaker, and the today line belongs to the chat: never "no chat".
+      await _loadObjectivesForCurrentSpeaker();
+      return;
+    }
     if (_activeCharacter == null || _currentSessionId == null) {
       _activeObjectives = [];
+      _objectiveTally = ObjectiveTally.none;
       _messagesSinceLastCheck = 0;
       _isCheckingCompletion = false;
       _summaryPaused =
@@ -51,6 +60,10 @@ extension ChatServiceObjectives on ChatService {
         charId,
         chatId: _currentSessionId!,
       );
+      _objectiveTally = objectiveTallyFrom(
+        charId,
+        await _db.getObjectivesForCharacter(charId, chatId: _currentSessionId),
+      );
       for (final obj in _activeObjectives) {
         debugPrint(
           '[Objective] Loaded: ${obj.objective} (Primary: ${obj.isPrimary})',
@@ -62,7 +75,7 @@ extension ChatServiceObjectives on ChatService {
       );
       _activeObjectives = [];
     }
-    _rebindTodayObjectiveFromDb();
+    await _rebindTodayObjectiveFromDb();
     notifyListeners(); // Central _disposed guard in ChatService overrides now protects this (and all other) post-async notify sites. Per-site try/catch removed (deletion part of rec 2 task); see god _disposed + notify override + setActiveCharacter:2205 comment.
   }
 
@@ -98,6 +111,10 @@ extension ChatServiceObjectives on ChatService {
     /// serves none. Only the autonomous proposal paths pass it; a quest the
     /// user typed has no eval behind it to say which mountain it climbs.
     String? servedAmbition,
+
+    /// v58 — who the goal is from (objective_origin.dart): the user by
+    /// default; the narrative judge passes character, the card import card.
+    String origin = kObjectiveOriginUser,
   }) async {
     if (goal.trim().isEmpty) return;
     if (_currentSessionId == null) return;
@@ -184,10 +201,18 @@ extension ChatServiceObjectives on ChatService {
         active: const drift.Value(true),
         isPrimary: drift.Value(isPrimary),
         servedAmbition: drift.Value(servedAmbition),
+        origin: drift.Value(origin),
       ),
     );
     if (recordTurnOps) {
-      _recordObjectiveTurnOp({'op': 'created', 'id': newId, 'charId': charId});
+      // origin + primary let the side-quest cooldown read the turn ops.
+      _recordObjectiveTurnOp({
+        'op': 'created',
+        'id': newId,
+        'charId': charId,
+        'origin': origin,
+        'primary': isPrimary,
+      });
     }
 
     await _loadActiveObjectives();
@@ -220,6 +245,13 @@ extension ChatServiceObjectives on ChatService {
     if (goal.trim().isEmpty || _currentSessionId == null) return null;
     CharacterCard? target;
     if (_activeGroup != null) {
+      // The line comes from the reply just written, so it is that
+      // speaker's. Director turns run without the speaker stand-in, and by
+      // then the turn order already names the next member.
+      final replyId = _messages.reversed
+          .where((m) => !m.isUser && m.sender != 'System')
+          .firstOrNull
+          ?.characterId;
       final currentIsGroupMember =
           _activeCharacter != null &&
           _groupCharacters.any(
@@ -227,9 +259,13 @@ extension ChatServiceObjectives on ChatService {
                 _getCharacterIdFromCard(c) ==
                 _getCharacterIdFromCard(_activeCharacter!),
           );
-      target = currentIsGroupMember
-          ? _activeCharacter
-          : (nextCharacter ?? _groupCharacters.firstOrNull);
+      target =
+          _groupCharacters
+              .where((c) => _getCharacterIdFromCard(c) == replyId)
+              .firstOrNull ??
+          (currentIsGroupMember
+              ? _activeCharacter
+              : (nextCharacter ?? _groupCharacters.firstOrNull));
     } else {
       target = _activeCharacter;
     }
@@ -244,8 +280,12 @@ extension ChatServiceObjectives on ChatService {
         active: const drift.Value(true),
         isPrimary: const drift.Value(false),
         servedAmbition: const drift.Value(null),
+        origin: const drift.Value(kObjectiveOriginPlanner),
       ),
     );
+    if (_inObjectiveTurn) {
+      _recordObjectiveTurnOp({'op': 'created', 'id': newId});
+    }
     await _persistTodayObjectiveId(newId);
     await _loadActiveObjectives();
     return newId;
@@ -299,17 +339,6 @@ extension ChatServiceObjectives on ChatService {
     _messagesSinceLastCheck = 0;
   }
 
-  /// Update the injection depth for the active objective.
-  Future<void> updateObjectiveDepth(Objective obj, int depth) async {
-    await _db.updateObjective(
-      ObjectivesCompanion(
-        id: drift.Value(obj.id),
-        injectionDepth: drift.Value(depth),
-      ),
-    );
-    await _loadActiveObjectives();
-  }
-
   // ── Round-4b forwarder bodies (see chat_service_accessors.dart's banner
   // comment for why these stay one-line forwarders on the class body) ──
 
@@ -332,6 +361,35 @@ extension ChatServiceObjectives on ChatService {
       return await _db.getActiveObjectives(charId, chatId: _currentSessionId!);
     } catch (e) {
       debugPrint('[Objective] Failed to load for ${character.name}: $e');
+      return const [];
+    }
+  }
+
+  /// Cast and user name tokens: they appear in most goals AND most lines,
+  /// so counting them would make the mention gate always-on and make every
+  /// goal about the same person look like a duplicate to the proposal gate.
+  Set<String> _objectiveIgnoreTokens() => <String>{
+    for (final c in [?_activeCharacter, ..._groupCharacters])
+      ...c.name.toLowerCase().split(RegExp(r'[^a-z0-9]+')),
+    ..._userPersonaService.persona.name.toLowerCase().split(
+      RegExp(r'[^a-z0-9]+'),
+    ),
+  }..remove('');
+
+  /// The last few goals this character finished or let go in this chat, for
+  /// the narrative judge ("finished: X", "let go: Y").
+  Future<List<String>> _recentEndedObjectiveLines() async {
+    final sid = _currentSessionId;
+    final card = _activeCharacter;
+    if (sid == null || card == null) return const [];
+    try {
+      final rows = await _db.getObjectivesForCharacter(
+        _getCharacterIdFromCard(card),
+        chatId: sid,
+      );
+      return recentEndedObjectiveLines(rows);
+    } catch (e) {
+      debugPrint('[Objective] Could not read finished goals: $e');
       return const [];
     }
   }

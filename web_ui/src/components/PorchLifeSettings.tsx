@@ -35,8 +35,8 @@ interface PorchLifeState {
   nsfwCooldownDefault: boolean;
   needsSimDefault: boolean;
   passageOfTimeDefault: boolean;
+  timeSkipBridgeEnabled: boolean;
   objectivesEnabled: boolean;
-  objectiveStaleThreshold: number;
   weatherEnabled: boolean;
   weatherFahrenheit: boolean;
   journalEnabled: boolean;
@@ -46,6 +46,7 @@ interface PorchLifeState {
   pocketTransfersEnabled: boolean;
   intimateAgencyEnabled: boolean;
   chaosModeDefault: boolean;
+  chaosFrequency: 'rare' | 'normal' | 'wild';
   webSearchDefault: boolean;
   hasSearchApiKey?: boolean;
   wikiBaseUrl?: string;
@@ -70,8 +71,8 @@ const DEFAULTS: PorchLifeState = {
   nsfwCooldownDefault: false,
   needsSimDefault: true,
   passageOfTimeDefault: true,
+  timeSkipBridgeEnabled: true,
   objectivesEnabled: true,
-  objectiveStaleThreshold: 2,
   weatherEnabled: true,
   weatherFahrenheit: false,
   journalEnabled: true,
@@ -81,6 +82,7 @@ const DEFAULTS: PorchLifeState = {
   pocketTransfersEnabled: false,
   intimateAgencyEnabled: false,
   chaosModeDefault: false,
+  chaosFrequency: 'normal',
   webSearchDefault: false,
   hasSearchApiKey: false,
   wikiBaseUrl: '',
@@ -410,7 +412,7 @@ export function PorchLifeSettings() {
   // there. The "left off, the clock holds still" fact lives on the row above.
 
   return (
-    <section className="card pl-section">
+    <section className="card pl-section" data-testid="porch-life-card">
       <h3>Porch Life</h3>
       <p className="muted small pl-intro">
         Everything that makes a character feel like they live somewhere. Each switch says plainly what it needs — many need nothing at all.
@@ -464,6 +466,16 @@ export function PorchLifeSettings() {
           onChange={(v) => set('passageOfTimeDefault', v)}
         />
         <FeatureRow
+          icon="⏩"
+          label="Time-skip bridge"
+          need="needs"
+          dependsOn="Passage of Time"
+          satisfied={timeOn}
+          blurb={'When a message skips a day or more ("two weeks later"), a short narrator card fills in how those days went before the character replies. One short AI call, only on a turn that skips that far. Off, the skip still happens, just without the card.'}
+          value={st.timeSkipBridgeEnabled}
+          onChange={(v) => set('timeSkipBridgeEnabled', v)}
+        />
+        <FeatureRow
           icon="☁️"
           label="Story Weather"
           need="needs"
@@ -478,7 +490,7 @@ export function PorchLifeSettings() {
           label="Temperatures in °F"
           need="needs"
           dependsOn="Story Weather"
-          satisfied={weatherOn}
+          satisfied={timeOn && weatherOn}
           blurb={'Display only — characters always experience weather in words ("coat-and-gloves cold"), never numbers.'}
           value={st.weatherFahrenheit}
           onChange={(v) => set('weatherFahrenheit', v)}
@@ -551,30 +563,10 @@ export function PorchLifeSettings() {
           icon="🎯"
           label="Objectives"
           need="alone"
-          blurb="Short-lived quests a character works toward — set your own, or let them decide what they want. Needs nothing else to run, but it does check in with the AI to see whether a task got done: every turn while the Realism Engine is on, and every few messages while it is off. Switching this off is the way to stop that cost — your quests are kept either way."
+          blurb="Short-lived quests a character works toward — set your own, or let them decide what they want. Needs nothing else to run, but it does check in with the AI every few messages (and after a time skip) to see where each goal stands. Switching this off is the way to stop that cost — your quests are kept either way."
           value={objectivesOn}
           onChange={(v) => set('objectivesEnabled', v)}
-        >
-          <label className="pl-substitch">
-            <span className="pl-sub-body">
-              <span className="pl-sub-label">Retire a leftover quest after</span>
-              <span className="pl-sub-blurb">
-                How many times the AI must say a quest is no longer relevant before it is
-                retired as overtaken — not completed. A leftover step is skipped immediately.
-              </span>
-            </span>
-            <select
-              aria-label="Retire a leftover quest after"
-              value={st.objectiveStaleThreshold}
-              onChange={(e) => set('objectiveStaleThreshold', Number(e.target.value))}
-            >
-              <option value={0}>never (off)</option>
-              <option value={1}>1 check</option>
-              <option value={2}>2 checks</option>
-              <option value={4}>4 checks</option>
-            </select>
-          </label>
-        </FeatureRow>
+        />
         <FeatureRow
           icon="🚩"
           label="Ambitions"
@@ -610,10 +602,31 @@ export function PorchLifeSettings() {
           icon="🎲"
           label="Chaos Mode"
           need="alone"
-          blurb="Pressure builds quietly as a scene goes on, and every so often something happens that neither of you planned — a knock at the door, a spilled drink, weather turning. The 2026-08-07 audit confirmed it runs perfectly well with the Realism Engine off; it was only ever filed next to it. Switching it on here turns it on for new chats and groups; each chat can still overrule it in the sidebar."
+          blurb="Pressure builds quietly as a scene goes on, and every so often something happens that neither of you planned — a knock at the door, a spilled drink, weather turning. It works with or without the Realism Engine. Switching it on here turns it on for new chats and groups; each chat can still overrule it in the sidebar."
           value={st.chaosModeDefault}
           onChange={(v) => set('chaosModeDefault', v)}
-        />
+          showChildWhenOff
+        >
+          <label className="pl-substitch">
+            <span className="pl-sub-body">
+              <span className="pl-sub-label">How often</span>
+              <span className="pl-sub-blurb">
+                How often Chance Time pops on its own: Rare is about one event every twelve messages,
+                Normal one every six or seven, Wild one every three. After an event there is a short
+                breather before pressure builds again.
+              </span>
+            </span>
+            <select
+              aria-label="How often"
+              value={st.chaosFrequency}
+              onChange={(e) => set('chaosFrequency', e.target.value as PorchLifeState['chaosFrequency'])}
+            >
+              <option value="rare">Rare</option>
+              <option value="normal">Normal</option>
+              <option value="wild">Wild</option>
+            </select>
+          </label>
+        </FeatureRow>
         <FeatureRow
           icon="🕰️"
           label="Welcome-back recap"
@@ -690,7 +703,7 @@ export function PorchLifeSettings() {
             need="needs"
             dependsOn="Realism's arousal"
             satisfied={engineOn}
-            blurb="Desire builds through a scene and settles afterwards instead of resetting — so intimacy keeps a believable rhythm and a character is not instantly ready to go again. The engine is what scores desire, so this cannot run without it."
+            blurb="Desire builds through a scene and settles afterwards instead of resetting — so intimacy keeps a believable rhythm and a character is not instantly ready to go again. The engine is what scores desire, so this cannot run without it. Uses one short extra AI request per reply to notice a climax, so it costs a little more on a paid API. Multiorgasmic characters feel a tenderness window instead of a lock."
             value={st.nsfwCooldownDefault}
             onChange={(v) => set('nsfwCooldownDefault', v)}
           />

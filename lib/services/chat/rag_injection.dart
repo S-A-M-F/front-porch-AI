@@ -50,15 +50,14 @@
 library;
 
 import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/services/chat/pockets.dart' show itemNameTokens;
 import 'package:front_porch_ai/services/memory_service.dart'
     show RetrievedMemory;
 
-part 'rag_injection.receipt.dart';
+import 'package:front_porch_ai/services/chat/prompt_injection/story_when.dart';
 
-/// How many chars of a memory ride the receipt as its preview. Receipts live
-/// in every stamped message's metadata forever — store a glance, not a copy.
-const int kRagReceiptPreviewChars = 140;
+import 'rag_injection/rag_cover_receipt.dart';
+
+export 'rag_injection/rag_cover_receipt.dart';
 
 /// How far [storyDayAt] walks backward for a day stamp before giving up.
 /// Day only moves forward, so the nearest earlier realism_state is correct;
@@ -91,6 +90,9 @@ int? storyDayAt(
     return null;
   }
 
+  // A span that begins before the loaded window would clamp onto the
+  // window's first message and borrow its (later) day: unknown instead.
+  if (positionStart < basePosition) return null;
   final start = (positionStart - basePosition).clamp(0, messages.length - 1);
   final end = (positionEnd - basePosition).clamp(0, messages.length - 1);
   if (start > end) return null;
@@ -126,11 +128,22 @@ List<RetrievedMemory> chronologicalRagOrder(
 
 /// One injection line: `- (Day 3) Nia: …` / `- (another chat) Nia: …`, or
 /// unstamped when the day is unknowable (realism off — no false precision).
-String formatRagLine(String content, {int? day, required bool otherChat}) {
+/// With [today] (a running clock) the day also says how long ago it was,
+/// in the Journal's words: `(Day 3 — 2 weeks ago)`.
+String formatRagLine(
+  String content, {
+  int? day,
+  required bool otherChat,
+  int? today,
+}) {
+  // Today's lines need no age; the time line already names the day.
+  final ago = today == null || day == null || today <= day
+      ? ''
+      : ' — ${storyDaysAgo(today - day)}';
   final stamp = otherChat
       ? '(another chat) '
       : day != null
-      ? '(Day $day) '
+      ? '(Day $day$ago) '
       : '';
   return '- $stamp$content';
 }
@@ -317,12 +330,14 @@ String buildRagMemoriesBlock({
   required String currentSessionId,
   required Map<RetrievedMemory, int?> days,
   required bool reachingForQuote,
+  int? today,
 }) {
   if (memories.isEmpty) return '';
   String lineFor(RetrievedMemory m) => formatRagLine(
     reachingForQuote ? m.content : rememberedAttributedLine(m.content),
     day: days[m],
     otherChat: m.sessionId != currentSessionId,
+    today: today,
   );
   final header = reachingForQuote ? kRagQuoteHeader : kRagRememberedHeader;
   return '\n$header'

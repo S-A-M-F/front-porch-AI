@@ -125,6 +125,7 @@ extension AppDatabaseMaintenance on AppDatabase {
         // which is a real answer and the only honest one for every objective
         // that predates the column.
         'served_ambition TEXT',
+        'origin TEXT', 'status TEXT', 'ended_at INTEGER', // v58
       ],
       'message_embeddings': [
         // Added to the MessageEmbeddings Table class during the Journal work
@@ -178,6 +179,8 @@ extension AppDatabaseMaintenance on AppDatabase {
         'mood_decay_counter INTEGER NOT NULL DEFAULT 0', // v13
         "character_emotion TEXT NOT NULL DEFAULT ''", // v13
         "emotion_intensity TEXT NOT NULL DEFAULT ''", // v13
+        "emotion_cause TEXT NOT NULL DEFAULT ''", // v57
+        'emotion_held_turns INTEGER NOT NULL DEFAULT 0', // v57
         "time_of_day TEXT NOT NULL DEFAULT 'morning'", // v13
         'day_count INTEGER NOT NULL DEFAULT 1', // v13
         'arousal_level INTEGER NOT NULL DEFAULT 0', // v15
@@ -204,6 +207,7 @@ extension AppDatabaseMaintenance on AppDatabase {
         'start_day_of_week INTEGER NOT NULL DEFAULT 0',
         'chaos_mode_enabled INTEGER NOT NULL DEFAULT 0',
         'chaos_pressure INTEGER NOT NULL DEFAULT 0',
+        'chaos_nsfw_enabled INTEGER NOT NULL DEFAULT 0', // v56
         'generation_settings TEXT',
         'user_persona_id TEXT',
         'passage_of_time_enabled INTEGER NOT NULL DEFAULT 1',
@@ -217,6 +221,10 @@ extension AppDatabaseMaintenance on AppDatabase {
         'refractory_minutes_remaining INTEGER',
         'refractory_minutes_total INTEGER',
         'refractory_opened INTEGER',
+        'refractory_soft INTEGER', // v59
+        'refractory_peaks TEXT', // v59
+        'refractory_tail_minutes INTEGER', // v60
+        'refractory_tail_total INTEGER', // v60
         'selected_look_avatar_id TEXT', // v37 gallery look
         'theme_overrides TEXT', // per-chat theme
         'context_budget_json TEXT', // v44 Context Viewer snapshot
@@ -483,7 +491,7 @@ extension AppDatabaseMaintenance on AppDatabase {
     }
   }
 
-  /// Public helper so that direct-open paths (reunification, certain test or recovery
+  /// Public helper so that direct-open paths (certain test or recovery
   /// scenarios) can explicitly ensure the schema matches before using group or objective
   /// features. The primary AppDatabase.instance() path calls the repair automatically.
   Future<void> ensureSchemaIsRepaired() => _repairMissingSchemaColumns();

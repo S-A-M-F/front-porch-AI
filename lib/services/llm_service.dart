@@ -20,7 +20,27 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+/// One caller's handle on its own request. [cancel] closes that request's
+/// connection and nobody else's on the same backend; a request still waiting
+/// for its turn at KoboldCpp is never sent.
+class LlmRequestCancel {
+  final Completer<void> _done = Completer<void>();
+
+  bool get isCancelled => _done.isCompleted;
+
+  /// Completes when [cancel] is called.
+  Future<void> get whenCancelled => _done.future;
+
+  void cancel() {
+    if (!_done.isCompleted) _done.complete();
+  }
+}
+
 /// Generation parameters shared across all LLM backends.
+/// How many alternatives per token a [GenerationParams.onLogprobs] reply asks
+/// for. KoboldCpp caps this at 10.
+const kTopLogprobs = 5;
+
 class GenerationParams {
   final String prompt;
   final int maxLength;
@@ -114,6 +134,10 @@ class GenerationParams {
   /// reader's subscription, so a reply that waits has to ask.
   final bool Function()? stillWant;
 
+  /// Calls this one request off (see [LlmRequestCancel]). Null: only the
+  /// backend-wide [LLMService.abortGeneration] can stop it.
+  final LlmRequestCancel? cancel;
+
   /// Probe identity (`backend|endpoint|model|path`). Style retry and skip/pause
   /// key on the same string [ChatService] uses.
   final String backendIdentity;
@@ -127,6 +151,11 @@ class GenerationParams {
   /// else; only [KoboldService.generateStream] reads it. A helper that
   /// carries it by mistake only costs speed.
   final String? kvChat;
+
+  /// When set, the reply asks for per-token probabilities (`logprobs`, with
+  /// [kTopLogprobs] alternatives each) and every `choices[0].logprobs.content`
+  /// list the server sends is handed here. Chat replies on KoboldCpp only.
+  final void Function(List<Object?> tokens)? onLogprobs;
 
   const GenerationParams({
     required this.prompt,
@@ -158,9 +187,11 @@ class GenerationParams {
     this.onChunk,
     this.stillWantTools,
     this.stillWant,
+    this.cancel,
     this.backendIdentity = '',
     this.chatMessages,
     this.kvChat,
+    this.onLogprobs,
   });
 
   /// Chat-completions `messages`. Null [chatMessages] is the historical

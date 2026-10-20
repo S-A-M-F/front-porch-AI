@@ -37,8 +37,8 @@ extension ChatServiceRegenRevert on ChatService {
     // lite tick still wears present bodies (the 1:1 host). Restore that
     // pre-wear snapshot before replay; do not run the host speaker revert.
     if (regenGuest != null) {
-      _restorePresentBodiesForReplay(lastMsg);
-      _restoreRefractoryBeforeBeat(lastMsg);
+      _needsRewinds.restorePresentBodiesForReplay(lastMsg);
+      _afterglow.restoreBeforeBeat(lastMsg);
       return true;
     }
 
@@ -49,16 +49,16 @@ extension ChatServiceRegenRevert on ChatService {
     // bodies rewind here (review finding, Needs v2).
     if (_needsSimEnabled) {
       if (_activeGroup == null) {
-        _restoreNeedsBaselineForReplay(lastMsg);
+        _needsRewinds.restoreBaselineForReplay(lastMsg);
       } else if (!_realismEnabled) {
-        _restorePresentBodiesForReplay(lastMsg);
+        _needsRewinds.restorePresentBodiesForReplay(lastMsg);
       }
     }
 
     // GROUP parity: the revert must operate on the rejected SPEAKER's
     // _groupRealism entry, not on whichever member's state happens to be in
     // the scalar fields. Impersonate + load their map state (the same
-    // load/save dance _evaluateRealismForUpcomingSpeaker uses), run the SAME
+    // load/save dance RealismDance.evaluateForUpcomingSpeaker uses), run the SAME
     // revert as 1:1, then persist the reverted scalars back to the map. The
     // per-speaker eval inside _generateResponse then replays decay + eval
     // from this clean baseline — previously nothing was reverted, so every
@@ -77,7 +77,7 @@ extension ChatServiceRegenRevert on ChatService {
       if (isGroupHostRegen) {
         preRegenActiveCharacter = _activeCharacter;
         _activeCharacter = regenSpeakerCard;
-        _loadGroupRealismIntoScalars(regenSpeakerSid);
+        _realismDance.loadIntoScalars(regenSpeakerSid);
       }
       // CRITICAL FIX: Find the baseline realism state from the previous accepted message.
       // We want to use the final state of the LAST ACCEPTED character message as our baseline,
@@ -148,16 +148,27 @@ extension ChatServiceRegenRevert on ChatService {
         }
 
         // Revert climax state if this response triggered refractory cooldown.
-        // The climax checker stores the pre-climax arousal so we can restore it.
+        // The climax checker stores the pre-climax arousal so we can restore
+        // it. Since PR 3 it also stamps the full pre-climax BODY (window,
+        // soft flag, peak stamps) — regenerating a soft peak 2 rewinds to a
+        // body that still holds peak 1 and its window, not to an empty one.
+        // Replies stamped before PR 3 carry no body key and clear the
+        // refractory exactly as they always did.
         final climaxTriggered =
             lastMsg.activeMetadata!['climax_triggered'] as bool? ?? false;
         if (climaxTriggered && _nsfwService.nsfwCooldownEnabled) {
-          final preClimaxArousal =
-              lastMsg.activeMetadata!['pre_climax_arousal'] as int? ?? 0;
+          final meta = lastMsg.activeMetadata!;
+          final preClimaxArousal = meta['pre_climax_arousal'] as int? ?? 0;
+          final stamped = meta['pre_climax_refractory'];
+          final preBody = stamped is Map
+              ? Refractory.read(Map<dynamic, dynamic>.from(stamped))
+              : null;
           _nsfwService.setArousalLevel(preClimaxArousal);
-          _nsfwService.setRefractory(Refractory.none);
+          _nsfwService.setRefractory(preBody ?? Refractory.none);
           debugPrint(
-            '[Realism:Regen] Reverted climax state: arousal restored to $preClimaxArousal, cooldown cleared',
+            '[Realism:Regen] Reverted climax state: arousal restored to '
+            '$preClimaxArousal, cooldown '
+            '${preBody == null ? 'cleared' : 'restored to $preBody'}',
           );
         } else if (arousalDelta != 0 && _nsfwService.nsfwCooldownEnabled) {
           // Normal arousal delta revert (no climax involved)
@@ -218,12 +229,7 @@ extension ChatServiceRegenRevert on ChatService {
             groupSpeakerId: isGroupHostRegen ? regenSpeakerSid : null,
           );
         }
-        _characterEmotion =
-            previousMessageState['characterEmotion'] as String? ??
-            _characterEmotion;
-        _emotionIntensity =
-            previousMessageState['emotionIntensity'] as String? ??
-            _emotionIntensity;
+        _mood.restoreFromStamp(previousMessageState);
 
         _nsfwService.restoreNsfwFromMessageState(previousMessageState);
 
@@ -253,7 +259,7 @@ extension ChatServiceRegenRevert on ChatService {
         );
       }
 
-      // Clock rewind lives in [_rewindClockToPreReply] (reprocess). A
+      // Clock rewind lives in [StoryClockWriter.rewindClockToPreReply] (reprocess). A
       // realism_state.storyClock / timeOfDay / dayCount snap is not the
       // pre-reply time — old chats freeze those at Day 1 09:00.
       // Clock suppression is an argument on Next Character only. Regen
@@ -305,20 +311,59 @@ extension ChatServiceRegenRevert on ChatService {
         // above are their pre-wear bars. The others live only in the
         // snapshot — restoring just the speaker and then wearing again
         // drops the rest a second time (80 → 78 → 76).
-        _restorePresentBodiesForReplay(lastMsg);
+        _needsRewinds.restorePresentBodiesForReplay(lastMsg);
         // Persist the reverted baseline into the speaker's _groupRealism
         // entry and drop the impersonation. The replayed reply wears
         // everyone present once, inside _generateResponse.
-        _saveScalarsIntoGroupRealism(regenSpeakerSid);
+        _realismDance.saveScalarsIntoGroup(regenSpeakerSid);
         _activeCharacter = preRegenActiveCharacter;
       }
     }
     // Last, so it wins: the snapshots above are each speaker's own last turn,
     // and every body this beat's clock reached is put back to the beat's
     // start — the replay ticks them once.
-    _restoreRefractoryBeforeBeat(lastMsg);
+    _afterglow.restoreBeforeBeat(lastMsg);
     return true;
   }
+
+  /// A failed turn ends `user -> System banner`, or `user -> empty reply ->
+  /// banner` when it failed after its bubble was attached (a server error on
+  /// the stream). Neither is a reply to regenerate, so regenerate was a
+  /// silent no-op. Drop them, leaving the user line to be answered again.
+  /// Only with that unanswered user line behind them: every System banner
+  /// (generation error, backend-down, failed entrance) is discardable only
+  /// then; a banner after a real reply stays.
+  ///
+  /// Returns the failed reply's group member, who answers again: their pick
+  /// already moved the rotation on, so a fresh pick would skip them.
+  Future<CharacterCard?> _dropFailedTurnLeftovers() async {
+    final n = _messages.length;
+    if (n < 2 || _messages.last.isUser || _messages.last.sender != 'System') {
+      return null;
+    }
+    final ghost = _isFailedReplyGhost(_messages[n - 2])
+        ? _messages[n - 2]
+        : null;
+    final userAt = n - (ghost == null ? 2 : 3);
+    if (userAt < 0 || !_messages[userAt].isUser) return null;
+    _messages.removeRange(userAt + 1, n);
+    // Its quests have no reply to ride on; the retry proposes them again.
+    if (ghost != null) await _revertObjectiveTurnOps(ghost);
+    await _saveChat(replaceAll: true);
+    if (ghost == null || _activeGroup == null) return null;
+    return _resolveGroupSpeakerForMessage(ghost);
+  }
+
+  /// The bubble a failed turn attached before any text: no text or thinking,
+  /// one swipe, no image. The host's or a member's only; a Scene Guest's is
+  /// left alone (the retry answers the user line as the host).
+  bool _isFailedReplyGhost(ChatMessage m) =>
+      !m.isUser &&
+      m.sender != 'System' &&
+      m.text.trim().isEmpty &&
+      m.swipes.length == 1 &&
+      m.activeMetadata?['is_generated_image'] != true &&
+      !_isGuestAuthoredMessage(m);
 
   Future<void> _mergeOrRestoreRegenSwipe({
     required ChatMessage lastMsg,
@@ -341,7 +386,7 @@ extension ChatServiceRegenRevert on ChatService {
       );
       if (ghostIdx >= 0) _messages.removeAt(ghostIdx);
       _messages.insert(preGenLen, lastMsg);
-      _applyTipClock();
+      _clockReader.applyTipClock();
       if (regenGuest == null) {
         _restoreRealismStateForSpeaker(lastMsg);
         // The pre-generation rewind above rolled pockets to the PRE-turn
@@ -349,7 +394,7 @@ extension ChatServiceRegenRevert on ChatService {
         // accepted text, so the pockets must return to the accepted
         // (post-turn) record too — same put-back contract as the two
         // realism-cancel points earlier in this method.
-        _restorePocketsFromStamp(lastMsg, after: true);
+        _pocketsRewinds.restoreFromStamp(lastMsg, after: true);
       }
       notifyListeners();
       // Full rewrite: the abort inside _generateResponse already persisted
@@ -364,6 +409,8 @@ extension ChatServiceRegenRevert on ChatService {
       final newMetadata = _messages.last.activeMetadata != null
           ? Map<String, dynamic>.from(_messages.last.activeMetadata!)
           : null;
+      // This swipe's own "Thought for Ns", timed while it streamed.
+      final newThinkingMs = _messages.last.thinkingDurationMs;
       final tempBefore = _messages.last.metadata?['pockets_before'];
       _messages.removeLast();
       if (tempBefore is Map) {
@@ -375,6 +422,7 @@ extension ChatServiceRegenRevert on ChatService {
         lastMsg.swipeDurations.add(0);
       }
       final newSwipeIndex = lastMsg.swipes.length - 1;
+      lastMsg.swipeDurations[newSwipeIndex] = newThinkingMs;
       if (preservedRejectedMeta != null && rejectedSwipeIndex >= 0) {
         while (lastMsg.swipeMetadata.length <= rejectedSwipeIndex) {
           lastMsg.swipeMetadata.add(null);
@@ -391,29 +439,46 @@ extension ChatServiceRegenRevert on ChatService {
       if (newMetadata != null) {
         lastMsg.swipeMetadata[newSwipeIndex] = newMetadata;
       }
-      if (_clockRunning) _discoverAndPersistMessageBefore(lastMsg);
+      if (_clockRunning) _clockWriter.discoverAndPersistMessageBefore(lastMsg);
       _messages.add(lastMsg);
       // Host messages restore the active character's Realism/Needs from the
       // accepted swipe (in groups: the speaker's own _groupRealism entry).
       // Guest swipes wear present bodies (1:1 host); the replay just wore
       // them once — do not pull a host realism_state the guest never had.
       if (regenGuest == null) _restoreRealismStateForSpeaker(lastMsg);
-      _applyTipClock();
+      _clockReader.applyTipClock();
       _timeService.clearCapturedClock();
       await _saveChat();
       notifyListeners();
-
-      // In group mode, advance the turn pointer past the regenerated speaker
-      // so the next natural generation continues the correct rotation instead
-      // of repeating the same character.
-      if (_activeGroup != null) {
-        // Same resolution rule: advancing past the WRONG member would make
-        // the next natural turn repeat a character or skip one.
-        final originalSpeaker = _resolveGroupSpeakerForMessage(lastMsg);
-        if (originalSpeaker != null) {
-          _groupManager?.advanceAfterRegeneration(originalSpeaker);
-        }
-      }
+      // The group rotation is put back by regenerateLastMessage's finally.
     }
+  }
+
+  /// Delete's realism time travel: back to the new last message's stamp.
+  /// A 1:1 tail delete of a scored reply leaves the user line last, which
+  /// carries no reply stamp, so the deleted reply's mood and bond used to
+  /// stand. Rewind the scored registers the way regen does: to the last
+  /// accepted reply, else the line's pre-turn stamp. Needs, pockets and the
+  /// clock keep their own delete rewinds, which run after this. Groups
+  /// rewind the deleted speaker's own entry in the caller.
+  void _restoreRealismAfterDelete(
+    ChatMessage deleted, {
+    required bool wasTail,
+  }) {
+    if (_messages.isEmpty) return;
+    final last = _messages.last;
+    final scoredReplyGone =
+        wasTail &&
+        _activeGroup == null &&
+        last.isUser &&
+        deleted.activeMetadata?['realism_state'] is Map &&
+        !_isGuestAuthoredMessage(deleted);
+    if (!scoredReplyGone) {
+      _restoreRealismStateForSpeaker(last, restoreClock: false);
+      return;
+    }
+    if (_rewindRelationshipToLastAcceptedReply()) return;
+    final stamp = last.metadata?[kRealismPreTurn];
+    if (stamp is Map) _restoreScoredRegisters(Map<String, dynamic>.from(stamp));
   }
 }

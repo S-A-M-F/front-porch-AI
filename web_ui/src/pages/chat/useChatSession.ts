@@ -38,8 +38,15 @@ export function useChatSession() {
   // backend streams one. Null = no image generating.
   const [imageProg, setImageProg] = useState<{ progress: number | null; preview: string | null } | null>(null);
   const [genStatus, setGenStatus] = useState<GenStatus | null>(null);
+  // Whether gen_status frames are live for the current turn. The page shows
+  // them only while state says isGenerating, and send()'s refresh lands
+  // before the server flips it, so the first live frame refreshes once.
+  const genLive = useRef(false);
   // Realism/Objective engine overlay, driven by the `processing` WS event.
   const [processing, setProcessing] = useState<Processing>(NO_PROCESSING);
+  // Counts `processing` frames, so a refresh can tell whether one arrived
+  // while its state request was in flight.
+  const processingSeq = useRef(0);
   const [showSessions, setShowSessions] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -58,6 +65,7 @@ export function useChatSession() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
+    const seqAtRequest = processingSeq.current;
     let s: ChatState;
     try {
       s = await api.get<ChatState>('/api/chat/state');
@@ -85,7 +93,15 @@ export function useChatSession() {
     // the processing overlay is dismissed even if its final WS event was missed
     // (e.g. a socket reconnect mid-eval). Never clears during an active eval —
     // refresh() doesn't run then (the `processing` event drives the overlay).
-    if (!s.isEvaluatingRealism && !s.isCheckingCompletion && !s.isGenerating) {
+    // A frame that landed while this request was in flight is newer than the
+    // idle snapshot (a check started just after the server answered), so the
+    // snapshot must not clear it.
+    if (
+      seqAtRequest === processingSeq.current &&
+      !s.isEvaluatingRealism &&
+      !s.isCheckingCompletion &&
+      !s.isGenerating
+    ) {
       setProcessing(NO_PROCESSING);
     }
   }, [setAuthenticated]);
@@ -149,6 +165,7 @@ export function useChatSession() {
         // old order cleared the bubble, leaving the message blank until the GET
         // returned ~100-300ms later).
         tokenGateRef.current.replyOver();
+        genLive.current = false;
         setGenStatus(null);
         void refresh().finally(() => {
           setStreaming('');
@@ -159,6 +176,9 @@ export function useChatSession() {
         // prompt-reading progress + which background pass holds the slot.
         // Returning the previous object when nothing changed lets React bail
         // out of the re-render — these frames arrive ~2.5/s for whole turns.
+        const wasLive = genLive.current;
+        genLive.current = !!e.active;
+        if (e.active && !wasLive) void refresh();
         setGenStatus((prev) => {
           if (!e.active) return null;
           const next = {
@@ -167,9 +187,11 @@ export function useChatSession() {
             busyWith: e.busyWith ?? null,
             queued: e.queued ?? 0,
             promptCur: e.promptCur ?? null,
+            promptConfirmed: e.promptConfirmed ?? null,
             promptTotal: e.promptTotal ?? null,
             promptDone: !!e.promptDone,
             estFraction: e.estFraction ?? null,
+            secondsLeft: e.secondsLeft ?? null,
             genCur: e.genCur ?? null,
             genTotal: e.genTotal ?? null,
           };
@@ -179,15 +201,18 @@ export function useChatSession() {
             prev.busyWith === next.busyWith &&
             prev.queued === next.queued &&
             prev.promptCur === next.promptCur &&
+            prev.promptConfirmed === next.promptConfirmed &&
             prev.promptTotal === next.promptTotal &&
             prev.promptDone === next.promptDone &&
             prev.estFraction === next.estFraction &&
+            prev.secondsLeft === next.secondsLeft &&
             prev.genCur === next.genCur &&
             prev.genTotal === next.genTotal
             ? prev
             : next;
         });
       } else if (e.event === 'processing') {
+        processingSeq.current += 1;
         // Same bail-out treatment: the server already throttles these, but a
         // reconnect or an old server can still deliver identical payloads.
         setProcessing((prev) => {
@@ -245,6 +270,7 @@ export function useChatSession() {
         // strand it forever.
         tokenGateRef.current.replyOver();
         setStreaming('');
+        genLive.current = false;
         setGenStatus(null);
         void refresh();
       }
@@ -294,6 +320,22 @@ export function useChatSession() {
     setProcessing(NO_PROCESSING);
     void api.post('/api/chat/cancel-realism').catch(() => {});
   };
+  const dismissStoppedReply = async () => {
+    try {
+      await api.post('/api/chat/stopped-reply/dismiss');
+    } catch (e) {
+      console.warn('[chat] dismiss stopped-reply notice failed', e);
+    }
+    await refresh();
+  };
+
+  // Stops only the goal check; the reply still comes.
+  const skipObjectiveCheck = () => {
+    setProcessing(NO_PROCESSING);
+    api.post('/api/chat/skip-objective-check').catch((e: unknown) => {
+      console.warn('Skip goal check failed', e);
+    });
+  };
 
   // ── Conversations drawer ────────────────────────────────────────
   const openSessions = async () => {
@@ -318,6 +360,7 @@ export function useChatSession() {
   const clearLiveTurnUi = () => {
     tokenGateRef.current.leaveChat(!!state?.isGenerating || streaming !== '');
     setStreaming('');
+    genLive.current = false;
     setGenStatus(null);
     setImageProg(null);
     setChance(null);
@@ -337,24 +380,33 @@ export function useChatSession() {
       });
   }, [state?.hasOlderHistory, state?.isBackfillingHistory, refresh]);
 
-  const loadSession = async (sessionId: string) => {
+  // A chat switch the page started. The host refuses a send until it lands
+  // (the desktop covers its chat the same way), so the page holds the chat
+  // instead of offering a composer whose message would bounce.
+  const [switching, setSwitching] = useState(false);
+  const switchChat = async (body: Record<string, unknown>) => {
     setShowSessions(false);
     clearLiveTurnUi();
-    await api.post('/api/chat/session', { sessionId });
-    await refresh();
+    setSwitching(true);
+    try {
+      await api.post('/api/chat/session', body);
+      await refresh();
+    } finally {
+      setSwitching(false);
+    }
   };
-  const newChat = async () => {
-    setShowSessions(false);
-    clearLiveTurnUi();
-    await api.post('/api/chat/session', { action: 'new' });
-    await refresh();
-  };
+  const loadSession = (sessionId: string) => switchChat({ sessionId });
+  const newChat = () => switchChat({ action: 'new' });
 
   return {
     opening,
+    switching,
     state,
     loadError,
     streaming,
+    // A reply is on its way. state.isGenerating is only as fresh as the last
+    // refresh, and nothing refreshes while tokens stream.
+    replying: !!state?.isGenerating || streaming !== '',
     chance,
     imageProg,
     genStatus,
@@ -373,6 +425,8 @@ export function useChatSession() {
     revealFate,
     acceptFate,
     cancelRealism,
+    dismissStoppedReply,
+    skipObjectiveCheck,
     openSessions,
     loadSession,
     newChat,

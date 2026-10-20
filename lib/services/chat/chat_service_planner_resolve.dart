@@ -21,11 +21,18 @@ part of '../chat_service.dart';
 enum PlannerTodayFate { done, abandoned, dayAte }
 
 extension ChatServicePlannerResolve on ChatService {
-  void _nudgePlannerMood(PlannerTodayFate fate) {
-    _characterEmotion = switch (fate) {
-      PlannerTodayFate.done => 'content',
-      PlannerTodayFate.abandoned || PlannerTodayFate.dayAte => 'annoyed',
-    };
+  /// The planner's today line is the first feature to move the mood through
+  /// the one door (docs/design/mood-with-bite.md): a fresh feeling with the
+  /// line as its cause, stamped on the reply so regen rewinds it.
+  void _nudgePlannerMood(PlannerTodayFate fate, String line) {
+    switch (fate) {
+      case PlannerTodayFate.done:
+        _mood.set('content', 'moderate', cause: line);
+      case PlannerTodayFate.abandoned:
+        _mood.set('annoyed', 'moderate', cause: 'let go of: $line');
+      case PlannerTodayFate.dayAte:
+        _mood.set('annoyed', 'moderate', cause: 'the day ran out on: $line');
+    }
   }
 
   Future<void> _persistTodayObjectiveId(String? id) async {
@@ -39,16 +46,35 @@ extension ChatServicePlannerResolve on ChatService {
     );
   }
 
+  /// The held today row while it is still active, found by id. The loaded
+  /// list is checked first; in a group the row sits on the member whose
+  /// turn wrote it, which is often not the list on screen, so the chat's
+  /// rows are asked next.
+  Future<Objective?> _heldTodayRow() async {
+    final id = _todayObjectiveId;
+    final sid = _currentSessionId;
+    if (id == null) return null;
+    final listed = _activeObjectives.where((o) => o.id == id).firstOrNull;
+    if (listed != null || sid == null) return listed;
+    try {
+      return await (_db.select(_db.objectives)..where(
+            (o) =>
+                o.id.equals(id) & o.chatId.equals(sid) & o.active.equals(true),
+          ))
+          .getSingleOrNull();
+    } catch (e) {
+      debugPrint('[Planner] Could not read the held today row: $e');
+      return null;
+    }
+  }
+
   /// Rebind by the persisted session id. Never guess among secondaries.
-  void _rebindTodayObjectiveFromDb() {
+  Future<void> _rebindTodayObjectiveFromDb() async {
     final id = _todayObjectiveId;
     if (id == null) return;
-    final live = _activeObjectives.where((o) => o.id == id).firstOrNull;
-    if (live == null) {
-      // Chat-scoped hold lives on another member's list. Keep the
-      // pointer so the next upsert/day-ate still finds the row.
-      return;
-    }
+    final live = await _heldTodayRow();
+    // Not found: keep the pointer so the next upsert/day-ate still sees it.
+    if (live == null || _todayObjectiveId != id) return;
     _todayObjectiveText = live.objective;
     if (_todaySentence == null) setTodaySentence(live.objective);
   }
@@ -60,6 +86,10 @@ extension ChatServicePlannerResolve on ChatService {
   Future<void> _deactivateTodayObjective() async {
     final id = _todayObjectiveId;
     if (id == null) return;
+    // Before the first await: the turn window may close behind it.
+    if (_inObjectiveTurn) {
+      _recordObjectiveTurnOp({'op': 'deactivated', 'id': id});
+    }
     _todayObjectiveId = null;
     _todayObjectiveText = null;
     await _persistTodayObjectiveId(null);
@@ -81,21 +111,18 @@ extension ChatServicePlannerResolve on ChatService {
     if (trimmed.isEmpty || _currentSessionId == null) return;
     final heldId = _todayObjectiveId;
     if (heldId != null) {
-      final held = _activeObjectives.where((o) => o.id == heldId).firstOrNull;
+      final held = await _heldTodayRow();
       if (held != null && held.objective == trimmed) {
         _todayObjectiveText = trimmed;
         await _persistTodayObjectiveId(heldId);
         return;
       }
-      if (held == null &&
-          (_todayObjectiveText == trimmed || todaySentence == trimmed)) {
-        // List has not loaded the held row yet. Do not insert a second.
-        await _persistTodayObjectiveId(heldId);
-        return;
-      }
-      if (held != null && held.objective != trimmed) {
+      if (held != null) {
         await _deactivateTodayObjective();
-      } else if (held == null) {
+      } else {
+        // The held row is gone (the user cleared the quest, or a rewind
+        // took it). Drop the pointer and write the line again, even when
+        // the sentence matches: _heldTodayRow already asked the database.
         _todayObjectiveId = null;
         _todayObjectiveText = null;
         await _persistTodayObjectiveId(null);
@@ -115,38 +142,54 @@ extension ChatServicePlannerResolve on ChatService {
   Future<void> _onTodayObjectiveCompleted(Objective obj) async {
     if (!_isHeldTodayObjective(obj)) return;
     final held = todaySentence ?? obj.objective;
+    _recordTodayPointerOp();
     _todayObjectiveId = null;
     _todayObjectiveText = null;
     setTodaySentence(null);
     unawaited(() async {
-      await _journalResolvedToday(held, fate: PlannerTodayFate.done);
+      await _journalResolvedToday(
+        held,
+        fate: PlannerTodayFate.done,
+        ownerId: obj.characterId,
+      );
       await _persistTodayObjectiveId(null);
     }());
   }
 
   /// Journal a finished or day-eaten line. Capture [held] before clearing.
-  /// Abandoned lines sour mood and do not write a card.
+  /// Abandoned lines sour mood and do not write a card. The card is the
+  /// today row's owner's ([ownerId], else the held row's member): in a
+  /// group that is the member whose reply wrote the line, not the speaker.
   Future<void> _journalResolvedToday(
     String? held, {
     required PlannerTodayFate fate,
+    String? ownerId,
   }) async {
     final line = held?.trim();
     if (line == null || line.isEmpty) return;
     if (!_storageService.realismSettings.plannerEnabled) return;
-    _nudgePlannerMood(fate);
+    // Taken now, while the turn that resolved the line is still running.
+    final cite = _objectiveTurnCite();
+    _nudgePlannerMood(fate, line);
     if (fate == PlannerTodayFate.abandoned) return;
     final sessionId = _currentSessionId;
     final card = _activeCharacter;
-    if (sessionId == null || card == null) return;
+    final mood = _characterEmotion;
+    final owner =
+        ownerId ??
+        (await _heldTodayRow())?.characterId ??
+        (card == null ? null : _getCharacterIdFromCard(card));
+    if (sessionId == null || owner == null) return;
     await _journalStore.addCard(
       sessionId: sessionId,
-      characterId: _getCharacterIdFromCard(card),
+      characterId: owner,
       content: line,
       category: 'moment',
       kind: 'today',
+      sourcePositions: cite,
       storyDay: _timeService.dayCount,
       storyClock: _timeService.storyClockIso,
-      emotionLabel: _characterEmotion.isEmpty ? null : _characterEmotion,
+      emotionLabel: mood.isEmpty ? null : mood,
       maxCards: _storageService.memorySettings.journalMaxCards,
     );
   }

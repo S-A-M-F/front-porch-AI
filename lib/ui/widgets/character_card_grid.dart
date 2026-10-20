@@ -4,20 +4,16 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import 'package:front_porch_ai/ui/pages/home/cards/cards.dart';
 import 'package:front_porch_ai/ui/pages/home/library_selection.dart';
 import 'package:front_porch_ai/ui/pages/home/widgets/widgets.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'package:front_porch_ai/ui/widgets/character_card_grid/character_library_grid.dart';
 import 'package:front_porch_ai/ui/widgets/library_view.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/utils/utils.dart';
 
 export 'package:front_porch_ai/ui/widgets/library_view.dart' show SearchScope;
-
-part 'character_card_grid.grid.dart';
 
 enum FolderDialogAction { create, rename, delete }
 
@@ -246,7 +242,31 @@ class CharacterCardGrid extends StatelessWidget {
                     selection != null && (picking || selection!.dragCount > 0)
                     ? selection!.escape
                     : (picking ? onCancelSelection : null),
-                child: _buildGrid(context, view),
+                child: CharacterLibraryGrid(
+                  view: view,
+                  searchQuery: searchQuery,
+                  activeFolderId: activeFolderId,
+                  messageCountCache: messageCountCache,
+                  gridScale: gridScale,
+                  isSelecting: isSelecting,
+                  isOrganizing: isOrganizing,
+                  selectedCharacterIds: selectedCharacterIds,
+                  selectedGroupIds: selectedGroupIds,
+                  gridScrollController: gridScrollController,
+                  groupRepo: groupRepo,
+                  imageCacheEpoch: repo.coverEpoch,
+                  selection: selection,
+                  onTapCharacter: onTapCharacter,
+                  onTapGroup: onTapGroup,
+                  onToggleSelect: onToggleSelect,
+                  onToggleSelectGroup: onToggleSelectGroup,
+                  onContextMenuAction: onContextMenuAction,
+                  onGroupContextMenuAction: onGroupContextMenuAction,
+                  onAcceptFolderDrop: onAcceptFolderDrop,
+                  onFolderDialogAction: onFolderDialogAction,
+                  onFolderTap: onFolderTap,
+                  onResolveCharImage: onResolveCharImage,
+                ),
               ),
             ),
           ],
@@ -265,10 +285,8 @@ class CharacterCardGrid extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.resolve(
-                      context,
-                      Colors.black.withValues(alpha: 0.3),
-                      Colors.black.withValues(alpha: 0.1),
+                    color: InkColors.dim(
+                      AppColors.isLight(context) ? 0.1 : 0.3,
                     ),
                     blurRadius: 8,
                     offset: const Offset(0, -2),
@@ -310,7 +328,7 @@ class CharacterCardGrid extends StatelessWidget {
                     label: const Text('Move to Folder'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.porchAmberOf(context),
-                      foregroundColor: AppColors.onChaosAccent,
+                      foregroundColor: AppColors.onAccentOf(context),
                     ),
                   ),
                   if (onExportSelected != null) ...[
@@ -355,10 +373,8 @@ class CharacterCardGrid extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.resolve(
-                      context,
-                      Colors.black.withValues(alpha: 0.3),
-                      Colors.black.withValues(alpha: 0.1),
+                    color: InkColors.dim(
+                      AppColors.isLight(context) ? 0.1 : 0.3,
                     ),
                     blurRadius: 8,
                     offset: const Offset(0, -2),
@@ -369,7 +385,9 @@ class CharacterCardGrid extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.drive_file_move,
-                    color: AppColors.formMasterAccent.withValues(alpha: 0.7),
+                    color: AppColors.formAccentOf(
+                      context,
+                    ).withValues(alpha: 0.7),
                   ),
                   const SizedBox(width: 12),
                   Text(
@@ -395,12 +413,10 @@ class CharacterCardGrid extends StatelessWidget {
                     icon: const Icon(Icons.drive_file_move, size: 18),
                     label: const Text('Move to Folder'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.formMasterAccent,
-                      foregroundColor: AppColors.onChaosAccent,
-                      disabledBackgroundColor: AppColors.resolve(
+                      backgroundColor: AppColors.formAccentOf(context),
+                      foregroundColor: AppColors.onAccentOf(context),
+                      disabledBackgroundColor: InkColors.disabledFillOf(
                         context,
-                        Colors.white10,
-                        Colors.black12,
                       ),
                     ),
                   ),

@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -35,6 +36,7 @@ const kRootDirsToMove = [
   'koboldcpp_bin',
   'groups',
   'custom_backgrounds',
+  'ImageBatches',
 ];
 
 /// The MOVE half of a storage-root change: refuse-check, copy-everything,
@@ -53,11 +55,17 @@ const kRootDirsToMove = [
 /// the folder the picker is already sitting in; copying the library into
 /// a child of itself and then deleting the sources splits the data.
 ///
+/// No [oldRoot] (a root asked for before the settings finished loading)
+/// means there is nothing to move. It must not mean "move whatever sits in
+/// the working directory": `Directory('tools')` there is the process's cwd,
+/// the repo under `flutter test` or a home folder on a desktop launch, and
+/// every source is deleted once copied.
+///
 /// Returns null on success, or a human-readable refusal — nothing was moved
 /// and the old root still stands in that case.
 Future<String?> relocateRootDirectories(String? oldRoot, String newRoot) async {
-  if (oldRoot != null &&
-      (path.equals(oldRoot, newRoot) || path.isWithin(oldRoot, newRoot))) {
+  if (oldRoot == null) return null;
+  if (path.equals(oldRoot, newRoot) || path.isWithin(oldRoot, newRoot)) {
     final reason =
         'The folder you picked is the current data directory or a folder '
         'inside it. Nothing was moved — pick a folder outside the current '
@@ -69,7 +77,7 @@ Future<String?> relocateRootDirectories(String? oldRoot, String newRoot) async {
   final sources = <Directory>[];
   final targets = <Directory>[];
   for (final dirName in kRootDirsToMove) {
-    final oldDir = Directory(path.join(oldRoot ?? '', dirName));
+    final oldDir = Directory(path.join(oldRoot, dirName));
     if (!await oldDir.exists()) continue;
     final newDir = Directory(path.join(newRoot, dirName));
     // An EMPTY leftover at the destination is fine (the app creates these
@@ -174,5 +182,35 @@ Future<void> repointCustomBackgroundsAfterRootMove({
           ? path.join(newRoot, path.relative(filePath, from: oldRoot))
           : filePath,
     );
+  }
+}
+
+class RootRelocationGate {
+  bool isMoving = false;
+  Completer<void>? _completion;
+  Future<void> get settled => _completion?.future ?? Future<void>.value();
+  final Set<String? Function()> blockers = {};
+
+  String? get refusal {
+    if (isMoving) return 'A data directory move is already in progress.';
+    for (final blocker in blockers) {
+      final refusal = blocker();
+      if (refusal != null) return refusal;
+    }
+    return null;
+  }
+
+  Future<String?> move(Future<String?> Function() relocate) async {
+    final blocked = refusal;
+    if (blocked != null) return blocked;
+    isMoving = true;
+    _completion = Completer<void>();
+    try {
+      return await relocate();
+    } finally {
+      isMoving = false;
+      _completion!.complete();
+      _completion = null;
+    }
   }
 }

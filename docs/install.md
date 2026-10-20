@@ -166,7 +166,7 @@ Everything below is for people who want to hack on the app. Regular users can st
 
 **Prerequisites**
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) **3.47.0** — the exact version CI builds and tests with. The project needs Dart 3.10.8 or newer. macOS **13.3 Ventura** is the floor.
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) **3.47.7** — the exact version CI builds and tests with. The project needs Dart 3.10.8 or newer. macOS **13.3 Ventura** is the floor.
 - Git
 
 That's the whole list — voice, speech-to-text, character expressions and memory embeddings all run **in-process** via libraries that ship with the app's packages. No Rust and no Python toolchain to set up. (The language model itself is the exception, and always has been: KoboldCpp is a separate local server that the app downloads, then starts and stops for you from the UI.)
@@ -197,7 +197,7 @@ flutter pub get
 flutter run
 ```
 
-The generated database code and the built web/phone interface are both committed, so a fresh clone runs with no extra build steps. You only need Node and npm if you're actually changing the web UI in `web_ui/` — then run `npm ci && npm run build` in that folder, which writes the bundle the Flutter app serves.
+The generated database code is committed. The web/phone interface is built from `web_ui/`, not committed, so a fresh clone needs Node and npm once before the app can serve its phone UI, and again after any change in `web_ui/`: `npm ci && npm run build` in that folder, which writes the bundle the Flutter app serves.
 
 **Release builds**
 

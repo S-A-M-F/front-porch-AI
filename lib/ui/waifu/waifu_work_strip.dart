@@ -44,12 +44,16 @@ class WaifuWorkStrip extends StatelessWidget {
   const WaifuWorkStrip({
     super.key,
     required this.record,
+    required this.name,
     this.writes = const [],
     this.verifiedPaths = const [],
     this.onClose,
   });
 
   final WaifuWriteRecord record;
+
+  /// The coworker's name, for the headline.
+  final String name;
   final List<WaifuWriteRecord> writes;
   final List<String> verifiedPaths;
   final VoidCallback? onClose;
@@ -62,7 +66,7 @@ class WaifuWorkStrip extends StatelessWidget {
         : waifuClipWorkPreview(record.before);
     final after = waifuClipWorkPreview(record.after);
     final files = writes.isEmpty ? [record] : writes;
-    final headline = waifuTurnReceiptHeadline(files);
+    final headline = waifuTurnReceiptHeadline(files, name: name);
     final paths = waifuTurnTouchedPaths(files);
     final verify = waifuTurnVerifyLine(verifiedPaths);
     return ConstrainedBox(
@@ -87,7 +91,7 @@ class WaifuWorkStrip extends StatelessWidget {
                   Expanded(
                     child: Text(
                       headline.isEmpty
-                          ? 'Last write: ${record.relativePath}'
+                          ? '$name changed ${record.relativePath}'
                           : headline,
                       key: const Key('waifu-work-strip-headline'),
                       style: TextStyle(
@@ -125,7 +129,7 @@ class WaifuWorkStrip extends StatelessWidget {
                         style: TextStyle(
                           color: AppColors.textSecondary(context),
                           fontFamily: 'monospace',
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                   ],
@@ -148,7 +152,7 @@ class WaifuWorkStrip extends StatelessWidget {
                 'Before',
                 style: TextStyle(
                   color: AppColors.textTertiary(context),
-                  fontSize: 11,
+                  fontSize: 12,
                 ),
               ),
               Text(
@@ -164,7 +168,7 @@ class WaifuWorkStrip extends StatelessWidget {
                 'After',
                 style: TextStyle(
                   color: AppColors.textTertiary(context),
-                  fontSize: 11,
+                  fontSize: 12,
                 ),
               ),
               Text(

@@ -19,48 +19,12 @@
 part of '../chat_service.dart';
 
 /// Turn-progression surfaces that sit outside the [ChatServiceSend] spine:
-/// Director/observer/auto-play controls, group speaker picking, TTS-paced
+/// group speaker picking, TTS-paced
 /// auto-play, the web/mobile Chance Time reveal surface, the Journal recap
 /// controls, background RAG embedding, and the periodic (cast-detection)
 /// eval coordinator. Extracted verbatim from `chat_service.dart` — zero
 /// behaviour change.
 extension ChatServiceTurnFlow on ChatService {
-  /// Set observer mode on/off.
-  void setObserverMode(bool value) {
-    _observerMode = value;
-    if (!value) {
-      _autoPlayActive = false;
-    }
-    notifyListeners();
-  }
-
-  /// Start auto-play: characters keep chatting automatically.
-  void startAutoPlay() {
-    if (_activeGroup == null || !_observerMode) return;
-    _autoPlayActive = true;
-    notifyListeners();
-    _autoPlayNext();
-  }
-
-  /// Stop auto-play.
-  void stopAutoPlay() {
-    _autoPlayActive = false;
-    notifyListeners();
-  }
-
-  /// Internal: trigger the next auto-play response.
-  Future<void> _autoPlayNext() async {
-    if (!_autoPlayActive || !_observerMode || _activeGroup == null) return;
-    // Both auto-play schedulers (generation.dart and _waitForTtsThenContinue)
-    // arm their delay AFTER the awaited post-gen section has already finished,
-    // so this is clear by the time they fire; no re-arm machinery is needed.
-    if (_isTurnBusy) return; // wait for the current turn to finish settling
-
-    // Each spoken reply post-decides the clock; the next speaker is
-    // announced at that time (bucket brigade). No pre-tick.
-    await _generateResponse(GenerationMode.normal);
-  }
-
   /// Trigger the next character to speak in group mode.
   Future<void> triggerNextCharacter() async {
     if (_activeGroup == null || _groupCharacters.isEmpty || _isTurnBusy) {
@@ -130,17 +94,43 @@ extension ChatServiceTurnFlow on ChatService {
       }
     }
     final first = _pickNextGroupCharacter();
-    if (!_groupSpeakerSkips(first)) return first;
-    for (final card in _groupCharacters) {
-      if (_getCharacterIdFromCard(card) == _getCharacterIdFromCard(first)) {
-        continue;
-      }
-      if (!_groupSpeakerSkips(card)) {
-        _groupManager?.advanceAfterRegeneration(card);
-        return card;
+    final present = _presentFrom(first);
+    if (present == null || identical(present, first)) return first;
+    _groupManager?.advanceAfterRegeneration(present);
+    return present;
+  }
+
+  /// Who [_pickPresentGroupSpeaker] will pick, without taking the turn.
+  /// The Next tooltip, sidebar badge and web cast chip read this, so they
+  /// name the member who actually speaks.
+  CharacterCard? get _upcomingGroupSpeaker {
+    final manager = _groupManager;
+    if (manager == null || !manager.isActive) return null;
+    final head = manager.nextSpeaker;
+    if (manager.hasForcedSpeaker) return head;
+    final returnId = _awayPulse.pendingReturnSpeakId;
+    if (returnId != null) {
+      for (final card in _groupCharacters) {
+        if (_getCharacterIdFromCard(card) == returnId) return card;
       }
     }
-    return first;
+    if (head == null) return null;
+    return _presentFrom(head) ?? head;
+  }
+
+  /// First member With you walking the rotation from [head]: the member
+  /// after a skipped one, not the roster's first (that parked the rotation
+  /// on the skipped member and starved everyone behind them). Null when
+  /// the whole roster skips.
+  CharacterCard? _presentFrom(CharacterCard head) {
+    final cast = _groupCharacters;
+    final start = cast.indexWhere((c) => identical(c, head));
+    if (start < 0) return _groupSpeakerSkips(head) ? null : head;
+    for (var i = 0; i < cast.length; i++) {
+      final card = cast[(start + i) % cast.length];
+      if (!_groupSpeakerSkips(card)) return card;
+    }
+    return null;
   }
 
   String _presenceSkipBanner(CharacterCard card) {
@@ -202,8 +192,9 @@ extension ChatServiceTurnFlow on ChatService {
     return !stanceSaysAway(stance);
   }
 
-  /// Wait for TTS to finish speaking, then apply the configured delay before auto-play.
-  void _waitForTtsThenContinue() {
+  /// Wait for TTS to finish speaking, then apply the configured delay before
+  /// auto-play. [run] is the auto-chat run that armed the wait.
+  void _waitForTtsThenContinue(int run) {
     if (!(_groupManager?.autoPlayActive ?? false) ||
         !(_groupManager?.observerMode ?? false)) {
       return;
@@ -220,7 +211,9 @@ extension ChatServiceTurnFlow on ChatService {
         final delayMs = ((_groupManager?.directorDelaySec ?? 15.0) * 1000)
             .round();
         Future.delayed(Duration(milliseconds: delayMs), () {
-          if ((_groupManager?.autoPlayActive ?? false) && !_isGenerating) {
+          if ((_groupManager?.autoPlayActive ?? false) &&
+              !_isGenerating &&
+              _autoChatBudget.run == run) {
             _autoPlayNext();
           }
         });
@@ -258,7 +251,7 @@ extension ChatServiceTurnFlow on ChatService {
     if (!_chaosModeService.chaosModeEnabled) return false;
     if (_chaosModeService.hasPendingChaosEvent) return false;
     if (_webChanceTimeEvent != null) return false;
-    final wheel = _chaosModeService.spinWheelEvents();
+    final wheel = spinWheelEvents();
     if (wheel.isEmpty) return false;
     _webChanceTimeEvent = wheel.first;
     notifyListeners();
@@ -271,10 +264,11 @@ extension ChatServiceTurnFlow on ChatService {
   String get chanceTimeSpeakerName =>
       nextCharacter?.name ?? activeCharacter?.name ?? 'Character';
 
-  /// The pre-picked pending event with `{{char}}` resolved, for the web reveal
+  /// The pre-picked pending event with its placeholders resolved, for the web reveal
   /// modal. Null when nothing is parked.
-  String? get webChanceTimeDisplay =>
-      _webChanceTimeEvent?.replaceAll('{{char}}', chanceTimeSpeakerName);
+  String? get webChanceTimeDisplay => _webChanceTimeEvent == null
+      ? null
+      : resolveChanceTimeEvent(_webChanceTimeEvent!, chanceTimeSpeakerName);
 
   /// Web/mobile "Accept Your Fate": applies the pre-picked pending event using
   /// the same attribution the desktop wheel uses, then lets generation resume.
@@ -351,8 +345,8 @@ extension ChatServiceTurnFlow on ChatService {
           userMessagesSincePass >=
           _storageService.memorySettings.journalInterval;
       // Salient immediacy is ONLY eventKickPending, which already passed
-      // [_requestSalienceKick]. Reading the window again would bypass the
-      // shared cooldown Growth already honors.
+      // GrowthDesk.requestSalienceKick. Reading the window again would bypass
+      // the shared cooldown Growth already honors.
       if (due || _journalMaintenance.eventKickPending) {
         _journalMaintenance.runMaintenancePass();
       }
@@ -409,7 +403,7 @@ extension ChatServiceTurnFlow on ChatService {
   List<String> _formatMessagesForRagEmbedding(List<ChatMessage> messages) {
     return messages.map((m) {
       if (m.characterId == '__director__') {
-        return '[Director: ${m.text}]';
+        return m.toPromptHistoryLine(); // note or narration
       }
       return '${m.sender}: ${m.text}';
     }).toList();
@@ -418,8 +412,8 @@ extension ChatServiceTurnFlow on ChatService {
   /// Coordinator for the periodic background evals (now just Scene Guest cast
   /// detection). User-fact extraction and chat summaries were replaced by the
   /// Journal maintenance pass (_maybeRunJournalPass); character evolution was
-  /// replaced by the growth pass (_maybeRunGrowthPass in
-  /// chat_service_growth.dart), which has its own cursor-based cadence.
+  /// replaced by the growth pass (GrowthDesk.maybeRunGrowthPass), which has
+  /// its own cursor-based cadence.
   void _maybeRunPeriodicEvals() {
     // Scene Guest cast detection (1:1 only). Runs on its own cadence and
     // fires-and-forget so it never blocks the turn. See _maybeRunCastDetection.

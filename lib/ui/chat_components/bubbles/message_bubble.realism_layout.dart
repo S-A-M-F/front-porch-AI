@@ -16,9 +16,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'message_bubble.dart';
+import 'package:flutter/material.dart';
 
-/// Lays out the two realism chip lists built by `_buildRealismIndicator`
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+
+import 'message_bubble.realism.dart';
+
+/// Lays out the two realism chip lists built by [MessageRealismIndicator]
 /// (`message_bubble.realism.dart`): the classic chips `Wrap`, or the
 /// two-row layout (classic `Wrap` above a needs-chips `Wrap`), followed
 /// by the Manual Reprocess / Revert-reprocess pills. BOTH rows wrap: the
@@ -27,11 +33,31 @@ part of 'message_bubble.dart';
 /// bond/trust — four "took off: …" receipts overflowed a bubble by 1086px
 /// (live repro 2026-08-15). Wrap's own spacing also retired the `_spaced`
 /// helper (the old RangeError fix for an empty chip list).
-extension _BubbleRealismLayout on _MessageBubbleState {
-  Widget _realismChipLayout(
-    List<Widget> chips,
-    List<Widget> needsChipList,
-  ) {
+class MessageRealismChipLayout extends StatelessWidget {
+  const MessageRealismChipLayout({
+    super.key,
+    required this.chips,
+    required this.needsChips,
+    required this.message,
+    required this.index,
+    required this.chatService,
+    required this.onReprocess,
+  });
+
+  /// Classic chips: bond, trust, mood, time, receipts, Director status.
+  final List<Widget> chips;
+
+  /// Needs Simulation delta chips, on their own row.
+  final List<Widget> needsChips;
+  final ChatMessage message;
+  final int index;
+  final ChatService? chatService;
+
+  /// Opens Manual Reprocess for this message.
+  final VoidCallback onReprocess;
+
+  @override
+  Widget build(BuildContext context) {
     // Wrap, not Row — same rule as the needs row below. Pocket receipt
     // chips ("took off: white long-sleeved haori (Royal Guard white)") are
     // sentence-length, and a turn can carry several beside bond/trust/mood.
@@ -39,25 +65,17 @@ extension _BubbleRealismLayout on _MessageBubbleState {
     final classicBox = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.resolve(
-          context,
-          AppColors.resolve(
-            context,
-            Colors.black12,
-            Colors.black.withValues(alpha: 0.06),
-          ),
-          Colors.black.withValues(alpha: 0.06),
-        ),
+        color: InkColors.chipWellOf(context),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: InkColors.faintLineOf(context)),
       ),
       child: classicRow,
     );
 
     // Built once so BOTH layouts below can render them — see _reprocessPills.
-    final pills = _reprocessPills();
+    final pills = _reprocessPills(context);
 
-    if (needsChipList.isEmpty) {
+    if (needsChips.isEmpty) {
       // Nothing classic and no needs chips → nothing to show (guard should have caught most,
       // but be defensive after 0-delta filtering in needs).
       if (chips.isEmpty && pills.isEmpty) return const SizedBox.shrink();
@@ -72,10 +90,7 @@ extension _BubbleRealismLayout on _MessageBubbleState {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
-          children: [
-            if (chips.isNotEmpty) classicBox,
-            ...pills,
-          ],
+          children: [if (chips.isNotEmpty) classicBox, ...pills],
         ),
       );
     }
@@ -99,14 +114,14 @@ extension _BubbleRealismLayout on _MessageBubbleState {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.07),
+              color: InkColors.chipWellOf(context, dark: InkColors.dim(0.07)),
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: InkColors.faintLineOf(context)),
             ),
             // Wrap, not Row: all seven needs can carry a delta at once (a
             // manual reprocess routinely returns a full set) and seven chips
             // overflow the bubble — Windows hit it first, by 0.668px.
-            child: Wrap(spacing: 8, runSpacing: 4, children: needsChipList),
+            child: Wrap(spacing: 8, runSpacing: 4, children: needsChips),
           ),
 
           // Row 3: Manual Reprocess / Revert buttons (only for last non-user msg with usable needs state)
@@ -126,38 +141,45 @@ extension _BubbleRealismLayout on _MessageBubbleState {
   /// needs chip and therefore stranded Revert, the one control whose whole job
   /// is undoing what the user just did. The web twin (ChipsRow.tsx) already
   /// renders them as a sibling of both chip rows; this matches it.
-  List<Widget> _reprocessPills() {
-    final chat = widget.chatService;
+  List<Widget> _reprocessPills(BuildContext context) {
+    final chat = chatService;
     if (chat == null ||
         index != chat.messages.length - 1 ||
         message.isUser ||
-        chat.isGenerating) {
+        chat.isGenerating ||
+        // The judges are running (a Feelings re-score holds this for its
+        // whole pass). The settling half of the turn is gated in the
+        // resolvers, which golden doubles never reach.
+        chat.isEvaluatingRealism) {
       return const <Widget>[];
     }
     final meta = message.activeMetadata;
-    // Resolver is the one gate: Needs off, zero enabled, or an unresolved
-    // group speaker hide the chip even if a stale needs snapshot is stamped.
-    final canReprocess = chat.reprocessNeedsTargetFor(index) != null;
+    // The resolvers are the one gate: the pill shows when either choice is
+    // on offer — Needs (off, zero enabled, or an unresolved group speaker
+    // hide it even if a stale needs snapshot is stamped) or Feelings (the
+    // last reply with Realism on for this chat).
+    final canReprocess =
+        chat.reprocessNeedsTargetFor(index) != null ||
+        chat.reprocessFeelingsTargetFor(index) != null;
     // Revert is offered only when a pre-reprocess stash exists on this (last) msg
-    final canRevert = meta != null && meta['needs_deltas_pre_reprocess'] is Map;
+    final canRevert =
+        chat.needsActive &&
+        meta != null &&
+        meta['needs_deltas_pre_reprocess'] is Map;
     if (!canReprocess && !canRevert) return const <Widget>[];
 
     return [
       if (canReprocess) ...[
         const SizedBox(height: 6),
         Tooltip(
-          message: 'Reprocess Needs with critique',
+          message: 'Redo the Needs or the Feelings for this reply',
           preferBelow: false,
-          textStyle: const TextStyle(fontSize: 12, color: Colors.white),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.white12),
-          ),
+          textStyle: RealismColors.tooltipText(context),
+          decoration: RealismColors.tooltipDecoration(context),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => showReprocessNeedsDialog(context, index),
+              onTap: onReprocess,
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -165,18 +187,14 @@ extension _BubbleRealismLayout on _MessageBubbleState {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.resolve(
+                  color: AppColors.optionalAccentOf(
                     context,
-                    AppColors.optionalAccent.withValues(alpha: 0.15),
-                    AppColors.optionalAccent.withValues(alpha: 0.15),
-                  ),
+                  ).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: AppColors.resolve(
+                    color: AppColors.optionalAccentOf(
                       context,
-                      AppColors.optionalAccent.withValues(alpha: 0.4),
-                      AppColors.optionalAccent.withValues(alpha: 0.4),
-                    ),
+                    ).withValues(alpha: 0.4),
                   ),
                 ),
                 child: Row(
@@ -185,7 +203,7 @@ extension _BubbleRealismLayout on _MessageBubbleState {
                     Icon(
                       Icons.rate_review,
                       size: 12,
-                      color: AppColors.optionalAccent,
+                      color: AppColors.optionalAccentOf(context),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -193,7 +211,7 @@ extension _BubbleRealismLayout on _MessageBubbleState {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.optionalAccent,
+                        color: AppColors.optionalAccentOf(context),
                       ),
                     ),
                   ],
@@ -209,12 +227,8 @@ extension _BubbleRealismLayout on _MessageBubbleState {
           message:
               'Restore previous Needs deltas and live state before the last reprocess',
           preferBelow: false,
-          textStyle: const TextStyle(fontSize: 12, color: Colors.white),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1F2937),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: Colors.white12),
-          ),
+          textStyle: RealismColors.tooltipText(context),
+          decoration: RealismColors.tooltipDecoration(context),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
@@ -227,23 +241,16 @@ extension _BubbleRealismLayout on _MessageBubbleState {
               },
               borderRadius: BorderRadius.circular(16),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.resolve(
+                  color: AppColors.optionalAccentOf(
                     context,
-                    AppColors.optionalAccent.withValues(alpha: 0.12),
-                    AppColors.optionalAccent.withValues(alpha: 0.12),
-                  ),
+                  ).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: AppColors.resolve(
+                    color: AppColors.optionalAccentOf(
                       context,
-                      AppColors.optionalAccent.withValues(alpha: 0.35),
-                      AppColors.optionalAccent.withValues(alpha: 0.35),
-                    ),
+                    ).withValues(alpha: 0.35),
                   ),
                 ),
                 child: Row(
@@ -252,7 +259,7 @@ extension _BubbleRealismLayout on _MessageBubbleState {
                     Icon(
                       Icons.undo,
                       size: 11,
-                      color: AppColors.optionalAccent,
+                      color: AppColors.optionalAccentOf(context),
                     ),
                     SizedBox(width: 4),
                     Text(
@@ -260,7 +267,7 @@ extension _BubbleRealismLayout on _MessageBubbleState {
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.optionalAccent,
+                        color: AppColors.optionalAccentOf(context),
                       ),
                     ),
                   ],

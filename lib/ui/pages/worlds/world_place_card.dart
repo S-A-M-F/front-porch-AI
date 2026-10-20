@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 /// One place in the Worlds grid — cover (or letter), climate chip, actions.
@@ -29,12 +29,11 @@ class WorldPlaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.formMasterAccent;
+    final accent = AppColors.formAccentOf(context);
     final worldColor = WorldColors.getColorForWorld(world.name);
     final climate = world.biomeId;
-    final climateLabel = (climate != null &&
-            climate.isNotEmpty &&
-            climate != 'temperate')
+    final climateLabel =
+        (climate != null && climate.isNotEmpty && climate != 'temperate')
         ? climate
         : null;
 
@@ -71,10 +70,9 @@ class WorldPlaceCard extends StatelessWidget {
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
-                        // Deliberately raw white/black: text sits ON the cover
-                        // photo, so contrast must be theme-independent (not an
-                        // AppColors chrome accent).
-                        color: Colors.white,
+                        // Text sits on the cover photo, so it is the same in
+                        // every theme.
+                        color: InkColors.onImage,
                         shadows: const [
                           Shadow(blurRadius: 8, color: Colors.black54),
                         ],
@@ -88,7 +86,7 @@ class WorldPlaceCard extends StatelessWidget {
                       icon: Icon(
                         Icons.more_vert,
                         size: 18,
-                        color: Colors.white.withValues(alpha: 0.95),
+                        color: InkColors.onImage.withValues(alpha: 0.95),
                       ),
                       color: AppColors.surfaceContainerOf(context),
                       onSelected: (action) {
@@ -264,8 +262,9 @@ class _CoverBackgroundState extends State<_CoverBackground> {
   }
 
   Widget _gradientFallback() {
-    final initial =
-        world.name.trim().isEmpty ? '?' : world.name.trim()[0].toUpperCase();
+    final initial = world.name.trim().isEmpty
+        ? '?'
+        : world.name.trim()[0].toUpperCase();
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -273,7 +272,7 @@ class _CoverBackgroundState extends State<_CoverBackground> {
           end: Alignment.bottomRight,
           colors: [
             fallback.withValues(alpha: 0.85),
-            AppColors.formMasterAccent.withValues(alpha: 0.55),
+            AppColors.formAccentOf(context).withValues(alpha: 0.55),
           ],
         ),
       ),
@@ -283,7 +282,7 @@ class _CoverBackgroundState extends State<_CoverBackground> {
           style: TextStyle(
             fontSize: 36,
             fontWeight: FontWeight.w700,
-            color: Colors.white.withValues(alpha: 0.9),
+            color: InkColors.onImage.withValues(alpha: 0.9),
           ),
         ),
       ),

@@ -21,27 +21,55 @@ import 'package:front_porch_ai/services/image/image_gen_types.dart';
 import 'package:front_porch_ai/services/storage/settings/image_gen_settings.dart';
 import 'package:front_porch_ai/services/storage/settings/remote_api_key_vault.dart';
 
-/// Image Studio's two remote image hosts. Keys live in [RemoteApiKeyVault];
+/// Image Studio's remote image hosts. Keys live in [RemoteApiKeyVault];
 /// the selected URL is Image Studio–scoped and must not rewrite chat's mouth.
 const kImageStudioRemoteHosts = <ImageStudioRemoteHost>[
-  ImageStudioRemoteHost(id: 'nano', label: 'Nano-GPT', url: kNanoGptApiV1),
+  ImageStudioRemoteHost(
+    id: 'nano',
+    label: 'Nano-GPT',
+    url: kNanoGptApiV1,
+    model: 'z-image-turbo',
+  ),
   ImageStudioRemoteHost(
     id: 'openrouter',
     label: 'OpenRouter',
     url: kOpenRouterApiV1,
+    model: 'google/gemini-2.5-flash-image',
+    editModel: 'google/gemini-2.5-flash-image',
+  ),
+  ImageStudioRemoteHost(
+    id: 'xai',
+    label: 'xAI',
+    url: kXaiApiV1,
+    model: 'grok-imagine-image',
+    editModel: 'grok-imagine-image',
   ),
 ];
+
+/// The Studio host for [url], or null for a custom address.
+ImageStudioRemoteHost? imageRemoteHostFor(String url) {
+  final id = imageRemoteHostIdFor(url);
+  if (id == null) return null;
+  return kImageStudioRemoteHosts.firstWhere((h) => h.id == id);
+}
 
 class ImageStudioRemoteHost {
   const ImageStudioRemoteHost({
     required this.id,
     required this.label,
     required this.url,
+    this.model = '',
+    this.editModel = '',
   });
 
   final String id;
   final String label;
   final String url;
+
+  /// The model a first visit starts on, so a switch never carries another
+  /// host's id over. Empty means the user picks one.
+  final String model;
+  final String editModel;
 }
 
 /// Image Studio fetch/generate host. A stored Studio URL wins; otherwise the
@@ -193,7 +221,10 @@ Future<String?> sanitizeRemoteImageSlot({
   return null;
 }
 
-/// Switch Studio's remote host and restore that host's last image model.
+/// Switch Studio's remote host. The model for [editScoped]'s slot comes back
+/// to what it last was on that host, or starts on the host's own model; the
+/// other slot follows on a known host, so another host's id is never sent
+/// to one.
 /// Writes only [ImageGenSettings] — chat [remoteApiUrl] is untouched.
 /// Local checkpoint filenames are never written into [image_remote_models].
 Future<void> applyImageRemoteHost({
@@ -203,7 +234,8 @@ Future<void> applyImageRemoteHost({
   required bool editScoped,
   bool Function()? canWrite,
 }) async {
-  if (!(canWrite?.call() ?? true)) return;
+  bool live() => canWrite?.call() ?? true;
+  if (!live()) return;
   final next = normalizeRemoteApiUrl(url);
   if (next.isEmpty) return;
   final prev = normalizeRemoteApiUrl(
@@ -211,33 +243,39 @@ Future<void> applyImageRemoteHost({
         ? image.imageRemoteApiUrl
         : chatRemoteApiUrl,
   );
-  final currentModel = editScoped
-      ? image.imageGenEditModel
-      : image.imageGenModel;
-  if (prev.isNotEmpty &&
-      currentModel.isNotEmpty &&
-      prev != next &&
-      !looksLikeLocalImageModel(currentModel)) {
-    if (!(canWrite?.call() ?? true)) return;
-    await image.setRemoteImageModelFor(prev, currentModel, edit: editScoped);
+  final host = imageRemoteHostFor(next);
+  Future<void> set(bool edit, String id) =>
+      edit ? image.setImageGenEditModel(id) : image.setImageGenModel(id);
+  // A custom address only ever moved the picked slot, so only that slot's
+  // model is its own to remember.
+  final prevKnown = imageRemoteHostFor(prev) != null;
+  final leaving = prev == next || !prevKnown ? [editScoped] : [false, true];
+  for (final edit in leaving) {
+    final current = edit ? image.imageGenEditModel : image.imageGenModel;
+    final local = looksLikeLocalImageModel(current);
+    if (prev == next) {
+      if (local && live()) {
+        await set(edit, image.remoteImageModelFor(next, edit: edit));
+      }
+      continue;
+    }
+    if (prev.isNotEmpty && current.isNotEmpty && !local) {
+      if (!live()) return;
+      await image.setRemoteImageModelFor(prev, current, edit: edit);
+    }
   }
-  if (!(canWrite?.call() ?? true)) return;
+  if (!live()) return;
   await image.setImageRemoteApiUrl(next);
-  if (!(canWrite?.call() ?? true)) return;
-  final restored = image.remoteImageModelFor(next, edit: editScoped);
-  if (restored.isNotEmpty) {
-    if (editScoped) {
-      await image.setImageGenEditModel(restored);
-    } else {
-      await image.setImageGenModel(restored);
-    }
-    return;
-  }
-  if (looksLikeLocalImageModel(currentModel)) {
-    if (editScoped) {
-      await image.setImageGenEditModel('');
-    } else {
-      await image.setImageGenModel('');
-    }
+  if (prev == next) return;
+  for (final edit in [false, true]) {
+    if (!live()) return;
+    final restored = image.remoteImageModelFor(next, edit: edit);
+    final start = restored.isNotEmpty
+        ? restored
+        : (edit ? host?.editModel : host?.model) ?? '';
+    // The slot being picked for always moves. On a known host the other one
+    // does too (empty when the host has none for it); a custom address
+    // leaves it, as the expression pack switches only its Edit slot.
+    if (edit == editScoped || host != null) await set(edit, start);
   }
 }

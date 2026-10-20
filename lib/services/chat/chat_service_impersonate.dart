@@ -32,6 +32,7 @@ extension ChatServiceImpersonate on ChatService {
     if (await _abortIfBackendDown()) return;
 
     _isGenerating = true;
+    _generationPhase = GenerationPhase.impersonating;
     _cancelRequested = false;
     notifyListeners();
 
@@ -57,14 +58,10 @@ extension ChatServiceImpersonate on ChatService {
         systemPrompt = _observerMode
             ? observerModeSystemPrompt
             : defaultGroupSystemPrompt;
-      } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-        systemPrompt = speakingCharacter.systemPrompt;
-      } else if (_storageService.generationSettings.systemPrompt.isNotEmpty) {
-        systemPrompt = _storageService.generationSettings.systemPrompt;
       } else {
         // All backends speak the OpenAI chat protocol now (KoboldCpp via its
         // /v1/chat/completions door), so use the chat-style default prompt.
-        systemPrompt = defaultApiSystemPrompt;
+        systemPrompt = _resolveOneToOneBase(speakingCharacter);
       }
 
       if (_activeGroup != null) {
@@ -78,6 +75,11 @@ extension ChatServiceImpersonate on ChatService {
           systemPrompt +=
               '\n\n[Specific instructions for ${speakingCharacter.name}]\n${speakingCharacter.systemPrompt.trim()}';
         }
+      }
+
+      if (_amendmentsAllowed) {
+        systemPrompt = _storageService.generationSettings
+            .withSystemPromptAddition(systemPrompt);
       }
 
       // Lorebook via the shared injector — the same positioned buckets the
@@ -106,9 +108,12 @@ extension ChatServiceImpersonate on ChatService {
         );
       } else {
         personaBlock =
-            "${speakingCharacter.name}'s Persona: ${_resolvedCardPersonality(speakingCharacter, userName)}";
+            "${speakingCharacter.name}'s Persona: ${_growthDesk.resolvedCardPersonality(speakingCharacter, userName)}";
       }
-      final growthBlock = _resolvedGrowthBlock(speakingCharacter, userName);
+      final growthBlock = _growthDesk.resolvedGrowthBlock(
+        speakingCharacter,
+        userName,
+      );
 
       // User persona — inject user's self-description + learned facts
       final userPersonaBlock = await _buildUserPersonaBlock(userName);
@@ -117,7 +122,7 @@ extension ChatServiceImpersonate on ChatService {
       if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
         rawScenario = _activeGroup!.scenario;
       } else {
-        rawScenario = _getEffectiveScenario(speakingCharacter);
+        rawScenario = _growthDesk.effectiveScenario(speakingCharacter);
       }
       String scenario = rawScenario;
 
@@ -128,7 +133,9 @@ extension ChatServiceImpersonate on ChatService {
       // character's voice and often repeat "do not write for the user".
       final suffix = impersonateSuffix(userName: userName, prefix: prefix);
       const mesExampleBlock = '';
-      const postHistoryBlock = '';
+      var postHistoryBlock = _amendmentsAllowed
+          ? _storageService.generationSettings.withPostHistoryAddition('')
+          : '';
 
       String authorNoteBlock = '';
       if (_authorNote.isNotEmpty) {
@@ -168,6 +175,11 @@ extension ChatServiceImpersonate on ChatService {
         macroCtx,
         section: 'scenario',
       );
+      postHistoryBlock = _macroResolver.resolve(
+        postHistoryBlock,
+        macroCtx,
+        section: 'postHistory',
+      );
       final identity = impersonateIdentityBlock(
         userName: userName,
         characterName: speakingCharacter.name,
@@ -191,7 +203,7 @@ extension ChatServiceImpersonate on ChatService {
       // never the character's private feelings, needs or objectives — this
       // path has never registered those sections at all. Identity + card
       // frame ride the system message (they must outrank "do not write
-      // for {{user}}"). Character examples and post-history are omitted.
+      // for {{user}}"). Character examples and card post-history are omitted; global additions remain.
       final plan = PromptPlan();
       plan.add(id: 'system', inSystem: true, text: '$systemPrompt\n');
       plan.add(id: 'persona', inSystem: true, text: '$personaBlock\n');
@@ -199,20 +211,25 @@ extension ChatServiceImpersonate on ChatService {
       plan.add(id: 'examples', inSystem: true, text: mesExampleBlock);
       plan.add(id: 'start', text: '<START>\n');
       plan.add(id: 'history', text: '', counted: false);
-      plan.add(id: 'lore.before', text: loreBefore);
-      plan.add(id: 'growth', text: growthBlock);
-      plan.add(id: 'lore.after', text: loreAfter);
-      plan.add(
-        id: 'scenario',
-        text: ScenarioFade.wrapScenario(
+      final afterHistory = openOwnLines([
+        loreBefore,
+        growthBlock,
+        loreAfter,
+        ScenarioFade.wrapScenario(
           scenario,
           ScenarioFade.strengthForUserMessageCount(
             _messages.where((m) => m.isUser).length,
           ),
         ),
-      );
-      plan.add(id: 'lore.ex_top', text: loreExTop);
-      plan.add(id: 'lore.ex_bottom', text: loreExBottom);
+        loreExTop,
+        loreExBottom,
+      ]);
+      plan.add(id: 'lore.before', text: afterHistory[0]);
+      plan.add(id: 'growth', text: afterHistory[1]);
+      plan.add(id: 'lore.after', text: afterHistory[2]);
+      plan.add(id: 'scenario', text: afterHistory[3]);
+      plan.add(id: 'lore.ex_top', text: afterHistory[4]);
+      plan.add(id: 'lore.ex_bottom', text: afterHistory[5]);
       plan.add(id: 'post_history', text: postHistoryBlock);
       plan.add(id: 'lore.an_top', text: loreAnTop);
       plan.add(id: 'author_note', text: authorNoteBlock);
@@ -331,6 +348,7 @@ extension ChatServiceImpersonate on ChatService {
       debugPrint('[ChatService] Impersonate error: $e');
     } finally {
       _isGenerating = false;
+      _generationPhase = GenerationPhase.idle;
       notifyListeners();
     }
   }

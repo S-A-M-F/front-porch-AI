@@ -1,41 +1,54 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-part of 'setup_step.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/character_creator/creator_state.dart';
+import 'package:front_porch_ai/ui/character_creator/widgets/creator_input_label.dart';
+import 'package:front_porch_ai/ui/theme/creator_palette.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
-/// Extra Settings body and field helpers for [SetupStep].
-extension SetupStepFields on SetupStep {
-  Widget _inputLabel(
-    BuildContext context,
-    String text, {
-    bool required = false,
-  }) {
+/// A field caption for [SetupStep], with a red `*` when [required].
+class SetupInputLabel extends StatelessWidget {
+  final String text;
+  final bool required;
+
+  const SetupInputLabel(this.text, {super.key, this.required = false});
+
+  @override
+  Widget build(BuildContext context) {
+    // Inside the creator, the spec's label; hosted elsewhere (AI Enhance),
+    // the app's caption.
+    if (CreatorPalette.maybeOf(context) != null) {
+      return CreatorInputLabel(text, required: required);
+    }
     return Row(
       children: [
         Text(
           text,
           style: TextStyle(
             fontSize: 12,
-            color: AppColors.textSecondary(context),
+            color: CreatorPalette.of(context).prose,
             fontWeight: FontWeight.w500,
           ),
         ),
         if (required)
-          Text(
-            ' *',
-            style: TextStyle(
-              color: AppColors.resolve(
-                context,
-                Colors.redAccent,
-                Colors.red.shade700,
-              ),
-            ),
-          ),
+          Text(' *', style: TextStyle(color: CreatorPalette.of(context).bad)),
       ],
     );
   }
+}
 
-  Widget _buildExtraSettingsBody(BuildContext context, CreatorState state) {
+/// The KoboldCpp "Extra Settings" panel body: preset, hardware, GPU layers,
+/// context size, and KV quantization. Writes go to [state] and storage.
+class SetupExtraSettingsBody extends StatelessWidget {
+  final CreatorState state;
+
+  const SetupExtraSettingsBody({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
     final storage = Provider.of<StorageService>(context, listen: false);
     final hardwareService = Provider.of<HardwareService>(
       context,
@@ -75,7 +88,7 @@ extension SetupStepFields on SetupStep {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.surfaceContainerOf(context),
+              color: CreatorPalette.of(context).raise,
               borderRadius: BorderRadius.circular(8),
             ),
             child: hardwareService.isDetecting
@@ -87,9 +100,9 @@ extension SetupStepFields on SetupStep {
                     ),
                   )
                 : hardwareService.hardwareInfo == null
-                ? const Text(
+                ? Text(
                     'Hardware not detected.',
-                    style: TextStyle(color: Colors.redAccent),
+                    style: TextStyle(color: CreatorPalette.of(context).bad),
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,6 +162,13 @@ extension SetupStepFields on SetupStep {
               ),
             ],
           ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: state.contextSizeController,
+            builder: (context, value, _) => ContextSizeWarnings(
+              contextSize: int.tryParse(value.text),
+              maxOutput: storage.generationSettings.maxLength,
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -156,7 +176,7 @@ extension SetupStepFields on SetupStep {
                 'KV Quantization:',
                 style: TextStyle(
                   fontSize: 13,
-                  color: AppColors.textSecondary(context),
+                  color: CreatorPalette.of(context).prose,
                 ),
               ),
               const SizedBox(width: 12),
@@ -175,58 +195,58 @@ extension SetupStepFields on SetupStep {
       ),
     );
   }
+}
 
-  Widget _buildInfoRow(BuildContext context, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4.0),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: AppColors.textTertiary(context),
-              fontSize: 12,
-            ),
+Widget _buildInfoRow(BuildContext context, String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 4.0),
+    child: Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: CreatorPalette.of(context).muted,
+            fontSize: 12,
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: AppColors.textPrimary(context),
-                fontWeight: FontWeight.bold,
-              ),
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsTextField(
-    BuildContext context, {
-    required String label,
-    required TextEditingController controller,
-    required bool isNumber,
-    required ValueChanged<String> onChanged,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: TextStyle(color: AppColors.textPrimary(context)),
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: AppColors.textSecondary(context)),
-        filled: true,
-        fillColor: AppColors.surfaceContainerOf(context),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide.none,
         ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: CreatorPalette.of(context).ink,
+              fontWeight: FontWeight.bold,
+            ),
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildSettingsTextField(
+  BuildContext context, {
+  required String label,
+  required TextEditingController controller,
+  required bool isNumber,
+  required ValueChanged<String> onChanged,
+}) {
+  return TextField(
+    controller: controller,
+    keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+    style: TextStyle(color: CreatorPalette.of(context).ink),
+    onChanged: onChanged,
+    decoration: InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: CreatorPalette.of(context).prose),
+      filled: true,
+      fillColor: CreatorPalette.of(context).fieldFill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
       ),
-    );
-  }
+    ),
+  );
 }

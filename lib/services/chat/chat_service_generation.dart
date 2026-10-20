@@ -73,6 +73,11 @@ class _GenTurn {
 
   // ── entry / speaker pick (shell) ──
   late CharacterCard speakingCharacter;
+
+  /// The group rotation before this turn picked its speaker. Put back when
+  /// the turn ends before its reply bubble lands ([replyLanded]).
+  ({int index, String? forcedId})? rotationBeforePick;
+  bool replyLanded = false;
   late String userName;
   // Track original model for call mode swap/restore. Deliberately survives
   // outside the try/catch (H5): set in the request phase, read by the
@@ -119,6 +124,9 @@ class _GenTurn {
 
   // ── plan phase → rag/request phases ──
   String history = '';
+
+  /// Latest beat, cut off [history]; renders after the state zone.
+  String latestTurn = '';
   int droppedMessages = 0;
   int historyBudget = 0;
   late PromptPlan plan;
@@ -155,6 +163,22 @@ class _GenTurn {
   // ── stream phase → postgen phase ──
   String accumulatedResponse = '';
   late ChatMessage streamTarget;
+
+  /// When this stream's `<think>` opened; null until it does.
+  DateTime? thinkStartedAt;
+
+  /// Ends this stream's think clock on [streamTarget], on every exit (done,
+  /// Stop, throw). A think that never closed records the time spent so far,
+  /// or the next group speaker's turn shows "Thinking…" on this bubble. The
+  /// live start is this stream's alone: left on the message, a later swipe,
+  /// Continue or Impersonate would time "Thinking" from it.
+  void sealThinkClock() {
+    streamTarget.thinkingStartTime = null;
+    final started = thinkStartedAt;
+    if (started == null || streamTarget.thinkingDurationMs > 0) return;
+    final ms = DateTime.now().difference(started).inMilliseconds;
+    streamTarget.thinkingDurationMs = ms <= 0 ? 1 : ms;
+  }
 
   /// Pre-Continue body of the message being extended. Empty for non-Continue
   /// modes. [accumulatedResponse] is only the NEW tokens; the stream phase
@@ -275,6 +299,9 @@ extension ChatServiceGeneration on ChatService {
             fromUserSend: false,
           );
         }
+        if (forceSpeaker == null) {
+          t.rotationBeforePick = _groupManager?.rotation;
+        }
         speakingCharacter = forceSpeaker ?? _pickPresentGroupSpeaker();
       } else {
         speakingCharacter = _activeCharacter!;
@@ -300,7 +327,10 @@ extension ChatServiceGeneration on ChatService {
                 : StoryClock.failureDriftMinutes,
           );
           // F3: persist the drift on the tip so reopen cannot rewind it.
-          _writeSlotClock(_visibleTipMessage(), kind: _SlotClockWrite.tick);
+          _clockWriter.writeSlotClock(
+            _clockReader.visibleTipMessage(),
+            kind: SlotClockWrite.tick,
+          );
         }
         _messages.add(
           ChatMessage(
@@ -312,6 +342,7 @@ extension ChatServiceGeneration on ChatService {
         debugPrint(
           '[Presence] skip-turn ${speakingCharacter.name} — banner, no reply',
         );
+        t.rotationBeforePick = null; // the skip is that member's turn
         _isGenerating = false;
         _generationPhase = GenerationPhase.idle;
         await _saveChat();
@@ -326,7 +357,7 @@ extension ChatServiceGeneration on ChatService {
       // full member's Needs/bond. 1:1 scene guests (guestSpeaker) stay null.
       // Cleared in the finally below. Lite turns still skip the realism
       // dance and the realism/objective prompt blocks.
-      _turnSpeakerIdForRealism = (_activeGroup != null && guestSpeaker == null)
+      _groupStore.turnSpeakerId = (_activeGroup != null && guestSpeaker == null)
           ? _getCharacterIdFromCard(speakingCharacter)
           : null;
 
@@ -342,14 +373,14 @@ extension ChatServiceGeneration on ChatService {
           _realismActiveThisMode) {
         if (mode == GenerationMode.continue_ || skipSpeakerEval) {
           final sid = _getCharacterIdFromCard(speakingCharacter);
-          if (sid.isNotEmpty) _loadGroupRealismIntoScalars(sid);
+          if (sid.isNotEmpty) _realismDance.loadIntoScalars(sid);
         } else {
-          await _evaluateRealismForUpcomingSpeaker(speakingCharacter);
+          await _realismDance.evaluateForUpcomingSpeaker(speakingCharacter);
           // Cancel-aborts-generation, group edition: consume the flag and
           // abort before any prompt is built. Entry-state flags are reset
           // by hand — the normal clears live in completion/catch.
           if (_realismEvalCancelled) {
-            _applyTipClock();
+            _clockReader.applyTipClock();
             _pendingRealismMetadata = null;
             _needsSimulation.consumePendingCatastrophe();
             _realismEvalCancelled = false;
@@ -361,6 +392,11 @@ extension ChatServiceGeneration on ChatService {
             return;
           }
         }
+      } else if (guestSpeaker == null && _directing && !_isLiteTurn(t)) {
+        _realismDance.prepareDirectedSpeaker(
+          speakingCharacter,
+          stamp: mode != GenerationMode.continue_ && !skipSpeakerEval,
+        );
       }
 
       // ── The six-phase turn pipeline (chat_service_generation_*.dart) ──
@@ -375,7 +411,9 @@ extension ChatServiceGeneration on ChatService {
       }
       await _finalizeGenerationTurn(t);
     } catch (e) {
-      _restoreCapturedThroughReader();
+      _clockWriter.restoreCapturedThroughReader();
+      // A stream that threw mid-think must not leave its live start behind.
+      if (t.thinkStartedAt != null) t.sealThinkClock();
       final wasCancelled = _cancelRequested;
       _drainTimer?.cancel();
       _drainTimer = null;
@@ -395,24 +433,12 @@ extension ChatServiceGeneration on ChatService {
 
       // User-initiated cancel (or forced client close) — keep the partial response, no error message
       if (treatAsCancel) {
-        // Signal clean completion to SSE listeners
-        _tokenBroadcast.add('__DONE__');
-        if (_sentenceBuffer.trim().isNotEmpty) {
-          _sentenceBroadcast.add(_sentenceBuffer.trim());
-          _sentenceBuffer = '';
-        }
-        _sentenceBroadcast.add('__DONE__');
-
-        // Restore original model if swapped for call mode
-        if (t.originalModelName != null && _llmProvider != null) {
-          _llmProvider!.openRouterService.configure(
-            modelName: t.originalModelName,
-          );
-        }
-
-        // Save the partial response so regen/continue work
-        await _saveChat();
-        notifyListeners();
+        // A think-start stamp means the reply was being painted: close its
+        // thought like the stream-loop Stop does.
+        await _haltStoppedTurn(
+          t,
+          t.thinkStartedAt != null ? t.streamTarget : null,
+        );
         return;
       }
 
@@ -448,7 +474,13 @@ extension ChatServiceGeneration on ChatService {
       // on every exit (normal completion, early return, or error) so the next
       // turn's pre-pick window (e.g. _applyMoodDecay) keeps its prior
       // nextCharacter-based behaviour instead of seeing a stale speaker.
-      _turnSpeakerIdForRealism = null;
+      _groupStore.turnSpeakerId = null;
+      // Stopped, refused or failed before the reply landed: the picked
+      // member never spoke, so Try again (or the next send) is theirs.
+      final rotation = t.rotationBeforePick;
+      if (rotation != null && !t.replyLanded) {
+        _groupManager?.restoreRotation(rotation);
+      }
       _awayPulse.finishTurn();
       // Settling over, on EVERY exit — restore the CALLER's hold (regen keeps
       // it raised across its swipe-merge); a latched flag would wedge input.

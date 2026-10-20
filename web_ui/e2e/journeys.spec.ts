@@ -8,7 +8,7 @@
 // is FPAI_REPLY.
 
 import { readFile } from 'node:fs/promises';
-import type { Locator, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect, openRoute, SERIAL, test } from './support/fixtures';
 
 const REPLY = process.env.FPAI_REPLY ?? '';
@@ -25,14 +25,14 @@ test('expression workspace keeps its own prompt and picture across tabs', async 
       data: { backend: 'a1111', localUrl: 'http://127.0.0.1:9', currentPassword: process.env.FPAI_PASSWORD },
     });
     expect(configured.ok()).toBe(true);
-    await openRoute(page, '/models');
+    await openRoute(page, '/images');
     const panel = page.locator('#studio-pack-panel');
     await page.getByRole('tab', { name: 'Expression pack', exact: true }).click();
     await panel.getByLabel('Character', { exact: true }).selectOption({ label: 'Porch Tester' });
     await panel.getByLabel('Image prompt', { exact: true }).fill('A deliberate pack portrait');
     await panel.getByLabel('Pack picture file').setInputFiles({
       name: 'pack-source.png', mimeType: 'image/png',
-      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64'),
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAEAAAABQCAIAAAAm3eQSAAAAkUlEQVR4nO3PUQkAIBTAQGOb5CUxoCH8OITBAtzWnvN1iwsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKCB8YiXgQvuWSoOwHWgQgAAAABJRU5ErkJggg==', 'base64'),
     });
     await expect(panel).toContainText('Source: pack-source.png');
     await expect(panel.getByRole('button', { name: 'Start pack', exact: true })).toBeEnabled();
@@ -48,6 +48,40 @@ test('expression workspace keeps its own prompt and picture across tabs', async 
   } finally {
     const restored = await page.request.post('/api/image/config', {
       data: { backend: original.backend, localUrl: original.localUrl, currentPassword: process.env.FPAI_PASSWORD },
+    });
+    expect(restored.ok()).toBe(true);
+  }
+});
+
+test('the Remote API stove offers each host and asks a keyless one for its key', async ({ page }) => {
+  const original = await (await page.request.get('/api/image/config')).json() as {
+    backend: string; imageRemoteHost?: string;
+  };
+  try {
+    const configured = await page.request.post('/api/image/config', {
+      data: { backend: 'remote', imageRemoteHost: 'openrouter', currentPassword: process.env.FPAI_PASSWORD },
+    });
+    expect(configured.ok()).toBe(true);
+    await openRoute(page, '/images');
+    const stove = page.locator('.fp-remote');
+    await expect(stove).toContainText('Remote API');
+    const hosts = stove.getByRole('radiogroup', { name: 'Remote host' });
+    await expect(hosts.getByRole('radio')).toHaveCount(3);
+    await expect(hosts.getByRole('radio', { name: /OpenRouter/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(stove).toContainText('Paste your OpenRouter key to use it here');
+    await expect(stove).toContainText('Add an OpenRouter key, or pick another host.');
+    await expect(stove.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
+    await expect(page.getByText('LoRA', { exact: true })).toHaveCount(0);
+    await hosts.getByRole('radio', { name: /xAI/ }).click();
+    await expect(hosts.getByRole('radio', { name: /xAI/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(stove).toContainText('https://api.x.ai/v1');
+  } finally {
+    const restored = await page.request.post('/api/image/config', {
+      data: {
+        backend: original.backend,
+        ...(original.imageRemoteHost ? { imageRemoteHost: original.imageRemoteHost } : {}),
+        currentPassword: process.env.FPAI_PASSWORD,
+      },
     });
     expect(restored.ok()).toBe(true);
   }
@@ -154,6 +188,42 @@ test.describe.serial('a conversation', { tag: SERIAL }, () => {
     await expect(editor).toBeHidden();
   });
 
+  test('find a word in the chat with Ctrl+F, step through it, and close', async ({ page }) => {
+    await openPorchChat(page);
+    await page.keyboard.press('ControlOrMeta+f');
+    const bar = page.locator('.find-bar');
+    await expect(bar).toBeVisible();
+    await bar.locator('input.find-input').fill('porch swing');
+    await expect(bar.locator('.find-count')).toHaveText(/^1 \/ \d+$/);
+    const lit = page.locator('mark.find-hit.active');
+    await expect(lit).toHaveCount(1);
+    await expect(lit).toHaveText(/porch swing/i);
+
+    // A word that is nowhere says so instead of counting.
+    await bar.locator('input.find-input').fill('zzqx-not-here');
+    await expect(bar.locator('.find-count')).toHaveText('No matches');
+    await expect(page.locator('mark.find-hit')).toHaveCount(0);
+
+    // Every counted hit lights something. A 1:1 chat draws no speaker
+    // label, so the character's name only counts where it is in the text
+    // ("porch" alone hits the text and the name Porch Tester).
+    const scanned = page.waitForResponse((r) => r.url().includes('/api/chat/search?q=Porch'));
+    await bar.locator('input.find-input').fill('Porch');
+    await scanned;
+    const count = bar.locator('.find-count');
+    await expect(count).toHaveText(/^1 \/ \d+$/);
+    const total = Number(/\/ (\d+)$/.exec((await count.textContent()) ?? '')?.[1]);
+    await expect(page.locator('mark.find-hit')).toHaveCount(total);
+
+    await bar.locator('input.find-input').fill('porch swing');
+    await expect(lit).toHaveCount(1);
+    // Clicking a toggle leaves the keyboard in the field: Esc still closes.
+    await bar.getByTitle('Match case').click();
+    await page.keyboard.press('Escape');
+    await expect(bar).toBeHidden();
+    await expect(page.locator('mark.find-hit')).toHaveCount(0);
+  });
+
   test('regenerate with a note, then swipe between the two takes', async ({ page }) => {
     await openPorchChat(page);
     await action(lastRow(page), 'Regenerate').click();
@@ -177,11 +247,24 @@ test.describe.serial('a conversation', { tag: SERIAL }, () => {
     await expect.poll(async () => (await bubble.innerText()).length).toBeGreaterThan(before);
   });
 
-  test('delete the last reply after confirming', async ({ page, acceptConfirms }) => {
+  test('inspect the prompt behind a reply', async ({ page }) => {
+    await openPorchChat(page);
+    await action(lastRow(page), 'Inspect prompt').click();
+    const modal = page.locator('.ctxb-modal');
+    await expect(modal).toContainText('This reply');
+    await expect(modal).toContainText(/Total: \d+ \/ \d+ tokens/);
+    await expect(modal.getByRole('button', { name: 'Refresh' })).toHaveCount(0);
+    await modal.getByRole('button', { name: 'Close' }).click();
+    await expect(modal).toBeHidden();
+  });
+
+  test('delete the last reply after confirming', async ({ page }) => {
     await openPorchChat(page);
     const n = await rows(page).count();
-    acceptConfirms(true);
     await action(lastRow(page), 'Delete').click();
+    // The page's warm confirm (no longer the browser's window.confirm).
+    const confirm = page.locator('.drawer-backdrop .modal').filter({ hasText: 'Delete Message' });
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(rows(page)).toHaveCount(n - 1);
   });
 
@@ -288,6 +371,423 @@ test('the creator\'s Greetings step: a steered rewrite, an edit, a delete and an
 
     await page.getByRole('button', { name: 'Open in editor' }).click();
     await expect(page).toHaveURL(new RegExp(`/edit/${id}$`));
+  } finally {
+    const gone = await page.request.post(`/api/characters/${id}/delete`);
+    expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+  }
+});
+
+// The creator's Profile step, through a real create: the stand-in backend
+// answers each creator stage (integration_test/support/fake_backend_chargen),
+// so Generate stops at the profile with nothing saved; a steered rewrite
+// streams in and lands; Re-read puts back the facts the profile implies; a
+// reload finds the pause again; Next writes the rest and lands on the
+// Greetings step with no "profile changed" hint and the two review cards.
+// The character is deleted whatever happens.
+test('the creator\'s Profile step: pause, steer a rewrite, re-read, reload, then Next', async ({ page }) => {
+  const name = `Profile Journey ${test.info().project.name}`;
+  let id = '';
+  try {
+    await openRoute(page, '/create-ai');
+    await page.locator('.cg-field', { hasText: 'Name' }).locator('input').fill(name);
+    await page.getByRole('button', { name: /Quick Create/ }).click();
+    await page.getByRole('button', { name: /^Next: Details/ }).click();
+    await page.getByLabel('Concept').fill('A lighthouse keeper on a wet rock.');
+    await page.getByRole('button', { name: /^Next: Output/ }).click();
+    await page.getByRole('button', { name: /^Next: Generate/ }).click();
+    await page.getByRole('button', { name: /Generate character/ }).click();
+
+    const step = page.getByTestId('profile-step');
+    await expect(step).toBeVisible({ timeout: 120_000 });
+    await expect(page).toHaveURL(/profile=pending/);
+    const description = page.getByLabel('Description text');
+    await expect(description).toHaveValue(/tall and windburnt/);
+    const facts = page.getByTestId('facts-card');
+    const occupation = facts.locator('.cg-field', { hasText: 'OCCUPATION' }).locator('input');
+    await expect(occupation).toHaveValue('lighthouse keeper');
+    const library = (await (await page.request.get('/api/characters')).json()) as { name: string }[];
+    expect(library.some((c) => c.name === name), 'nothing is saved before Next').toBe(false);
+
+    // A steered rewrite streams into the boxes and lands.
+    await page.locator('#cg-profile-steer').fill('Does not follow the Tsundere personality type');
+    await page.getByRole('button', { name: 'Rewrite the profile' }).click();
+    await expect(page.getByTestId('profile-card-description')).toContainText('Writing…', { timeout: 30_000 });
+    await expect(facts).toContainText('Re-read after the rewrite');
+    await expect(description).toHaveValue(/rewritten the way the author asked/, { timeout: 60_000 });
+
+    // Re-read puts back what the profile implies.
+    await occupation.fill('baker');
+    await facts.getByRole('button', { name: 'Re-read from the profile' }).click();
+    await expect(occupation).toHaveValue('lighthouse keeper', { timeout: 60_000 });
+
+    // A reload finds the pause again, with the rewritten profile.
+    await page.reload();
+    await expect(step).toBeVisible({ timeout: 20_000 });
+    await expect(description).toHaveValue(/rewritten the way the author asked/);
+
+    // Next writes the rest and lands on Greetings.
+    await page.getByRole('button', { name: /^Next: Greetings/ }).click();
+    await expect(page.getByTestId('greetings-step')).toBeVisible({ timeout: 120_000 });
+    id = new URL(page.url().replace('/#/', '/')).searchParams.get('greetings') ?? '';
+    expect(id, 'the saved character is in the URL').not.toBe('');
+    await expect(page.getByTestId('creator-hint')).toHaveCount(0);
+    await expect(page.getByTestId('review-example-dialogue')).toContainText('Mind the third step');
+    await expect(page.getByTestId('review-lorebook')).toContainText('2 entries');
+    const after = (await (await page.request.get('/api/chargen/profile')).json()) as { pending: unknown };
+    expect(after.pending, 'the pause is gone once the card is saved').toBeNull();
+  } finally {
+    if (id) {
+      const gone = await page.request.post(`/api/characters/${id}/delete`);
+      expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+    }
+  }
+});
+
+// The Interview card on the Output step, through a real create (the
+// stand-in backend answers every interview question): edit a question,
+// remove one, add your own and drag it to the top, switch to the third
+// person; the Profile step's transcript asks exactly that list, in that
+// order, the standard questions worded for the third person. Back on
+// Output, Reset is the standard eleven again. Next saves the character so
+// nothing is left waiting on the relay; it is deleted whatever happens.
+test('the creator\'s Interview card: edit, remove, add and drag a question, then the transcript asks them', async ({
+  page,
+}) => {
+  const name = `Interview Journey ${test.info().project.name}`;
+  const EDITED = 'What would the keeper trade the lamp for, if anyone asked?';
+  const CUSTOM = 'Which ship does the keeper still watch for every night?';
+  let id = '';
+  try {
+    await openRoute(page, '/create-ai');
+    await page.locator('.cg-field', { hasText: 'Name' }).locator('input').fill(name);
+    await page.getByRole('button', { name: /Quick Create/ }).click();
+    await page.getByRole('button', { name: /^Next: Details/ }).click();
+    await page.getByLabel('Concept').fill('A lighthouse keeper on a wet rock.');
+    await page.getByRole('button', { name: /^Next: Output/ }).click();
+
+    const card = page.getByTestId('interview-card');
+    const rows = card.getByTestId('interview-row');
+    const question = (n: number) => card.getByLabel(`Question ${n}`, { exact: true });
+    await expect(rows).toHaveCount(11);
+    await expect(question(1)).toBeEnabled();
+    await expect(card.getByText('Answered in first person, present')).toBeVisible();
+
+    // Edit the second question: it is kept as written.
+    await question(2).fill(EDITED);
+    await expect(rows.nth(1).getByText('Edited · kept as written')).toBeVisible();
+
+    // Remove the sixth (the one about being cornered).
+    await expect(question(6)).toHaveValue(/cornered/);
+    await card.getByRole('button', { name: 'Remove question 6', exact: true }).click();
+    await expect(rows).toHaveCount(10);
+
+    // Add one of your own, then drag it by its handle to the top. Held at
+    // the top of the scrolling column, the page scrolls on under it.
+    await card.getByRole('button', { name: 'Add a question' }).click();
+    await expect(rows).toHaveCount(11);
+    await question(11).fill(CUSTOM);
+    const handle = card.getByRole('button', { name: 'Move question 11', exact: true });
+    await handle.scrollIntoViewIfNeeded();
+    const grip = (await handle.boundingBox())!;
+    const column = (await page.locator('.cg-content').boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + grip.width / 2, column.y + 8, { steps: 12 });
+    await expect(question(1)).toHaveValue(CUSTOM, { timeout: 15_000 });
+    await page.mouse.up();
+    await expect(question(3)).toHaveValue(EDITED);
+
+    // Third person: the standard questions are worded again, the edited and
+    // the custom ones stay as written.
+    await page.getByRole('button', { name: 'Third person', exact: true }).click();
+    await expect(card.getByText('Answered in third person, present')).toBeVisible();
+    await expect(question(2)).toHaveValue(/^How does .+ talk\?/);
+    await expect(question(1)).toHaveValue(CUSTOM);
+    await expect(question(3)).toHaveValue(EDITED);
+
+    await page.getByRole('button', { name: /^Next: Generate/ }).click();
+    await page.getByRole('button', { name: /Generate character/ }).click();
+    const step = page.getByTestId('profile-step');
+    await expect(step).toBeVisible({ timeout: 120_000 });
+
+    // The transcript asked the list as it was left. Quick mode sets no
+    // relationship and 18+ is off, so the two conditional rows are not asked.
+    await step.getByRole('button', { name: /Interview transcript/ }).click();
+    await expect(step).toContainText('9 questions, read only');
+    const transcript = await page.getByTestId('interview-transcript').innerText();
+    const asked = transcript.split('\n').filter((l) => l.startsWith('Q: '));
+    expect(asked).toHaveLength(9);
+    expect(asked[0]).toBe(`Q: ${CUSTOM}`);
+    expect(asked[1]).toMatch(/^Q: How does .+ talk\?/);
+    expect(asked[2]).toBe(`Q: ${EDITED}`);
+    expect(asked.some((q) => q.includes('cornered')), 'the removed question is not asked').toBe(false);
+    expect(asked.filter((q) => /\byou\b/i.test(q)), 'every question is in the third person').toEqual([]);
+
+    // Next writes the rest and saves the character.
+    await page.getByRole('button', { name: /^Next: Greetings/ }).click();
+    await expect(page.getByTestId('greetings-step')).toBeVisible({ timeout: 120_000 });
+    id = new URL(page.url().replace('/#/', '/')).searchParams.get('greetings') ?? '';
+    expect(id, 'the saved character is in the URL').not.toBe('');
+
+    // Back on Output, Reset brings the standard eleven back.
+    await page.locator('.step-dot', { hasText: 'Output' }).click();
+    await expect(rows).toHaveCount(11);
+    await card.getByRole('button', { name: 'Reset to the standard questions' }).click();
+    await expect(rows).toHaveCount(11);
+    await expect(card.getByText('Edited · kept as written')).toHaveCount(0);
+    await expect(question(1)).toHaveValue(/^How does .+ talk\?/);
+    await expect(card.getByTestId('interview-count')).toHaveText(/^11 of 12 · /);
+    const after = (await (await page.request.get('/api/chargen/profile')).json()) as { pending: unknown };
+    expect(after.pending, 'nothing is left waiting on the relay').toBeNull();
+  } finally {
+    if (id) {
+      const gone = await page.request.post(`/api/characters/${id}/delete`);
+      expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+    }
+  }
+});
+
+// The skip switch: switching "Interview this character" off asks nothing —
+// the eleven rows stay on screen, dimmed, and the count caption says so;
+// the Profile step has no interview transcript row; and the review card
+// at the foot of the Greetings step, read back through the card's stamp,
+// says the answers came straight from the settings. The character is
+// deleted whatever happens.
+test('the creator\'s Interview card switches off: no interview, and the stamp remembers', async ({
+  page,
+}) => {
+  const name = `Interview Skip Journey ${test.info().project.name}`;
+  let id = '';
+  try {
+    await openRoute(page, '/create-ai');
+    await page.locator('.cg-field', { hasText: 'Name' }).locator('input').fill(name);
+    await page.getByRole('button', { name: /Quick Create/ }).click();
+    await page.getByRole('button', { name: /^Next: Details/ }).click();
+    await page
+      .getByLabel('Concept')
+      .fill('A lighthouse keeper on a wet rock. Thirty years on one lamp, no illusions left, tea at midnight.');
+    await page.getByRole('button', { name: /^Next: Output/ }).click();
+
+    const card = page.getByTestId('interview-card');
+    await expect(card.getByTestId('interview-row')).toHaveCount(11);
+    await card.getByRole('switch', { name: 'Interview this character' }).setChecked(false);
+    await expect(card.getByTestId('interview-count')).toContainText('no interview');
+    await expect(card.getByTestId('interview-rows')).toHaveClass(/dimmed/);
+
+    await page.getByRole('button', { name: /^Next: Generate/ }).click();
+    await page.getByRole('button', { name: /Generate character/ }).click();
+    const step = page.getByTestId('profile-step');
+    await expect(step).toBeVisible({ timeout: 120_000 });
+    await expect(step.getByRole('button', { name: /Interview transcript/ })).toHaveCount(0);
+
+    // Next writes the rest and saves the character.
+    await page.getByRole('button', { name: /^Next: Greetings/ }).click();
+    await expect(page.getByTestId('greetings-step')).toBeVisible({ timeout: 120_000 });
+    id = new URL(page.url().replace('/#/', '/')).searchParams.get('greetings') ?? '';
+    expect(id, 'the saved character is in the URL').not.toBe('');
+
+    // The stamp says no unconditional question was asked, so the review
+    // card's subtitle stops crediting an interview that never ran.
+    await expect(page.getByTestId('review-example-dialogue')).toContainText('straight from your settings');
+  } finally {
+    if (id) {
+      const gone = await page.request.post(`/api/characters/${id}/delete`);
+      expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+    }
+  }
+});
+
+// Creator templates through the real relay and library: a template made on
+// the desktop (written here through the relay, with the desktop-only art
+// style, the third person and an edited interview question) loads on the
+// phone with the typed name left alone; saved back under its own name (the
+// replace caption shows) it keeps the art style; then it is renamed and
+// deleted through its ⋯ menu. Anything left is deleted whatever happens.
+test('creator templates: load a desktop-made template, save it back, rename and delete it', async ({ page }) => {
+  const project = test.info().project.name;
+  const NAME = `Templates Journey ${project}`;
+  const RENAMED = `${NAME} renamed`;
+  const EDITED = 'What does the keeper hear in the fog that nobody else does?';
+  // The slug rule for a plain ASCII name (templatesApi.ts has the whole rule).
+  const slugOf = (name: string) => (name.toLowerCase().match(/[a-z0-9]+/g) ?? []).join('-');
+  type Listed = { slug: string; name: string; form: Record<string, unknown> };
+  const list = async () =>
+    ((await (await page.request.get('/api/chargen/templates')).json()) as { templates: Listed[] }).templates;
+  try {
+    const made = await page.request.put(`/api/chargen/templates/${slugOf(NAME)}`, {
+      data: {
+        name: NAME,
+        form: {
+          mode: 'guided',
+          artStyle: 'Watercolor',
+          narrativePerspective: 'third',
+          narrativeTense: 'past',
+          guidedVision: 'A lighthouse keeper on a rock off a small harbor town.',
+          interviewQuestions: [
+            { key: 'voice', text: EDITED, condition: null },
+            { key: 'wants', text: null, condition: null },
+          ],
+        },
+      },
+    });
+    expect(made.ok(), `PUT the desktop template: ${made.status()}`).toBe(true);
+
+    await openRoute(page, '/create-ai');
+    const nameField = page.locator('.cg-field', { hasText: 'Name' }).locator('input').first();
+    await nameField.fill('Maren Holt');
+    const picker = page.getByTestId('template-picker');
+    await picker.getByRole('button', { name: NAME, exact: true }).click();
+    await expect(picker.getByTestId('template-tile').filter({ hasText: NAME }).first()).toHaveClass(/\bon\b/);
+    await expect(page.getByRole('button', { name: /Guided Creator/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(nameField).toHaveValue('Maren Holt');
+
+    await page.getByRole('button', { name: /^Next: Details/ }).click();
+    await expect(page.getByLabel('Your vision')).toHaveValue('A lighthouse keeper on a rock off a small harbor town.');
+    await page.getByRole('button', { name: /^Next: Output/ }).click();
+    await expect(page.getByRole('button', { name: 'Third person', exact: true })).toHaveClass(/\bon\b/);
+    await expect(page.getByRole('button', { name: 'Past', exact: true })).toHaveClass(/\bon\b/);
+    const card = page.getByTestId('interview-card');
+    await expect(card.getByText('Answered in third person, past')).toBeVisible();
+    await expect(card.getByTestId('interview-row')).toHaveCount(2);
+    await expect(card.getByLabel('Question 1', { exact: true })).toHaveValue(EDITED);
+    await expect(card.getByTestId('interview-row').first().getByText('Edited · kept as written')).toBeVisible();
+
+    // Save it back under the same name: the dialog says it replaces it.
+    const bar = page.getByTestId('template-save');
+    await expect(bar.getByText(`Started from: ${NAME}`)).toBeVisible();
+    await bar.getByRole('button', { name: 'Save as template' }).click();
+    const save = page.getByRole('dialog', { name: 'Save as a template' });
+    await expect(save.getByLabel('TEMPLATE NAME')).toHaveValue(NAME);
+    await expect(save.getByText('A template with this name already exists. Saving replaces it.')).toBeVisible();
+    await save.getByRole('button', { name: 'Save template', exact: true }).click();
+    await expect(save).toHaveCount(0);
+    await expect
+      .poll(async () => (await list()).find((t) => t.slug === slugOf(NAME))?.form.artStyle, {
+        message: 'the desktop-only art style survives the phone save',
+      })
+      .toBe('Watercolor');
+    const saved = (await list()).find((t) => t.slug === slugOf(NAME))!;
+    expect(saved.form).toMatchObject({ mode: 'guided', narrativePerspective: 'third', narrativeTense: 'past' });
+    expect((saved.form.interviewQuestions as { key: string; text: string | null }[])[0]).toMatchObject({
+      key: 'voice',
+      text: EDITED,
+    });
+    expect(saved.form, 'the character name is never in a template').not.toHaveProperty('name');
+
+    // Rename it through its ⋯ menu on the Mode step.
+    await page.locator('.step-dot', { hasText: 'Mode' }).click();
+    await picker.getByRole('button', { name: `More for ${NAME}`, exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Rename' }).click();
+    const rename = page.getByRole('dialog', { name: 'Rename template' });
+    await rename.getByLabel('TEMPLATE NAME').fill(RENAMED);
+    await rename.getByRole('button', { name: 'Rename', exact: true }).click();
+    await expect(rename).toHaveCount(0);
+    await expect(picker.getByRole('button', { name: RENAMED, exact: true })).toBeVisible();
+    await expect(picker.getByRole('button', { name: NAME, exact: true })).toHaveCount(0);
+    const slugs = (await list()).map((t) => t.slug);
+    expect(slugs).toContain(slugOf(RENAMED));
+    expect(slugs).not.toContain(slugOf(NAME));
+
+    // Delete it through the menu, after the confirm.
+    await picker.getByRole('button', { name: `More for ${RENAMED}`, exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Delete this template?' });
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(picker.getByRole('button', { name: RENAMED, exact: true })).toHaveCount(0);
+    expect((await list()).some((t) => t.slug === slugOf(RENAMED))).toBe(false);
+  } finally {
+    const left = (await list()).filter((t) => t.slug === slugOf(NAME) || t.slug === slugOf(RENAMED));
+    for (const t of left) {
+      const gone = await page.request.delete(`/api/chargen/templates/${t.slug}`);
+      expect(gone.ok(), `deleting the journey template ${t.slug}: ${gone.status()}`).toBe(true);
+    }
+  }
+});
+
+// Library card → Manage Chats → Start new chat → persona → a fresh chat,
+// on a character made for this test (so Porch Tester's chats stay as the
+// conversation journeys left them). Start new chat is offered even though
+// this character has no saved chat yet.
+test('Manage Chats on a library card starts a new chat through the persona step', async ({ page }) => {
+  const name = `Manage Chats ${test.info().project.name}`;
+  const created = await page.request.post('/api/characters/create', {
+    data: { name, firstMessage: '*The screen door creaks.* "Back again?"' },
+  });
+  expect(created.ok(), `create: ${created.status()}`).toBe(true);
+  const id = String(((await created.json()) as { id: string | number }).id);
+  const sessions = async () =>
+    (
+      (await (
+        await page.request.get(`/api/chat/sessions?characterId=${encodeURIComponent(id)}`)
+      ).json()) as { sessions?: unknown[] }
+    ).sessions ?? [];
+  try {
+    await openRoute(page, '/');
+    const card = page.locator('.lib-card', { hasText: name });
+    await card.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Manage Chats' }).click();
+
+    const manage = page.locator('.chat-history-modal');
+    await expect(manage).toContainText('Manage Chats');
+    await manage.getByRole('button', { name: '+ Start new chat' }).click();
+    await expect(manage).toHaveCount(0);
+
+    const picker = page.locator('.modal', { hasText: `Start a new chat with ${name} as` });
+    await expect(picker).toBeVisible();
+    await picker.locator('.move-row').first().click();
+
+    await expect(page).toHaveURL(/\/chat$/);
+    await waitIdle(page);
+    await expect(rows(page).filter({ hasText: 'Back again?' })).toHaveCount(1);
+    await expect.poll(async () => (await sessions()).length).toBeGreaterThanOrEqual(1);
+  } finally {
+    const gone = await page.request.post(`/api/characters/${id}/delete`);
+    expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+  }
+});
+
+// A card with its own system prompt asks, on a new chat, which prompt this
+// chat sends (desktop new-chat picker parity); the answer can be changed
+// later in the chat's settings drawer.
+test('a new chat with a prompted card asks which system prompt it sends', { tag: SERIAL }, async ({ page }) => {
+  const name = `Prompted ${test.info().project.name}`;
+  const created = await page.request.post('/api/characters/create', {
+    data: { name, firstMessage: 'Evening.', systemPrompt: 'JOURNEY_CARD_PROMPT for {{char}}' },
+  });
+  expect(created.ok(), `create: ${created.status()}`).toBe(true);
+  const id = String(((await created.json()) as { id: string | number }).id);
+  const source = async () =>
+    ((await (await page.request.get('/api/chat/state')).json()) as {
+      promptSource?: { source?: string | null; amendments?: boolean | null; picker?: unknown };
+    }).promptSource;
+  try {
+    await openRoute(page, '/');
+    await page.locator('.lib-card', { hasText: name }).locator('.lib-open').click();
+    await expect(page.locator('.chat-view')).toBeVisible();
+
+    const picker = page.getByRole('dialog', { name: 'Choose the system prompt for this chat' });
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText('JOURNEY_CARD_PROMPT');
+    await picker.getByRole('radio', { name: /My prompt/ }).click();
+    await expect(picker).toContainText('base: your prompt');
+    await picker.getByRole('button', { name: 'Start chat' }).click();
+    await expect(picker).toHaveCount(0);
+    await expect.poll(async () => (await source())?.source).toBe('user');
+    expect((await source())?.picker).toBeUndefined();
+
+    if (test.info().project.name.startsWith('phone')) {
+      await page.getByRole('button', { name: 'More chat options' }).click();
+      await page.getByRole('menuitem', { name: /Theme/ }).click();
+    } else {
+      await page.locator('.chat-view').getByRole('button', { name: 'Theme', exact: true }).click();
+    }
+    const drawer = page.locator('.settings-drawer');
+    await expect(drawer.getByRole('radio', { name: 'My prompt' })).toHaveAttribute('aria-checked', 'true');
+    await drawer.getByRole('radio', { name: 'Card only' }).click();
+    await expect.poll(async () => (await source())?.amendments).toBe(false);
+    expect((await source())?.source).toBe('card');
+    await expect(drawer.getByLabel('Append global prompt additions')).not.toBeChecked();
   } finally {
     const gone = await page.request.post(`/api/characters/${id}/delete`);
     expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
@@ -429,10 +929,9 @@ test.describe('the Local model card', () => {
   const setBackend = (page: Page, backend: 'kobold' | 'openRouter') =>
     page.request.post('/api/settings', { data: { backend } });
 
-  // The stand-in backend as the suite set it up. Switching the backend blanks
-  // the remote model name on purpose (BackendSettings.setBackendType: the
-  // picker must not keep the previous host's model), so putting back the
-  // backend alone leaves chat with no model.
+  // The stand-in backend as the suite set it up, put back in full: the host
+  // restores each backend's last model on a switch, but naming it here
+  // keeps the next spec independent of that.
   let standIn: { backend: string; remoteApiUrl: string; remoteModelName: string };
   test.beforeEach(async ({ request }) => {
     const s = await (await request.get('/api/settings')).json();
@@ -478,7 +977,15 @@ test.describe('the Local model card', () => {
     await expect(speedTest).toBeDisabled();
     await expect(card.getByTestId('speed-test-unavailable')).toHaveText('Start the model first, then run the test.');
 
-    await card.getByRole('button', { name: '8,192', exact: true }).click();
+    // Nothing below 16,384 is offered (the app never suggests less). A smaller
+    // size set some other way is still shown as the one in use, and warned
+    // about; 16,384 then puts it back.
+    await expect(card.getByRole('button', { name: '16,384', exact: true })).toBeVisible();
+    await expect(card.getByRole('button', { name: '8,192', exact: true })).toHaveCount(0);
+    const small = await page.request.post('/api/backend/local-model/context', { data: { context: 8192 } });
+    expect(small.ok(), `POST /api/backend/local-model/context 8192: ${small.status()}`).toBe(true);
+    await openRoute(page, '/models');
+    await expect(card.getByRole('button', { name: '8,192', exact: true })).toBeVisible();
     await expect(verdict).toContainText('Not recommended or supported.');
     await card.getByRole('button', { name: '16,384', exact: true }).click();
     await expect(verdict).toContainText('Works like now.');
@@ -557,4 +1064,436 @@ test.describe('the Local model card', () => {
     await expect(card).toContainText('Uses your preset “Long chats”.');
     await expect(refused).toHaveCount(0);
   });
+});
+
+test.describe.serial('Director Mode', { tag: SERIAL }, () => {
+  // Stepping out turns the 1:1 into a group card in the shared library, and
+  // the other project's specs then find two cards named Second Guest or Porch
+  // Tester. Whatever happened, the group this spec made goes again.
+  let groupsBefore: string[] = [];
+  const groupIds = async (request: APIRequestContext) =>
+    ((await (await request.get('/api/groups')).json()) as { groups: { id: string }[] }).groups.map((g) => g.id);
+  test.beforeEach(async ({ request }) => {
+    groupsBefore = await groupIds(request);
+  });
+  test.afterEach(async ({ request }) => {
+    for (const id of await groupIds(request)) {
+      if (groupsBefore.includes(id)) continue;
+      const gone = await request.post(`/api/groups/${id}/delete`);
+      expect(gone.ok(), `removing the group this spec made: ${gone.status()}`).toBe(true);
+    }
+  });
+
+  test('step out of a scene to direct it, undo, direct a note, and step back in', async ({ page }) => {
+    // Second Guest's own chat, so the conversion leaves Porch Tester's alone.
+    await openRoute(page, '/');
+    await page.locator('.lib-card:not(.group-card)', { hasText: 'Second Guest' }).locator('.lib-open').click();
+    await expect(page.locator('.chat-view')).toBeVisible();
+    await waitIdle(page);
+    await page.locator('.conversations-btn').click();
+    await page.getByRole('button', { name: '+ New chat' }).click();
+    await waitIdle(page);
+
+    const box = page.locator('textarea.composer-input');
+    const strip = page.locator('.director-strip');
+    await box.fill('/join Porch Tester');
+    await box.press('Enter');
+    // The join settles after the send returns; stepping out before it lands
+    // is refused as a busy turn.
+    await expect(page.getByText('Porch Tester joined the scene')).toBeVisible();
+    await waitIdle(page);
+    await expect(strip).toContainText('You’re in the scene');
+
+    // Stepping out turns the 1:1 with a guest into a group, then directs it.
+    await strip.getByRole('button', { name: 'Step out to direct' }).click();
+    await waitIdle(page);
+    await expect(strip).toContainText('You’re directing');
+    await expect(box).toHaveAttribute('placeholder', 'Direct the scene…');
+    const undo = page.locator('.undo-bar');
+    await expect(undo).toContainText('You stepped out to direct');
+    const before = await rows(page).count();
+    await undo.getByRole('button', { name: 'Undo' }).click();
+    await expect(strip).toContainText('You’re in the scene');
+    await expect(rows(page)).toHaveCount(before - 1); // the goodbye is gone
+
+    await strip.getByRole('button', { name: 'Step out to direct' }).click();
+    await waitIdle(page);
+    await expect(undo).toContainText('You stepped out to direct'); // offered again
+    // The auto-chat delay saves on the host when the slider is let go.
+    const delay = strip.getByLabel('Auto-chat delay in seconds');
+    const savedDelay = await delay.inputValue();
+    await delay.fill('4.5');
+    await delay.blur();
+    await expect
+      .poll(async () => {
+        const s = (await (await page.request.get('/api/chat/state')).json()) as {
+          director?: { delaySeconds?: number | null };
+        };
+        return s.director?.delaySeconds;
+      })
+      .toBe(4.5);
+    await page.request.post('/api/chat/director/delay', { data: { seconds: Number(savedDelay) } });
+    await box.fill('The porch light flickers out.');
+    await box.press('Enter');
+    await waitIdle(page);
+    const note = page.locator('.bubble.director-note', { hasText: 'The porch light flickers out.' });
+    await expect(note).toContainText('Director');
+    await expect(lastRow(page).locator('.bubble.ai')).toContainText(REPLY);
+
+    await strip.getByRole('button', { name: 'Step back in' }).click();
+    await waitIdle(page);
+    await expect(strip).toContainText('You’re in the scene');
+    await expect(box).toHaveAttribute('placeholder', 'Message…');
+  });
+
+  test('pin a scene goal, set the auto-chat run, cue a speaker and narrate', async ({ page }) => {
+    await openRoute(page, '/');
+    await page.locator('.lib-card:not(.group-card)', { hasText: 'Second Guest' }).locator('.lib-open').click();
+    await expect(page.locator('.chat-view')).toBeVisible();
+    await waitIdle(page);
+    await page.locator('.conversations-btn').click();
+    await page.getByRole('button', { name: '+ New chat' }).click();
+    await waitIdle(page);
+
+    const box = page.locator('textarea.composer-input');
+    const strip = page.locator('.director-strip');
+    await box.fill('/join Porch Tester');
+    await box.press('Enter');
+    await expect(page.getByText('Porch Tester joined the scene')).toBeVisible();
+    await waitIdle(page);
+    await strip.getByRole('button', { name: 'Step out to direct' }).click();
+    await waitIdle(page);
+    await expect(strip).toContainText('You’re directing');
+
+    const directorState = async () =>
+      ((await (await page.request.get('/api/chat/state')).json()) as {
+        director?: { goal?: string; turnBudget?: number };
+      }).director;
+
+    await strip.getByLabel('Scene goal').fill('Find the lost key before dawn');
+    await strip.getByRole('button', { name: 'Pin' }).click();
+    await expect(strip.getByRole('note')).toContainText('Find the lost key before dawn');
+    await expect.poll(async () => (await directorState())?.goal).toBe('Find the lost key before dawn');
+
+    const run = strip.getByLabel('Auto-chat run length');
+    const savedRun = await run.inputValue();
+    await run.selectOption('6');
+    await expect.poll(async () => (await directorState())?.turnBudget).toBe(6);
+    await page.request.post('/api/chat/director/budget', { data: { turns: Number(savedRun) } });
+
+    // A cue has that member take their turn now.
+    let before = await rows(page).count();
+    await strip.getByLabel('Cue who speaks next').getByRole('button', { name: 'Porch Tester' }).click();
+    await waitIdle(page);
+    await expect(rows(page)).toHaveCount(before + 1);
+    await expect(lastRow(page).locator('.bubble.ai')).toContainText(REPLY);
+
+    // A quick beat is a director's note the cast answers.
+    before = await rows(page).count();
+    await strip.getByRole('button', { name: /Raise the stakes/ }).click();
+    await waitIdle(page);
+    await expect(rows(page)).toHaveCount(before + 2);
+    await expect(page.locator('.bubble.director-note').last()).toContainText('Director');
+
+    // A whisper pins for one member and clears from the strip.
+    await box.fill('/whisper Porch Tester You hid the key.');
+    await box.press('Enter');
+    const whisper = strip.getByRole('note').filter({ hasText: 'Porch Tester: You hid the key.' });
+    await expect(whisper).toBeVisible();
+    await strip.getByRole('button', { name: 'Clear the whisper to Porch Tester' }).click();
+    await expect(whisper).toHaveCount(0);
+
+    // The narrator's beat lands as its own line, and the cast answers it.
+    before = await rows(page).count();
+    await box.fill('/narrate a storm rolls in');
+    await box.press('Enter');
+    await waitIdle(page);
+    await expect(page.locator('.bubble.director-note', { hasText: 'Narrator' })).toBeVisible();
+    await expect(rows(page)).toHaveCount(before + 2);
+
+    await strip.getByRole('button', { name: 'Clear the scene goal' }).click();
+    await expect.poll(async () => (await directorState())?.goal).toBe('');
+  });
+
+  test('auto-chat pauses with its turns kept, resumes, and stops', async ({ page }) => {
+    await openRoute(page, '/');
+    await page.locator('.lib-card:not(.group-card)', { hasText: 'Second Guest' }).locator('.lib-open').click();
+    await expect(page.locator('.chat-view')).toBeVisible();
+    await waitIdle(page);
+    await page.locator('.conversations-btn').click();
+    await page.getByRole('button', { name: '+ New chat' }).click();
+    await waitIdle(page);
+
+    const box = page.locator('textarea.composer-input');
+    const strip = page.locator('.director-strip');
+    await box.fill('/join Porch Tester');
+    await box.press('Enter');
+    await expect(page.getByText('Porch Tester joined the scene')).toBeVisible();
+    await waitIdle(page);
+    await strip.getByRole('button', { name: 'Step out to direct' }).click();
+    await waitIdle(page);
+    await expect(strip).toContainText('You’re directing');
+
+    type Director = { delaySeconds?: number | null; turnBudget?: number; turnsLeft?: number | null };
+    const director = async () =>
+      ((await (await page.request.get('/api/chat/state')).json()) as { director?: Director }).director;
+    const saved = await director();
+    // A long wait between turns, so the run sits still after each one.
+    await page.request.post('/api/chat/director/delay', { data: { seconds: 60 } });
+    await page.request.post('/api/chat/director/budget', { data: { turns: 3 } });
+    try {
+      let before = await rows(page).count();
+      await strip.getByRole('button', { name: '▶ Auto-chat', exact: true }).click();
+      await expect(rows(page)).toHaveCount(before + 1);
+      await expect.poll(async () => (await director())?.turnsLeft).toBe(2);
+
+      await strip.getByRole('button', { name: /Pause auto-chat/ }).click();
+      const resume = strip.getByRole('button', { name: /Resume auto-chat \(2 left\)/ });
+      await expect(resume).toBeVisible();
+
+      before = await rows(page).count();
+      await resume.click();
+      await expect(rows(page)).toHaveCount(before + 1);
+      await expect.poll(async () => (await director())?.turnsLeft).toBe(1);
+
+      await strip.getByRole('button', { name: /Stop auto-chat/ }).click();
+      await expect(strip.getByRole('button', { name: '▶ Auto-chat', exact: true })).toBeVisible();
+      await expect.poll(async () => (await director())?.turnsLeft ?? null).toBeNull();
+    } finally {
+      await page.request.post('/api/chat/director/autoplay', { data: { on: false } });
+      await page.request.post('/api/chat/director/delay', {
+        data: { seconds: saved?.delaySeconds ?? 15 },
+      });
+      await page.request.post('/api/chat/director/budget', { data: { turns: saved?.turnBudget ?? 0 } });
+    }
+  });
+});
+
+// The real sandboxed app and real host-owned preset seeded by browser_test.dart.
+test('upload and clear a preset chat template without changing the model settings', async ({ page }) => {
+  const settings = await (await page.request.get('/api/settings')).json();
+  try {
+    const switched = await page.request.post('/api/settings', { data: { backend: 'kobold' } });
+    expect(switched.ok()).toBe(true);
+    await page.goto('/#/models');
+    const select = page.locator('#kc-preset');
+    await expect(select).toBeVisible();
+    const model = await (await page.request.get('/api/backend/local-model')).json();
+    const preset = model.presets.find((entry: { name: string }) => entry.name === 'Long chats');
+    expect(preset).toBeTruthy();
+    await select.selectOption(preset.path);
+    const panel = page.getByRole('heading', { name: 'Chat template', exact: true }).locator('..');
+    await expect(panel.getByText('Upload .jinja file')).toBeVisible();
+    await panel.screenshot({ path: test.info().outputPath('template-before.png') });
+    const upload = page.waitForResponse(response =>
+      response.url().endsWith('/api/backend/local-model/chat-template') && response.request().method() === 'POST');
+    await panel.locator('input[type=file]').setInputFiles({
+      name: 'example-chat-template.jinja', mimeType: 'text/plain',
+      buffer: Buffer.from('{% if enable_thinking is false %}direct{% endif %}'),
+    });
+    const response = await upload;
+    expect(response.ok(), await response.text()).toBe(true);
+    const saved = await response.json();
+    expect(saved.preset.path).toBe(preset.path);
+    expect(saved.preset.chatTemplate).toMatch(/chat_templates[/\\][a-f0-9]+[/\\]example-chat-template\.jinja$/);
+    await expect(panel.getByRole('button', { name: 'Use embedded template' })).toBeVisible();
+    await expect(panel.getByRole('status')).toContainText('Restart KoboldCpp');
+    await panel.screenshot({ path: test.info().outputPath('template-after.png') });
+    await page.reload();
+    await expect(panel.getByRole('button', { name: 'Use embedded template' })).toBeVisible();
+    const clearing = page.waitForResponse(response =>
+      response.url().endsWith('/api/backend/local-model/chat-template') && response.request().method() === 'POST');
+    await panel.getByRole('button', { name: 'Use embedded template' }).click();
+    expect((await clearing).ok()).toBe(true);
+    await expect(panel.getByText('Uses the template embedded in the GGUF.')).toBeVisible();
+    const after = await (await page.request.get('/api/backend/local-model')).json();
+    expect(after.model).toBe(model.model);
+    expect(after.preset.chatTemplate).toBe('');
+  } finally {
+    await page.request.post('/api/backend/local-model/preset', { data: { path: null } });
+    await page.request.post('/api/settings', { data: {
+      backend: settings.backend, remoteApiUrl: settings.remoteApiUrl, remoteModelName: settings.remoteModelName,
+    } });
+  }
+});
+
+
+test('expression intensity rerolls Strong and can follow the pack again', async ({page, allowHttp}) => {
+  await page.request.post('/api/image/expression-pack/discard');
+  allowHttp((url,status) => status === 404 && url.includes('/api/image/expression-pack/source'));
+  const saved=await (await page.request.get('/api/image/config')).json() as {backend:string;localUrl:string};
+  try {
+    expect((await page.request.post('/api/image/config',{data:{backend:'a1111',localUrl:'http://127.0.0.1:9',currentPassword:process.env.FPAI_PASSWORD}})).ok()).toBe(true);
+    await openRoute(page,'/images');
+    await page.getByRole('tab',{name:'Expression pack',exact:true}).click();
+    const panel=page.locator('#studio-pack-panel');
+    await panel.getByLabel('Character',{exact:true}).selectOption({label:'Porch Tester'});
+    await panel.getByLabel('Image prompt',{exact:true}).fill('portrait');
+    await panel.getByLabel('Pack picture file').setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAEAAAABQCAIAAAAm3eQSAAAAkUlEQVR4nO3PUQkAIBTAQGOb5CUxoCH8OITBAtzWnvN1iwsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKCB8YiXgQvuWSoOwHWgQgAAAABJRU5ErkJggg==','base64')});
+    const intensity=panel.getByLabel('Expression intensity',{exact:true});
+    await intensity.selectOption('subtle');
+    await panel.getByRole('button',{name:'Prompt rules...',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('gently tightened lips');
+    await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+    await intensity.selectOption('strong');
+    await panel.getByRole('button',{name:'Prompt rules...',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('deeply furrowed brows');
+    await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+    await intensity.selectOption('subtle');
+    // An unavailable real backend exercises failed-slot iteration without a fake image server.
+    await panel.getByRole('button',{name:'Start pack',exact:true}).click();
+    await expect(panel.getByLabel('Pack expression intensity')).toBeEnabled({timeout:60_000});
+    await panel.getByText('Tune anger',{exact:true}).click();
+    const slot=panel.getByLabel('Intensity for anger');
+    await expect(slot).toHaveValue('pack');
+    await slot.selectOption('strong');
+    await expect(panel.getByLabel('Prompt for anger')).toHaveValue(/deeply furrowed brows/);
+    const retry=panel.getByRole('button',{name:'Retry anger with these settings',exact:true});
+    await retry.click();
+    await expect(slot).toBeEnabled({timeout:60_000});
+    await expect(slot).toHaveValue('strong');
+    await panel.getByText('Tune anger',{exact:true}).click();
+    await slot.selectOption('pack');
+    await expect(panel.getByLabel('Prompt for anger')).toHaveValue(/gently tightened lips/);
+    await panel.getByLabel('Prompt for anger').fill('my exact expression');
+    await retry.click();
+    await expect(slot).toBeEnabled({timeout:60_000});
+    await expect(slot).toHaveValue('pack');
+    await expect(panel.getByLabel('Prompt for anger')).toHaveValue('my exact expression');
+    await expect(panel).toContainText('A custom prompt overrides intensity');
+  } finally {
+    await page.request.post('/api/image/expression-pack/discard');
+    await page.request.post('/api/image/config',{data:{backend:saved.backend,localUrl:saved.localUrl,currentPassword:process.env.FPAI_PASSWORD}});
+  }
+});
+
+test('image batches prepare full expressions with rules and persist across navigation', async ({page}) => {
+  const original=await (await page.request.get('/api/image/config')).json() as {backend:string;localUrl:string;model:string};
+  let created: string[]=[];
+  try {
+    expect((await page.request.post('/api/image/config',{data:{backend:'a1111',model:'synthetic-checkpoint',localUrl:'http://127.0.0.1:9',currentPassword:process.env.FPAI_PASSWORD}})).ok()).toBe(true);
+    await openRoute(page,'/images');
+    await expect(page.getByRole('heading',{name:'Image Studio',exact:true})).toBeVisible();
+    await page.getByRole('tab',{name:'Batch',exact:true}).click();
+    await page.getByLabel('Find characters').fill('Porch Tester');
+    await page.getByRole('button',{name:'Select visible',exact:true}).click();
+    await page.getByLabel('Save destination',{exact:true}).selectOption('expressions');
+    await page.getByLabel('Expression set',{exact:true}).selectOption('full');
+    await page.getByRole('button',{name:'Prompt rules · global defaults',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Prompt rules'});
+    await dialog.getByLabel('Prefix',{exact:true}).fill('Preserve the costume.');
+    await dialog.getByRole('button',{name:'Use for this pack',exact:true}).click();
+    await page.getByRole('button',{name:'Prepare for 1 character',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Start 28 images',exact:true})).toBeVisible();
+    const queue=await (await page.request.get('/api/image/batches')).json() as {jobs:{id:string;prompt:string;kind:string;state:string}[]};
+    created=queue.jobs.filter(j=>j.state==='waiting').map(j=>j.id);
+    expect(created).toHaveLength(28);
+    expect(queue.jobs.filter(j=>created.includes(j.id)).every(j=>j.prompt.startsWith('Preserve the costume.') && j.kind==='expressions')).toBe(true);
+    await openRoute(page,'/models'); await openRoute(page,'/images');
+    await page.getByRole('tab',{name:'Batch',exact:true}).click();
+    await page.getByRole('button',{name:'Queue',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Start 28 images',exact:true})).toBeVisible();
+    await page.reload(); await page.getByRole('tab',{name:'Batch',exact:true}).click();
+    await page.getByRole('button',{name:'Queue',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Start 28 images',exact:true})).toBeVisible();
+  } finally {
+    for (const id of created) await page.request.post(`/api/image/batches/${id}/review`,{data:{action:'discard'}});
+    await page.request.post('/api/image/config',{data:{backend:original.backend,model:original.model,localUrl:original.localUrl,currentPassword:process.env.FPAI_PASSWORD}});
+  }
+});
+
+
+test('evaluation view is remembered and synchronized between chat clients', async ({ page }) => {
+  const original = await (await page.request.get('/api/settings')).json() as { evaluationMinimized?: boolean };
+  let objectiveId = '';
+  const other = await page.context().newPage();
+  const objective = async (data: Record<string, unknown>) => {
+    const response = await page.request.post('/api/chat/tools/objective', { data });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  try {
+    expect((await page.request.post('/api/settings', { data: { evaluationMinimized: false } })).ok()).toBe(true);
+    await openPorchChat(page);
+    const created = await objective({ action: 'set', goal: 'Review the synthetic progress display' }) as { objectives: { primary: { id: string } } };
+    objectiveId = created.objectives.primary.id;
+    expect((await page.request.post('/api/chat/tools/task', { data: { action: 'add', id: objectiveId, description: 'Inspect the evaluation panel' } })).ok()).toBe(true);
+    await openRoute(other, '/chat');
+    await expect(other.locator('.chat-view')).toBeVisible();
+    await objective({ action: 'check' });
+    await page.getByRole('button', { name: 'Minimize evaluation', exact: true }).click();
+    await expect(other.getByRole('button', { name: 'Show evaluation details', exact: true })).toBeVisible();
+    await other.getByRole('button', { name: 'Show evaluation details', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Minimize evaluation', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Minimize evaluation', exact: true }).click();
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json() as { evaluationMinimized: boolean }).evaluationMinimized).toBe(true);
+    await page.getByRole('button', { name: 'Skip goal check', exact: true }).click();
+    await expect(page.locator('.proc-overlay')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('.chat-view')).toBeVisible();
+    await objective({ action: 'check' });
+    await expect(page.getByRole('button', { name: 'Show evaluation details', exact: true })).toBeVisible();
+    await expect(page.locator('.proc-stages')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Skip goal check', exact: true }).click();
+    await expect(page.locator('.proc-overlay')).toHaveCount(0);
+  } finally {
+    await page.request.post('/api/chat/skip-objective-check');
+    if (objectiveId) await objective({ action: 'clear', id: objectiveId });
+    expect((await page.request.post('/api/settings', { data: { evaluationMinimized: original.evaluationMinimized === true } })).ok()).toBe(true);
+    await other.close();
+  }
+});
+
+// A greeting reaches the bubble with {{char}} and {{user}} filled in
+// (CLAUDE.md, "Definition of done": rendered text never shows them).
+test('a fresh chat shows the greeting with names, not placeholders', { tag: SERIAL }, async ({ page }) => {
+  const name = `Greeter ${test.info().project.name}`;
+  const created = await page.request.post('/api/characters/create', {
+    data: { name, firstMessage: 'Evening, {{user}}. {{char}} saved you a chair.' },
+  });
+  expect(created.ok(), `create: ${created.status()}`).toBe(true);
+  const id = String(((await created.json()) as { id: string | number }).id);
+  try {
+    await openRoute(page, '/');
+    await page.locator('.lib-card', { hasText: name }).locator('.lib-open').click();
+    await expect(page.locator('.chat-view')).toBeVisible();
+    const greeting = rows(page).first().locator('.bubble.ai');
+    await expect(greeting).toContainText(`${name} saved you a chair.`);
+    await expect(greeting).not.toContainText('{{');
+  } finally {
+    const gone = await page.request.post(`/api/characters/${id}/delete`);
+    expect(gone.ok(), `deleting the journey character: ${gone.status()}`).toBe(true);
+  }
+});
+
+// The web follows the desktop's theme: flipping the desktop's Dark Mode
+// from here repaints this page with the palette the desktop resolved, a
+// reload keeps it before the socket speaks, and "On this device" can keep a
+// different mode here without touching the desktop.
+test('the theme follows the desktop, and a device can keep its own mode', { tag: SERIAL }, async ({ page }) => {
+  const bg = () =>
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
+  const mode = () => page.evaluate(() => document.documentElement.dataset.theme);
+  await openRoute(page, '/settings');
+  const dark = page.getByLabel('Dark mode');
+  await expect(dark).toBeEnabled();
+  const was = await dark.isChecked();
+  try {
+    await dark.setChecked(false);
+    await expect.poll(mode).toBe('light');
+    await expect.poll(bg).toBe('#f8f4ed');
+    await page.reload();
+    await expect.poll(mode).toBe('light');
+    await expect(page.getByLabel('Dark mode')).not.toBeChecked();
+
+    await page.getByLabel('Theme on this device').selectOption('dark');
+    await expect.poll(mode).toBe('dark');
+    await expect.poll(bg).toBe('#1b1611');
+    const s = (await (await page.request.get('/api/settings')).json()) as { theme?: { mode?: string } };
+    expect(s.theme?.mode, 'the device choice must not change the desktop').toBe('light');
+  } finally {
+    await page.getByLabel('Theme on this device').selectOption('desktop');
+    const back = await page.request.post('/api/settings', { data: { darkMode: was } });
+    expect(back.ok(), `restoring Dark Mode: ${back.status()}`).toBe(true);
+  }
 });

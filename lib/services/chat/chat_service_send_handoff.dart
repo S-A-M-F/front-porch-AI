@@ -74,7 +74,7 @@ extension ChatServiceSendHandoff on ChatService {
     // (climax, sexual activity, daily activities, fulfillment) are reflected.
     // This ensures UI chips show accurate deltas.
     // Per-message needs-delta chips are attached inside _generateResponse (via
-    // _attachNeedsDeltaChipToLastMessage) so EVERY speaker gets them — group
+    // NeedsPass.attachDeltaChipToLastMessage) so EVERY speaker gets them — group
     // auto-advance, /speak and chime-ins reach _generateResponse but never this
     // sendMessage scope, which is why only the first responder used to show
     // chips. preTurnVector is stamped in _scoreUserTurnBeforeReply.
@@ -115,21 +115,10 @@ extension ChatServiceSendHandoff on ChatService {
     // regenerateLastMessage() and the post-generation delta computation
     // can use the same delta-revert mechanism the classic realism fields
     // (bond/trust/arousal) use.
-    Map<String, int>? preTurnVector;
-    // Needs is its own switch. Stamp the pre-wear body even when the
-    // Realism engine is off so regen can rewind (hide ≠ skip restore).
-    if (addressedGuest == null &&
-        _activeGroup == null &&
-        _needsSimEnabled &&
-        _needsSimulation.vector.isNotEmpty) {
-      preTurnVector = Map<String, int>.from(_needsSimulation.vector);
-      _pendingRealismMetadata ??= {};
-      _pendingRealismMetadata!['needs_pre_turn_vector'] = preTurnVector;
-      // The carried fraction rewinds with the bars, so a regen charges the
-      // beat exactly once more, not from a reset carry.
-      _pendingRealismMetadata![kNeedsPreTurnCarry] = Map<String, double>.from(
-        _needsSimulation.wearCarry,
-      );
+    // The Needs pass stamps the body before this beat (and nothing, with
+    // Needs off); regen and the chip read the stamp from the reply.
+    if (addressedGuest == null && _activeGroup == null) {
+      _needsPass.stampPreTurn();
     }
     if (_realismActiveThisMode && addressedGuest == null) {
       // 1:1 only. Group per-speaker stamp lives in the realism dance —
@@ -140,7 +129,7 @@ extension ChatServiceSendHandoff on ChatService {
       // Short-term bond decay: 1:1 host only. In group mode the speaker isn't
       // picked yet — the old call here fell back to the FIRST member under
       // random turn order, so member #1 absorbed everyone's decay. The group
-      // tick now lives per-speaker inside _evaluateRealismForUpcomingSpeaker,
+      // tick now lives per-speaker inside RealismDance.evaluateForUpcomingSpeaker,
       // on the pinned speaker's own cadence counter (mirrors needs + nsfw).
       if (_activeGroup == null) {
         _applyMoodDecay();
@@ -150,28 +139,28 @@ extension ChatServiceSendHandoff on ChatService {
       // Clock off: the reply's refractory quarter hour, 1:1 host only. In a
       // group the speaker isn't picked yet (ticking here hit whichever
       // member was still loaded); theirs runs in
-      // _evaluateRealismForUpcomingSpeaker once their scalars load. Clock on,
+      // RealismDance.evaluateForUpcomingSpeaker once their scalars load. Clock on,
       // the beat's own minutes tick after the clock instead.
       if (_activeGroup == null) {
-        _tickRefractoryPerReply();
+        _afterglow.tickPerReply();
       }
 
       // Single-path bridge: realism evaluation now runs inside _generateResponse
       // for EVERY speaker (1:1 host or group member) via
-      // _evaluateRealismForUpcomingSpeaker.
+      // RealismDance.evaluateForUpcomingSpeaker.
       //
       // No cast-store mirror for the 1:1 host: its scalar fields are already the
       // canonical realism store (loaded by loadSession, decayed just above), and the
       // per-character _groupRealism map is group-only — its writes no-op when
       // _activeGroup == null. Mirroring was a no-op, and the eval path deliberately
       // does NOT reload the host from that empty map (doing so reset
-      // bond/trust/emotion/needs to defaults). See _evaluateRealismForUpcomingSpeaker.
+      // bond/trust/emotion/needs to defaults). See RealismDance.evaluateForUpcomingSpeaker.
       if (_activeGroup == null && _activeCharacter != null) {
         // Run the SINGLE eval path for the host now — on a user turn only.
         // (Regen of a reply and Continue bypass this. Generate reply on a
         // trailing user message rewinds to the stamp first, then re-enters
         // here. Each caller checks cancellation before generating.)
-        await _evaluateRealismForUpcomingSpeaker(_activeCharacter!);
+        await _realismDance.evaluateForUpcomingSpeaker(_activeCharacter!);
       }
     } else if (_clockRunning && addressedGuest == null) {
       // PoT is on and the engine did not run this turn. Stamp the user
@@ -221,29 +210,6 @@ extension ChatServiceSendHandoff on ChatService {
       isContextValid: () => !_sceneChanged(token) && _activeGroup == null,
       exclude: exclude,
     );
-  }
-
-  /// Send a director note — appears as a bracketed instruction in the prompt
-  /// but is not part of the in-story dialogue.
-  Future<void> sendDirectorNote(String text) async {
-    if (_activeGroup == null || text.trim().isEmpty) return;
-
-    _messages.add(
-      ChatMessage(
-        text: text,
-        sender: 'Director',
-        isUser: true,
-        characterId: '__director__',
-      ),
-    );
-    await _saveChat();
-    notifyListeners();
-
-    _lorebookScanner.scanLatest();
-    // Note: depth decrement happens after AI response completes inside _generateResponse.
-    // Director-triggered lore is visible for the current generate.
-
-    await _generateResponse(GenerationMode.normal);
   }
 
   /// The dream PRODUCER — fired from the post-generation phase, after the
@@ -341,10 +307,10 @@ extension ChatServiceSendHandoff on ChatService {
   /// Mutated in place: a user bubble's swipeMetadata[0] aliases [metadata].
   void _stampUserTurnBaseline(ChatMessage userMsg) {
     if (!userMsg.isUser) return;
-    if (!_realismActiveThisMode && !_needsSimEnabled) return;
+    if (!_realismActiveThisMode && !_needsPass.active) return;
     final meta = userMsg.metadata ??= <String, dynamic>{};
     if (meta[kRealismPreTurn] is Map) return;
-    meta[kRealismPreTurn] = _captureRealismState(
+    meta[kRealismPreTurn] = _realismSnapshot.capture(
       preTurn: Map<String, int>.from(_needsSimulation.vector),
     );
   }
@@ -362,8 +328,8 @@ extension ChatServiceSendHandoff on ChatService {
         ? Map<String, dynamic>.from(raw)
         : <String, dynamic>{};
     if (bySpeaker[charId] is Map) return;
-    _loadGroupRealismIntoScalars(charId);
-    bySpeaker[charId] = _captureRealismState(
+    _realismDance.loadIntoScalars(charId);
+    bySpeaker[charId] = _realismSnapshot.capture(
       preTurn: Map<String, int>.from(_needsSimulation.vector),
     );
     meta[kRealismPreTurnBySpeaker] = bySpeaker;
@@ -376,7 +342,22 @@ extension ChatServiceSendHandoff on ChatService {
   Future<void> _generateFromTrailingUserTurn({
     String? webQuery,
     String? wikiQuery,
+    CharacterCard? forceSpeaker,
   }) async {
+    _stoppedReplyAnchor = null;
+    _answeringUnansweredLine = true;
+    try {
+      await _answerTrailingUserTurn(webQuery, wikiQuery, forceSpeaker);
+    } finally {
+      _answeringUnansweredLine = false;
+    }
+  }
+
+  Future<void> _answerTrailingUserTurn(
+    String? webQuery,
+    String? wikiQuery,
+    CharacterCard? forceSpeaker,
+  ) async {
     final userMsg = _messages.last;
     final baseAt = _messages.length;
     _rewindToUserTurnBaseline(userMsg);
@@ -414,6 +395,7 @@ extension ChatServiceSendHandoff on ChatService {
       await _generateResponse(
         GenerationMode.normal,
         directUserSend: true,
+        forceSpeaker: forceSpeaker,
         skipSpeakerEval: groupLegacy,
       );
     }
@@ -449,35 +431,37 @@ extension ChatServiceSendHandoff on ChatService {
       if (!_groupCharacters.any((c) => _getCharacterIdFromCard(c) == sid)) {
         continue;
       }
-      _loadGroupRealismIntoScalars(sid);
+      _realismDance.loadIntoScalars(sid);
       _restoreRealismStateFromMessage(
         _realismStampCarrier(stamp),
         groupSpeakerId: sid,
       );
-      _saveScalarsIntoGroupRealism(sid);
+      _realismDance.saveScalarsIntoGroup(sid);
       // The save skips an empty mood; a first-turn member had none.
-      _memberForWrite(sid)
-        ..emotion = stamp['characterEmotion'] as String? ?? ''
-        ..emotionIntensity = stamp['emotionIntensity'] as String? ?? '';
+      _mood.writeMemberFromStamp(sid, stamp);
     }
   }
 
   /// Stamp-less 1:1 user line (sent before stamps existed): rewind only the
   /// scored registers to the last accepted reply. Needs and pockets were
   /// already refunded by the delete that left this line trailing.
-  void _rewindRelationshipToLastAcceptedReply() {
+  bool _rewindRelationshipToLastAcceptedReply() {
     for (var i = _messages.length - 2; i >= 0; i--) {
       final m = _messages[i];
       if (m.isUser || m.sender == 'System') continue;
       final state = m.activeMetadata?['realism_state'];
       if (state is! Map) continue;
-      final s = Map<String, dynamic>.from(state);
-      _relationshipService.restoreFromMessageState(s);
-      _characterEmotion = s['characterEmotion'] as String? ?? _characterEmotion;
-      _emotionIntensity = s['emotionIntensity'] as String? ?? _emotionIntensity;
-      _nsfwService.restoreNsfwFromRealismState(s);
-      return;
+      _restoreScoredRegisters(Map<String, dynamic>.from(state));
+      return true;
     }
+    return false;
+  }
+
+  /// Bond/trust/feelings, mood and arousal from one realism stamp.
+  void _restoreScoredRegisters(Map<String, dynamic> s) {
+    _relationshipService.restoreFromMessageState(s);
+    _mood.restoreFromStamp(s);
+    _nsfwService.restoreNsfwFromRealismState(s);
   }
 
   ChatMessage _realismStampCarrier(Map stamp) => ChatMessage(

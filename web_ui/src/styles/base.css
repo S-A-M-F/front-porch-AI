@@ -5,16 +5,17 @@
 */
 
 /* Palette mirrors the Flutter app's AppColors (lib/ui/theme/app_colors.dart)
-   AFTER the warm-porch overhaul: slate grounds (#0F172A/#1F2937/#1E293B) with
-   the warm accent family — terracotta #E29578, honey #E9C46A, amber #F4A259 —
-   replacing the old neon blue/purple chrome. Chat bubbles and bond semantics
-   keep their desktop constants (user bubble stays #3B82F6, bondMid #448AFF). */
+   AFTER the warm-porch overhaul: studio-brown grounds (#1B1611/#1F1913/
+   #251E17) with the warm accent family — terracotta #E29578, honey #E9C46A,
+   amber #F4A259 — replacing the old neon blue/purple chrome. Chat bubbles and
+   bond semantics keep their desktop constants (user bubble stays #3B82F6,
+   bondMid #448AFF). */
 :root {
-  --bg: #0f172a;
-  --surface: #1f2937;
-  --surface-2: #374151;
-  --card: #1e293b;
-  --border: #334155;
+  --bg: #1b1611;
+  --surface: #1f1913;
+  --surface-2: #30271e;
+  --card: #251e17;
+  --border: #3e3328;
   --text: #ffffff;
   --muted: rgba(255, 255, 255, 0.7);
   --faint: rgba(255, 255, 255, 0.38);
@@ -45,27 +46,27 @@
   --radius-badge: 4px;
   /* Chat message coloring (mirrors AppColors.dialogue / action). User-overridable
      via Settings → Chat colors (chatColors.ts sets these on :root at runtime). */
-  --dialogue: #ffd54f;
+  --dialogue: #ffd740;
   --action: #90caf9;
   /* Customizable chat bubble colors (default to the base tokens). */
   --chat-user-bubble: var(--user-bubble);
   --chat-user-text: var(--accent-ink);
-  --chat-ai-bubble: var(--surface-2);
+  --chat-ai-bubble: var(--ai-bubble);
   --chat-ai-text: var(--text);
   /* Reading size (Settings + in-chat theme drawer). 1 = default. Applied to
      bubbles, composer, edit, sidebar help — not nav/chips/chrome. */
   --reading-size: 1;
   /* Tag pills (honey). */
-  --tag-bg: rgba(233, 196, 106, 0.2);
-  --tag-border: rgba(233, 196, 106, 0.45);
+  --tag-bg: color-mix(in srgb, var(--porch-honey) 20%, transparent);
+  --tag-border: color-mix(in srgb, var(--porch-honey) 45%, transparent);
   --tag-text: #f0d492;
   /* Group accents — terracotta family (the purple rings died with the
      warm-porch Home restyle on desktop). */
   --group-accent: var(--porch-terracotta);
   --group-accent-bright: #f0b195;
-  --group-border: rgba(226, 149, 120, 0.35);
-  --group-pill-bg: rgba(226, 149, 120, 0.15);
-  --group-pill-text: rgba(240, 177, 149, 0.9);
+  --group-border: color-mix(in srgb, var(--porch-terracotta) 35%, transparent);
+  --group-pill-bg: color-mix(in srgb, var(--porch-terracotta) 15%, transparent);
+  --group-pill-text: color-mix(in srgb, var(--group-accent-bright) 90%, transparent);
   /* Relationship / bond semantics (desktop constants, unchanged). */
   --bond-high: #69f0ae;
   --bond-mid: #448aff;
@@ -73,6 +74,43 @@
   --bond-neg: #ff5252;
   /* Guest badge. */
   --guest-bg: rgba(255, 64, 129, 0.9);
+  /* Theme inks (desktop InkColors / StatusColors). --wash is white on a dark
+     page and black on paper: write a soft overlay as
+     color-mix(in srgb, var(--wash) 8%, transparent). --scrim-ink darkens in
+     every theme (modal dims). --image-ink / --image-scrim sit on pictures,
+     so they never flip. */
+  --wash: #ffffff;
+  --scrim-ink: #000000;
+  --image-ink: #ffffff;
+  --image-scrim: #1b1611;
+  --info: #3b82f6;
+  --warn: #ffc107;
+  --alert: #f87171;
+  /* Director and narrator notes sit on the page in light mode (desktop
+     StyledChatMessage.onPage): quotes and actions take page inks. */
+  --quote-ink: #ffd740;
+  --narration-ink: #90caf9;
+  /* Growth Rings categories without a porch twin. */
+  --growth-habit: #9ec97f;
+  --growth-scar: #d99aa6;
+  /* Realism & Needs chips (desktop RealismColors): one hue per stat. */
+  --need-hunger: #ffab40;
+  --need-bladder: #40c4ff;
+  --need-energy: #d97706;
+  --need-social: #ff4081;
+  --need-fun: #7c4dff;
+  --need-hygiene: #18ffff;
+  --need-comfort: #69f0ae;
+  --need-other: #9e9e9e;
+  --bond-up: #ff4081;
+  --bond-down: #ff5252;
+  --trust-up: #448aff;
+  --trust-down: #7c4dff;
+  --lust-up: #ff6e40;
+  --lust-down: #40c4ff;
+  /* What a chip's wash mixes over: nothing on a dark page, the card on
+     paper. */
+  --chip-well: rgba(0, 0, 0, 0);
 }
 
 * { box-sizing: border-box; }
@@ -123,14 +161,20 @@ button {
 }
 button:hover { filter: brightness(1.15); }
 button:disabled { opacity: 0.5; cursor: default; }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
 .link-btn { background: none; border: none; color: var(--muted); padding: 4px 8px; }
 
 input, textarea, select, .search {
   width: 100%; background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
 }
-input[type='checkbox'] { width: auto; }
+/* On/off boxes tick in porch amber, like every desktop switch (the browser
+   default is its own blue). */
+input[type='checkbox'] { width: auto; accent-color: var(--accent); }
+/* Every slider wears the porch amber, not the browser's default blue.
+   :where() keeps this at zero specificity, so a screen that colours its own
+   sliders (Porch Stories' .s-range, light or dark) still wins. */
+:where(input[type='range']) { accent-color: var(--accent); }
 .row-label {
   display: flex; align-items: center; justify-content: space-between;
   margin: 12px 0; color: var(--text);
@@ -154,7 +198,7 @@ label input { margin-top: 6px; }
   font-weight: 600; border: 1px solid var(--border); cursor: pointer;
 }
 .side-jobs-seg .seg-on {
-  background: var(--accent); color: #1a1200; border-color: var(--accent);
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
 }
 .side-jobs-seg .seg-off {
   background: var(--surface-2); color: var(--muted);

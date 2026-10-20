@@ -17,10 +17,9 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
 import 'package:flutter/widgets.dart' show TextEditingController;
 
 import 'package:front_porch_ai/models/models.dart';
@@ -31,37 +30,13 @@ import 'package:front_porch_ai/services/expression_pack_qc.dart';
 import 'package:front_porch_ai/services/image_prompt/image_prompt.dart';
 import 'package:front_porch_ai/services/portrait_promotion.dart';
 import 'package:front_porch_ai/ui/dialogs/avatar_gallery/avatar_gallery_io.dart';
-import 'package:front_porch_ai/ui/image_studio/backend_catalog.dart';
 
-part 'avatar_creation_run.dart';
-part 'avatar_creation_prompt_rules.dart';
-part 'avatar_creation_lifecycle.dart';
+import 'avatar_creation_controller/avatar_creation_controller.dart';
+import 'package:front_porch_ai/utils/utils.dart';
 
-/// Where the card's portrait comes from in the "Portrait & Avatars" step.
-enum PortraitSource { upload, generate, none }
-
-/// Stage of the creator generation run (drives the progress list).
-///
-/// [portraitReview] is the veto gate: after the base portrait generates and a
-/// pack is pending, the run PAUSES here so the user can regenerate (after
-/// tweaking the prompt) or accept it before the expensive expression pass.
-enum AvatarRunStage {
-  idle,
-  saving,
-  portrait,
-  portraitReview,
-  switching,
-  pack,
-  qc,
-  importing,
-  done,
-  failed,
-}
-
-/// The pack's variation strength — the Studio's field-tested default (0.5
-/// barely moves the face; 0.7 changes it while the base holds identity). The
-/// creator step deliberately has no slider: one good default, zero friction.
-const double kCreatorPackDenoise = 0.7;
+export 'avatar_creation_controller/avatar_pack_runner.dart'
+    show kCreatorPackDenoise;
+export 'avatar_creation_controller/avatar_run_stage.dart';
 
 /// State + orchestration for the shared AvatarGenerationPanel (phase #12).
 ///
@@ -90,12 +65,50 @@ class AvatarCreationController extends ChangeNotifier {
     required this.peekVisionSupport,
     required String initialPrompt,
     CharacterCard? card,
+    this.existingPortraitPath,
   }) : promptController = TextEditingController(text: initialPrompt),
-       _card = card,
        _packPromptRules = storage.expressionSettings.expressionPromptRules
            .copy() {
+    _anchor = AvatarCardAnchor(
+      ensureCardSaved: ensureCardSaved,
+      repository: repository,
+      isDisposed: () => _disposed,
+      notify: notifyListeners,
+      card: card,
+    );
+    _engine = AvatarEngineProbe(
+      storage: storage,
+      imageGen: imageGen,
+      isDisposed: () => _disposed,
+      notify: notifyListeners,
+    );
+    _qcGate = AvatarQcGate(
+      resolveVisionFire: resolveVisionFire,
+      peekVisionSupport: peekVisionSupport,
+      isDisposed: () => _disposed,
+      notify: notifyListeners,
+    );
+    _runner = AvatarPackRunner(
+      storage: storage,
+      imageGen: imageGen,
+      repository: repository,
+      anchor: _anchor,
+      qcGate: _qcGate,
+      promptController: promptController,
+      promptRules: () => _packPromptRules,
+      emotions: () => missingEmotions,
+      applyPortrait: applyPortrait,
+      isDisposed: () => _disposed,
+      isCancelled: () => _cancelRequested,
+      onCancelled: () => _cancelRequested = true,
+      setStage: _setStage,
+      fail: _fail,
+      notify: notifyListeners,
+    );
     final configured = imageGen.isConfigured;
-    source = configured ? PortraitSource.generate : PortraitSource.upload;
+    source = configured && existingPortraitPath == null
+        ? PortraitSource.generate
+        : PortraitSource.upload;
     packEnabled = configured && packPossible;
   }
 
@@ -103,6 +116,10 @@ class AvatarCreationController extends ChangeNotifier {
   /// The manual creator saved on step entry and returns it directly; the AI
   /// creator saves on first use (its Save & Finish then updates in place).
   final Future<CharacterCard?> Function() ensureCardSaved;
+
+  /// A picture the card already starts with (a persona's): shown as the
+  /// uploaded portrait instead of defaulting to Generate.
+  final String? existingPortraitPath;
 
   final CharacterRepository repository;
   final StorageService storage;
@@ -119,8 +136,12 @@ class AvatarCreationController extends ChangeNotifier {
   /// also the pack's base prompt (each emotion prepends its modifier).
   final TextEditingController promptController;
 
-  CharacterCard? _card;
-  CharacterCard? get card => _card;
+  late final AvatarCardAnchor _anchor;
+  late final AvatarEngineProbe _engine;
+  late final AvatarQcGate _qcGate;
+  late final AvatarPackRunner _runner;
+
+  CharacterCard? get card => _anchor.card;
 
   // ── Choices ───────────────────────────────────────────────────────────────
   PortraitSource source = PortraitSource.upload;
@@ -137,35 +158,29 @@ class AvatarCreationController extends ChangeNotifier {
   final List<({Uint8List bytes, String? emotion})> extraUploads = [];
 
   // ── Engine catalog (shared Studio config, never a second one) ────────────
-  List<({String value, String label})> modelOptions = [];
-  bool? connectionOk;
-  bool testingConnection = false;
-  bool loadingModels = false;
+  List<({String value, String label})> get modelOptions => _engine.modelOptions;
+  bool? get connectionOk => _engine.connectionOk;
+  bool get testingConnection => _engine.testingConnection;
+  bool get loadingModels => _engine.loadingModels;
 
   // ── Vision QC gate ────────────────────────────────────────────────────────
-  bool qcVisible = false;
-  bool qcKnownSupported = false;
-  bool qcEnabled = false;
-  bool resolvingVision = false;
-  VisionEvalFn? _visionFire;
+  bool get qcVisible => _qcGate.visible;
+  bool get qcKnownSupported => _qcGate.knownSupported;
+  bool get qcEnabled => _qcGate.enabled;
+  bool get resolvingVision => _qcGate.resolving;
 
   // ── Run state ─────────────────────────────────────────────────────────────
   AvatarRunStage stage = AvatarRunStage.idle;
   String statusDetail = '';
 
   /// The pack's base was a JPEG or WebP that was converted to a PNG.
-  bool packBaseConverted = false;
-  ExpressionPackSession? session;
-  ExpressionPackQc? qc;
-  int importedCount = 0;
-  int flaggedExcluded = 0;
+  bool get packBaseConverted => _runner.packBaseConverted;
+  ExpressionPackSession? get session => _runner.session;
+  ExpressionPackQc? get qc => _runner.qc;
+  int get importedCount => _runner.importedCount;
+  int get flaggedExcluded => _runner.flaggedExcluded;
   bool _cancelRequested = false;
   bool _disposed = false;
-  bool? _activePackEditMode;
-  Set<String> _existingEmotions = const {};
-
-  /// The one in-flight first-persist (see _ensureCard's single-flight guard).
-  Future<bool>? _ensuring;
 
   bool get running =>
       stage != AvatarRunStage.idle &&
@@ -180,7 +195,7 @@ class AvatarCreationController extends ChangeNotifier {
   /// The exact decision the Studio's pack dialog uses (edit slot + ComfyUI
   /// readiness). img2img is the automatic fallback where edit truly isn't.
   bool get packEditModeNow =>
-      (running ? _activePackEditMode : null) ??
+      (running ? _runner.activePackEditMode : null) ??
       ImageReferenceResolver.packEditMode(storage.imageGenSettings);
 
   /// The Edit-tab view for the edit-model row (readiness copy per backend).
@@ -209,7 +224,7 @@ class AvatarCreationController extends ChangeNotifier {
   /// default as the Studio's second-run behavior).
   List<String> get missingEmotions => [
     for (final e in chosenSet)
-      if (!_existingEmotions.contains(e)) e,
+      if (!_anchor.existingEmotions.contains(e)) e,
   ];
 
   /// CTA copy, or null when there is nothing to generate (upload/none-only
@@ -267,26 +282,15 @@ class AvatarCreationController extends ChangeNotifier {
 
   /// Vision QC toggle per the capability-gating design: known-supported flips
   /// directly; unknown resolves ON CLICK (warm explainer + revert on failure).
-  Future<void> setQcEnabled(bool v) async {
-    if (!v) {
-      qcEnabled = false;
-      notifyListeners();
-      return;
+  Future<void> setQcEnabled(bool v) => _qcGate.setEnabled(v);
+
+  ExpressionPromptRules get packPromptRules => _packPromptRules;
+
+  void setPackPromptRules(ExpressionPromptRules rules) {
+    if (running) {
+      throw StateError('Stop the pack before changing its prompt rules.');
     }
-    if (qcKnownSupported) {
-      qcEnabled = true;
-      notifyListeners();
-      return;
-    }
-    if (resolvingVision) return;
-    resolvingVision = true;
-    notifyListeners();
-    final fire = await resolveVisionFire();
-    if (_disposed) return;
-    resolvingVision = false;
-    _visionFire = fire;
-    qcEnabled = fire != null;
-    qcKnownSupported = fire != null;
+    _packPromptRules = rules.copy();
     notifyListeners();
   }
 
@@ -296,31 +300,47 @@ class AvatarCreationController extends ChangeNotifier {
   Future<void> init() async {
     unawaited(initQcGate());
     unawaited(refreshEngine());
-    if (_card?.dbId != null) {
-      await _loadExistingEmotions();
+    await loadExistingPortrait();
+    if (_anchor.card?.dbId != null) {
+      await _anchor.loadExistingEmotions();
       if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// Fills the portrait slot from [existingPortraitPath]. Nothing is written:
+  /// the card already carries that picture.
+  Future<void> loadExistingPortrait() async {
+    final path = existingPortraitPath;
+    if (path == null || path.isEmpty) return;
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      portraitBytes = await file.readAsBytes();
+      if (!_disposed) notifyListeners();
+    } catch (e) {
+      debugPrint('[AvatarCreation] Starting portrait unreadable: $e');
     }
   }
 
   /// Hidden/shown per the shipped VisionSupportResolver, WITHOUT probing:
   /// known-unsupported → the toggle doesn't exist; known-supported → shown
   /// (default off); unknown → shown, resolved on toggle.
-  Future<void> initQcGate() => _initQcGate();
+  Future<void> initQcGate() => _qcGate.init();
 
   /// Connection test (local backends) + model catalog for the engine strip
   /// and the edit-model row. Mirrors the Studio settings tab's auto-test.
-  Future<void> refreshEngine() => _refreshEngine();
+  Future<void> refreshEngine() => _engine.refresh();
 
   // ── Upload paths (apply immediately via the existing plumbing) ───────────
   /// Sets [bytes] as the card's portrait: written over the existing in-app
   /// portrait file IN PLACE (folders key members by its basename) or a fresh
   /// file when none exists, then re-embedded via updateCharacter.
   Future<bool> applyPortrait(Uint8List bytes) async {
-    if (!await _ensureCard()) return false;
-    final card = _card!;
+    if (!await _anchor.ensure()) return false;
+    final card = _anchor.card!;
     final target = portraitWriteTarget(card: card, storage: storage);
     await target.writeAsBytes(bytes);
-    await FileImage(target).evict();
+    await evictPortraitImage(target);
     await repository.updateCharacter(card);
     portraitBytes = bytes;
     if (!_disposed) notifyListeners();
@@ -330,13 +350,13 @@ class AvatarCreationController extends ChangeNotifier {
   /// Pack-OFF extra upload: a gallery look (null emotion) or a tagged
   /// expression image. Applied immediately.
   Future<bool> addExtraUpload(Uint8List bytes, String? emotion) async {
-    if (!await _ensureCard()) return false;
-    final card = _card!;
+    if (!await _anchor.ensure()) return false;
+    final card = _anchor.card!;
     if (emotion == null) {
       await repository.addLook(card.dbId!, card.name, bytes);
     } else {
       await repository.addAvatar(card.dbId!, card.name, bytes, emotion);
-      _existingEmotions = {..._existingEmotions, emotion};
+      _anchor.addEmotions([emotion]);
     }
     extraUploads.add((bytes: bytes, emotion: emotion));
     if (!_disposed) notifyListeners();
@@ -346,14 +366,14 @@ class AvatarCreationController extends ChangeNotifier {
   /// Emotion-named ZIP sprite pack (the generation alternative). Returns
   /// (added, unrecognized).
   Future<(int, int)> importExpressionZip(Uint8List zipBytes) async {
-    if (!await _ensureCard()) return (0, 0);
-    final card = _card!;
+    if (!await _anchor.ensure()) return (0, 0);
+    final card = _anchor.card!;
     final result = decodeSpritePack(zipBytes);
     var added = 0;
     for (final e in result.entries) {
       await repository.addAvatar(card.dbId!, card.name, e.bytes, e.emotion);
       extraUploads.add((bytes: e.bytes, emotion: e.emotion));
-      _existingEmotions = {..._existingEmotions, e.emotion};
+      _anchor.addEmotions([e.emotion]);
       added++;
     }
     if (added > 0 && !storage.expressionSettings.expressionEnabled) {
@@ -366,16 +386,13 @@ class AvatarCreationController extends ChangeNotifier {
   // ── The run (portrait → veto gate → pack) ─────────────────────────────────
   Future<void> run() async {
     if (running || ctaLabel == null) return;
-    _activePackEditMode = null;
+    _runner.reset();
     _cancelRequested = false;
-    importedCount = 0;
-    flaggedExcluded = 0;
     statusDetail = '';
-    packBaseConverted = false;
     final wantPortrait = source == PortraitSource.generate;
 
     _setStage(AvatarRunStage.saving);
-    if (!await _ensureCard()) {
+    if (!await _anchor.ensure()) {
       _fail('The character could not be saved.');
       return;
     }
@@ -387,7 +404,8 @@ class AvatarCreationController extends ChangeNotifier {
     }
 
     if (wantPortrait) {
-      if (!await _generatePortrait()) return; // _fail already set on error
+      // _fail already set on error.
+      if (!await _runner.generatePortrait()) return;
       if (_disposed) return;
       // Veto gate: with a pack pending, PAUSE on the generated portrait so the
       // user can regenerate it (after tweaking the prompt) before we spend time
@@ -410,7 +428,7 @@ class AvatarCreationController extends ChangeNotifier {
   Future<void> regeneratePortrait() async {
     if (!canRegeneratePortrait) return;
     _cancelRequested = false;
-    if (!await _generatePortrait()) return; // _fail set on error
+    if (!await _runner.generatePortrait()) return; // _fail set on error
     if (_disposed) return;
     _setStage(AvatarRunStage.portraitReview);
   }
@@ -438,13 +456,31 @@ class AvatarCreationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Library-private notify hook so the `part` extension (which cannot touch
-  /// the @protected [notifyListeners]) can broadcast state changes.
-  void _notify() => notifyListeners();
+  /// Run the expression pack (when enabled) off [base], then land on done.
+  /// Shared by the uploaded-base run and the review gate's continue.
+  Future<void> _generatePackAndFinish(Uint8List? base) async {
+    if (packEnabled && packPossible && !_cancelRequested) {
+      await _runner.runPack(base);
+      if (_disposed || stage == AvatarRunStage.failed) return;
+    }
+    _setStage(AvatarRunStage.done);
+  }
+
+  void _setStage(AvatarRunStage s) {
+    stage = s;
+    if (!_disposed) notifyListeners();
+  }
+
+  void _fail(String message) {
+    statusDetail = message;
+    _setStage(AvatarRunStage.failed);
+  }
 
   @override
   void dispose() {
-    _disposeCreator();
+    _disposed = true;
+    _runner.dispose();
+    promptController.dispose();
     super.dispose();
   }
 }

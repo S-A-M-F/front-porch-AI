@@ -12,7 +12,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'studio_widgets.dart';
 
 /// Every setting a generate reads that the graph and model controls do not
-/// cover, each with a control you can see: the Remote host, seed, negative
+/// cover, each with a control you can see: seed, negative
 /// prompt, the Draw Things cluster (port, shift, seed mode, TeaCache, CFG
 /// Zero), the prompt-review switch, and the default style and prompt format.
 /// Steps, CFG, sampler and scheduler are the stove's own sliders.
@@ -46,7 +46,7 @@ class StudioDeskKnobs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final storage = context.watch<StorageService>();
+    context.watch<StorageService>();
     final backend = settings.imageGenBackend;
     final drawThings = backend == 'drawthings';
     final surface = imageSurfaceFor(
@@ -57,23 +57,6 @@ class StudioDeskKnobs extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (backend == 'remote') ...[
-          RemoteImageHostChips(
-            selectedUrl: settings.imageRemoteApiUrl,
-            keyFor: storage.backendSettings.remoteApiKeyFor,
-            onSelect: (url) => _write(
-              () => applyImageRemoteHost(
-                image: settings,
-                url: url,
-                chatRemoteApiUrl: storage.backendSettings.remoteApiUrl,
-                editScoped: edit,
-                canWrite: canWrite,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          StudioRemoteKeyNote(settings: settings, storage: storage),
-        ],
         if (backend != 'remote')
           StudioCommitField(
             key: ValueKey('seed-${settings.imageGenSeed}'),
@@ -94,7 +77,7 @@ class StudioDeskKnobs extends StatelessWidget {
                 _write(() => settings.setImageGenNegativePrompt(value)),
           ),
         if (backend == 'comfyui' && comfyShiftGraph != null)
-          ..._comfyShift(primary, comfyShiftGraph!),
+          ..._comfyShift(context, primary, comfyShiftGraph!),
         if (drawThings) ..._drawThings(context, primary),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -107,7 +90,7 @@ class StudioDeskKnobs extends StatelessWidget {
             '/image in chat pauses so you can edit the crafted prompt first.',
           ),
           value: settings.imageGenPromptReview,
-          activeTrackColor: AppColors.formMasterAccent,
+          activeTrackColor: AppColors.formAccentOf(context),
           onChanged: (value) =>
               _write(() => settings.setImageGenPromptReview(value)),
         ),
@@ -130,10 +113,11 @@ class StudioDeskKnobs extends StatelessWidget {
 
   /// Moving the slider sets Shift for this graph only. Until it is moved the
   /// graph posts its own value, which is where the slider starts.
-  List<Widget> _comfyShift(Color primary, String graph) {
+  List<Widget> _comfyShift(BuildContext context, Color primary, String graph) {
     final moved = settings.comfyShiftFor(graph, edit: edit);
     return [
       _shiftRow(
+        context,
         primary,
         moved ?? comfyOwnShift,
         (value) => settings.setComfyShift(graph, value, edit: edit),
@@ -164,6 +148,7 @@ class StudioDeskKnobs extends StatelessWidget {
         },
       ),
       _shiftRow(
+        context,
         primary,
         shift,
         (value) => edit
@@ -199,7 +184,7 @@ class StudioDeskKnobs extends StatelessWidget {
         dense: true,
         title: Text('TeaCache', style: TextStyle(color: primary)),
         value: settings.drawThingsTeaCache,
-        activeTrackColor: AppColors.formMasterAccent,
+        activeTrackColor: AppColors.formAccentOf(context),
         onChanged: (value) =>
             _write(() => settings.setDrawThingsTeaCache(value)),
       ),
@@ -208,7 +193,7 @@ class StudioDeskKnobs extends StatelessWidget {
         dense: true,
         title: Text('CFG Zero', style: TextStyle(color: primary)),
         value: settings.drawThingsCfgZeroStar,
-        activeTrackColor: AppColors.formMasterAccent,
+        activeTrackColor: AppColors.formAccentOf(context),
         onChanged: (value) =>
             _write(() => settings.setDrawThingsCfgZeroStar(value)),
       ),
@@ -217,6 +202,7 @@ class StudioDeskKnobs extends StatelessWidget {
 
   /// A shift slider. Comfy keeps one per graph; Draw Things keeps one per mode.
   Widget _shiftRow(
+    BuildContext context,
     Color primary,
     double shift,
     ValueChanged<double> onChanged,
@@ -231,7 +217,7 @@ class StudioDeskKnobs extends StatelessWidget {
             max: 10,
             divisions: 100,
             label: shift.toStringAsFixed(1),
-            activeColor: AppColors.formMasterAccent,
+            activeColor: AppColors.formAccentOf(context),
             onChanged: (value) => _write(() => onChanged(value)),
           ),
         ),
@@ -284,44 +270,5 @@ class StudioDeskKnobs extends StatelessWidget {
         },
       ),
     ];
-  }
-}
-
-class StudioRemoteKeyNote extends StatelessWidget {
-  const StudioRemoteKeyNote({
-    super.key,
-    required this.settings,
-    required this.storage,
-  });
-
-  final ImageGenSettings settings;
-  final StorageService storage;
-
-  @override
-  Widget build(BuildContext context) {
-    final account = resolveImageStudioRemoteAccount(
-      imageRemoteApiUrl: settings.imageRemoteApiUrl,
-      chatRemoteApiUrl: storage.backendSettings.remoteApiUrl,
-      keyFor: storage.backendSettings.remoteApiKeyFor,
-    );
-    if (account.key.isEmpty) {
-      return Text(
-        'No Remote API key configured for this host. Remote images '
-        'use the same API account as chat — nothing runs locally and '
-        'nothing is free. Add your provider key under Settings → '
-        'Backend → Remote API first; models will list once it\'s set.',
-        style: TextStyle(color: AppColors.textPrimary(context), fontSize: 11.5),
-      );
-    }
-    final host = Uri.tryParse(account.url)?.host ?? '';
-    return Text(
-      'Bills your Remote API account'
-      '${host.isEmpty ? '' : ' ($host)'} per image.',
-      style: TextStyle(
-        color: AppColors.textSecondary(context),
-        fontSize: 11,
-        fontStyle: FontStyle.italic,
-      ),
-    );
   }
 }

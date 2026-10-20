@@ -67,8 +67,8 @@ extension ChatServiceWiringEvals on ChatService {
       getRealismEvalCancelled: () =>
           _realismEvalCancelled || _isStaleGreetingEval(),
       getPendingRealismMetadata: () => _pendingRealismMetadata ?? {},
-      setPendingRealismMetadata: _writePendingRealismMetadata,
-      captureRealismState: _captureRealismState,
+      setPendingRealismMetadata: _growthDesk.writePendingRealismMetadata,
+      captureRealismState: _realismSnapshot.capture,
       getCharacterEmotion: () => _characterEmotion,
       setCharacterEmotion: (v) => _characterEmotion = v,
       getEmotionIntensity: () => _emotionIntensity,
@@ -112,7 +112,7 @@ extension ChatServiceWiringEvals on ChatService {
   // One round trip for climax + pockets + posture when two or more of them
   // are live; the composition rules that keep every feature on its own gate
   // are documented on the leaf. Same transport wiring as its three siblings —
-  // but constructed PER TURN by _prefetchReplyFacts rather than held as a
+  // but constructed PER TURN by ReplyFacts.prefetch rather than held as a
   // late final: the leaf is a stateless wrapper over this fire closure, and
   // one small allocation per turn is what kept the shell under the god-file
   // ratchet. Not a hot path (once per reply, never per frame).
@@ -194,8 +194,15 @@ extension ChatServiceWiringEvals on ChatService {
     }
   }
 
-  Future<LlmToolResponse?> _fireToolEvalUnheld(ToolEvalSpec spec) async {
-    final service = _sideLaneLlm;
+  /// [via] and [identity] send it to another model than the side lane's (the
+  /// chat model while a helper holds the lane); null keeps the side lane.
+  Future<LlmToolResponse?> _fireToolEvalUnheld(
+    ToolEvalSpec spec, {
+    LLMService? via,
+    String? identity,
+  }) async {
+    final service = via ?? _sideLaneLlm;
+    final id = identity ?? _evalBackendIdentity;
     // [EvalTraffic]: label from the named choice, never tools.first — after
     // kJudgeEvalTools that would always be report_relationship.
     final trafficWatch = Stopwatch()..start();
@@ -246,9 +253,9 @@ extension ChatServiceWiringEvals on ChatService {
           stopSequences: const [],
           toolChoice: spec.toolChoice,
           onChunk: spec.onChunk,
-          backendIdentity: _evalBackendIdentity,
-          stillWantTools: () =>
-              _toolProbe.shouldPostAfterIdle(_evalBackendIdentity),
+          cancel: spec.cancel,
+          backendIdentity: id,
+          stillWantTools: () => _toolProbe.shouldPostAfterIdle(id),
         ),
         spec.tools,
       ).timeout(timeout);
@@ -291,6 +298,12 @@ extension ChatServiceWiringEvals on ChatService {
         modelKey: _workerNamedByEngine ? _localModelKeyNow : null,
       );
     }
+    return _mouthEvalIdentity();
+  }
+
+  /// The chat model's identity. [remoteModel] names another model on the same
+  /// remote host (a studio wizard's own pick); empty means chat's own.
+  String _mouthEvalIdentity({String remoteModel = ''}) {
     final service = _mouthLlm;
     final remoteApiUrl = service is LlmApiEndpoint
         ? (service as LlmApiEndpoint).apiUrl
@@ -307,7 +320,9 @@ extension ChatServiceWiringEvals on ChatService {
       remoteApiUrl: remoteApiUrl,
       remoteModelName: local
           ? ''
-          : _storageService.backendSettings.remoteModelName,
+          : (remoteModel.isNotEmpty
+                ? remoteModel
+                : _storageService.backendSettings.remoteModelName),
       modelPath: local ? _localModelKeyNow : null,
     );
   }
@@ -396,6 +411,7 @@ extension ChatServiceWiringEvals on ChatService {
       workerLaneReadyForPing: () =>
           _llmProvider?.workerLaneReadyForAutoPing ?? true,
       onNotify: notifyListeners,
+      onForcedRetest: _koboldService.toolCrashGuard.clear,
       // OpenRouter/Nano-GPT list tool support in their /models metadata, so the
       // auto-test seeds the probe for free instead of pinging the model. Gated
       // to the openRouter backend: oMLX runs at localhost (no metadata) and the

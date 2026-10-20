@@ -108,6 +108,10 @@ class Sessions extends Table {
       text().withDefault(const Constant(''))(); // e.g. "amused"
   TextColumn get emotionIntensity =>
       text().withDefault(const Constant(''))(); // mild/moderate/strong
+  // v57 — why the mood is what it is, and how many judge passes kept it
+  // (docs/design/mood-with-bite.md).
+  TextColumn get emotionCause => text().withDefault(const Constant(''))();
+  IntColumn get emotionHeldTurns => integer().withDefault(const Constant(0))();
   TextColumn get timeOfDay =>
       text().withDefault(const Constant('morning'))(); // dawn/morning/etc
   IntColumn get dayCount =>
@@ -147,6 +151,21 @@ class Sessions extends Table {
   /// v55 — the opening afterglow turn has been spoken. NULL as above.
   BoolColumn get refractoryOpened => boolean().nullable()();
 
+  /// v59 — the soft gate (recovery overhaul PR 3): this body recovers
+  /// through a tenderness window. NULL reads a hard lock, so every existing
+  /// row means exactly what it means today.
+  BoolColumn get refractorySoft => boolean().nullable()();
+
+  /// v59 — peak stamps as JSON text ("[5,0]": story minutes since each
+  /// peak, oldest first). NULL or empty means no peaks inside the hour.
+  TextColumn get refractoryPeaks => text().nullable()();
+
+  /// v60 — the warmth tail (PR 4): minutes still owed and the length it
+  /// was seeded at, frozen while a body runs. NULL = no tail, so a row
+  /// saved before it stays byte-identical.
+  IntColumn get refractoryTailMinutes => integer().nullable()();
+  IntColumn get refractoryTailTotal => integer().nullable()();
+
   // Realism Engine v3.0 Behavioral Mechanics
   IntColumn get trustLevel =>
       integer().withDefault(const Constant(0))(); // -100 to 100 paranoia/trust
@@ -169,6 +188,9 @@ class Sessions extends Table {
   IntColumn get chaosPressure => integer().withDefault(
     const Constant(0),
   )(); // 0-100 escalating trigger chance
+  // v56: the 1:1 spicy switch. Groups keep theirs on the group row.
+  BoolColumn get chaosNsfwEnabled =>
+      boolean().withDefault(const Constant(false))();
 
   // Sims/Needs Simulation (clean port on 0.9.8)
   BoolColumn get needsSimEnabled =>
@@ -310,8 +332,11 @@ class Groups extends Table {
   TextColumn get worldIds => text().withDefault(
     const Constant('[]'),
   )(); // JSON array of world IDs for scoping
+  // New groups do not inherit member lorebooks unless the user turns it on.
+  // Libraries created before this keep their own SQL default (the ladder's
+  // ADD COLUMN); every app write sets the value explicitly.
   BoolColumn get inheritCharacterLorebooks =>
-      boolean().withDefault(const Constant(true))();
+      boolean().withDefault(const Constant(false))();
 
   /// Immutable creation-time baseline realism/needs seed for this group definition.
   /// JSON shape is identical to defaultMemberRealismState and sessions.group_realism_state.

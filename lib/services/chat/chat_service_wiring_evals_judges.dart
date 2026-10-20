@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Pre-gen judge builders: verifier, needs impact, RealismEvals,
-// ObjectiveProposal. Engine, post-gen trio, and tools transport
+// ObjectiveProposal, and the RealismJudges / RealismDance /
+// NeedsReprocess that run them. Engine, post-gen trio, and tools transport
 // stay on wiring_evals. Injection is a different file.
 // objectivesActive stays the live AND.
 
@@ -17,9 +18,9 @@ extension ChatServiceWiringEvalJudges on ChatService {
         repeatPenalty: kScalarEvalRepeatPenalty,
         label: 'director',
       ),
-      stripThinkBlocks: _stripThinkBlocks,
-      extractJsonInt: _extractJsonInt,
-      extractJsonBool: _extractJsonBool,
+      stripThinkBlocks: stripEvalThinkBlocks,
+      extractJsonInt: evalJsonInt,
+      extractJsonBool: evalJsonBool,
       getActiveCharacter: () => _activeCharacter,
       getActiveGroup: () => _activeGroup,
       getIsObserverMode: () => _observerMode,
@@ -40,9 +41,9 @@ extension ChatServiceWiringEvalJudges on ChatService {
               ?.frontPorchExtensions
               ?.realismVerificationStrictness ??
           3,
-      captureRealismState: _captureRealismState,
+      captureRealismState: _realismSnapshot.capture,
       getPreTurnNeedsVector: () => _needsSimulation.vector,
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
       onVerificationPhase: (verifying, {pass = 0, max = 1}) {
         _isVerifyingRealism = verifying;
         _verificationPass = pass;
@@ -66,19 +67,19 @@ extension ChatServiceWiringEvalJudges on ChatService {
         label: 'needs',
       ),
       getPendingRealismMetadata: () => _pendingRealismMetadata ?? {},
-      setPendingRealismMetadata: _writePendingRealismMetadata,
+      setPendingRealismMetadata: _growthDesk.writePendingRealismMetadata,
       getActiveCharacter: () => _activeCharacter,
       getActiveGroup: () => _activeGroup,
       getIsObserverMode: () => _observerMode,
-      getCurrentSpeakerIdForRealism: _getCurrentSpeakerIdForRealism,
-      getIsGroupNonObserverMode: () => (_activeGroup != null && !_observerMode),
-      getGroupNeeds: _getGroupNeeds,
-      setGroupNeeds: _setGroupNeeds,
+      getCurrentSpeakerIdForRealism: _groupStore.currentSpeakerId,
+      getIsGroupNonObserverMode: () => _activeGroup != null,
+      getGroupNeeds: _groupStore.needsOf,
+      setGroupNeeds: _groupStore.setNeeds,
       getGroupCharacters: () => _groupCharacters,
       getCharacterIdFromCard: _getCharacterIdFromCard,
       getMessages: () => _messages,
       needsSimulation: _needsSimulation,
-      getNeedsSimEnabled: () => _needsSimEnabled,
+      getNeedsSimEnabled: () => _needsPass.active,
       getRealismEnabled: () => _realismEnabled,
       getNeedsModelAuthorityEnabled: () =>
           (_activeCharacter
@@ -110,7 +111,7 @@ extension ChatServiceWiringEvalJudges on ChatService {
           onGuardAbort: () => aborted = true,
           stopWhen: (acc) =>
               usableEvalJsonText(
-                _stripThinkBlocks(acc),
+                stripEvalThinkBlocks(acc),
                 tools: kOneShotEvalTools,
                 toolChoice: kOneShotTool,
                 callToText: (resp) =>
@@ -131,23 +132,28 @@ extension ChatServiceWiringEvalJudges on ChatService {
           _isCancellingRealismEval ||
           _realismEvalCancelled ||
           _isStaleGreetingEval(),
-      stripThinkBlocks: _stripThinkBlocks,
-      extractJsonInt: _extractJsonInt,
-      extractJsonBool: _extractJsonBool,
+      stripThinkBlocks: stripEvalThinkBlocks,
+      extractJsonInt: evalJsonInt,
+      extractJsonBool: evalJsonBool,
       getActiveCharacter: () => _activeCharacter,
       getActiveGroup: () => _activeGroup,
       getIsObserverMode: () => _observerMode,
       getUserName: () => _userPersonaService.persona.name,
       getRealismEnabled: () => _realismEnabled,
-      getObjectivesEnabled: () => objectivesActive,
+      // A Feelings re-score leaves the turn's quests as they were.
+      getObjectivesEnabled: () => objectivesActive && !_rescoringFeelings,
       getMessages: () => _messages,
       getPendingRealismMetadata: () => _pendingRealismMetadata ?? {},
-      setPendingRealismMetadata: _writePendingRealismMetadata,
-      captureRealismState: _captureRealismState,
+      setPendingRealismMetadata: _growthDesk.writePendingRealismMetadata,
+      captureRealismState: _realismSnapshot.capture,
       getCharacterEmotion: () => _characterEmotion,
       setCharacterEmotion: (v) => _characterEmotion = v,
       getEmotionIntensity: () => _emotionIntensity,
       setEmotionIntensity: (v) => _emotionIntensity = v,
+      getEmotionCause: () => _emotionCause,
+      setEmotionCause: (v) => _emotionCause = v,
+      getEmotionHeldTurns: () => _emotionHeldTurns,
+      setEmotionHeldTurns: (v) => _emotionHeldTurns = v,
       relationshipService: _relationshipService,
       nsfwService: _nsfwService,
       timeService: _timeService,
@@ -184,6 +190,10 @@ extension ChatServiceWiringEvalJudges on ChatService {
               !objectivesActive
           ? const []
           : ambitionsFor(_activeCharacter!),
+      // PR 5: one shared source for the mutual opening — the ladder and the
+      // refractory note read the identical stamp-backed truth.
+      getMutualOpening: _mutualAfterglowOpening,
+      getPcdActive: _pcdActive,
       // Likes & Dislikes — the SCORING half. Called once per prompt BUILD, not
       // once per turn (review, 2026-08-07 — the earlier comment here claimed
       // otherwise). What makes one-shot parity hold is that it is PURE: it
@@ -218,6 +228,16 @@ extension ChatServiceWiringEvalJudges on ChatService {
         );
       },
       getPlannerEnabled: () => _storageService.realismSettings.plannerEnabled,
+      // The proposal gate (objectives-that-keep-up.md part 3). During the
+      // realism dance `_activeCharacter` is the speaker being evaluated.
+      getRecentEndedObjectives: _recentEndedObjectiveLines,
+      getObjectiveIgnoreTokens: _objectiveIgnoreTokens,
+      isSideQuestCooldownActive: () {
+        final card = _activeCharacter;
+        return card != null &&
+            sideQuestCooldownActive(_messages, _getCharacterIdFromCard(card));
+      },
+      getSideQuestCap: () => kMaxSecondaryObjectives,
       setObjective:
           (
             text, {
@@ -229,6 +249,8 @@ extension ChatServiceWiringEvalJudges on ChatService {
             isPrimary: isPrimary,
             autoGenerateTasks: autoGenerateTasks,
             servedAmbition: servedAmbition,
+            // The judge proposed it: the character's own want.
+            origin: kObjectiveOriginCharacter,
             // Eval-proposed objectives belong to the turn being generated —
             // record them so regen can roll them back (turn-ops; the UI's
             // direct setObjective calls stay unrecorded).
@@ -240,7 +262,7 @@ extension ChatServiceWiringEvalJudges on ChatService {
 
   ObjectiveProposal _buildObjectiveProposal() {
     return ObjectiveProposal(
-      stripThinkBlocks: _stripThinkBlocks,
+      stripThinkBlocks: stripEvalThinkBlocks,
       getLlmService: () => _sideLaneLlm,
       getActiveCharacter: () => _activeCharacter,
       getActiveGroup: () => _activeGroup,
@@ -256,36 +278,29 @@ extension ChatServiceWiringEvalJudges on ChatService {
           ObjectivesCompanion(id: drift.Value(id), tasks: drift.Value(json)),
         );
       },
-      deactivateObjective: (id) async {
-        // Only the completion check retires through this cb (the UI's
-        // clearObjective has its own db call) — record the turn-op so regen
-        // can reactivate a quest the invalidated turn retired. Armed-gated:
-        // manual "Check now" retirements are user actions, not turn ops.
-        if (_objectiveTurnOpsArmed) {
-          _recordObjectiveTurnOp({'op': 'deactivated', 'id': id});
-        }
-        await _db.updateObjective(
-          ObjectivesCompanion(
-            id: drift.Value(id),
-            active: const drift.Value(false),
-          ),
-        );
-      },
-      markTaskCompleted: markTaskCompleted,
-      markTaskStale: markTaskStale,
-      getObjectiveStaleThresholdN: () =>
-          _storageService.realismSettings.objectiveStaleThreshold,
+      // The goal sync's writes; each records its turn op only while the
+      // turn-path check is armed, so a manual "Check now" stays the user's.
+      writeSyncedTasks: _writeSyncedTasks,
+      retireObjective: _retireObjectiveFromSync,
+      setObjectiveDormant: _setObjectiveDormant,
+      isHeldToday: _isHeldTodayObjective,
       getIsCheckingCompletion: () => _isCheckingCompletion,
-      setIsCheckingCompletion: (v) => _isCheckingCompletion = v,
+      // Every flip notifies: the web relay pushes the phone's goal-check
+      // overlay (and its Skip) from it. The pre-reply check had no notify.
+      setIsCheckingCompletion: (v) {
+        _isCheckingCompletion = v;
+        notifyListeners();
+      },
       onNotify: notifyListeners,
       fireToolEval: _fireToolEval,
       probe: _toolProbe,
       getBackendIdentity: () => _evalBackendIdentity,
       getPreferTextEvals: () => _storageService.realismSettings.preferTextEvals,
       // The completion check runs pre-generation; the flags are consumed by
-      // _maybeRunJournalPass/_maybeRunGrowthPass post-generation (a finished
-      // quest is a story beat worth journaling AND a moment characters grow).
-      onObjectiveCompleted: () => _requestSalienceKick(),
+      // _maybeRunJournalPass/GrowthDesk.maybeRunGrowthPass post-generation (a
+      // finished quest is a story beat worth journaling AND a moment
+      // characters grow).
+      onObjectiveCompleted: () => _growthDesk.requestSalienceKick(),
       // Ambitions (Living Time §6): a whole quest finishing is the ONE moment
       // ambition progress can move. Fire-and-forget; owner resolved from the
       // objective row's characterId (per-character in groups by construction).
@@ -333,6 +348,7 @@ extension ChatServiceWiringEvalJudges on ChatService {
       onObjectiveStale: (obj) {
         if (!_isHeldTodayObjective(obj)) return;
         final held = todaySentence ?? obj.objective;
+        _recordTodayPointerOp();
         _todayObjectiveId = null;
         _todayObjectiveText = null;
         setTodaySentence(null);
@@ -343,4 +359,90 @@ extension ChatServiceWiringEvalJudges on ChatService {
       },
     );
   }
+
+  /// The char→char judge (its own tool and pass; see CastFeelingsJudge).
+  CastFeelingsJudge get _castFeelingsJudge =>
+      _castFeelingsJudgeCache ??= CastFeelingsJudge(
+        fire: ({required debugLabel, required tools, required buildPrompt}) =>
+            fireStructuredEval(
+              probe: _toolProbe,
+              backendIdentity: _evalBackendIdentity,
+              debugLabel: debugLabel,
+              tools: tools,
+              buildPrompt: buildPrompt,
+              callToText: (resp) =>
+                  realismToolCallToJson(kCastFeelingsToolName, resp.calls),
+              fireToolEval: _fireToolEval,
+              toolChoice: kCastFeelingsToolName,
+              getPreferTextEvals: () =>
+                  _storageService.realismSettings.preferTextEvals,
+              fireTextEval: (p, {onChunk}) => _fireLLMEval(
+                p,
+                repeatPenalty: kScalarEvalRepeatPenalty,
+                label: 'cast_feelings',
+              ),
+            ),
+      );
+
+  RealismJudges _buildRealismJudges() => RealismJudges(
+    _realismScope(),
+    realismEvals: () => _realismEvals,
+    verifier: () => _realismVerifier,
+    fireLLMEval: _fireLLMEval,
+    fireToolEval: _fireToolEval,
+    toolProbe: _toolProbe,
+    backendIdentity: () => _evalBackendIdentity,
+    writePending: _growthDesk.writePendingRealismMetadata,
+    evalCancelled: () => _realismEvalCancelled,
+    oneShotActive: () => _oneShotActive,
+    personaName: () => _userPersonaService.persona.name,
+    dispatchStagger: _kEvalDispatchStagger,
+    directing: () => _directing,
+  );
+
+  RealismDance _buildRealismDance() => RealismDance(
+    _realismScope(),
+    needsPass: () => _needsPass,
+    judges: () => _realismJudges,
+    snapshot: () => _realismSnapshot,
+    realismActiveThisMode: () => _realismActiveThisMode,
+    speakerIsSoft: _speakerIsSoft,
+    withWorkerLane: _withWorkerLane,
+    tickRefractoryPerReply: _afterglow.tickPerReply,
+    stampGroupUserTurnBaseline: _stampGroupUserTurnBaseline,
+    applyMoodDecay: _applyMoodDecay,
+    seedOpeningPosture: _seedOpeningPosture,
+    objectives: () => _activeObjectives,
+    setObjectives: (v) => _activeObjectives = v,
+    objectivesFor: getActiveObjectivesFor,
+    evalCancelled: () => _realismEvalCancelled,
+    setEvaluating: (v) => _isEvaluatingRealism = v,
+    streamText: () => _realismEvalStreamText,
+    setStreamText: (v) => _realismEvalStreamText = v,
+    chunkTimer: () => _evalChunkTimer,
+    setChunkTimer: (t) => _evalChunkTimer = t,
+  );
+
+  NeedsReprocess _buildNeedsReprocess() => NeedsReprocess(
+    _realismScope(),
+    needsActive: () => _needsPass.active,
+    isTurnBusy: () => _isTurnBusy,
+    speakerForMessage: _resolveGroupSpeakerForMessage,
+    targetFor: reprocessNeedsTargetFor,
+    loadIntoScalars: (id) => _realismDance.loadIntoScalars(id),
+    saveScalarsIntoGroup: (id) => _realismDance.saveScalarsIntoGroup(id),
+    evaluator: () => _needsImpactEvaluator,
+    setVerifying: (on, {pass, maxPasses}) {
+      _isVerifyingRealism = on;
+      if (pass != null) _verificationPass = pass;
+      if (maxPasses != null) _verificationMaxPasses = maxPasses;
+    },
+    clearEvalCancelled: () => _realismEvalCancelled = false,
+    waitForEvalIdle: () async {
+      final koboldForReprocess = _llmProvider?.koboldService;
+      if (koboldForReprocess != null) {
+        await koboldForReprocess.waitForIdle();
+      }
+    },
+  );
 }

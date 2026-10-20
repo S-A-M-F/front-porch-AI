@@ -112,6 +112,7 @@ extension ChatServiceSessionLoad on ChatService {
           .clear(); // 0-session: no per-chat look selection (keep reset blocks in sync)
       _sessionGenSettings =
           ChatGenerationSettings(); // 0-session: no per-chat gen overrides — without this, character B's first chat ran (and could SAVE) character A's temp/stops/sanitizer (keep reset blocks in sync)
+      _armPromptPickerIfDue(); // prompt-picker SOW: opening a card with no saved session is a new chat
       _clearContextBudget();
       return;
     }
@@ -163,7 +164,7 @@ extension ChatServiceSessionLoad on ChatService {
         _loadSceneGuestsFromSession(lastSession);
       }
       await _reapplyOpeningOverlayIfNeeded();
-      await _reloadSessionClockThenSync(lastSession);
+      await _clockWriter.reloadSessionClockThenSync(lastSession);
     } finally {
       _preserveSessionPersonaOf[this] = false;
     }
@@ -181,7 +182,7 @@ extension ChatServiceSessionLoad on ChatService {
     // Load per-chat generation settings override for this session.
     // LLMerta porch memories on last-session open (same as loadSession).
     unawaited(_maybeImportPorchMemories());
-    unawaited(_ensureBirthdayState());
+    unawaited(_birthdaySync.ensure());
   }
 
   /// Get sessions for a given character/group ID without setting it as active.
@@ -258,7 +259,35 @@ extension ChatServiceSessionLoad on ChatService {
     return getSessionsForId(charId);
   }
 
-  Future<void> loadSession(String sessionId) async {
+  /// Open a fresh chat for the open cast. See [_openNewChat].
+  Future<void> startNewChat({String? personaId}) =>
+      _whileSwitchingChat(() async {
+        // A streaming reply is cut, as on entering a character; one still
+        // settling finishes in the chat it started in.
+        await _cancelAndWaitForGeneration();
+        await _waitForTurnToSettle();
+        await _openNewChat(personaId: personaId);
+      });
+
+  Future<void> loadSession(String sessionId) =>
+      _whileSwitchingChat(() => _openSession(sessionId));
+
+  /// Refuses sends across an in-chat switch, as entering a character or group
+  /// does. A send (a `/join` included) that lands mid-switch gets "The chat is
+  /// still opening." instead of starting in one chat and finishing in the
+  /// next: a New chat mints its id twice, so a join that slipped in between
+  /// lost its "joined the scene" line and could lose the guest too. Not the
+  /// session-load flag: that would also hold the history backfill back.
+  Future<void> _whileSwitchingChat(Future<void> Function() body) async {
+    _chatSwitches++;
+    try {
+      await body();
+    } finally {
+      _chatSwitches--;
+    }
+  }
+
+  Future<void> _openSession(String sessionId) async {
     if (_activeCharacter == null && _activeGroup == null) return;
 
     // A reload mid-settle reads rows the finishing turn hasn't persisted yet
@@ -378,7 +407,7 @@ extension ChatServiceSessionLoad on ChatService {
         await _journalStore.persistRecap(sessionId, liveRecap);
       }
       await _reapplyOpeningOverlayIfNeeded();
-      await _reloadSessionClockThenSync(session);
+      await _clockWriter.reloadSessionClockThenSync(session);
 
       // Quests are keyed (character, CHAT) — so switching chats has to reload
       // them, exactly like the scalars above. Nothing did: `_activeObjectives`
@@ -406,7 +435,7 @@ extension ChatServiceSessionLoad on ChatService {
       // LLMerta porch memories: plant matching Mafia nights + arm force-ack.
       // Fire-and-forget so open path never blocks on disk/DB.
       unawaited(_maybeImportPorchMemories());
-      unawaited(_ensureBirthdayState());
+      unawaited(_birthdaySync.ensure());
     } catch (e) {
       debugPrint('[ChatService] Error loading session $sessionId: $e');
     }

@@ -23,7 +23,7 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/capability/capability.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 import 'studio_widgets.dart';
 
@@ -41,6 +41,7 @@ class StudioView extends StatelessWidget {
     this.groupShotActive = false,
     this.onPickGroupMember,
     this.onPickGroupShot,
+    this.onChooseCharacter,
     required this.prompt,
     required this.referenceBytes,
     required this.currentImageBytes,
@@ -70,6 +71,7 @@ class StudioView extends StatelessWidget {
     this.showEdit = false,
     this.workspaceIndex,
     this.expressionBody,
+    this.batchBody,
     this.draftBusy = false,
   });
 
@@ -79,6 +81,9 @@ class StudioView extends StatelessWidget {
   final bool groupShotActive;
   final ValueChanged<int>? onPickGroupMember;
   final VoidCallback? onPickGroupShot;
+
+  /// Home launch: the Character subject picks from the library.
+  final VoidCallback? onChooseCharacter;
   final String prompt;
   final Uint8List? referenceBytes;
   final Uint8List? currentImageBytes;
@@ -123,6 +128,11 @@ class StudioView extends StatelessWidget {
   final bool showEdit;
   final int? workspaceIndex;
   final Widget? expressionBody;
+
+  /// The Batch tab: many characters at once, through the shared queue. Built
+  /// only while that tab is open, so a studio pumped without the character
+  /// library never builds it.
+  final Widget? batchBody;
   final bool draftBusy;
 
   @override
@@ -169,6 +179,11 @@ class StudioView extends StatelessWidget {
                           excluding: workspaceIndex != 2,
                           child: expressionBody!,
                         ),
+                      if (batchBody != null)
+                        ExcludeFocus(
+                          excluding: workspaceIndex != 3,
+                          child: batchBody!,
+                        ),
                     ],
                   );
                 },
@@ -192,6 +207,7 @@ class StudioView extends StatelessWidget {
             onChanged: draftBusy ? null : onSelectSubject,
             onPickGroupMember: draftBusy ? null : onPickGroupMember,
             onPickGroupShot: draftBusy ? null : onPickGroupShot,
+            onChooseCharacter: onChooseCharacter,
           ),
           if (groupShotActive) ...[
             const SizedBox(height: 8),
@@ -265,11 +281,7 @@ class StudioView extends StatelessWidget {
 
   /// Honest warning shown while the whole-cast "Group shot" subject is active.
   Widget _groupShotCaveat(BuildContext context) {
-    final warn = AppColors.resolve(
-      context,
-      const Color(0xFFDAA83F),
-      const Color(0xFFA97514),
-    );
+    final warn = LegendColors.caveatOf(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
@@ -305,7 +317,7 @@ class StudioView extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.auto_awesome, color: AppColors.formMasterAccent),
+          Icon(Icons.auto_awesome, color: AppColors.formAccentOf(context)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

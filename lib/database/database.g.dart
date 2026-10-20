@@ -1597,6 +1597,30 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _emotionCauseMeta = const VerificationMeta(
+    'emotionCause',
+  );
+  @override
+  late final GeneratedColumn<String> emotionCause = GeneratedColumn<String>(
+    'emotion_cause',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _emotionHeldTurnsMeta = const VerificationMeta(
+    'emotionHeldTurns',
+  );
+  @override
+  late final GeneratedColumn<int> emotionHeldTurns = GeneratedColumn<int>(
+    'emotion_held_turns',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _timeOfDayMeta = const VerificationMeta(
     'timeOfDay',
   );
@@ -1767,6 +1791,51 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
       'CHECK ("refractory_opened" IN (0, 1))',
     ),
   );
+  static const VerificationMeta _refractorySoftMeta = const VerificationMeta(
+    'refractorySoft',
+  );
+  @override
+  late final GeneratedColumn<bool> refractorySoft = GeneratedColumn<bool>(
+    'refractory_soft',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("refractory_soft" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _refractoryPeaksMeta = const VerificationMeta(
+    'refractoryPeaks',
+  );
+  @override
+  late final GeneratedColumn<String> refractoryPeaks = GeneratedColumn<String>(
+    'refractory_peaks',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refractoryTailMinutesMeta =
+      const VerificationMeta('refractoryTailMinutes');
+  @override
+  late final GeneratedColumn<int> refractoryTailMinutes = GeneratedColumn<int>(
+    'refractory_tail_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refractoryTailTotalMeta =
+      const VerificationMeta('refractoryTailTotal');
+  @override
+  late final GeneratedColumn<int> refractoryTailTotal = GeneratedColumn<int>(
+    'refractory_tail_total',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _trustLevelMeta = const VerificationMeta(
     'trustLevel',
   );
@@ -1869,6 +1938,21 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _chaosNsfwEnabledMeta = const VerificationMeta(
+    'chaosNsfwEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> chaosNsfwEnabled = GeneratedColumn<bool>(
+    'chaos_nsfw_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("chaos_nsfw_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
   );
   static const VerificationMeta _needsSimEnabledMeta = const VerificationMeta(
     'needsSimEnabled',
@@ -2122,6 +2206,8 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     moodDecayCounter,
     characterEmotion,
     emotionIntensity,
+    emotionCause,
+    emotionHeldTurns,
     timeOfDay,
     dayCount,
     startDayOfWeek,
@@ -2136,6 +2222,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     refractoryMinutesRemaining,
     refractoryMinutesTotal,
     refractoryOpened,
+    refractorySoft,
+    refractoryPeaks,
+    refractoryTailMinutes,
+    refractoryTailTotal,
     trustLevel,
     activeFixation,
     fixationLifespan,
@@ -2144,6 +2234,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     trustRepairPending,
     chaosModeEnabled,
     chaosPressure,
+    chaosNsfwEnabled,
     needsSimEnabled,
     needsVector,
     pockets,
@@ -2364,6 +2455,24 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         ),
       );
     }
+    if (data.containsKey('emotion_cause')) {
+      context.handle(
+        _emotionCauseMeta,
+        emotionCause.isAcceptableOrUnknown(
+          data['emotion_cause']!,
+          _emotionCauseMeta,
+        ),
+      );
+    }
+    if (data.containsKey('emotion_held_turns')) {
+      context.handle(
+        _emotionHeldTurnsMeta,
+        emotionHeldTurns.isAcceptableOrUnknown(
+          data['emotion_held_turns']!,
+          _emotionHeldTurnsMeta,
+        ),
+      );
+    }
     if (data.containsKey('time_of_day')) {
       context.handle(
         _timeOfDayMeta,
@@ -2481,6 +2590,42 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         ),
       );
     }
+    if (data.containsKey('refractory_soft')) {
+      context.handle(
+        _refractorySoftMeta,
+        refractorySoft.isAcceptableOrUnknown(
+          data['refractory_soft']!,
+          _refractorySoftMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refractory_peaks')) {
+      context.handle(
+        _refractoryPeaksMeta,
+        refractoryPeaks.isAcceptableOrUnknown(
+          data['refractory_peaks']!,
+          _refractoryPeaksMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refractory_tail_minutes')) {
+      context.handle(
+        _refractoryTailMinutesMeta,
+        refractoryTailMinutes.isAcceptableOrUnknown(
+          data['refractory_tail_minutes']!,
+          _refractoryTailMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refractory_tail_total')) {
+      context.handle(
+        _refractoryTailTotalMeta,
+        refractoryTailTotal.isAcceptableOrUnknown(
+          data['refractory_tail_total']!,
+          _refractoryTailTotalMeta,
+        ),
+      );
+    }
     if (data.containsKey('trust_level')) {
       context.handle(
         _trustLevelMeta,
@@ -2544,6 +2689,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         chaosPressure.isAcceptableOrUnknown(
           data['chaos_pressure']!,
           _chaosPressureMeta,
+        ),
+      );
+    }
+    if (data.containsKey('chaos_nsfw_enabled')) {
+      context.handle(
+        _chaosNsfwEnabledMeta,
+        chaosNsfwEnabled.isAcceptableOrUnknown(
+          data['chaos_nsfw_enabled']!,
+          _chaosNsfwEnabledMeta,
         ),
       );
     }
@@ -2807,6 +2961,14 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}emotion_intensity'],
       )!,
+      emotionCause: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}emotion_cause'],
+      )!,
+      emotionHeldTurns: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}emotion_held_turns'],
+      )!,
       timeOfDay: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}time_of_day'],
@@ -2863,6 +3025,22 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.bool,
         data['${effectivePrefix}refractory_opened'],
       ),
+      refractorySoft: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}refractory_soft'],
+      ),
+      refractoryPeaks: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refractory_peaks'],
+      ),
+      refractoryTailMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}refractory_tail_minutes'],
+      ),
+      refractoryTailTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}refractory_tail_total'],
+      ),
       trustLevel: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}trust_level'],
@@ -2894,6 +3072,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
       chaosPressure: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}chaos_pressure'],
+      )!,
+      chaosNsfwEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}chaos_nsfw_enabled'],
       )!,
       needsSimEnabled: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
@@ -3010,6 +3192,8 @@ class Session extends DataClass implements Insertable<Session> {
   final int moodDecayCounter;
   final String characterEmotion;
   final String emotionIntensity;
+  final String emotionCause;
+  final int emotionHeldTurns;
   final String timeOfDay;
   final int dayCount;
   final int startDayOfWeek;
@@ -3035,6 +3219,21 @@ class Session extends DataClass implements Insertable<Session> {
 
   /// v55 — the opening afterglow turn has been spoken. NULL as above.
   final bool? refractoryOpened;
+
+  /// v59 — the soft gate (recovery overhaul PR 3): this body recovers
+  /// through a tenderness window. NULL reads a hard lock, so every existing
+  /// row means exactly what it means today.
+  final bool? refractorySoft;
+
+  /// v59 — peak stamps as JSON text ("[5,0]": story minutes since each
+  /// peak, oldest first). NULL or empty means no peaks inside the hour.
+  final String? refractoryPeaks;
+
+  /// v60 — the warmth tail (PR 4): minutes still owed and the length it
+  /// was seeded at, frozen while a body runs. NULL = no tail, so a row
+  /// saved before it stays byte-identical.
+  final int? refractoryTailMinutes;
+  final int? refractoryTailTotal;
   final int trustLevel;
   final String activeFixation;
   final int fixationLifespan;
@@ -3046,6 +3245,7 @@ class Session extends DataClass implements Insertable<Session> {
   final bool trustRepairPending;
   final bool chaosModeEnabled;
   final int chaosPressure;
+  final bool chaosNsfwEnabled;
   final bool needsSimEnabled;
   final String? needsVector;
 
@@ -3130,6 +3330,8 @@ class Session extends DataClass implements Insertable<Session> {
     required this.moodDecayCounter,
     required this.characterEmotion,
     required this.emotionIntensity,
+    required this.emotionCause,
+    required this.emotionHeldTurns,
     required this.timeOfDay,
     required this.dayCount,
     required this.startDayOfWeek,
@@ -3144,6 +3346,10 @@ class Session extends DataClass implements Insertable<Session> {
     this.refractoryMinutesRemaining,
     this.refractoryMinutesTotal,
     this.refractoryOpened,
+    this.refractorySoft,
+    this.refractoryPeaks,
+    this.refractoryTailMinutes,
+    this.refractoryTailTotal,
     required this.trustLevel,
     required this.activeFixation,
     required this.fixationLifespan,
@@ -3152,6 +3358,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.trustRepairPending,
     required this.chaosModeEnabled,
     required this.chaosPressure,
+    required this.chaosNsfwEnabled,
     required this.needsSimEnabled,
     this.needsVector,
     this.pockets,
@@ -3214,6 +3421,8 @@ class Session extends DataClass implements Insertable<Session> {
     map['mood_decay_counter'] = Variable<int>(moodDecayCounter);
     map['character_emotion'] = Variable<String>(characterEmotion);
     map['emotion_intensity'] = Variable<String>(emotionIntensity);
+    map['emotion_cause'] = Variable<String>(emotionCause);
+    map['emotion_held_turns'] = Variable<int>(emotionHeldTurns);
     map['time_of_day'] = Variable<String>(timeOfDay);
     map['day_count'] = Variable<int>(dayCount);
     map['start_day_of_week'] = Variable<int>(startDayOfWeek);
@@ -3242,6 +3451,18 @@ class Session extends DataClass implements Insertable<Session> {
     if (!nullToAbsent || refractoryOpened != null) {
       map['refractory_opened'] = Variable<bool>(refractoryOpened);
     }
+    if (!nullToAbsent || refractorySoft != null) {
+      map['refractory_soft'] = Variable<bool>(refractorySoft);
+    }
+    if (!nullToAbsent || refractoryPeaks != null) {
+      map['refractory_peaks'] = Variable<String>(refractoryPeaks);
+    }
+    if (!nullToAbsent || refractoryTailMinutes != null) {
+      map['refractory_tail_minutes'] = Variable<int>(refractoryTailMinutes);
+    }
+    if (!nullToAbsent || refractoryTailTotal != null) {
+      map['refractory_tail_total'] = Variable<int>(refractoryTailTotal);
+    }
     map['trust_level'] = Variable<int>(trustLevel);
     map['active_fixation'] = Variable<String>(activeFixation);
     map['fixation_lifespan'] = Variable<int>(fixationLifespan);
@@ -3252,6 +3473,7 @@ class Session extends DataClass implements Insertable<Session> {
     map['trust_repair_pending'] = Variable<bool>(trustRepairPending);
     map['chaos_mode_enabled'] = Variable<bool>(chaosModeEnabled);
     map['chaos_pressure'] = Variable<int>(chaosPressure);
+    map['chaos_nsfw_enabled'] = Variable<bool>(chaosNsfwEnabled);
     map['needs_sim_enabled'] = Variable<bool>(needsSimEnabled);
     if (!nullToAbsent || needsVector != null) {
       map['needs_vector'] = Variable<String>(needsVector);
@@ -3333,6 +3555,8 @@ class Session extends DataClass implements Insertable<Session> {
       moodDecayCounter: Value(moodDecayCounter),
       characterEmotion: Value(characterEmotion),
       emotionIntensity: Value(emotionIntensity),
+      emotionCause: Value(emotionCause),
+      emotionHeldTurns: Value(emotionHeldTurns),
       timeOfDay: Value(timeOfDay),
       dayCount: Value(dayCount),
       startDayOfWeek: Value(startDayOfWeek),
@@ -3358,6 +3582,18 @@ class Session extends DataClass implements Insertable<Session> {
       refractoryOpened: refractoryOpened == null && nullToAbsent
           ? const Value.absent()
           : Value(refractoryOpened),
+      refractorySoft: refractorySoft == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refractorySoft),
+      refractoryPeaks: refractoryPeaks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refractoryPeaks),
+      refractoryTailMinutes: refractoryTailMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refractoryTailMinutes),
+      refractoryTailTotal: refractoryTailTotal == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refractoryTailTotal),
       trustLevel: Value(trustLevel),
       activeFixation: Value(activeFixation),
       fixationLifespan: Value(fixationLifespan),
@@ -3368,6 +3604,7 @@ class Session extends DataClass implements Insertable<Session> {
       trustRepairPending: Value(trustRepairPending),
       chaosModeEnabled: Value(chaosModeEnabled),
       chaosPressure: Value(chaosPressure),
+      chaosNsfwEnabled: Value(chaosNsfwEnabled),
       needsSimEnabled: Value(needsSimEnabled),
       needsVector: needsVector == null && nullToAbsent
           ? const Value.absent()
@@ -3441,6 +3678,8 @@ class Session extends DataClass implements Insertable<Session> {
       moodDecayCounter: serializer.fromJson<int>(json['moodDecayCounter']),
       characterEmotion: serializer.fromJson<String>(json['characterEmotion']),
       emotionIntensity: serializer.fromJson<String>(json['emotionIntensity']),
+      emotionCause: serializer.fromJson<String>(json['emotionCause']),
+      emotionHeldTurns: serializer.fromJson<int>(json['emotionHeldTurns']),
       timeOfDay: serializer.fromJson<String>(json['timeOfDay']),
       dayCount: serializer.fromJson<int>(json['dayCount']),
       startDayOfWeek: serializer.fromJson<int>(json['startDayOfWeek']),
@@ -3467,6 +3706,14 @@ class Session extends DataClass implements Insertable<Session> {
         json['refractoryMinutesTotal'],
       ),
       refractoryOpened: serializer.fromJson<bool?>(json['refractoryOpened']),
+      refractorySoft: serializer.fromJson<bool?>(json['refractorySoft']),
+      refractoryPeaks: serializer.fromJson<String?>(json['refractoryPeaks']),
+      refractoryTailMinutes: serializer.fromJson<int?>(
+        json['refractoryTailMinutes'],
+      ),
+      refractoryTailTotal: serializer.fromJson<int?>(
+        json['refractoryTailTotal'],
+      ),
       trustLevel: serializer.fromJson<int>(json['trustLevel']),
       activeFixation: serializer.fromJson<String>(json['activeFixation']),
       fixationLifespan: serializer.fromJson<int>(json['fixationLifespan']),
@@ -3475,6 +3722,7 @@ class Session extends DataClass implements Insertable<Session> {
       trustRepairPending: serializer.fromJson<bool>(json['trustRepairPending']),
       chaosModeEnabled: serializer.fromJson<bool>(json['chaosModeEnabled']),
       chaosPressure: serializer.fromJson<int>(json['chaosPressure']),
+      chaosNsfwEnabled: serializer.fromJson<bool>(json['chaosNsfwEnabled']),
       needsSimEnabled: serializer.fromJson<bool>(json['needsSimEnabled']),
       needsVector: serializer.fromJson<String?>(json['needsVector']),
       pockets: serializer.fromJson<String?>(json['pockets']),
@@ -3537,6 +3785,8 @@ class Session extends DataClass implements Insertable<Session> {
       'moodDecayCounter': serializer.toJson<int>(moodDecayCounter),
       'characterEmotion': serializer.toJson<String>(characterEmotion),
       'emotionIntensity': serializer.toJson<String>(emotionIntensity),
+      'emotionCause': serializer.toJson<String>(emotionCause),
+      'emotionHeldTurns': serializer.toJson<int>(emotionHeldTurns),
       'timeOfDay': serializer.toJson<String>(timeOfDay),
       'dayCount': serializer.toJson<int>(dayCount),
       'startDayOfWeek': serializer.toJson<int>(startDayOfWeek),
@@ -3555,6 +3805,10 @@ class Session extends DataClass implements Insertable<Session> {
       ),
       'refractoryMinutesTotal': serializer.toJson<int?>(refractoryMinutesTotal),
       'refractoryOpened': serializer.toJson<bool?>(refractoryOpened),
+      'refractorySoft': serializer.toJson<bool?>(refractorySoft),
+      'refractoryPeaks': serializer.toJson<String?>(refractoryPeaks),
+      'refractoryTailMinutes': serializer.toJson<int?>(refractoryTailMinutes),
+      'refractoryTailTotal': serializer.toJson<int?>(refractoryTailTotal),
       'trustLevel': serializer.toJson<int>(trustLevel),
       'activeFixation': serializer.toJson<String>(activeFixation),
       'fixationLifespan': serializer.toJson<int>(fixationLifespan),
@@ -3563,6 +3817,7 @@ class Session extends DataClass implements Insertable<Session> {
       'trustRepairPending': serializer.toJson<bool>(trustRepairPending),
       'chaosModeEnabled': serializer.toJson<bool>(chaosModeEnabled),
       'chaosPressure': serializer.toJson<int>(chaosPressure),
+      'chaosNsfwEnabled': serializer.toJson<bool>(chaosNsfwEnabled),
       'needsSimEnabled': serializer.toJson<bool>(needsSimEnabled),
       'needsVector': serializer.toJson<String?>(needsVector),
       'pockets': serializer.toJson<String?>(pockets),
@@ -3611,6 +3866,8 @@ class Session extends DataClass implements Insertable<Session> {
     int? moodDecayCounter,
     String? characterEmotion,
     String? emotionIntensity,
+    String? emotionCause,
+    int? emotionHeldTurns,
     String? timeOfDay,
     int? dayCount,
     int? startDayOfWeek,
@@ -3625,6 +3882,10 @@ class Session extends DataClass implements Insertable<Session> {
     Value<int?> refractoryMinutesRemaining = const Value.absent(),
     Value<int?> refractoryMinutesTotal = const Value.absent(),
     Value<bool?> refractoryOpened = const Value.absent(),
+    Value<bool?> refractorySoft = const Value.absent(),
+    Value<String?> refractoryPeaks = const Value.absent(),
+    Value<int?> refractoryTailMinutes = const Value.absent(),
+    Value<int?> refractoryTailTotal = const Value.absent(),
     int? trustLevel,
     String? activeFixation,
     int? fixationLifespan,
@@ -3633,6 +3894,7 @@ class Session extends DataClass implements Insertable<Session> {
     bool? trustRepairPending,
     bool? chaosModeEnabled,
     int? chaosPressure,
+    bool? chaosNsfwEnabled,
     bool? needsSimEnabled,
     Value<String?> needsVector = const Value.absent(),
     Value<String?> pockets = const Value.absent(),
@@ -3682,6 +3944,8 @@ class Session extends DataClass implements Insertable<Session> {
     moodDecayCounter: moodDecayCounter ?? this.moodDecayCounter,
     characterEmotion: characterEmotion ?? this.characterEmotion,
     emotionIntensity: emotionIntensity ?? this.emotionIntensity,
+    emotionCause: emotionCause ?? this.emotionCause,
+    emotionHeldTurns: emotionHeldTurns ?? this.emotionHeldTurns,
     timeOfDay: timeOfDay ?? this.timeOfDay,
     dayCount: dayCount ?? this.dayCount,
     startDayOfWeek: startDayOfWeek ?? this.startDayOfWeek,
@@ -3706,6 +3970,18 @@ class Session extends DataClass implements Insertable<Session> {
     refractoryOpened: refractoryOpened.present
         ? refractoryOpened.value
         : this.refractoryOpened,
+    refractorySoft: refractorySoft.present
+        ? refractorySoft.value
+        : this.refractorySoft,
+    refractoryPeaks: refractoryPeaks.present
+        ? refractoryPeaks.value
+        : this.refractoryPeaks,
+    refractoryTailMinutes: refractoryTailMinutes.present
+        ? refractoryTailMinutes.value
+        : this.refractoryTailMinutes,
+    refractoryTailTotal: refractoryTailTotal.present
+        ? refractoryTailTotal.value
+        : this.refractoryTailTotal,
     trustLevel: trustLevel ?? this.trustLevel,
     activeFixation: activeFixation ?? this.activeFixation,
     fixationLifespan: fixationLifespan ?? this.fixationLifespan,
@@ -3714,6 +3990,7 @@ class Session extends DataClass implements Insertable<Session> {
     trustRepairPending: trustRepairPending ?? this.trustRepairPending,
     chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
     chaosPressure: chaosPressure ?? this.chaosPressure,
+    chaosNsfwEnabled: chaosNsfwEnabled ?? this.chaosNsfwEnabled,
     needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
     needsVector: needsVector.present ? needsVector.value : this.needsVector,
     pockets: pockets.present ? pockets.value : this.pockets,
@@ -3808,6 +4085,12 @@ class Session extends DataClass implements Insertable<Session> {
       emotionIntensity: data.emotionIntensity.present
           ? data.emotionIntensity.value
           : this.emotionIntensity,
+      emotionCause: data.emotionCause.present
+          ? data.emotionCause.value
+          : this.emotionCause,
+      emotionHeldTurns: data.emotionHeldTurns.present
+          ? data.emotionHeldTurns.value
+          : this.emotionHeldTurns,
       timeOfDay: data.timeOfDay.present ? data.timeOfDay.value : this.timeOfDay,
       dayCount: data.dayCount.present ? data.dayCount.value : this.dayCount,
       startDayOfWeek: data.startDayOfWeek.present
@@ -3846,6 +4129,18 @@ class Session extends DataClass implements Insertable<Session> {
       refractoryOpened: data.refractoryOpened.present
           ? data.refractoryOpened.value
           : this.refractoryOpened,
+      refractorySoft: data.refractorySoft.present
+          ? data.refractorySoft.value
+          : this.refractorySoft,
+      refractoryPeaks: data.refractoryPeaks.present
+          ? data.refractoryPeaks.value
+          : this.refractoryPeaks,
+      refractoryTailMinutes: data.refractoryTailMinutes.present
+          ? data.refractoryTailMinutes.value
+          : this.refractoryTailMinutes,
+      refractoryTailTotal: data.refractoryTailTotal.present
+          ? data.refractoryTailTotal.value
+          : this.refractoryTailTotal,
       trustLevel: data.trustLevel.present
           ? data.trustLevel.value
           : this.trustLevel,
@@ -3868,6 +4163,9 @@ class Session extends DataClass implements Insertable<Session> {
       chaosPressure: data.chaosPressure.present
           ? data.chaosPressure.value
           : this.chaosPressure,
+      chaosNsfwEnabled: data.chaosNsfwEnabled.present
+          ? data.chaosNsfwEnabled.value
+          : this.chaosNsfwEnabled,
       needsSimEnabled: data.needsSimEnabled.present
           ? data.needsSimEnabled.value
           : this.needsSimEnabled,
@@ -3946,6 +4244,8 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('moodDecayCounter: $moodDecayCounter, ')
           ..write('characterEmotion: $characterEmotion, ')
           ..write('emotionIntensity: $emotionIntensity, ')
+          ..write('emotionCause: $emotionCause, ')
+          ..write('emotionHeldTurns: $emotionHeldTurns, ')
           ..write('timeOfDay: $timeOfDay, ')
           ..write('dayCount: $dayCount, ')
           ..write('startDayOfWeek: $startDayOfWeek, ')
@@ -3960,6 +4260,10 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('refractoryMinutesRemaining: $refractoryMinutesRemaining, ')
           ..write('refractoryMinutesTotal: $refractoryMinutesTotal, ')
           ..write('refractoryOpened: $refractoryOpened, ')
+          ..write('refractorySoft: $refractorySoft, ')
+          ..write('refractoryPeaks: $refractoryPeaks, ')
+          ..write('refractoryTailMinutes: $refractoryTailMinutes, ')
+          ..write('refractoryTailTotal: $refractoryTailTotal, ')
           ..write('trustLevel: $trustLevel, ')
           ..write('activeFixation: $activeFixation, ')
           ..write('fixationLifespan: $fixationLifespan, ')
@@ -3968,6 +4272,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('trustRepairPending: $trustRepairPending, ')
           ..write('chaosModeEnabled: $chaosModeEnabled, ')
           ..write('chaosPressure: $chaosPressure, ')
+          ..write('chaosNsfwEnabled: $chaosNsfwEnabled, ')
           ..write('needsSimEnabled: $needsSimEnabled, ')
           ..write('needsVector: $needsVector, ')
           ..write('pockets: $pockets, ')
@@ -4016,6 +4321,8 @@ class Session extends DataClass implements Insertable<Session> {
     moodDecayCounter,
     characterEmotion,
     emotionIntensity,
+    emotionCause,
+    emotionHeldTurns,
     timeOfDay,
     dayCount,
     startDayOfWeek,
@@ -4030,6 +4337,10 @@ class Session extends DataClass implements Insertable<Session> {
     refractoryMinutesRemaining,
     refractoryMinutesTotal,
     refractoryOpened,
+    refractorySoft,
+    refractoryPeaks,
+    refractoryTailMinutes,
+    refractoryTailTotal,
     trustLevel,
     activeFixation,
     fixationLifespan,
@@ -4038,6 +4349,7 @@ class Session extends DataClass implements Insertable<Session> {
     trustRepairPending,
     chaosModeEnabled,
     chaosPressure,
+    chaosNsfwEnabled,
     needsSimEnabled,
     needsVector,
     pockets,
@@ -4085,6 +4397,8 @@ class Session extends DataClass implements Insertable<Session> {
           other.moodDecayCounter == this.moodDecayCounter &&
           other.characterEmotion == this.characterEmotion &&
           other.emotionIntensity == this.emotionIntensity &&
+          other.emotionCause == this.emotionCause &&
+          other.emotionHeldTurns == this.emotionHeldTurns &&
           other.timeOfDay == this.timeOfDay &&
           other.dayCount == this.dayCount &&
           other.startDayOfWeek == this.startDayOfWeek &&
@@ -4099,6 +4413,10 @@ class Session extends DataClass implements Insertable<Session> {
           other.refractoryMinutesRemaining == this.refractoryMinutesRemaining &&
           other.refractoryMinutesTotal == this.refractoryMinutesTotal &&
           other.refractoryOpened == this.refractoryOpened &&
+          other.refractorySoft == this.refractorySoft &&
+          other.refractoryPeaks == this.refractoryPeaks &&
+          other.refractoryTailMinutes == this.refractoryTailMinutes &&
+          other.refractoryTailTotal == this.refractoryTailTotal &&
           other.trustLevel == this.trustLevel &&
           other.activeFixation == this.activeFixation &&
           other.fixationLifespan == this.fixationLifespan &&
@@ -4107,6 +4425,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.trustRepairPending == this.trustRepairPending &&
           other.chaosModeEnabled == this.chaosModeEnabled &&
           other.chaosPressure == this.chaosPressure &&
+          other.chaosNsfwEnabled == this.chaosNsfwEnabled &&
           other.needsSimEnabled == this.needsSimEnabled &&
           other.needsVector == this.needsVector &&
           other.pockets == this.pockets &&
@@ -4152,6 +4471,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<int> moodDecayCounter;
   final Value<String> characterEmotion;
   final Value<String> emotionIntensity;
+  final Value<String> emotionCause;
+  final Value<int> emotionHeldTurns;
   final Value<String> timeOfDay;
   final Value<int> dayCount;
   final Value<int> startDayOfWeek;
@@ -4166,6 +4487,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<int?> refractoryMinutesRemaining;
   final Value<int?> refractoryMinutesTotal;
   final Value<bool?> refractoryOpened;
+  final Value<bool?> refractorySoft;
+  final Value<String?> refractoryPeaks;
+  final Value<int?> refractoryTailMinutes;
+  final Value<int?> refractoryTailTotal;
   final Value<int> trustLevel;
   final Value<String> activeFixation;
   final Value<int> fixationLifespan;
@@ -4174,6 +4499,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<bool> trustRepairPending;
   final Value<bool> chaosModeEnabled;
   final Value<int> chaosPressure;
+  final Value<bool> chaosNsfwEnabled;
   final Value<bool> needsSimEnabled;
   final Value<String?> needsVector;
   final Value<String?> pockets;
@@ -4218,6 +4544,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.moodDecayCounter = const Value.absent(),
     this.characterEmotion = const Value.absent(),
     this.emotionIntensity = const Value.absent(),
+    this.emotionCause = const Value.absent(),
+    this.emotionHeldTurns = const Value.absent(),
     this.timeOfDay = const Value.absent(),
     this.dayCount = const Value.absent(),
     this.startDayOfWeek = const Value.absent(),
@@ -4232,6 +4560,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.refractoryMinutesRemaining = const Value.absent(),
     this.refractoryMinutesTotal = const Value.absent(),
     this.refractoryOpened = const Value.absent(),
+    this.refractorySoft = const Value.absent(),
+    this.refractoryPeaks = const Value.absent(),
+    this.refractoryTailMinutes = const Value.absent(),
+    this.refractoryTailTotal = const Value.absent(),
     this.trustLevel = const Value.absent(),
     this.activeFixation = const Value.absent(),
     this.fixationLifespan = const Value.absent(),
@@ -4240,6 +4572,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.trustRepairPending = const Value.absent(),
     this.chaosModeEnabled = const Value.absent(),
     this.chaosPressure = const Value.absent(),
+    this.chaosNsfwEnabled = const Value.absent(),
     this.needsSimEnabled = const Value.absent(),
     this.needsVector = const Value.absent(),
     this.pockets = const Value.absent(),
@@ -4285,6 +4618,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.moodDecayCounter = const Value.absent(),
     this.characterEmotion = const Value.absent(),
     this.emotionIntensity = const Value.absent(),
+    this.emotionCause = const Value.absent(),
+    this.emotionHeldTurns = const Value.absent(),
     this.timeOfDay = const Value.absent(),
     this.dayCount = const Value.absent(),
     this.startDayOfWeek = const Value.absent(),
@@ -4299,6 +4634,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.refractoryMinutesRemaining = const Value.absent(),
     this.refractoryMinutesTotal = const Value.absent(),
     this.refractoryOpened = const Value.absent(),
+    this.refractorySoft = const Value.absent(),
+    this.refractoryPeaks = const Value.absent(),
+    this.refractoryTailMinutes = const Value.absent(),
+    this.refractoryTailTotal = const Value.absent(),
     this.trustLevel = const Value.absent(),
     this.activeFixation = const Value.absent(),
     this.fixationLifespan = const Value.absent(),
@@ -4307,6 +4646,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.trustRepairPending = const Value.absent(),
     this.chaosModeEnabled = const Value.absent(),
     this.chaosPressure = const Value.absent(),
+    this.chaosNsfwEnabled = const Value.absent(),
     this.needsSimEnabled = const Value.absent(),
     this.needsVector = const Value.absent(),
     this.pockets = const Value.absent(),
@@ -4352,6 +4692,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<int>? moodDecayCounter,
     Expression<String>? characterEmotion,
     Expression<String>? emotionIntensity,
+    Expression<String>? emotionCause,
+    Expression<int>? emotionHeldTurns,
     Expression<String>? timeOfDay,
     Expression<int>? dayCount,
     Expression<int>? startDayOfWeek,
@@ -4366,6 +4708,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<int>? refractoryMinutesRemaining,
     Expression<int>? refractoryMinutesTotal,
     Expression<bool>? refractoryOpened,
+    Expression<bool>? refractorySoft,
+    Expression<String>? refractoryPeaks,
+    Expression<int>? refractoryTailMinutes,
+    Expression<int>? refractoryTailTotal,
     Expression<int>? trustLevel,
     Expression<String>? activeFixation,
     Expression<int>? fixationLifespan,
@@ -4374,6 +4720,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<bool>? trustRepairPending,
     Expression<bool>? chaosModeEnabled,
     Expression<int>? chaosPressure,
+    Expression<bool>? chaosNsfwEnabled,
     Expression<bool>? needsSimEnabled,
     Expression<String>? needsVector,
     Expression<String>? pockets,
@@ -4421,6 +4768,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (moodDecayCounter != null) 'mood_decay_counter': moodDecayCounter,
       if (characterEmotion != null) 'character_emotion': characterEmotion,
       if (emotionIntensity != null) 'emotion_intensity': emotionIntensity,
+      if (emotionCause != null) 'emotion_cause': emotionCause,
+      if (emotionHeldTurns != null) 'emotion_held_turns': emotionHeldTurns,
       if (timeOfDay != null) 'time_of_day': timeOfDay,
       if (dayCount != null) 'day_count': dayCount,
       if (startDayOfWeek != null) 'start_day_of_week': startDayOfWeek,
@@ -4442,6 +4791,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (refractoryMinutesTotal != null)
         'refractory_minutes_total': refractoryMinutesTotal,
       if (refractoryOpened != null) 'refractory_opened': refractoryOpened,
+      if (refractorySoft != null) 'refractory_soft': refractorySoft,
+      if (refractoryPeaks != null) 'refractory_peaks': refractoryPeaks,
+      if (refractoryTailMinutes != null)
+        'refractory_tail_minutes': refractoryTailMinutes,
+      if (refractoryTailTotal != null)
+        'refractory_tail_total': refractoryTailTotal,
       if (trustLevel != null) 'trust_level': trustLevel,
       if (activeFixation != null) 'active_fixation': activeFixation,
       if (fixationLifespan != null) 'fixation_lifespan': fixationLifespan,
@@ -4451,6 +4806,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
         'trust_repair_pending': trustRepairPending,
       if (chaosModeEnabled != null) 'chaos_mode_enabled': chaosModeEnabled,
       if (chaosPressure != null) 'chaos_pressure': chaosPressure,
+      if (chaosNsfwEnabled != null) 'chaos_nsfw_enabled': chaosNsfwEnabled,
       if (needsSimEnabled != null) 'needs_sim_enabled': needsSimEnabled,
       if (needsVector != null) 'needs_vector': needsVector,
       if (pockets != null) 'pockets': pockets,
@@ -4501,6 +4857,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<int>? moodDecayCounter,
     Value<String>? characterEmotion,
     Value<String>? emotionIntensity,
+    Value<String>? emotionCause,
+    Value<int>? emotionHeldTurns,
     Value<String>? timeOfDay,
     Value<int>? dayCount,
     Value<int>? startDayOfWeek,
@@ -4515,6 +4873,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<int?>? refractoryMinutesRemaining,
     Value<int?>? refractoryMinutesTotal,
     Value<bool?>? refractoryOpened,
+    Value<bool?>? refractorySoft,
+    Value<String?>? refractoryPeaks,
+    Value<int?>? refractoryTailMinutes,
+    Value<int?>? refractoryTailTotal,
     Value<int>? trustLevel,
     Value<String>? activeFixation,
     Value<int>? fixationLifespan,
@@ -4523,6 +4885,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<bool>? trustRepairPending,
     Value<bool>? chaosModeEnabled,
     Value<int>? chaosPressure,
+    Value<bool>? chaosNsfwEnabled,
     Value<bool>? needsSimEnabled,
     Value<String?>? needsVector,
     Value<String?>? pockets,
@@ -4570,6 +4933,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       moodDecayCounter: moodDecayCounter ?? this.moodDecayCounter,
       characterEmotion: characterEmotion ?? this.characterEmotion,
       emotionIntensity: emotionIntensity ?? this.emotionIntensity,
+      emotionCause: emotionCause ?? this.emotionCause,
+      emotionHeldTurns: emotionHeldTurns ?? this.emotionHeldTurns,
       timeOfDay: timeOfDay ?? this.timeOfDay,
       dayCount: dayCount ?? this.dayCount,
       startDayOfWeek: startDayOfWeek ?? this.startDayOfWeek,
@@ -4588,6 +4953,11 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       refractoryMinutesTotal:
           refractoryMinutesTotal ?? this.refractoryMinutesTotal,
       refractoryOpened: refractoryOpened ?? this.refractoryOpened,
+      refractorySoft: refractorySoft ?? this.refractorySoft,
+      refractoryPeaks: refractoryPeaks ?? this.refractoryPeaks,
+      refractoryTailMinutes:
+          refractoryTailMinutes ?? this.refractoryTailMinutes,
+      refractoryTailTotal: refractoryTailTotal ?? this.refractoryTailTotal,
       trustLevel: trustLevel ?? this.trustLevel,
       activeFixation: activeFixation ?? this.activeFixation,
       fixationLifespan: fixationLifespan ?? this.fixationLifespan,
@@ -4596,6 +4966,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       trustRepairPending: trustRepairPending ?? this.trustRepairPending,
       chaosModeEnabled: chaosModeEnabled ?? this.chaosModeEnabled,
       chaosPressure: chaosPressure ?? this.chaosPressure,
+      chaosNsfwEnabled: chaosNsfwEnabled ?? this.chaosNsfwEnabled,
       needsSimEnabled: needsSimEnabled ?? this.needsSimEnabled,
       needsVector: needsVector ?? this.needsVector,
       pockets: pockets ?? this.pockets,
@@ -4697,6 +5068,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (emotionIntensity.present) {
       map['emotion_intensity'] = Variable<String>(emotionIntensity.value);
     }
+    if (emotionCause.present) {
+      map['emotion_cause'] = Variable<String>(emotionCause.value);
+    }
+    if (emotionHeldTurns.present) {
+      map['emotion_held_turns'] = Variable<int>(emotionHeldTurns.value);
+    }
     if (timeOfDay.present) {
       map['time_of_day'] = Variable<String>(timeOfDay.value);
     }
@@ -4749,6 +5126,20 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (refractoryOpened.present) {
       map['refractory_opened'] = Variable<bool>(refractoryOpened.value);
     }
+    if (refractorySoft.present) {
+      map['refractory_soft'] = Variable<bool>(refractorySoft.value);
+    }
+    if (refractoryPeaks.present) {
+      map['refractory_peaks'] = Variable<String>(refractoryPeaks.value);
+    }
+    if (refractoryTailMinutes.present) {
+      map['refractory_tail_minutes'] = Variable<int>(
+        refractoryTailMinutes.value,
+      );
+    }
+    if (refractoryTailTotal.present) {
+      map['refractory_tail_total'] = Variable<int>(refractoryTailTotal.value);
+    }
     if (trustLevel.present) {
       map['trust_level'] = Variable<int>(trustLevel.value);
     }
@@ -4772,6 +5163,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     }
     if (chaosPressure.present) {
       map['chaos_pressure'] = Variable<int>(chaosPressure.value);
+    }
+    if (chaosNsfwEnabled.present) {
+      map['chaos_nsfw_enabled'] = Variable<bool>(chaosNsfwEnabled.value);
     }
     if (needsSimEnabled.present) {
       map['needs_sim_enabled'] = Variable<bool>(needsSimEnabled.value);
@@ -4868,6 +5262,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('moodDecayCounter: $moodDecayCounter, ')
           ..write('characterEmotion: $characterEmotion, ')
           ..write('emotionIntensity: $emotionIntensity, ')
+          ..write('emotionCause: $emotionCause, ')
+          ..write('emotionHeldTurns: $emotionHeldTurns, ')
           ..write('timeOfDay: $timeOfDay, ')
           ..write('dayCount: $dayCount, ')
           ..write('startDayOfWeek: $startDayOfWeek, ')
@@ -4882,6 +5278,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('refractoryMinutesRemaining: $refractoryMinutesRemaining, ')
           ..write('refractoryMinutesTotal: $refractoryMinutesTotal, ')
           ..write('refractoryOpened: $refractoryOpened, ')
+          ..write('refractorySoft: $refractorySoft, ')
+          ..write('refractoryPeaks: $refractoryPeaks, ')
+          ..write('refractoryTailMinutes: $refractoryTailMinutes, ')
+          ..write('refractoryTailTotal: $refractoryTailTotal, ')
           ..write('trustLevel: $trustLevel, ')
           ..write('activeFixation: $activeFixation, ')
           ..write('fixationLifespan: $fixationLifespan, ')
@@ -4890,6 +5290,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('trustRepairPending: $trustRepairPending, ')
           ..write('chaosModeEnabled: $chaosModeEnabled, ')
           ..write('chaosPressure: $chaosPressure, ')
+          ..write('chaosNsfwEnabled: $chaosNsfwEnabled, ')
           ..write('needsSimEnabled: $needsSimEnabled, ')
           ..write('needsVector: $needsVector, ')
           ..write('pockets: $pockets, ')
@@ -5870,7 +6271,7 @@ class $GroupsTable extends Groups with TableInfo<$GroupsTable, Group> {
         defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("inherit_character_lorebooks" IN (0, 1))',
         ),
-        defaultValue: const Constant(true),
+        defaultValue: const Constant(false),
       );
   static const VerificationMeta _baselineRealismStateMeta =
       const VerificationMeta('baselineRealismState');
@@ -12920,6 +13321,35 @@ class $ObjectivesTable extends Objectives
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _originMeta = const VerificationMeta('origin');
+  @override
+  late final GeneratedColumn<String> origin = GeneratedColumn<String>(
+    'origin',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _endedAtMeta = const VerificationMeta(
+    'endedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> endedAt = GeneratedColumn<DateTime>(
+    'ended_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -12933,6 +13363,9 @@ class $ObjectivesTable extends Objectives
     injectionDepth,
     servedAmbition,
     createdAt,
+    origin,
+    status,
+    endedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -13027,6 +13460,24 @@ class $ObjectivesTable extends Objectives
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('origin')) {
+      context.handle(
+        _originMeta,
+        origin.isAcceptableOrUnknown(data['origin']!, _originMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('ended_at')) {
+      context.handle(
+        _endedAtMeta,
+        endedAt.isAcceptableOrUnknown(data['ended_at']!, _endedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -13080,6 +13531,18 @@ class $ObjectivesTable extends Objectives
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      origin: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      ),
+      endedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}ended_at'],
+      ),
     );
   }
 
@@ -13117,6 +13580,19 @@ class Objective extends DataClass implements Insertable<Objective> {
   /// construction.
   final String? servedAmbition;
   final DateTime createdAt;
+
+  /// v58 (docs/design/objectives-that-keep-up.md): where the goal came from
+  /// — user, card, character or planner — which decides the voice it is
+  /// injected in. Read through objectiveOrigin(), which applies the
+  /// backfill rule to a NULL.
+  final String? origin;
+
+  /// v58: dormant (set aside, still theirs), done or overtaken. NULL is an
+  /// open goal on track.
+  final String? status;
+
+  /// v58: when a goal was finished or let go; feeds "recently finished".
+  final DateTime? endedAt;
   const Objective({
     required this.id,
     required this.characterId,
@@ -13129,6 +13605,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     required this.injectionDepth,
     this.servedAmbition,
     required this.createdAt,
+    this.origin,
+    this.status,
+    this.endedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -13148,6 +13627,15 @@ class Objective extends DataClass implements Insertable<Objective> {
       map['served_ambition'] = Variable<String>(servedAmbition);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || origin != null) {
+      map['origin'] = Variable<String>(origin);
+    }
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || endedAt != null) {
+      map['ended_at'] = Variable<DateTime>(endedAt);
+    }
     return map;
   }
 
@@ -13168,6 +13656,15 @@ class Objective extends DataClass implements Insertable<Objective> {
           ? const Value.absent()
           : Value(servedAmbition),
       createdAt: Value(createdAt),
+      origin: origin == null && nullToAbsent
+          ? const Value.absent()
+          : Value(origin),
+      status: status == null && nullToAbsent
+          ? const Value.absent()
+          : Value(status),
+      endedAt: endedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endedAt),
     );
   }
 
@@ -13188,6 +13685,9 @@ class Objective extends DataClass implements Insertable<Objective> {
       injectionDepth: serializer.fromJson<int>(json['injectionDepth']),
       servedAmbition: serializer.fromJson<String?>(json['servedAmbition']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      origin: serializer.fromJson<String?>(json['origin']),
+      status: serializer.fromJson<String?>(json['status']),
+      endedAt: serializer.fromJson<DateTime?>(json['endedAt']),
     );
   }
   @override
@@ -13205,6 +13705,9 @@ class Objective extends DataClass implements Insertable<Objective> {
       'injectionDepth': serializer.toJson<int>(injectionDepth),
       'servedAmbition': serializer.toJson<String?>(servedAmbition),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'origin': serializer.toJson<String?>(origin),
+      'status': serializer.toJson<String?>(status),
+      'endedAt': serializer.toJson<DateTime?>(endedAt),
     };
   }
 
@@ -13220,6 +13723,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     int? injectionDepth,
     Value<String?> servedAmbition = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> origin = const Value.absent(),
+    Value<String?> status = const Value.absent(),
+    Value<DateTime?> endedAt = const Value.absent(),
   }) => Objective(
     id: id ?? this.id,
     characterId: characterId ?? this.characterId,
@@ -13234,6 +13740,9 @@ class Objective extends DataClass implements Insertable<Objective> {
         ? servedAmbition.value
         : this.servedAmbition,
     createdAt: createdAt ?? this.createdAt,
+    origin: origin.present ? origin.value : this.origin,
+    status: status.present ? status.value : this.status,
+    endedAt: endedAt.present ? endedAt.value : this.endedAt,
   );
   Objective copyWithCompanion(ObjectivesCompanion data) {
     return Objective(
@@ -13256,6 +13765,9 @@ class Objective extends DataClass implements Insertable<Objective> {
           ? data.servedAmbition.value
           : this.servedAmbition,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      origin: data.origin.present ? data.origin.value : this.origin,
+      status: data.status.present ? data.status.value : this.status,
+      endedAt: data.endedAt.present ? data.endedAt.value : this.endedAt,
     );
   }
 
@@ -13272,7 +13784,10 @@ class Objective extends DataClass implements Insertable<Objective> {
           ..write('checkFrequency: $checkFrequency, ')
           ..write('injectionDepth: $injectionDepth, ')
           ..write('servedAmbition: $servedAmbition, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('origin: $origin, ')
+          ..write('status: $status, ')
+          ..write('endedAt: $endedAt')
           ..write(')'))
         .toString();
   }
@@ -13290,6 +13805,9 @@ class Objective extends DataClass implements Insertable<Objective> {
     injectionDepth,
     servedAmbition,
     createdAt,
+    origin,
+    status,
+    endedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -13305,7 +13823,10 @@ class Objective extends DataClass implements Insertable<Objective> {
           other.checkFrequency == this.checkFrequency &&
           other.injectionDepth == this.injectionDepth &&
           other.servedAmbition == this.servedAmbition &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.origin == this.origin &&
+          other.status == this.status &&
+          other.endedAt == this.endedAt);
 }
 
 class ObjectivesCompanion extends UpdateCompanion<Objective> {
@@ -13320,6 +13841,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
   final Value<int> injectionDepth;
   final Value<String?> servedAmbition;
   final Value<DateTime> createdAt;
+  final Value<String?> origin;
+  final Value<String?> status;
+  final Value<DateTime?> endedAt;
   final Value<int> rowid;
   const ObjectivesCompanion({
     this.id = const Value.absent(),
@@ -13333,6 +13857,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     this.injectionDepth = const Value.absent(),
     this.servedAmbition = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.origin = const Value.absent(),
+    this.status = const Value.absent(),
+    this.endedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ObjectivesCompanion.insert({
@@ -13347,6 +13874,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     this.injectionDepth = const Value.absent(),
     this.servedAmbition = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.origin = const Value.absent(),
+    this.status = const Value.absent(),
+    this.endedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        characterId = Value(characterId),
@@ -13363,6 +13893,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     Expression<int>? injectionDepth,
     Expression<String>? servedAmbition,
     Expression<DateTime>? createdAt,
+    Expression<String>? origin,
+    Expression<String>? status,
+    Expression<DateTime>? endedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -13377,6 +13910,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
       if (injectionDepth != null) 'injection_depth': injectionDepth,
       if (servedAmbition != null) 'served_ambition': servedAmbition,
       if (createdAt != null) 'created_at': createdAt,
+      if (origin != null) 'origin': origin,
+      if (status != null) 'status': status,
+      if (endedAt != null) 'ended_at': endedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -13393,6 +13929,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     Value<int>? injectionDepth,
     Value<String?>? servedAmbition,
     Value<DateTime>? createdAt,
+    Value<String?>? origin,
+    Value<String?>? status,
+    Value<DateTime?>? endedAt,
     Value<int>? rowid,
   }) {
     return ObjectivesCompanion(
@@ -13407,6 +13946,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
       injectionDepth: injectionDepth ?? this.injectionDepth,
       servedAmbition: servedAmbition ?? this.servedAmbition,
       createdAt: createdAt ?? this.createdAt,
+      origin: origin ?? this.origin,
+      status: status ?? this.status,
+      endedAt: endedAt ?? this.endedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -13447,6 +13989,15 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (origin.present) {
+      map['origin'] = Variable<String>(origin.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (endedAt.present) {
+      map['ended_at'] = Variable<DateTime>(endedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -13467,6 +14018,9 @@ class ObjectivesCompanion extends UpdateCompanion<Objective> {
           ..write('injectionDepth: $injectionDepth, ')
           ..write('servedAmbition: $servedAmbition, ')
           ..write('createdAt: $createdAt, ')
+          ..write('origin: $origin, ')
+          ..write('status: $status, ')
+          ..write('endedAt: $endedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();

@@ -3,7 +3,8 @@
 //
 // Models & backends page. Thin orchestrator over focused components:
 // local backend status, hardware + recommendations, installed models
-// (switch/delete), the HuggingFace browser + download queue, and image gen.
+// (switch/delete), and the HuggingFace browser + download queue. Image
+// generation lives on the Image Studio page, as on the desktop.
 // On an Intel Mac host the KoboldCpp cards give way to the desktop's
 // sentence (`localUnsupported` on the status).
 
@@ -12,7 +13,6 @@ import { api, ApiError } from '../api/client';
 import { HardwarePanel } from '../components/models/HardwarePanel';
 import { LocalModels } from '../components/models/LocalModels';
 import { ModelDownloads } from '../components/models/ModelDownloads';
-import { ImageGen } from '../components/models/ImageGen';
 import { KoboldStatusCard } from '../components/models/KoboldStatusCard';
 import { type BackendStatus, type ModelSwitch } from '../components/models/types';
 import { INTEL_MAC_LOCAL_UNSUPPORTED } from '../backendOptions';
@@ -29,8 +29,14 @@ export function ModelsPage() {
     () => api.get<BackendStatus>('/api/backend/status').then(setStatus).catch(() => {}),
     [],
   );
+  // Then the host looks for the engine again, as the desktop Backend tab
+  // does when it opens: an engine file removed since its last look would
+  // otherwise still read as installed until Restart.
   useEffect(() => {
-    void loadStatus();
+    void loadStatus()
+      .then(() => api.post<BackendStatus>('/api/backend/engine/check'))
+      .then((s) => s && setStatus(s))
+      .catch(() => {});
   }, [loadStatus]);
 
   // While the managed engine is downloading (or absent — a download can be
@@ -82,7 +88,6 @@ export function ModelsPage() {
       <HardwarePanel onPickQuery={pickQuery} />
       <LocalModels isLocal={local} reloadStatus={loadStatus} onError={setError} />
       <ModelDownloads query={query} setQuery={setQuery} searchNonce={searchNonce} onError={setError} />
-      <ImageGen onError={setError} />
     </div>
   );
 }

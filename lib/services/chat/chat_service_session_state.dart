@@ -66,6 +66,11 @@ extension ChatServiceSessionState on ChatService {
   /// once after [_hydrateSessionScalars] — a save here races the
   /// history-drawer path, which hydrates after this load.
   Future<bool> _loadGroupRealismStateFromSession(Session? session) async {
+    // Directions are per chat: a chat without a group has none.
+    _directorScene.hydrate(
+      _activeGroup == null ? null : session?.groupRealismState,
+    );
+    _autoChatBudget.clear(); // a paused run belongs to the chat it ran in
     if (_activeGroup == null) return false;
 
     String? stateJson = session?.groupRealismState;
@@ -73,6 +78,10 @@ extension ChatServiceSessionState on ChatService {
     // Timed lorebook effects ride the SESSION blob only (never the group's
     // default-member-state fallback below — defaults carry no chat timers).
     _loreTimedEffects.hydrate(stateJson);
+    // Director Mode is per chat once a chat has saved it; the group's
+    // "start in Director Mode" default only seeds chats that never did.
+    final directing = directingFromSessionBlob(stateJson);
+    if (directing != null) _groupManager?.setObserverMode(directing);
 
     // Fall back to group definition defaults (crucial for imported Group Cards and split-to-solo)
     if (stateJson == null || stateJson.isEmpty || stateJson == '{}') {

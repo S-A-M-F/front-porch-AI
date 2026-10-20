@@ -127,8 +127,7 @@ extension ChatServiceGreetingSeed on ChatService {
       longTermBond: resolved.longTermBond,
       trustLevel: resolved.trustLevel,
     );
-    _characterEmotion = resolved.characterEmotion;
-    _emotionIntensity = resolved.emotionIntensity;
+    _mood.seed(resolved.characterEmotion, resolved.emotionIntensity);
     // Reload re-applies authored mood/needs. It must not invent a
     // Day-1 / today clock over a lived-in session row (HIGH-1).
     if (scheduleEval) {
@@ -158,7 +157,7 @@ extension ChatServiceGreetingSeed on ChatService {
           if (_activeGroup == null) {
             _pockets = null;
           } else {
-            _memberForWrite(greetingPocketsId).pockets = null;
+            _groupStore.memberForWrite(greetingPocketsId).pockets = null;
           }
         } else {
           setPocketsFor(greetingPocketsId, fromCard);
@@ -170,7 +169,7 @@ extension ChatServiceGreetingSeed on ChatService {
 
     _openingPostureSeededFor = null;
     if (_activeGroup != null && memberId != null) {
-      _saveScalarsIntoGroupRealism(memberId);
+      _realismDance.saveScalarsIntoGroup(memberId);
     }
 
     _activeObjectives = [];
@@ -189,11 +188,11 @@ extension ChatServiceGreetingSeed on ChatService {
       // is frozen (equals itself) and the dayCount rung then synthesises
       // afternoon instead of the session live clock (HIGH-1).
       if (scheduleEval) {
-        _messages.first.activeMetadata!['realism_state'] =
-            _captureRealismState();
-        _writeSlotClock(
+        _messages.first.activeMetadata!['realism_state'] = _realismSnapshot
+            .capture();
+        _clockWriter.writeSlotClock(
           _messages.isEmpty ? null : _messages.first,
-          kind: _SlotClockWrite.seed,
+          kind: SlotClockWrite.seed,
         );
       }
     }
@@ -280,12 +279,15 @@ extension ChatServiceGreetingSeed on ChatService {
         _openingBaseFor(c, memberId: memberId),
         overlay,
       );
-      final slot = _memberForWrite(memberId);
+      final slot = _groupStore.memberForWrite(memberId);
       slot.affection = resolved.shortTermBond;
       slot.longTermScore = resolved.longTermBond;
       slot.trust = resolved.trustLevel;
       slot.emotion = resolved.characterEmotion;
       slot.emotionIntensity = resolved.emotionIntensity;
+      // An authored starting mood has no cause and no hold.
+      slot.emotionCause = '';
+      slot.emotionHeldTurns = 0;
       slot.spatialStance = '';
       if (_needsSimEnabled) {
         slot.needs = resolved.needsBaselines;
@@ -297,7 +299,7 @@ extension ChatServiceGreetingSeed on ChatService {
     }
     _openingPostureSeededFor = null;
     if (_groupCharacters.isNotEmpty) {
-      _loadGroupRealismIntoScalars(
+      _realismDance.loadIntoScalars(
         _getCharacterIdFromCard(_groupCharacters.first),
       );
     }
@@ -309,11 +311,11 @@ extension ChatServiceGreetingSeed on ChatService {
         _messages.first.activeMetadata!['emotion_label'] = _characterEmotion;
       }
       if (scheduleEval) {
-        _messages.first.activeMetadata!['realism_state'] =
-            _captureRealismState();
-        _writeSlotClock(
+        _messages.first.activeMetadata!['realism_state'] = _realismSnapshot
+            .capture();
+        _clockWriter.writeSlotClock(
           _messages.isEmpty ? null : _messages.first,
-          kind: _SlotClockWrite.seed,
+          kind: SlotClockWrite.seed,
         );
       }
     }
@@ -339,19 +341,19 @@ extension ChatServiceGreetingSeed on ChatService {
   }
 
   /// After unauthored group RtR, persist live scalars into the current cast
-  /// so persist + first-speaker [_loadGroupRealismIntoScalars] keep the eval.
+  /// so persist + first-speaker [RealismDance.loadIntoScalars] keep the eval.
   /// Member-greet and custom opener share this fan-out. Whitespace first_mes
   /// is not a custom opener and must not write only [evalChar].
   void _writeBackGreetingEvalToGroupSlots(CharacterCard? evalChar) {
     if (_activeGroup == null) return;
     if (_groupCharacters.isNotEmpty) {
       for (final c in _groupCharacters) {
-        _saveScalarsIntoGroupRealism(_getCharacterIdFromCard(c));
+        _realismDance.saveScalarsIntoGroup(_getCharacterIdFromCard(c));
       }
       return;
     }
     if (evalChar != null) {
-      _saveScalarsIntoGroupRealism(_getCharacterIdFromCard(evalChar));
+      _realismDance.saveScalarsIntoGroup(_getCharacterIdFromCard(evalChar));
     }
   }
 

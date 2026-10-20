@@ -35,6 +35,7 @@ import {
   type PickerPersona,
 } from '../components/library/LibraryDialogs';
 import { EnhanceDialog } from '../components/aichargen/EnhanceDialog';
+import { UseAsPersonaDialog } from '../components/library/PersonaConvertDialogs';
 import { EnhanceReviewModal } from '../components/aichargen/EnhanceReviewModal';
 import type { EnhanceProposal, EnhanceSelection } from '../components/aichargen/enhanceForm';
 
@@ -55,7 +56,8 @@ type Dialog =
   // old-vs-new review once the proposal arrives over the socket.
   | { kind: 'aiEnhance'; char: LibChar }
   | { kind: 'enhanceReview'; char: LibChar; proposal: EnhanceProposal; selection: EnhanceSelection }
-  | { kind: 'chatHistory'; characterId?: string; groupId?: string }
+  | { kind: 'chatHistory'; subject: string; characterId?: string; groupId?: string }
+  | { kind: 'useAsPersona'; char: LibChar }
   | null;
 
 export function CharactersPage() {
@@ -64,6 +66,7 @@ export function CharactersPage() {
   const { wide } = useLayout();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [personaNotice, setPersonaNotice] = useState('');
   const [draggedId, setDraggedId] = useState<string | null>(null);
   // Personas for "Start new chat" step 2. Fetched once when the dialog is
   // first opened (not on page load — most visits never need it).
@@ -109,10 +112,11 @@ export function CharactersPage() {
       inFolder: Boolean(lib.folderId),
       onNewChat: () =>
         setDialog({ kind: 'newChat', subject: c.name, target: { characterId: c.id } }),
-      onHistory: () => setDialog({ kind: 'chatHistory', characterId: c.id }),
+      onHistory: () => setDialog({ kind: 'chatHistory', subject: c.name, characterId: c.id }),
       onEdit: () => lib.editCharacter(c.id),
       onEnhance: () => setDialog({ kind: 'aiEnhance', char: c }),
       onDuplicate: () => lib.duplicateCharacter(c.id),
+      onUseAsPersona: () => setDialog({ kind: 'useAsPersona', char: c }),
       onExportPng: () => lib.exportPng(c.id),
       onExportJson: () => lib.exportJson(c.id),
       onMove: () => setDialog({ kind: 'move', ids: [c.id] }),
@@ -133,7 +137,7 @@ export function CharactersPage() {
       inFolder: Boolean(lib.folderId),
       onNewChat: () =>
         setDialog({ kind: 'newChat', subject: g.name, target: { groupId: g.id } }),
-      onHistory: () => setDialog({ kind: 'chatHistory', groupId: g.id }),
+      onHistory: () => setDialog({ kind: 'chatHistory', subject: g.name, groupId: g.id }),
       onExportPng: () => lib.exportGroupPng(g),
       onExtract: () => setDialog({ kind: 'extractGroup', group: g }),
       onMove: () => setDialog({ kind: 'move', ids: [g.id] }),
@@ -274,6 +278,11 @@ export function CharactersPage() {
       {porch.notice && (
         <p className="muted small" role="status" data-testid="porch-notice" style={{ whiteSpace: 'pre-line' }}>
           {porch.notice}
+        </p>
+      )}
+      {personaNotice && (
+        <p className="muted small" role="status" data-testid="persona-notice">
+          {personaNotice}
         </p>
       )}
       {lib.error && (
@@ -445,6 +454,14 @@ export function CharactersPage() {
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog?.kind === 'useAsPersona' && (
+        <UseAsPersonaDialog
+          characterId={dialog.char.id}
+          characterName={dialog.char.name}
+          onDone={(name) => setPersonaNotice(`"${name}" is now a persona. Pick it under your personas to play as it.`)}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog?.kind === 'deleteChar' && (
         <ConfirmDialog
           title="Delete character"
@@ -522,6 +539,13 @@ export function CharactersPage() {
           characterId={dialog.characterId}
           groupId={dialog.groupId}
           onClose={() => setDialog(null)}
+          onNewChat={() =>
+            setDialog({
+              kind: 'newChat',
+              subject: dialog.subject,
+              target: { characterId: dialog.characterId, groupId: dialog.groupId },
+            })
+          }
         />
       )}
     </div>

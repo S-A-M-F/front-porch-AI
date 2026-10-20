@@ -263,7 +263,9 @@ void main() {
         final t = makeService();
         seedFixed(t); // Thu Jul 2, 18:30
         t.detectOocTimeSkip('(ooc: a week later)');
-        expect(t.clock, DateTime.utc(2026, 7, 9, 18, 30));
+        // 2026-10-20: a day-plus skip lands in the morning unless the line
+        // names a time of day; it no longer keeps the evening it left.
+        expect(t.clock, DateTime.utc(2026, 7, 9, 9, 0));
         t.detectOocTimeSkip('ooc: next month they meet again');
         expect(t.clock, DateTime.utc(2026, 8, 1, 9, 0));
       },

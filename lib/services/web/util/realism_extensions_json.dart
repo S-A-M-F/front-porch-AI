@@ -176,6 +176,18 @@ FrontPorchExtensions frontPorchFromFields(
     // Stoop is unchanged.
     intimateInto: asStrList('intimateInto', b.intimateInto),
     intimateNotInto: asStrList('intimateNotInto', b.intimateNotInto),
+    // Structured sex + recovery profile (recovery overhaul PR 2). Same class
+    // of bug these fix: absent from this constructor, a phone edit would wipe
+    // them. A PRESENT key writes (normalized), an absent one keeps the base —
+    // the web editor's recovery control round-trips both, and a client that
+    // knows neither (older PWA) simply omits them and loses nothing.
+    // `recovery` nests (the `inventory` precedent): decision 3's pair is one
+    // unit, and flattening `recoveryMode`/`recoveryMinutes` to top-level keys
+    // would let a half-present payload split the pair.
+    sex: normalizeCharacterSex(fields['sex'] ?? b.sex),
+    recovery: fields['recovery'] is Map
+        ? RecoveryProfile.fromFields(fields['recovery'])
+        : b.recovery,
     // Starting Pockets & Wardrobe. Nested (`{worn: [...], carrying: [...]}`)
     // rather than flat, because unlike the 18+ pair above this is not two lists
     // of strings — entries can be `{name, state}` — and flattening it would
@@ -215,7 +227,11 @@ FrontPorchExtensions frontPorchFromFields(
     ),
 
     // Needs Simulation.
-    needsSimEnabled: asBool('needsSimEnabled', b.needsSimEnabled),
+    // Absent keeps the base's choice, silence included, so a partial edit
+    // never stamps a false the card did not have.
+    needsSimEnabled: fields['needsSimEnabled'] is bool
+        ? fields['needsSimEnabled'] as bool
+        : b.needsSimChoice,
     pocketsEnabled: asBool('pocketsEnabled', b.pocketsEnabled),
     enjoysLowHygiene: asBool('enjoysLowHygiene', b.enjoysLowHygiene),
     needsPace: (fields['needsPace'] as String?) ?? b.needsPace,
@@ -232,7 +248,13 @@ FrontPorchExtensions frontPorchFromFields(
 
 /// Flatten a [FrontPorchExtensions] to the web JSON shape consumed by the
 /// React Realism/Needs form sections (the inverse of [frontPorchFromFields]).
-Map<String, dynamic> frontPorchToJson(FrontPorchExtensions e) => {
+///
+/// A card that says nothing about Needs shows [needsSimWhenSilent]: the
+/// Porch Life Needs switch, which is what its chats start with.
+Map<String, dynamic> frontPorchToJson(
+  FrontPorchExtensions e, {
+  bool needsSimWhenSilent = false,
+}) => {
   'realismEnabled': e.realismEnabled,
   'shortTermBond': e.shortTermBond,
   'longTermBond': e.longTermBond,
@@ -256,12 +278,14 @@ Map<String, dynamic> frontPorchToJson(FrontPorchExtensions e) => {
   'dislikes': e.dislikes,
   'intimateInto': e.intimateInto,
   'intimateNotInto': e.intimateNotInto,
+  'sex': e.sex,
+  'recovery': e.recovery.toFields(),
   'inventory': e.inventory,
   'realismVerificationEnabled': e.realismVerificationEnabled,
   'realismVerificationMaxReprocesses': e.realismVerificationMaxReprocesses,
   'realismVerificationStrictness': e.realismVerificationStrictness,
   'realismNeedsDirectorAuthority': e.realismNeedsDirectorAuthority,
-  'needsSimEnabled': e.needsSimEnabled,
+  'needsSimEnabled': e.needsSimChoice ?? needsSimWhenSilent,
   'pocketsEnabled': e.pocketsEnabled,
   'enjoysLowHygiene': e.enjoysLowHygiene,
   'needsPace': e.needsPace,

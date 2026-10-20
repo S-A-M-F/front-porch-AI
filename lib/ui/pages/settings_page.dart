@@ -24,18 +24,15 @@ import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 
 // Barrel imports (high-frequency services + widgets)
-import 'package:front_porch_ai/services/gpu_backend_resolver.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/storage/settings/remote_provider.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 // Modules and dialogs not in the barrels (internal, low-frequency, or single-use)
-import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
-import 'package:front_porch_ai/services/web/web_server_host.dart';
 import 'package:front_porch_ai/ui/dialogs/dialogs.dart';
 
-import 'package:front_porch_ai/ui/settings/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/pages/settings_page/settings_page.dart';
 import 'package:front_porch_ai/ui/settings/tabs/tabs.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 // Note: Image Generation *config* options (backend / model / LoRAs) live on
@@ -43,18 +40,8 @@ import 'package:front_porch_ai/utils/utils.dart';
 // Only the discoverable on/off switch was re-surfaced in the Voice & Media tab via
 // ImageGenEnableSection — the chat toolbar's Image Studio button stays hidden until it is on.
 
-// The Advanced tab and backend-launch orchestration live in these `part of`
-// files (extensions on _SettingsPageState) to keep every file under the
-// 500-LOC cap — same pattern chat_service.dart uses. They share this library's
-// imports and access the page's private state directly, so behavior is
-// unchanged.
-part 'settings_page.controls.dart';
-part 'settings_page.advanced.dart';
-part 'settings_page.advanced.web.dart';
-part 'settings_page.hardware.dart';
-part 'settings_page.gpu.dart';
-part 'settings_page.gpu.chips.dart';
-part 'settings_page.launch.dart';
+export 'package:front_porch_ai/ui/pages/settings_page/settings_page.dart'
+    show parseWebServerPort;
 
 /// Which OpenAI-compatible endpoint the Settings model list is fetched from.
 ///
@@ -65,16 +52,6 @@ part 'settings_page.launch.dart';
 String modelListApiUrl(BackendType backend, String remoteApiUrl) =>
     backend == BackendType.omlx ? 'http://localhost:8000/v1' : remoteApiUrl;
 
-/// A web-server port typed into the Advanced tab, or null when the text is
-/// not a usable port. Null means "leave the saved port alone" — the field
-/// commits on focus loss as well as Enter, so half-typed or cleared text
-/// must never silently overwrite a working port.
-int? parseWebServerPort(String raw) {
-  final port = int.tryParse(raw.trim());
-  if (port == null || port < 1 || port > 65535) return null;
-  return port;
-}
-
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -83,20 +60,10 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _gpuLayersController = TextEditingController(text: '0');
-  final _contextSizeController = TextEditingController(text: '16384');
-
-  /// The context the Context Window box was last brought in step with.
-  int? _savedContext;
-  double? _dragContextSize;
   double? _dragCallBuffer;
   final _apiController = TextEditingController();
   final _remoteApiUrlController = TextEditingController();
   final _remoteApiKeyController = TextEditingController();
-  bool _useVulkan = false;
-  bool _useCublas = false;
-  bool _useMetal = false;
-  bool _useRocm = false;
   String? _selectedModelPath;
   final TextEditingController _systemPromptController = TextEditingController();
   final TextEditingController _bannedPhrasesController =
@@ -113,20 +80,17 @@ class _SettingsPageState extends State<SettingsPage> {
   static List<RemoteModelInfo>? _modelsCache;
   static String? _modelsCacheKey;
 
-  // Latest text typed into the Web Server port field (settings_page.advanced):
-  // it commits on focus loss too, and this has to outlive the rebuilds that
-  // storage/web-server notifications trigger while the field is being edited.
-  String? _pendingWebServerPort;
+  final _webServerPortDraft = WebServerPortDraft();
 
   // Memoized "is the launch model still on disk" answer for the Advanced
-  // Launch restart button (settings_page.launch.dart). Its Builder listens to
-  // KoboldService, which notifies once per backend log line while a model
-  // loads — stat-ing the GGUF on each of those rebuilds is the io-lint-banned
-  // per-frame sync I/O pattern (cheap on APFS, a Defender round-trip on
-  // Windows). Resolved once per model path instead.
-  bool _launchModelExistsCache = false;
-  String? _launchModelExistsForPath;
+  // Launch restart button. Its Builder listens to KoboldService, which
+  // notifies once per backend log line while a model loads — stat-ing the
+  // GGUF on each of those rebuilds is the io-lint-banned per-frame sync I/O
+  // pattern (cheap on APFS, a Defender round-trip on Windows). Resolved once
+  // per model path instead.
+  final _launchModelExists = PathExistsMemo();
   final _kcppsModelExists = PathExistsMemo();
+  bool _advancedLaunchExpanded = false;
 
   // Local Preset state
   List<File> _localPresets = [];
@@ -154,49 +118,8 @@ class _SettingsPageState extends State<SettingsPage> {
       Provider.of<StorageService>(context, listen: false).backendSettings,
     );
 
-    // Sync local state with storage
-    final storage = Provider.of<StorageService>(context, listen: false);
-    // Default to false if null, logic below handles the "first run" auto-enable
-    _useCublas = storage.backendSettings.useCublas == true;
-    _useVulkan = storage.backendSettings.useVulkan == true;
-    _useMetal = storage.backendSettings.useMetal == true;
-    _useRocm = storage.backendSettings.useRocm == true;
-    // Mirror the persisted launch values into the controllers HERE, not only
-    // inside _applyHardwareDefaults: that runs only once HardwareService has
-    // detected a GPU, and detection failures leave hardwareInfo null forever,
-    // which would leave the Advanced tab showing the construction
-    // placeholders ('0' / '16384') instead of the user's saved settings.
-    _gpuLayersController.text = storage.backendSettings.gpuLayers.toString();
-    _contextSizeController.text = storage.backendSettings.contextSize
-        .toString();
-    _savedContext = storage.backendSettings.contextSize;
-    // Apply hardware-based defaults once hardware info is available.
-    // HardwareService.detectHardware() is already called in its constructor,
-    // so we just use the cached result. If detection is still in progress,
-    // listen for changes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final hardwareService = Provider.of<HardwareService>(
-        context,
-        listen: false,
-      );
-
-      if (hardwareService.hardwareInfo != null) {
-        _applyHardwareDefaults(hardwareService.hardwareInfo!);
-      } else {
-        // Detection still in progress — listen for completion
-        void listener() {
-          if (!mounted) return;
-          if (!hardwareService.isDetecting &&
-              hardwareService.hardwareInfo != null) {
-            hardwareService.removeListener(listener);
-            _applyHardwareDefaults(hardwareService.hardwareInfo!);
-          }
-        }
-
-        hardwareService.addListener(listener);
-      }
-
       // Auto-fetch available models if API is configured
       _autoFetchModels();
 
@@ -227,10 +150,9 @@ class _SettingsPageState extends State<SettingsPage> {
       storage.backendSettings.remoteApiUrl,
     );
     // Allow empty API key for local backends (LM Studio, vLLM, etc.)
-    final isLocal =
-        apiUrl.contains('localhost') || apiUrl.contains('127.0.0.1');
     if (apiUrl.isEmpty) return; // No API URL configured
-    if (storage.backendSettings.remoteApiKey.isEmpty && !isLocal) {
+    if (storage.backendSettings.remoteApiKey.isEmpty &&
+        !isLocalRemoteUrl(apiUrl)) {
       return; // no API configured
     }
 
@@ -259,15 +181,41 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  /// Re-exposes the protected [setState] for the `part of` extensions
-  /// (`settings_page.*.dart`), which hold the Advanced tab and launch
-  /// orchestration but can't call a State's protected members directly.
-  void rebuildState(VoidCallback fn) => setState(fn);
+  /// A new chat model or preset goes into a running KoboldCpp at once: a
+  /// reload by name, a restart only when that is not acted on. When it was
+  /// not loaded, the reason is said the way a Start says its own, and the
+  /// model dropdown follows the stored choice again.
+  void _reloadChatIfRunning() {
+    final llm = context.read<LLMProvider>();
+    if (!llm.koboldService.isProcessRunning) return;
+    // Taken before the wait: the page may be gone when it ends.
+    final messenger = ScaffoldMessenger.of(context);
+    unawaited(
+      llm
+          .reloadChatKobold()
+          .then((result) {
+            final words = result?.message;
+            if (words != null) {
+              messenger.showSnackBar(SnackBar(content: Text(words)));
+            }
+            // A model that was not loaded was not kept either: the stored
+            // choice is back on what runs, and the dropdown names it again.
+            if (result?.refusal != null && mounted) {
+              setState(() => _selectedModelPath = null);
+            }
+          })
+          .catchError(
+            (Object e) => debugPrint('[Settings] chat reload failed: $e'),
+          ),
+    );
+  }
+
+  void _openDatabaseCleanup(BuildContext context) {
+    showDialog(context: context, builder: (_) => const DatabaseCleanupDialog());
+  }
 
   @override
   void dispose() {
-    _gpuLayersController.dispose();
-    _contextSizeController.dispose();
     _apiController.dispose();
     _remoteApiUrlController.dispose();
     _remoteApiKeyController.dispose();
@@ -281,7 +229,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Stack(
       children: [
         DefaultTabController(
-          length: 6,
+          length: 7,
           child: Scaffold(
             backgroundColor: AppColors.backgroundOf(
               context,
@@ -304,6 +252,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 splashFactory: NoSplash.splashFactory,
                 tabs: const [
                   Tab(text: 'General'),
+                  Tab(text: 'Appearance'),
                   Tab(text: 'Porch Life'),
                   Tab(text: 'Generation'),
                   Tab(text: 'Voice & Media'),
@@ -312,27 +261,47 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
-            body: TabBarView(
-              children: [
-                GeneralTab(systemPromptController: _systemPromptController),
-                const PorchLifeTab(),
-                GenerationTab(
-                  bannedPhrasesController: _bannedPhrasesController,
-                ),
-                VoiceMediaTab(
-                  dragCallBuffer: _dragCallBuffer,
-                  onDragCallBufferChanged: (v) =>
-                      setState(() => _dragCallBuffer = v),
-                  availableModels: _availableModels,
-                ),
-                // Builder defers these two until their tab actually mounts:
-                // both are method calls that subscribe to services and build
-                // their full trees, so evaluating them inline meant every
-                // settings notify re-ran ALL five tabs' construction even
-                // with a different tab visible.
-                Builder(builder: (context) => _backendTab()),
-                Builder(builder: (context) => _buildAdvancedTab(context)),
-              ],
+            // The tabs' ink (a picked dropdown's focus box) lands on this
+            // Material, which clips it to the tab body. On the Scaffold it
+            // showed through the transparent tab bar when scrolled up.
+            body: Material(
+              type: MaterialType.transparency,
+              child: TabBarView(
+                children: [
+                  GeneralTab(systemPromptController: _systemPromptController),
+                  const AppearanceTab(),
+                  const PorchLifeTab(),
+                  GenerationTab(
+                    bannedPhrasesController: _bannedPhrasesController,
+                  ),
+                  VoiceMediaTab(
+                    dragCallBuffer: _dragCallBuffer,
+                    onDragCallBufferChanged: (v) =>
+                        setState(() => _dragCallBuffer = v),
+                    availableModels: _availableModels,
+                  ),
+                  // Builder defers these two until their tab actually mounts:
+                  // both are method calls that subscribe to services and build
+                  // their full trees, so evaluating them inline meant every
+                  // settings notify re-ran ALL five tabs' construction even
+                  // with a different tab visible.
+                  Builder(builder: (context) => _backendTab()),
+                  Builder(
+                    builder: (context) => SettingsAdvancedTab(
+                      onPickStoragePath: () => pickStoragePath(this.context),
+                      portDraft: _webServerPortDraft,
+                      launchExpanded: _advancedLaunchExpanded,
+                      onToggleLaunchExpanded: () => setState(
+                        () =>
+                            _advancedLaunchExpanded = !_advancedLaunchExpanded,
+                      ),
+                      launchModelExists: _launchModelExists.of,
+                      onRocmChanged: () => setState(() {}),
+                      onScanAndClean: _openDatabaseCleanup,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -354,10 +323,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final storageService = Provider.of<StorageService>(context);
     final modelManager = Provider.of<ModelManager>(context);
 
-    // Auto-select a model if none selected and models exist: the last-used
-    // one when the scan has it (the Local model card names that one), else the
-    // first. Skip when a kcpps preset with a valid model is active (use
-    // "Managed by kcpps").
+    // Start on the last-used model when the scan has it (the Local model card
+    // names that one); otherwise nothing is chosen and the list says so. Skip
+    // when a kcpps preset with a valid model is active ("Managed by kcpps").
     final kcppsModelExists = _kcppsModelExists.of(
       storageService.backendSettings.kcppsModelPath,
     );
@@ -440,10 +408,9 @@ class _SettingsPageState extends State<SettingsPage> {
         _scanLocalPresets();
         setState(() {});
       },
-      onToggleBackend: () => _toggleManagedBackend(context),
+      onToggleBackend: () =>
+          toggleManagedBackend(context, pickedModel: () => _selectedModelPath),
       kcppsModelExists: kcppsModelExists,
     );
   }
-
-  bool _advancedLaunchExpanded = false;
 }

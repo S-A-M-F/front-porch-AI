@@ -79,7 +79,7 @@
 }
 .grp-check {
   position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
-  background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 0.7rem;
+  background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-size: 0.7rem;
 }
 @media (max-width: 768px) { .grp-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); } }
 
@@ -95,7 +95,7 @@
 .picker-crumb-name { font-weight: 600; font-size: 0.9rem; }
 
 /* Voice: the mic button pulses red while recording. */
-.icon-btn.mic.recording { color: var(--danger, #e5484d); animation: mic-pulse 1s ease-in-out infinite; }
+.icon-btn.mic.recording { color: var(--danger); animation: mic-pulse 1s ease-in-out infinite; }
 @keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* ── Persona manager (card grid, not a flat list) ─────────────── */
@@ -114,7 +114,7 @@
   display: grid; place-items: center; background: var(--surface-2);
   color: var(--accent); font-weight: 700;
 }
-.persona-list li.active .persona-av { background: var(--accent); color: var(--accent-ink); }
+.persona-list li.active .persona-av { background: var(--accent); color: var(--on-accent); }
 .persona-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .persona-main .pname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .persona-main .pactive { font-size: 0.66rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -122,7 +122,7 @@
 .persona-edit { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 
 /* ── Account ──────────────────────────────────────────────────── */
-.qr { background: #fff; padding: 12px; border-radius: 10px; width: fit-content; margin: 10px 0; }
+.qr { background: #fff; /* theme-keep: QR codes need a white quiet zone */ padding: 12px; border-radius: 10px; width: fit-content; margin: 10px 0; }
 .recovery { columns: 2; font-size: 0.9rem; }
 .session-list, .recovery { list-style: none; padding: 0; }
 .session-list li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
@@ -131,7 +131,7 @@
 
 /* Unofficial SuperGrok sign-in (xAI host) — desktop SuperGrokCard. */
 .sg-card {
-  border: 1px solid rgba(244, 162, 89, 0.45);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: var(--radius);
   background: var(--card);
   padding: 12px;
@@ -149,8 +149,8 @@
   padding: 2px 7px;
   border-radius: 999px;
   color: var(--porch-amber);
-  background: rgba(244, 162, 89, 0.12);
-  border: 1px solid rgba(244, 162, 89, 0.5);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
 }
 .sg-code {
   font-size: 1.5rem;
@@ -162,3 +162,12 @@
 .sg-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sg-signed-in { margin: 0; font-weight: 600; color: var(--ok); }
 .sg-fine { margin: 0; font-size: 0.75rem; color: var(--porch-amber); }
+
+/* ── Settings sections (desktop-tab parity: General → Advanced) ─────────── */
+.settings-section { margin-bottom: 28px; }
+.settings-section-heading {
+  margin: 0 0 12px; font-size: 1.15rem; color: var(--text);
+  border-bottom: 1px solid var(--border); padding-bottom: 6px;
+}
+.settings-group { margin-bottom: 16px; }
+.settings-group-heading { margin: 0 0 8px; font-size: 0.95rem; color: var(--muted); }

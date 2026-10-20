@@ -17,10 +17,12 @@ Dart: [docs/maintainer-agent-playbook.md](docs/maintainer-agent-playbook.md).
 - **File size.** Handwritten Dart under `lib/` stays **under 500 lines**.
   That is CI via `test/hygiene/god_file_ratchet_test.dart` (`kGodFileBar`
   is 500, empty `test/baselines/god_files.json`). Do not add baseline
-  leftovers — split the file. Generated `.g.dart` (including
+  leftovers — extract a class or widget. Generated `.g.dart` (including
   `lib/database/database.g.dart`) is excluded from that ratchet and owned
   by `test/hygiene/generated_dart_size_test.dart` / Drift
   `generate_manager: false`. Do not invent a second 500-line gate.
+  Splitting into `part` files does not count: extract a real class or
+  widget (`test/hygiene/part_file_ratchet_test.dart`).
 - **Style.** DRY, readable Dart, few comments. `dart format` the files you
   already edited. Never `dart format .`. Touched code must be analyzer-clean.
 - **Chat contracts.** `resolveMouthSpeech`: a closed think-only body is
@@ -37,10 +39,12 @@ Dart: [docs/maintainer-agent-playbook.md](docs/maintainer-agent-playbook.md).
   in the current conversation.
 - **Realism/Needs 1:1 ↔ group.** Observable behaviour for a character is the
   same in both modes. Orchestration may differ; results may not.
-- **Tests.** Adding a new test file is fine. Editing or deleting an existing
-  test, golden, baseline, workflow, or `analysis_options.yaml` needs the
-  maintainer's `approved-test-change` label. Do not quietly edit a test to
-  make CI green. A new guard must be proven red, then green.
+- **Tests.** Put a new guard in its feature's existing test file; adding
+  whole tests there (nothing deleted) or a new test file is fine. Editing or
+  deleting an existing test, golden, baseline, workflow, or
+  `analysis_options.yaml` needs the maintainer's `approved-test-change`
+  label. Do not quietly edit a test to make CI green. A new guard must be
+  proven red, then green.
 - **No stub tests.** Network pins hit a real server or skip when env is
   missing — never FakeStoopServer, toy HttpServer JSON, or HttpClient 400
   stubs. See CLAUDE.md ## Testing.
@@ -51,6 +55,11 @@ Dart: [docs/maintainer-agent-playbook.md](docs/maintainer-agent-playbook.md).
   happened when it did not.
 
 ## Done means
+
+CLAUDE.md's **Definition of done**: every `## Hand-check` line in the PR
+names its test or starts `eye-only:`; create/save buttons get a
+`doubleTapNoFrame` test; no real-clock time bombs; no screenshots of real
+chats in the repo.
 
 Path-complete checklist when chat/realism/memory is in scope. A 2–5 step
 poke script. `flutter analyze` clean on touched Dart. Web shipped or

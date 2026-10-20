@@ -35,6 +35,8 @@ export 'stage/chat_resize_sidebar.dart';
 export 'stage/transcript_anchor.dart';
 export 'stage/transcript_auto_scroll.dart';
 export 'stage/transcript_window.dart';
+export 'chat_find_bar.dart';
+export 'chat_find_controller.dart';
 export 'sidebar/expandable_sidebar_text.dart';
 export 'chat_composer_hint.dart';
 export 'sidebar/emoji_burst.dart';
@@ -44,12 +46,20 @@ export 'sidebar/story_tools/lorebook_panel.dart';
 
 export 'overlays/rag_setup_dialog.dart';
 export 'overlays/realism_processing_overlay.dart';
+export 'overlays/frozen_backdrop_blur.dart';
 export 'overlays/objective_check_overlay.dart';
 export 'overlays/generation_status_bar.dart';
+export 'overlays/stopped_reply_notice.dart';
+export 'prompt_source_panes.dart';
+export 'prompt_source_picker.dart';
 
 export 'widgets/cast_roster_chip.dart';
 export 'widgets/chat_image_attachment.dart';
+export 'widgets/composer_draft_scope.dart';
 export 'widgets/composer_drop_zone.dart';
+export 'widgets/director_panel.dart';
+export 'widgets/director_tools.dart';
+export 'widgets/director_turn_buttons.dart';
 export 'widgets/eval_pill.dart';
 export 'widgets/generating_image_bubble.dart';
 export 'widgets/look_chevrons.dart';
@@ -57,3 +67,7 @@ export 'widgets/mention_autocomplete.dart';
 export 'widgets/message_jump.dart';
 export 'widgets/regen_critique_field.dart';
 export 'widgets/settings_menu_item.dart';
+export 'overlays/evaluation_progress_shell.dart';
+
+export 'overlays/chat_evaluation_progress.dart';
+export 'widgets/chat_turn_builder.dart';

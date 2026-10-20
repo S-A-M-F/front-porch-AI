@@ -40,7 +40,6 @@ extension ChatServiceGenerationStream on ChatService {
     _displayedTokenCount = 0;
     _tokenTimestamps.clear();
     bool streamDone = false;
-    DateTime? _thinkStartTime;
     bool _thinkStarted = false;
     bool _thinkEnded = false;
 
@@ -56,14 +55,14 @@ extension ChatServiceGenerationStream on ChatService {
     String targetSender;
     bool isUserTarget;
 
-    // Standing Mood rides the turn's metadata so the mood chip can explain
-    // itself. Stamped HERE — the single funnel every path attaches through
-    // (one-shot, multi-call, group per-speaker, reprocess) — rather than
-    // beside each of the four sites that write 'emotion_label', which is how
-    // one of them would eventually be missed. No-op when the feature is off or
-    // the day is unremarkable.
+    // Standing Mood and the mood's cause ride the turn's metadata so the
+    // mood chip can explain itself. Stamped HERE, the single funnel every
+    // path attaches through (one-shot, multi-call, group per-speaker,
+    // reprocess), not beside each site that writes 'emotion_label', which
+    // is how one of them would eventually be missed.
     if (_pendingRealismMetadata != null) {
-      stampStandingMood(_pendingRealismMetadata!);
+      _standingMood.stamp(_pendingRealismMetadata!);
+      _mood.stampCause(_pendingRealismMetadata!);
     }
 
     if (t.mode == GenerationMode.continue_) {
@@ -79,6 +78,7 @@ extension ChatServiceGenerationStream on ChatService {
       // realism_state) must not stamp this bubble. Cancel paths null it;
       // do not merge it here.
     } else {
+      originalText = t.continuePrefix; // a rewrite's seed; else empty
       targetSender = t.mode == GenerationMode.normal
           ? t.speakingCharacter.name
           : _userPersonaService.persona.name;
@@ -102,11 +102,17 @@ extension ChatServiceGenerationStream on ChatService {
             break;
           }
         }
-        initialMetadata = skip.isNotEmpty ? {'time_skip_to': skip} : null;
+        initialMetadata = liteSkipMetadata(skip, _pendingRealismMetadata);
       } else if (_pendingRealismMetadata == null) {
         initialMetadata = null;
       } else {
-        initialMetadata = Map<String, dynamic>.from(_pendingRealismMetadata!);
+        // needs_time_wear is post-gen scratch (the chip step reads it),
+        // written after this reset, so a value here is the previous
+        // turn's and would ride onto this reply: with the global Needs
+        // switch turned off mid-chat, the new reply wore nothing and
+        // showed last turn's wear.
+        initialMetadata = Map<String, dynamic>.from(_pendingRealismMetadata!)
+          ..remove('needs_time_wear');
       }
       debugPrint(
         '[Realism:Metadata] PRE-GEN attach (needs_deltas + any post-gen '
@@ -125,6 +131,7 @@ extension ChatServiceGenerationStream on ChatService {
         swipeMetadata: initialMetadata != null ? [initialMetadata] : null,
       );
       _messages.add(t.streamTarget);
+      t.replyLanded = true;
       _pendingRealismMetadata = null;
     }
     // RAG receipt (rag_injection.dart): stamped here — the same single
@@ -150,6 +157,10 @@ extension ChatServiceGenerationStream on ChatService {
       t.streamTarget.activeMetadata ??= {};
       t.streamTarget.activeMetadata!['tool_receipt'] = t.toolReceipt;
     }
+    _stampReplyContext(
+      t.streamTarget,
+      continuing: t.mode == GenerationMode.continue_,
+    );
     final streamTarget = t.streamTarget;
 
     // Helper to update the visible message from buffer. Incremental: only
@@ -170,7 +181,7 @@ extension ChatServiceGenerationStream on ChatService {
       if (t.mode == GenerationMode.continue_) {
         displayText = glueContinueText(originalText, displayTokens);
       } else {
-        displayText = displayTokens.trimLeft();
+        displayText = (originalText + displayTokens).trimLeft();
       }
       // CRITICAL: Modify the captured stream target in place (never
       // _messages.last — the list can shift mid-turn) to preserve
@@ -273,9 +284,9 @@ extension ChatServiceGenerationStream on ChatService {
           .toLowerCase();
       if (!_thinkStarted && tailLower.contains('<think>')) {
         _thinkStarted = true;
-        _thinkStartTime = DateTime.now();
+        final startedAt = t.thinkStartedAt = DateTime.now();
         _generationPhase = GenerationPhase.thinking;
-        streamTarget.thinkingStartTime = _thinkStartTime.millisecondsSinceEpoch;
+        streamTarget.thinkingStartTime = startedAt.millisecondsSinceEpoch;
       }
       final closeIdxInTail = (_thinkStarted && !_thinkEnded)
           ? tailLower.indexOf('</think>')
@@ -322,9 +333,10 @@ extension ChatServiceGenerationStream on ChatService {
         _generationPhase = bufferEnabled
             ? GenerationPhase.buffering
             : GenerationPhase.generating;
-        if (_thinkStartTime != null) {
+        final startedAt = t.thinkStartedAt;
+        if (startedAt != null) {
           streamTarget.thinkingDurationMs = DateTime.now()
-              .difference(_thinkStartTime)
+              .difference(startedAt)
               .inMilliseconds;
           // Keep thinkingStartTime for fallback display logic in UI
         }
@@ -438,52 +450,50 @@ extension ChatServiceGenerationStream on ChatService {
       _drainTimer = null;
     }
 
-    // A think that never closed leaves duration at 0. The next group
-    // speaker keeps isGenerating true, and this bubble would say
-    // "Thinking…" for that whole reply. Record the time on this message.
-    void sealThinkClock() {
-      final started = _thinkStartTime;
-      if (started == null || streamTarget.thinkingDurationMs > 0) return;
-      final ms = DateTime.now().difference(started).inMilliseconds;
-      streamTarget.thinkingDurationMs = ms <= 0 ? 1 : ms;
-    }
-
     // User cancel (stream-loop break above, or Stop during the drain):
     // halt the turn HERE — no finalize, no lorebook scan, no post-turn
     // evals on an aborted reply. Mirrors the catch path's treatAsCancel:
     // keep the displayed partial so regen/continue work, save, signal done.
     if (_cancelRequested) {
-      _drainTimer?.cancel();
-      _drainTimer = null;
-      _tokenBuffer.clear();
-      _isGenerating = false;
-      _cancelRequested = false;
-      _generationProgress = 0.0;
-      _generationPhase = GenerationPhase.idle;
-      _prefillStartTime = null;
-      _prefillPromptTokens = 0;
-      _generationStartTime = null;
-      t.perfPoller?.cancel();
-      t.perfPoller = null;
-      _tokenBroadcast.add('__DONE__');
-      if (_sentenceBuffer.trim().isNotEmpty) {
-        _sentenceBroadcast.add(_sentenceBuffer.trim());
-        _sentenceBuffer = '';
-      }
-      _sentenceBroadcast.add('__DONE__');
-      if (t.originalModelName != null && _llmProvider != null) {
-        _llmProvider!.openRouterService.configure(
-          modelName: t.originalModelName,
-        );
-      }
-      sealThinkClock();
-      final closed = closeOpenThink(streamTarget.text);
-      if (closed != streamTarget.text) streamTarget.text = closed;
-      await _saveChat();
-      notifyListeners();
+      await _haltStoppedTurn(t, streamTarget);
       return true;
     }
-    sealThinkClock();
+    t.sealThinkClock();
     return false;
+  }
+
+  /// Ends a stopped turn: keeps the partial with its thought closed so regen
+  /// and Continue work, saves, and signals done. The stream-loop break and
+  /// the catch path's treatAsCancel both end here; [target] is null when the
+  /// throw came before any reply was painted.
+  Future<void> _haltStoppedTurn(_GenTurn t, ChatMessage? target) async {
+    _drainTimer?.cancel();
+    _drainTimer = null;
+    _tokenBuffer.clear();
+    _isGenerating = false;
+    _cancelRequested = false;
+    _generationProgress = 0.0;
+    _generationPhase = GenerationPhase.idle;
+    _prefillStartTime = null;
+    _prefillPromptTokens = 0;
+    _generationStartTime = null;
+    t.perfPoller?.cancel();
+    t.perfPoller = null;
+    _tokenBroadcast.add('__DONE__');
+    if (_sentenceBuffer.trim().isNotEmpty) {
+      _sentenceBroadcast.add(_sentenceBuffer.trim());
+      _sentenceBuffer = '';
+    }
+    _sentenceBroadcast.add('__DONE__');
+    if (t.originalModelName != null && _llmProvider != null) {
+      _llmProvider!.openRouterService.configure(modelName: t.originalModelName);
+    }
+    if (target != null) {
+      t.sealThinkClock();
+      final closed = closeOpenThink(target.text);
+      if (closed != target.text) target.text = closed;
+    }
+    await _saveChat();
+    notifyListeners();
   }
 }

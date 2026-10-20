@@ -36,10 +36,20 @@ export function ChipsRow({
   const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
   const realism: Pill[] = [];
-  if (chips.bondDelta != null) realism.push({ key: 'bond', label: chips.bondDelta === 0 ? 'Bond unchanged' : `Bond ${signed(chips.bondDelta)}`, cls: chips.bondDelta > 0 ? 'up' : chips.bondDelta < 0 ? 'down' : 'time', reason: chips.bondReason });
-  if (chips.trustDelta != null) realism.push({ key: 'trust', label: chips.trustDelta === 0 ? 'Trust unchanged' : `Trust ${signed(chips.trustDelta)}`, cls: chips.trustDelta > 0 ? 'up' : chips.trustDelta < 0 ? 'down' : 'time', reason: chips.trustReason });
-  if (chips.arousalDelta) realism.push({ key: 'arousal', label: `Arousal ${signed(chips.arousalDelta)}`, cls: chips.arousalDelta > 0 ? 'up' : 'down' });
-  if (chips.emotionLabel) realism.push({ key: 'mood', label: chips.emotionLabel, cls: 'mood' });
+  // Desktop twin: message_bubble.realism.dart. The text comes from the
+  // desktop's kFeelingsUnscoredLabel/Tip; these copies cover an older server.
+  const unscored = !!chips.feelingsUnscored && chips.bondDelta == null && chips.trustDelta == null;
+  if (unscored) realism.push({ key: 'unscored', label: chips.feelingsUnscoredLabel || 'Feelings not scored this time', cls: 'time', reason: chips.feelingsUnscoredTip || "The model's answer couldn't be read, so bond and trust stayed where they were. To try again and keep this reply, tap Manual Reprocess and pick Feelings." });
+  if (chips.bondDelta != null) realism.push({ key: 'bond', label: chips.bondDelta === 0 ? 'Bond unchanged' : `Bond ${signed(chips.bondDelta)}`, cls: chips.bondDelta > 0 ? 'up stat-bond-up' : chips.bondDelta < 0 ? 'down stat-bond-down' : 'time', reason: chips.bondReason });
+  if (chips.trustDelta != null) realism.push({ key: 'trust', label: chips.trustDelta === 0 ? 'Trust unchanged' : `Trust ${signed(chips.trustDelta)}`, cls: chips.trustDelta > 0 ? 'up stat-trust-up' : chips.trustDelta < 0 ? 'down stat-trust-down' : 'time', reason: chips.trustReason });
+  if (chips.arousalDelta) realism.push({ key: 'arousal', label: `Lust ${signed(chips.arousalDelta)}`, cls: chips.arousalDelta > 0 ? 'up stat-lust-up' : 'down stat-lust-down', reason: chips.arousalReason });
+  if (chips.emotionLabel) {
+    const moodReason = [
+      chips.emotionCause ? `Because ${chips.emotionCause}` : '',
+      chips.moodStanding ? `Came in ${chips.moodStanding}` : '',
+    ].filter(Boolean).join('\n');
+    realism.push({ key: 'mood', label: chips.emotionLabel, cls: 'mood', reason: moodReason });
+  }
   if (chips.timePassed) realism.push({ key: 'passed', label: `⏱ ${chips.timePassed}`, cls: 'time' });
   if (chips.timeSkipTo) realism.push({ key: 'time', label: `⏱ ${chips.timeSkipTo}`, cls: 'time' });
   if (chips.chanceTimeEvent) realism.push({ key: 'chance', label: '🎲 Chance Time', cls: 'time', reason: chips.chanceTimeEvent });
@@ -48,19 +58,31 @@ export function ChipsRow({
   const toolName = chips.toolName;
   const toolOk = chips.toolOk;
   if (toolName) realism.push({ key: 'tool', label: toolOk === false ? `${toolName} — nothing` : toolName, cls: 'time', reason: toolName });
+  // Desktop twin: message_bubble.realism_chips.dart (verifier + Pockets chips).
+  const director = chips.directorStatus?.trim();
+  if (director) {
+    const passes = chips.directorPasses ?? 0;
+    const label = director === 'accepted' ? '✓ Director accepted' : `🕵️ Director corrected (${passes} reprocess${passes === 1 ? '' : 'es'})`;
+    realism.push({ key: 'director', label, cls: director === 'accepted' ? 'up' : 'warn', reason: chips.directorReason?.trim() || 'Realism Verification result' });
+  }
+  (chips.pocketChanges ?? []).forEach((raw, i) => {
+    const text = typeof raw === 'string' ? raw.trim() : '';
+    if (text) realism.push({ key: `pocket-${i}`, label: `🧥 ${text}`, cls: 'pocket', reason: `Pockets & Wardrobe: ${text}` });
+  });
 
   const needs: Pill[] = [];
   for (const [k, v] of Object.entries(chips.needsDeltas ?? {})) {
     const delta = typeof v === 'number' ? v : v?.delta;
     const reason = typeof v === 'number' ? undefined : v?.reason;
     if (!delta) continue;
-    needs.push({ key: `need-${k}`, label: `${NEED_LABELS[k] ?? k} ${signed(delta)}`, cls: delta > 0 ? 'up' : 'down', reason });
+    needs.push({ key: `need-${k}`, label: `${NEED_LABELS[k] ?? k} ${signed(delta)}`, cls: `${delta > 0 ? 'up' : 'down'} stat-need-${k in NEED_LABELS ? k : 'other'}`, reason });
   }
   if (chips.needsUnaffected && needs.length === 0) {
     needs.push({ key: 'unaffected', label: 'No needs affected', cls: 'time' });
   }
 
-  const showReprocess = isLast && !busy && !!chips.needsReprocessable;
+  // Either Manual Reprocess choice keeps the button: Needs or Feelings.
+  const showReprocess = isLast && !busy && (!!chips.needsReprocessable || !!chips.feelingsReprocessable);
   const showRevert = isLast && !busy && !!chips.needsRevertable;
   if (realism.length === 0 && needs.length === 0 && !showReprocess && !showRevert) return null;
 
@@ -78,7 +100,7 @@ export function ChipsRow({
         onClick={hasReason ? () => toggle(p.key) : undefined}
         onKeyDown={hasReason ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(p.key); } } : undefined}
       >
-        {p.label}{hasReason && <span className="chip-info" aria-hidden> ⓘ</span>}
+        <span className="chip-label">{p.label}</span>{hasReason && <span className="chip-info" aria-hidden> ⓘ</span>}
       </span>
     );
   };
@@ -93,7 +115,7 @@ export function ChipsRow({
       {(showReprocess || showRevert) && (
         <div className="needs-reprocess-row">
           {showReprocess && (
-            <button type="button" className="btn-reprocess" onClick={onReprocess} title="Reprocess Needs with your critique">
+            <button type="button" className="btn-reprocess" onClick={onReprocess} title="Redo the Needs or the Feelings for this reply">
               ✍ Manual Reprocess
             </button>
           )}

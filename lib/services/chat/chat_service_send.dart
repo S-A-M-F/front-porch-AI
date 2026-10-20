@@ -44,6 +44,28 @@ extension ChatServiceSend on ChatService {
     return command ? null : words;
   }
 
+  /// Why [sendMessage] would drop a message right now, or null when it would
+  /// go: its early returns, in words. The desktop composer and the web relay
+  /// both ask this before they let go of the text, so a line typed while a
+  /// reply or the narrator is running stays in the box (or comes back to the
+  /// phone) instead of being cleared and silently ignored.
+  String? get sendBusyReason {
+    if (_activeCharacter == null && _activeGroup == null) {
+      return 'No chat is open.';
+    }
+    if (_isLoadingSession || _chatSwitches > 0) {
+      return 'The chat is still opening.';
+    }
+    if (_isImporting) return 'A chat import is still running.';
+    if (_entrancesInFlight || _sceneGuest.busy) {
+      return 'A character is still joining the scene.';
+    }
+    if (_photoTurnInFlight) return 'The last photo is still being read.';
+    if (_isGenerating) return 'A reply is still being written.';
+    if (_narrating) return 'The narrator is still setting the scene.';
+    return null;
+  }
+
   /// [imageBytes] optionally attaches a photo (already downscaled+PNG-encoded
   /// by the composer) to this user turn. The bytes are saved to disk HERE,
   /// after all guards pass, so a guard bail can never orphan a file. The photo
@@ -58,7 +80,7 @@ extension ChatServiceSend on ChatService {
     // Overlay / picker hydrate is still in flight. A send here would
     // persist the pre-hydrate realism reset onto whichever session is
     // currently live (often the last-active chat, not the one opening).
-    if (_isLoadingSession) return;
+    if (_isLoadingSession || _chatSwitches > 0) return;
     // Don't let a user turn start while forked-in entrances are still playing —
     // it would race the one-shot entrance directive / turn positioning.
     if (_entrancesInFlight) return;
@@ -87,6 +109,8 @@ extension ChatServiceSend on ChatService {
     // keep the wider _isTurnBusy guard, because that is where the race
     // actually corrupts something.
     if (_isGenerating) return;
+    // The narrator's beat is about to append and start the reply.
+    if (_narrating) return;
     final testing = sendRefusal(text, withImage: imageBytes != null);
     if (testing != null) {
       _setGuestStatus(testing, isError: true);
@@ -127,7 +151,7 @@ extension ChatServiceSend on ChatService {
     // A send that lands in the previous turn's SETTLING window must QUEUE
     // behind it, not race it: the new turn's pre-gen work (mood decay, needs
     // tick, the group per-speaker scalar re-point) otherwise runs before the
-    // old turn's _saveScalarsIntoGroupRealism / snapshot restamp / chip
+    // old turn's RealismDance.saveScalarsIntoGroup / snapshot restamp / chip
     // attach, cross-writing speaker A's realism state with speaker B's.
     // Bounded (15s deadline) and drains the save chain — the same
     // serialization point setActiveCharacter/setActiveGroup/loadSession
@@ -180,7 +204,7 @@ extension ChatServiceSend on ChatService {
     // done; ones still pending (never made it into a prompt) stay queued for
     // THIS turn. Cleared here, not at prompt build, so a regenerate of the
     // reacting reply reproduces the reaction.
-    _dropConsumedItemIntros();
+    _pocketsLedger.dropConsumedItemIntros();
 
     // A new message while an /image prompt review is parked cancels it —
     // the desktop dialog is modal, but the web modal can be typed around.
@@ -199,19 +223,6 @@ extension ChatServiceSend on ChatService {
       // Unknown command — fall through and send as a normal message.
     }
 
-    // In observer mode, route to sendDirectorNote instead
-    if (_observerMode && _activeGroup != null) {
-      if (lookup.accepted) {
-        _armForcedLookup(
-          webQuery: lookup.webQuery,
-          wikiQuery: lookup.wikiQuery,
-        );
-      }
-      await sendDirectorNote(outbound);
-      _clearForcedLookup();
-      return;
-    }
-
     _toolProbe.beginUserSend();
     _webSearchService.beginUserSend();
     _wikiSearchService.beginUserSend();
@@ -225,17 +236,23 @@ extension ChatServiceSend on ChatService {
       // Save the attachment to disk only now that every guard has passed — the
       // composer passes bytes, not a path, so a guard bail above can't orphan a
       // file. Null when there are no bytes / the image service isn't wired.
-      final imagePath = await _persistTurnImage(imageBytes);
+      // Director Mode: {{user}} is off stage and the line is a director's
+      // note. It runs the same turn as any send (dreams, time skips, chaos,
+      // @Name cues, Needs, the clock); only the judges that score the user's
+      // message stand down, because there is no user message to score.
+      final directing = _directing;
+      final imagePath = directing ? null : await _persistTurnImage(imageBytes);
 
-      final senderName = _userPersonaService.persona.name;
-      final userMsg = ChatMessage(
-        text: outbound,
-        sender: senderName,
-        isUser: true,
-        metadata: imagePath != null
-            ? {'is_user_image': true, 'image_path': imagePath}
-            : null,
-      );
+      final userMsg = directing
+          ? directorNoteMessage(outbound)
+          : ChatMessage(
+              text: outbound,
+              sender: _userPersonaService.persona.name,
+              isUser: true,
+              metadata: imagePath != null
+                  ? {'is_user_image': true, 'image_path': imagePath}
+                  : null,
+            );
       // Session token for the caption writes below — captured NOW so a chat
       // switch anywhere during the (long) turn voids the stamp+save.
       final sessionToken = _currentSessionId;
@@ -344,13 +361,23 @@ extension ChatServiceSend on ChatService {
       // story clock is live, engine on or off.
       if (_clockRunning) {
         final before = _timeService.clock;
-        await _timeService.detectOocTimeSkip(outbound);
-        final after = _timeService.clock;
-        if (after != before &&
-            isNightSkip(stripQuotedSpeech(outbound).toLowerCase())) {
-          _applyNightSkipRestore();
+        final skipped = await _timeService.detectOocTimeSkip(outbound);
+        await _episodeCrumbs.maybeMint(before, _timeService.clock);
+        // A day or more (this line, or the calendar since the last turn):
+        // settle the moment the scene left; a skip line also gets the
+        // narrator to fill in the gap before anyone replies.
+        if (_timeService.bodyBeatLivedOwed) {
+          LongSkipSettle(_realismScope()).settle();
         }
-        await _maybeMintEpisodeCrumbs(before, after);
+        if (skipped >= kLongSkipMinutes) {
+          final stillHere = await _bridgeLongSkip(
+            from: before,
+            skipped: skipped,
+            skipLine: userMsg,
+            token: sessionToken,
+          );
+          if (!stillHere) return;
+        }
       }
 
       // ── Direct-address turn routing (both cast surfaces) ─────────────────
@@ -375,7 +402,7 @@ extension ChatServiceSend on ChatService {
           _chanceTimePendingTrigger = true;
           // Pre-pick the one event the web/mobile reveal modal shows + accepts
           // (the desktop spins its own wheel instead — same pool, same accept).
-          final webWheel = _chaosModeService.spinWheelEvents();
+          final webWheel = spinWheelEvents();
           _webChanceTimeEvent = webWheel.isNotEmpty
               ? webWheel.first
               : 'Fate intervenes in an unexpected way.';

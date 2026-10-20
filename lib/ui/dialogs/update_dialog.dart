@@ -22,7 +22,8 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 /// Dialog shown when a new version is available.
 /// Three stages: prompt → downloading → ready to install.
@@ -63,7 +64,11 @@ class UpdateDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
-          Icon(Icons.system_update, color: Colors.greenAccent, size: 28),
+          Icon(
+            Icons.system_update,
+            color: StatusColors.successOf(context),
+            size: 28,
+          ),
           const SizedBox(width: 12),
           Text(
             'Update Available',
@@ -93,11 +98,11 @@ class UpdateDialog extends StatelessWidget {
                   ),
                 ),
                 TextSpan(text: '${service.displayCurrentVersion}\n'),
-                const TextSpan(
+                TextSpan(
                   text: 'Latest: ',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.greenAccent,
+                    color: StatusColors.successOf(context),
                   ),
                 ),
                 TextSpan(text: '${service.displayLatestVersion}\n'),
@@ -143,8 +148,8 @@ class UpdateDialog extends StatelessWidget {
               icon: const Icon(Icons.coffee_outlined, size: 18),
               label: Text('Support on Ko-fi'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFF5E5B),
-                side: const BorderSide(color: Color(0xFFFF5E5B), width: 1),
+                foregroundColor: AccentColors.kofiOf(context),
+                side: BorderSide(color: AccentColors.kofiOf(context), width: 1),
                 padding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
@@ -164,8 +169,8 @@ class UpdateDialog extends StatelessWidget {
           icon: const Icon(Icons.download, size: 18),
           label: Text('Download'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.greenAccent.shade700,
-            foregroundColor: Colors.white,
+            backgroundColor: StatusColors.successFillOf(context),
+            foregroundColor: StatusColors.onFill,
           ),
         ),
       ],
@@ -201,8 +206,8 @@ class UpdateDialog extends StatelessWidget {
               icon: const Icon(Icons.open_in_browser, size: 16),
               label: Text('View on GitHub'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white70,
-                side: const BorderSide(color: Colors.white24),
+                foregroundColor: AppColors.textSecondary(context),
+                side: BorderSide(color: InkColors.fieldEdgeOf(context)),
                 padding: const EdgeInsets.symmetric(vertical: 8),
               ),
             ),
@@ -255,7 +260,7 @@ class UpdateDialog extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
                 h2: TextStyle(
-                  color: Colors.greenAccent,
+                  color: StatusColors.successOf(context),
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -264,7 +269,7 @@ class UpdateDialog extends StatelessWidget {
                   fontSize: 13,
                 ),
                 a: TextStyle(
-                  color: Colors.lightBlueAccent,
+                  color: AppColors.porchAmberOf(context),
                   decoration: TextDecoration.underline,
                 ),
                 em: TextStyle(
@@ -300,7 +305,9 @@ class UpdateDialog extends StatelessWidget {
                 ? service.downloadProgress
                 : null,
             backgroundColor: AppColors.borderOf(context).withValues(alpha: 0.2),
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              StatusColors.successOf(context),
+            ),
           ),
           const SizedBox(height: 16),
           Text(
@@ -325,7 +332,11 @@ class UpdateDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
-          const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28),
+          Icon(
+            Icons.check_circle,
+            color: StatusColors.successOf(context),
+            size: 28,
+          ),
           const SizedBox(width: 12),
           Text(
             'Ready to Install',
@@ -366,6 +377,9 @@ class UpdateDialog extends StatelessWidget {
         ),
         ElevatedButton.icon(
           onPressed: () async {
+            // Installing quits the app, so unsaved edits are asked about
+            // first, as on the window close.
+            if (!await UnsavedChanges.instance.confirmLeave(context)) return;
             try {
               await service.installNow();
             } catch (e) {
@@ -374,7 +388,7 @@ class UpdateDialog extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Update failed: $e'),
-                    backgroundColor: Colors.red.shade700,
+                    backgroundColor: StatusColors.errorFill,
                   ),
                 );
               }
@@ -383,8 +397,8 @@ class UpdateDialog extends StatelessWidget {
           icon: const Icon(Icons.install_desktop, size: 18),
           label: Text('Install Now'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.greenAccent.shade700,
-            foregroundColor: Colors.white,
+            backgroundColor: StatusColors.successFillOf(context),
+            foregroundColor: StatusColors.onFill,
           ),
         ),
       ],

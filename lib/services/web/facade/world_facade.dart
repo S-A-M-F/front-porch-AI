@@ -17,13 +17,11 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/models/lorebook_analysis.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
 import 'package:front_porch_ai/utils/utils.dart';
-
-part 'world_facade.import.dart';
+import 'package:front_porch_ai/services/web/facade/world_facade.import.dart';
 
 /// Thin adapter for world (portable place) CRUD over [WorldRepository].
 /// Worlds have stable UUID identity; name is display-only.
@@ -39,6 +37,34 @@ class WorldFacade {
   final CharacterRepository? _characters;
   final ChatService? _chat;
   final GroupChatRepository? _groups;
+
+  late final WorldImporter _importer = WorldImporter(
+    _worlds,
+    _characters,
+    _chat,
+    _groups,
+  );
+
+  /// See [WorldImporter.importWorld].
+  Future<bool> importWorld(Map<String, dynamic> json) =>
+      _importer.importWorld(json);
+
+  /// See [WorldImporter.importLorebook].
+  Future<Map<String, dynamic>?> importLorebook(
+    Map<String, dynamic> json, {
+    bool dryRun = false,
+    String destination = 'world',
+    String? name,
+    String? description,
+    List<String> characterIds = const [],
+  }) => _importer.importLorebook(
+    json,
+    dryRun: dryRun,
+    destination: destination,
+    name: name,
+    description: description,
+    characterIds: characterIds,
+  );
 
   List<Map<String, dynamic>> list() {
     // Build a single name→dbId index so the per-world map below is O(1) and we
@@ -121,7 +147,12 @@ class WorldFacade {
     if (id != null && id.isNotEmpty) {
       existing = _worlds.worldById(id);
     }
-    existing ??= _worlds.worldByName(f['originalName']?.toString() ?? name);
+    // `create: true` is a new place: a taken name gets "Name (2)" from
+    // saveWorld, as on desktop, instead of overwriting the world that has
+    // it. Without the flag a bare name still upserts.
+    if (f['create'] != true) {
+      existing ??= _worlds.worldByName(f['originalName']?.toString() ?? name);
+    }
 
     final world =
         existing ??
@@ -181,17 +212,6 @@ class WorldFacade {
     if (w == null) return null;
     // Shared envelope core — same builder file export and Stoop upload use.
     return _worlds.fpWorldJson(w);
-  }
-
-  /// Legacy ST world-info export (lore only).
-  Map<String, dynamic>? exportStWorld(String nameOrId) {
-    final w = _worlds.resolveWorld(nameOrId);
-    if (w == null) return null;
-    return encodeStWorldInfo(
-      w.lorebook,
-      name: w.name,
-      description: w.description,
-    );
   }
 
   /// Chat session places (ids + names) + active climate for mid-chat override.

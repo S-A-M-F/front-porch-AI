@@ -22,6 +22,7 @@ import 'dart:typed_data';
 import 'package:drift/drift.dart';
 
 import 'package:front_porch_ai/database/database.dart';
+import 'journal_day_cooling.dart' show kJournalLivedDayMeta;
 import 'journal_physics.dart';
 import 'pockets.dart' show sameItem;
 
@@ -378,10 +379,14 @@ class JournalStore {
   }
 
   /// Semantic retrieval resurfaced a cold card: warm it back into the hot
-  /// set and record the access (design §4.4 heat lifecycle).
-  Future<void> rewarmCard(JournalMemoryData card) async {
+  /// set and record the access (design §4.4 heat lifecycle). [storyDay] is
+  /// today, so story-day cooling counts from the re-warm.
+  Future<void> rewarmCard(JournalMemoryData card, {int? storyDay}) async {
     final db = getDb();
     if (db == null) return;
+    if (storyDay != null) {
+      await updateCardMetadata(card, {kJournalLivedDayMeta: storyDay});
+    }
     await db.updateJournalCard(
       card.id,
       JournalMemoriesCompanion(

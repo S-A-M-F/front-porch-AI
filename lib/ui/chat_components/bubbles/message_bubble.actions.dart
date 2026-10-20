@@ -16,16 +16,45 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'message_bubble.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-/// The three action rows beneath a bot message: the first-message
-/// alternate-greeting swipe chevrons, the regen/continue/swipe-message
-/// row (including the Scene-Guest "host buried under guest replies"
-/// regen), and the Suggest-actions button + action pills. Their
-/// collection-`if` guards stay in the shell's `Column.children` — only
-/// the `Consumer<ChatService>` widget behind each guard moves here.
-extension _BubbleActions on _MessageBubbleState {
-  Widget _greetingSwipeRow() {
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+
+import '../widgets/composer_draft_scope.dart';
+import '../widgets/regen_critique_field.dart';
+import 'theme_border_resolver.dart';
+
+// The three action rows beneath a bot message: the first-message
+// alternate-greeting swipe chevrons, the regen/continue/swipe-message
+// row (including the Scene-Guest "host buried under guest replies"
+// regen), and the Suggest-actions button + action pills. Their
+// collection-`if` guards stay in the bubble's `Column.children`; each
+// widget here is the `Consumer<ChatService>` behind one guard.
+
+/// Opens the variant picker for this bubble's message; a pick goes to
+/// `onSelect`. The bubble owns it so the pick lands only while it is mounted.
+typedef OpenVariantPicker =
+    Future<void> Function({
+      required String title,
+      required Future<void> Function(int) onSelect,
+    });
+
+/// First-message alternate-greeting chevrons and the Select greet picker.
+class GreetingSwipeRow extends StatelessWidget {
+  const GreetingSwipeRow({
+    super.key,
+    required this.index,
+    required this.openVariantPicker,
+  });
+
+  final int index;
+  final OpenVariantPicker openVariantPicker;
+
+  @override
+  Widget build(BuildContext context) {
     return Consumer<ChatService>(
       builder: (context, chatService, _) {
         if (!chatService.isSelectableGreeting(index)) {
@@ -53,8 +82,8 @@ extension _BubbleActions on _MessageBubbleState {
               const SizedBox(width: 4),
               Text(
                 '${chatService.greetingIndex + 1}/${allGreetings.length}',
-                style: const TextStyle(
-                  color: Colors.orangeAccent,
+                style: TextStyle(
+                  color: ChatColors.regenOf(context),
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
@@ -76,9 +105,8 @@ extension _BubbleActions on _MessageBubbleState {
               Tooltip(
                 message: 'Select greet',
                 child: InkWell(
-                  onTap: () => _openVariantPicker(
+                  onTap: () => openVariantPicker(
                     title: 'Select greet',
-                    messageIndex: index,
                     onSelect: chatService.selectGreeting,
                   ),
                   borderRadius: BorderRadius.circular(12),
@@ -98,22 +126,24 @@ extension _BubbleActions on _MessageBubbleState {
       },
     );
   }
+}
 
-  Future<void> _openVariantPicker({
-    required String title,
-    required int messageIndex,
-    required Future<void> Function(int) onSelect,
-  }) async {
-    final chat = context.read<ChatService>();
-    final chosen = await showVariantPickerDialog(
-      context,
-      title: title,
-      variants: chat.variantsForMessage(messageIndex),
-    );
-    if (chosen != null && mounted) await onSelect(chosen);
-  }
+/// Regen / Continue / swipe-variant controls under a bot message, including
+/// the Scene-Guest "host buried under guest replies" regen.
+class MessageActionRow extends StatelessWidget {
+  const MessageActionRow({
+    super.key,
+    required this.message,
+    required this.index,
+    required this.openVariantPicker,
+  });
 
-  Widget _messageActionRow() {
+  final ChatMessage message;
+  final int index;
+  final OpenVariantPicker openVariantPicker;
+
+  @override
+  Widget build(BuildContext context) {
     return Consumer<ChatService>(
       builder: (context, chatService, _) {
         final isLastBotMessage =
@@ -160,11 +190,7 @@ extension _BubbleActions on _MessageBubbleState {
                       child: Icon(
                         Icons.refresh,
                         size: 20,
-                        color: AppColors.resolve(
-                          context,
-                          Colors.orangeAccent,
-                          Colors.orange.shade800,
-                        ),
+                        color: ChatColors.regenOf(context),
                       ),
                     ),
                   ),
@@ -184,12 +210,12 @@ extension _BubbleActions on _MessageBubbleState {
                       chatService.regenerateLastMessage,
                     ),
                     borderRadius: BorderRadius.circular(12),
-                    child: const Padding(
+                    child: Padding(
                       padding: EdgeInsets.all(4),
                       child: Icon(
                         Icons.refresh,
                         size: 20,
-                        color: Colors.orangeAccent,
+                        color: ChatColors.regenOf(context),
                       ),
                     ),
                   ),
@@ -202,12 +228,12 @@ extension _BubbleActions on _MessageBubbleState {
                   child: InkWell(
                     onTap: () => chatService.continueGeneration(),
                     borderRadius: BorderRadius.circular(12),
-                    child: const Padding(
+                    child: Padding(
                       padding: EdgeInsets.all(4),
                       child: Icon(
                         Icons.arrow_downward,
                         size: 20,
-                        color: Colors.blue,
+                        color: ChatColors.continueOf(context),
                       ),
                     ),
                   ),
@@ -232,7 +258,7 @@ extension _BubbleActions on _MessageBubbleState {
                 Text(
                   '${message.swipeIndex + 1}/${message.swipes.length}',
                   style: TextStyle(
-                    color: Colors.greenAccent,
+                    color: ChatColors.swipeOf(context),
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -254,9 +280,8 @@ extension _BubbleActions on _MessageBubbleState {
                 Tooltip(
                   message: 'Select variant',
                   child: InkWell(
-                    onTap: () => _openVariantPicker(
+                    onTap: () => openVariantPicker(
                       title: 'Select variant',
-                      messageIndex: index,
                       onSelect: (i) => chatService.selectSwipe(index, i),
                     ),
                     borderRadius: BorderRadius.circular(12),
@@ -277,8 +302,21 @@ extension _BubbleActions on _MessageBubbleState {
       },
     );
   }
+}
 
-  Widget _suggestActionsColumn(ResolvedThemeData theme) {
+/// The Suggest-actions button and its action pills on the last reply.
+class SuggestActionsColumn extends StatelessWidget {
+  const SuggestActionsColumn({
+    super.key,
+    required this.index,
+    required this.theme,
+  });
+
+  final int index;
+  final ResolvedThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
     return Consumer<ChatService>(
       builder: (context, chatService, _) {
         final isLast =
@@ -346,8 +384,18 @@ extension _BubbleActions on _MessageBubbleState {
                   spacing: 6,
                   runSpacing: 6,
                   children: actions.map((action) {
-                    return InkWell(
-                      onTap: () => chatService.sendMessage(action),
+                    // A tap puts the idea in the message box to edit before
+                    // Send; holding it sends at once (through the box, which
+                    // takes back a copy a tap left there). Outside a chat
+                    // page (no message box) a tap still sends.
+                    final composer = ComposerDraftScope.maybeOf(context);
+                    final pill = InkWell(
+                      onTap: composer == null
+                          ? () => chatService.sendMessage(action)
+                          : () => composer.put(action),
+                      onLongPress: composer == null
+                          ? null
+                          : () => composer.send(action),
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -355,9 +403,9 @@ extension _BubbleActions on _MessageBubbleState {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.06),
+                          color: AppColors.hairlineOf(context, 0.06),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(color: InkColors.lineOf(context)),
                         ),
                         child: Text(
                           action,
@@ -369,6 +417,16 @@ extension _BubbleActions on _MessageBubbleState {
                           ),
                         ),
                       ),
+                    );
+                    if (composer == null) return pill;
+                    return Tooltip(
+                      message:
+                          'Click to put it in your message box. '
+                          'Hold to send it now.',
+                      // Hover only: a long-press trigger would fight the
+                      // pill's own hold-to-send.
+                      triggerMode: TooltipTriggerMode.manual,
+                      child: pill,
                     );
                   }).toList(),
                 ),

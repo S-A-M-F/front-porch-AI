@@ -184,7 +184,7 @@ extension ChatServiceSessionFork on ChatService {
         fromIndex: _messages.length - 1,
         seedClockIfUnstamped: true,
       );
-      _applyForkPointClock(parentStartDate: parentStart);
+      _clockWriter.applyForkPointClock(parentStartDate: parentStart);
     }
 
     await _saveChat();
@@ -201,7 +201,7 @@ extension ChatServiceSessionFork on ChatService {
       _currentSessionId!,
       cursor: _messages.length,
     );
-    await _refreshGrowthCache();
+    await _growthDesk.refreshCache();
     notifyListeners();
   }
 }

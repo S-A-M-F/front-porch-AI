@@ -16,16 +16,23 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-part of 'growth_panel.dart';
+import 'package:flutter/material.dart';
+
+import 'package:front_porch_ai/services/chat/chat.dart';
+import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+
+import 'growth_panel.dart';
 
 /// Compact modal editor for one ring: the sentence + its category.
 /// Returns (text, category) or null on cancel.
-class _RingEditorDialog extends StatefulWidget {
+class GrowthRingEditorDialog extends StatefulWidget {
   final String title;
   final String initialContent;
   final String initialCategory;
 
-  const _RingEditorDialog({
+  const GrowthRingEditorDialog({
+    super.key,
     required this.title,
     this.initialContent = '',
     this.initialCategory = 'trait',
@@ -38,7 +45,7 @@ class _RingEditorDialog extends StatefulWidget {
     String initialCategory = 'trait',
   }) => showDialog<(String, String)>(
     context: context,
-    builder: (_) => _RingEditorDialog(
+    builder: (_) => GrowthRingEditorDialog(
       title: title,
       initialContent: initialContent,
       initialCategory: initialCategory,
@@ -46,16 +53,18 @@ class _RingEditorDialog extends StatefulWidget {
   );
 
   @override
-  State<_RingEditorDialog> createState() => _RingEditorDialogState();
+  State<GrowthRingEditorDialog> createState() => _GrowthRingEditorDialogState();
 }
 
-class _RingEditorDialogState extends State<_RingEditorDialog> {
+class _GrowthRingEditorDialogState extends State<GrowthRingEditorDialog> {
   late final TextEditingController _content = TextEditingController(
     text: widget.initialContent,
   );
-  late String _category = kGrowthCategories.contains(widget.initialCategory)
+  late final String _startCategory =
+      kGrowthCategories.contains(widget.initialCategory)
       ? widget.initialCategory
       : 'trait';
+  late String _category = _startCategory;
 
   @override
   void dispose() {
@@ -65,6 +74,17 @@ class _RingEditorDialogState extends State<_RingEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // A typed or re-categorised ring asks before Escape, a click outside or
+    // Cancel drops it.
+    return UnsavedChangesGuard(
+      isDirty: () =>
+          _content.text.trim() != widget.initialContent.trim() ||
+          _category != _startCategory,
+      child: _dialog(context),
+    );
+  }
+
+  Widget _dialog(BuildContext context) {
     final accent = AppColors.porchHoneyOf(context);
     return AlertDialog(
       backgroundColor: AppColors.cardOf(context),
@@ -148,7 +168,7 @@ class _RingEditorDialogState extends State<_RingEditorDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).maybePop(),
           child: Text(
             'Cancel',
             style: TextStyle(color: AppColors.textSecondary(context)),

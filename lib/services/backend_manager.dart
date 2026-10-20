@@ -17,19 +17,15 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:front_porch_ai/services/backend/backend.dart';
+import 'package:front_porch_ai/services/gpu_backend_resolver.dart';
 import 'package:front_porch_ai/services/kobold/kobold.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/update_service.dart';
 import 'package:front_porch_ai/utils/utils.dart';
-
-part 'backend_manager.download.dart';
-part 'backend_manager.gate.dart';
 
 /// Said wherever the app would offer KoboldCpp on an Intel Mac, which cannot
 /// run it: the desktop's Backend tab and the phone's Models page (its own
@@ -43,15 +39,13 @@ class BackendManager extends ChangeNotifier {
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
   String? _backendPath;
+  Future<void> _looks = Future.value();
   String? _error;
 
   String _statusMessage = '';
   String? _localVersion;
   int? _localSize;
-  String? _remoteVersion;
-  int? _remoteAssetSize;
-  bool _isCheckingVersion = false;
-  String? _versionError;
+  late final KoboldReleaseCheck _release = KoboldReleaseCheck(notifyListeners);
 
   /// The processor as `uname -m` names it (`arm64` on Apple Silicon), null
   /// until it has answered: unknown is never taken for an Intel Mac.
@@ -61,7 +55,6 @@ class BackendManager extends ChangeNotifier {
   /// Done once the first look for the engine file and its record is over;
   /// the start-up gate reads [backendPath] only after this.
   final Completer<void> _engineChecked = Completer<void>();
-  bool _useRocm = false;
   bool _hasCuda = false;
   // Detected once. When the CPU lacks AVX2 (older/low-end PCs), KoboldCpp's
   // standard + nocuda builds crash on launch, so we fetch its `oldpc` build
@@ -74,6 +67,17 @@ class BackendManager extends ChangeNotifier {
 
   bool get useRocm => _useRocm;
 
+  /// The ROCm choice, read live: the build to fetch and run follows it.
+  /// ROCm is an explicit opt-in only (see GpuBackendResolver's policy).
+  bool get _useRocm =>
+      _onLinux && _storageService.backendSettings.useRocm == true;
+
+  GpuBackend get _neededBackend => neededEngineBackend(
+    _storageService.backendSettings,
+    hasCuda: _hasCuda,
+    onMac: _onMac,
+  );
+
   bool get isDownloading => _isDownloading;
   double get downloadProgress => _downloadProgress;
   String? get backendPath => _backendPath;
@@ -85,28 +89,22 @@ class BackendManager extends ChangeNotifier {
   String get statusMessage => _statusMessage;
   String? get localVersion => _localVersion;
   int? get localSize => _localSize;
-  String? get remoteVersion => _remoteVersion;
-  int? get remoteAssetSize => _remoteAssetSize;
-  bool get isCheckingVersion => _isCheckingVersion;
-  String? get versionError => _versionError;
+  String? get remoteVersion => _release.version;
+  int? get remoteAssetSize => _release.assetSize;
+  bool get isCheckingVersion => _release.checking;
+  String? get versionError => _release.error;
 
-  bool get isUpdateAvailable {
-    if (_localVersion == null) return true;
-    if (_remoteVersion == null) return false;
-    if (_localVersion != _remoteVersion) return true;
-    if (_remoteAssetSize != null &&
-        _localSize != null &&
-        _localSize != _remoteAssetSize) {
-      return true;
-    }
-    return false;
-  }
+  bool get isUpdateAvailable => engineUpdateAvailable(
+    exeName: _getExecutableName(),
+    remoteFor: _release.builtFor,
+    remoteVersion: _release.version,
+    remoteAssetSize: _release.assetSize,
+    localVersion: _localVersion,
+    localSize: _localSize,
+  );
 
-  String get localVersionDisplay {
-    if (_localVersion == null) return '';
-    if (_localSize == null) return 'v$_localVersion';
-    return 'v$_localVersion, ${_formatFileSize(_localSize!)}';
-  }
+  String get localVersionDisplay =>
+      engineVersionDisplay(_localVersion, _localSize);
 
   /// KoboldCpp cannot run here: the app says [kIntelMacLocalUnsupported].
   /// False until the processor is known; listeners hear when it is.
@@ -119,33 +117,47 @@ class BackendManager extends ChangeNotifier {
   Future<void> get architectureKnown => _archRead.future;
 
   final bool _onMac;
+  final bool _onLinux;
   final Future<String?> Function() _readArch;
 
-  /// [onMac] and [readArch] stand in for the machine in tests.
+  /// [onMac], [onLinux] and [readArch] stand in for the machine in tests.
   BackendManager(
     this._storageService, {
     @visibleForTesting bool? onMac,
+    @visibleForTesting bool? onLinux,
     @visibleForTesting Future<String?> Function()? readArch,
   }) : _onMac = onMac ?? Platform.isMacOS,
+       _onLinux = onLinux ?? Platform.isLinux,
        _readArch = readArch ?? _uname {
     _init();
     _storageService.addListener(_onStorageChanged); // React to path changes
+    unawaited(_storageService.initialized.then((_) => _settingsLoaded()));
   }
 
-  // StorageService notifies on EVERY settings mutation (any slider, any
-  // toggle) — but _init spawns processes (uname / nvidia-smi) and re-reads
-  // the binary version from disk, so re-running it per notify made flipping
-  // an unrelated switch spawn a process. Only the inputs _init actually
-  // reads matter: the data root (bin dir) and the ROCm opt-in.
-  String? _lastInitRoot;
-  bool? _lastInitUseRocm;
+  final EngineChoiceWatch _choice = EngineChoiceWatch();
   void _onStorageChanged() {
-    final root = _storageService.rootPath;
-    final useRocm = _storageService.backendSettings.useRocm == true;
-    if (root == _lastInitRoot && useRocm == _lastInitUseRocm) return;
-    _lastInitRoot = root;
-    _lastInitUseRocm = useRocm;
-    _init();
+    final pickedRocm = _choice.changed(
+      _storageService.rootPath,
+      _neededBackend,
+    );
+    if (pickedRocm == null) return;
+    unawaited(_init().then((_) => pickedRocm ? _fetchChosenEngine() : null));
+  }
+
+  void _settingsLoaded() {
+    if (_disposed) return;
+    if (_choice.loaded(_storageService.rootPath, _neededBackend)) {
+      unawaited(_init());
+    }
+  }
+
+  /// The build the choice needs, when it is not on disk: after any download
+  /// already running (never a second one at once).
+  Future<void> _fetchChosenEngine() async {
+    await awaitDownload();
+    if (_disposed) return;
+    await checkBackendAvailability();
+    if (_backendPath == null) await ensureEngineInstalled();
   }
 
   @override // IMPORTANT
@@ -183,21 +195,8 @@ class BackendManager extends ChangeNotifier {
       _archRead.complete();
     }
     // Detect GPU acceleration availability on Linux
-    if (Platform.isLinux) {
-      // Check for NVIDIA/CUDA
-      try {
-        final cudaRes = await Process.run('nvidia-smi', []);
-        _hasCuda = cudaRes.exitCode == 0;
-        print('AG_DEBUG: CUDA detected: $_hasCuda');
-      } catch (_) {
-        _hasCuda = false;
-        print('AG_DEBUG: CUDA not found (nvidia-smi not available)');
-      }
-      // ROCm is an explicit expert opt-in ONLY (see GpuBackendResolver's
-      // policy note) — rocminfo succeeding is not proof koboldcpp's hipblas
-      // kernels support the card, and auto-selecting it used to hand AMD
-      // users a broken binary while their launch flags said Vulkan.
-      _useRocm = _storageService.backendSettings.useRocm == true;
+    if (_onLinux) {
+      _hasCuda = await probeCuda();
       print('AG_DEBUG: ROCm binary (user opt-in): $_useRocm');
     }
     // Only a look that had the data root counts: the first pass can start
@@ -205,11 +204,7 @@ class BackendManager extends ChangeNotifier {
     // arrive during that look, so what it had is taken before it begins.
     final looked = _storageService.rootPath != null;
     await checkBackendAvailability();
-    if (_storageService.rootPath != null) {
-      final v = await KoboldBinaryVersion.read(_storageService.binDir.path);
-      _localVersion = v.version;
-      _localSize = v.size;
-    }
+    if (_storageService.rootPath != null) await _readLocalVersion();
     if (looked && !_engineChecked.isCompleted) _engineChecked.complete();
     if (UpdateService.isSupported) {
       final prefs = await SharedPreferences.getInstance();
@@ -220,54 +215,50 @@ class BackendManager extends ChangeNotifier {
     // Portable builds: auto-check skipped (manual button still works)
   }
 
-  Future<void> checkBackendAvailability() async {
+  /// The engine file a start runs: the build this machine downloads, or on
+  /// Linux a build already on disk that carries the chosen acceleration (a
+  /// ROCm choice never runs on a build without ROCm). Null: none is there.
+  Future<File?> _findEngine() => findEngineFile(
+    binDir: _storageService.binDir.path,
+    wanted: _getExecutableName(),
+    onLinux: _onLinux,
+    backend: _neededBackend,
+    avx2: _hasAvx2,
+  );
+
+  /// The engine a start runs, looked for again now: files can change while
+  /// the app is open (a download, a removed build, another choice), so a
+  /// start never trusts the last look.
+  Future<String?> engineForStart() async {
+    if (_storageService.rootPath == null) return backendPath;
+    final found = await _findEngine();
+    if (found?.path != _backendPath) await checkBackendAvailability();
+    return backendPath;
+  }
+
+  /// The version and size of the build at [exe] (the one in use when not
+  /// given), from its own entry in the record: another build's entry would
+  /// show its version for this one.
+  Future<void> _readLocalVersion([String? exe]) async {
+    final v = await readEngineVersion(exe ?? _backendPath);
+    _localVersion = v.version;
+    _localSize = v.size;
+  }
+
+  /// Looks run in order, so a late old look can't restore a deleted engine.
+  /// A failed look fails its own caller; the next look still runs.
+  Future<void> checkBackendAvailability() =>
+      _looks = _looks.catchError((_) {}).then((_) => _lookForEngine());
+
+  Future<void> _lookForEngine() async {
     if (_storageService.rootPath == null) return;
-
-    final binDir = _storageService.binDir;
-    final executableName = _getExecutableName();
-    final file = File(path.join(binDir.path, executableName));
-
-    // Also check for other variants (user may have switched GPU acceleration)
-    final altNames = <String>[];
-    if (Platform.isLinux) {
-      for (final name in [
-        'koboldcpp-linux-x64',
-        'koboldcpp-linux-x64-rocm',
-        'koboldcpp-linux-x64-nocuda',
-        'koboldcpp-linux-x64-oldpc',
-      ]) {
-        if (name != executableName) altNames.add(name);
-      }
-    }
-
-    File? foundFile;
-    if (await file.exists()) {
-      foundFile = file;
-    } else {
-      for (final altName in altNames) {
-        final altFile = File(path.join(binDir.path, altName));
-        if (await altFile.exists()) {
-          foundFile = altFile;
-          break;
-        }
-      }
-    }
-
+    final foundFile = await _findEngine();
     if (foundFile != null) {
-      _backendPath = foundFile.path;
+      final exe = foundFile.path;
+      _backendPath = exe;
       _statusMessage = 'Ready';
-      final v = await KoboldBinaryVersion.read(_storageService.binDir.path);
-      _localVersion = v.version;
-      _localSize = v.size;
-      // On Linux/Mac, ensure executable permission
-      if (!Platform.isWindows) {
-        await Process.run('chmod', ['+x', _backendPath!]);
-      }
-      // On macOS, clear quarantine attribute that sandbox sets on downloaded binaries
-      if (Platform.isMacOS) {
-        await Process.run('xattr', ['-cr', _backendPath!]);
-        print('AG_DEBUG: Cleared quarantine on $_backendPath');
-      }
+      await _readLocalVersion(exe);
+      await prepareEngineExecutable(exe);
     } else {
       _backendPath = null;
       _statusMessage = 'Not Installed';
@@ -275,58 +266,8 @@ class BackendManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> checkForUpdates() async {
-    if (_isCheckingVersion) return;
-    _isCheckingVersion = true;
-    _versionError = null;
-    notifyListeners();
-    try {
-      final client = http.Client();
-      try {
-        // The Linux ROCm build lives under the rolling `rocm-rolling` tag
-        // (what koboldai.org/cpplinuxrocm serves), never in releases/latest
-        // — version-checking it against latest lied about what was
-        // installed.
-        final releasePath = (Platform.isLinux && _useRocm)
-            ? 'releases/tags/rocm-rolling'
-            : 'releases/latest';
-        final response = await client
-            .get(
-              Uri.parse(
-                'https://api.github.com/repos/LostRuins/koboldcpp/$releasePath',
-              ),
-            )
-            .timeout(const Duration(seconds: 10));
-        if (response.statusCode == 200) {
-          final body = jsonDecode(response.body);
-          final tag = (body['tag_name'] as String?) ?? '';
-          _remoteVersion = tag.replaceFirst(RegExp(r'^[vV]'), '');
-          final exeName = _getExecutableName();
-          for (final a in (body['assets'] as List?) ?? []) {
-            if (a['name'] == exeName) {
-              _remoteAssetSize = a['size'] as int?;
-              // A rolling tag never changes name — the asset's rebuild
-              // date is the real version identity.
-              final updated = a['updated_at'] as String?;
-              if (releasePath != 'releases/latest' && updated != null) {
-                _remoteVersion = '$tag (${updated.split('T').first})';
-              }
-              break;
-            }
-          }
-        } else {
-          _versionError = 'GitHub API: HTTP ${response.statusCode}';
-        }
-      } finally {
-        client.close();
-      }
-    } catch (_) {
-      _versionError = 'Could not check for updates';
-    } finally {
-      _isCheckingVersion = false;
-      notifyListeners();
-    }
-  }
+  Future<void> checkForUpdates() =>
+      _release.run(rocmRolling: _useRocm, exeName: _getExecutableName);
 
   /// The ONE background-acquisition entry point for the managed KoboldCpp
   /// engine (first-launch choice, engine-status chip, model-download trigger,
@@ -350,33 +291,199 @@ class BackendManager extends ChangeNotifier {
 
   Future<void> downloadBackend() => _downloadBackendImpl();
 
-  /// Move a fully-downloaded staging file onto the live executable path. The
-  /// rename is atomic on all three desktop platforms, so [livePath] only ever
-  /// holds a whole binary — never the truncated remains of an interrupted
-  /// download. A locked target (Windows keeps a RUNNING .exe open; Linux
-  /// returns ETXTBSY) is retried once after unlinking and, failing that,
-  /// reported in words a non-technical user can act on instead of a raw
-  /// sharing-violation string. The staged file is left in place on failure so
-  /// the download is not thrown away.
+  /// See [swapStagedEngineBinary]; backend_binary_staging_test calls it here.
   @visibleForTesting
-  static Future<void> swapStagedBinary(File staged, String livePath) async {
-    try {
-      await staged.rename(livePath);
+  static Future<void> swapStagedBinary(File staged, String livePath) =>
+      swapStagedEngineBinary(staged, livePath);
+
+  Future<void> _downloadBackendImpl() async {
+    // Which engine to fetch, and whether one can run here, need the
+    // processor. Waited for first: nothing awaits between the check below
+    // and the download being marked as running.
+    await architectureKnown;
+    if (_isDownloading) return;
+    if (_storageService.rootPath == null) return;
+
+    // Intel Macs cannot run KoboldCpp (no Metal GPU acceleration)
+    if (isIntelMac) {
+      _error =
+          'Local inference is not supported on Intel Macs. Please use Remote API mode.';
+      _statusMessage = 'Unsupported';
+      notify();
       return;
-    } on FileSystemException catch (e) {
-      print('AG_DEBUG: Direct rename onto $livePath failed ($e) — retrying');
     }
+
+    _isDownloading = true;
+    _error = null;
+    _downloadProgress = 0.0;
+    // Said plainly when it is the ROCm build a choice of ROCm asked for.
+    final what = _useRocm ? 'Downloading the ROCm engine' : 'Downloading';
+    _statusMessage = _useRocm
+        ? 'Downloading the ROCm engine…'
+        : 'Initializing download...';
+    notify();
+
+    // The record must name this build's release: a lookup taken for another
+    // build (Vulkan before ROCm was picked) would label ROCm with its version.
+    if (_release.builtFor != _getExecutableName()) {
+      await awaitVersionCheck();
+      if (_release.builtFor != _getExecutableName()) await checkForUpdates();
+    }
+
     try {
-      final live = File(livePath);
-      if (await live.exists()) await live.delete();
-      await staged.rename(livePath);
-    } catch (e) {
-      print('AG_DEBUG: Could not replace $livePath: $e');
-      throw Exception(
-        'Could not replace the engine file — it looks like KoboldCpp is still '
-        'running. Press Stop on this page, then start the download again.',
+      final executableName = _getExecutableName();
+      await installEngineBuild(
+        binDir: _storageService.binDir,
+        exeName: executableName,
+        url: engineDownloadUrl,
+        label: what,
+        onStatus: (status, {progress}) {
+          if (progress != null) _downloadProgress = progress;
+          _statusMessage = status;
+          notify();
+        },
+        version: () =>
+            _release.builtFor == executableName ? _release.version : null,
       );
+
+      _isDownloading = false;
+      _downloadProgress = 1.0;
+      _statusMessage = 'Finalizing...';
+      notify();
+
+      print('AG_DEBUG: Checking backend availability...');
+      await Future.delayed(const Duration(milliseconds: 500)); // Brief pause
+      await checkBackendAvailability();
+      if (UpdateService.isSupported) {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('update_auto_check') ?? true) {
+          checkForUpdates();
+        }
+      }
+      // Portable builds: auto-check skipped (manual button still works)
+      print('AG_DEBUG: Backend check complete. Status: $_statusMessage');
+    } catch (e, stack) {
+      _isDownloading = false;
+      _error = 'Error: $e';
+      _statusMessage = 'Failed';
+      notify();
+      print('AG_DEBUG: Download fatal error: $e');
+      print('AG_DEBUG: Stack: $stack');
     }
+  }
+
+  String _getExecutableName() => koboldExecutableName(
+    onLinux: _onLinux,
+    hasAvx2: _hasAvx2,
+    useRocm: _useRocm,
+    hasCuda: _hasCuda,
+    intelCpu: _intelCpu,
+  );
+
+  String _getDownloadUrl() => koboldDownloadUrl(
+    onLinux: _onLinux,
+    hasAvx2: _hasAvx2,
+    useRocm: _useRocm,
+    hasCuda: _hasCuda,
+    intelCpu: _intelCpu,
+  );
+
+  // What the start-up gate on the managed KoboldCpp needs: the engine's
+  // verified version, a version check it can wait on, the snooze of a
+  // "Not now", and removing an engine the user will not update.
+
+  /// Resolves once the first look for the engine file with a data root is
+  /// over, so a reader does not act on [backendPath] before it is known.
+  Future<void> get engineChecked => _engineChecked.future;
+
+  /// Waits for a download in flight (one begun from Settings, or a second
+  /// press); returns at once when none is.
+  Future<void> awaitDownload() => waitWhileBusy(this, () => _isDownloading);
+
+  /// The installed engine's version from the record written for this very
+  /// binary, or null when there is none: the same answer the launch refusal
+  /// works from, so the gate and the refusal agree.
+  Future<String?> installedVersion() async {
+    final exe = _backendPath;
+    if (exe == null) return null;
+    return KoboldBinaryVersion.versionFor(exe);
+  }
+
+  /// Waits for the version check: the one start-up began, if it is still
+  /// running, or a fresh one.
+  Future<void> awaitVersionCheck() async {
+    if (!_release.checking) return checkForUpdates();
+    return waitWhileBusy(this, () => _release.checking);
+  }
+
+  /// The snooze of the newer-engine box: a "Not now" pressed on
+  /// [snoozedVersion], holding until [until].
+  Future<({DateTime? until, String? version})> readUpdateSnooze() =>
+      readKoboldUpdateSnooze(_storageService.backendSettings.k);
+
+  /// "Not now" on the newer-engine box: holds [kKoboldUpdateSnooze] for
+  /// [remoteVersion]; a release after it asks at once.
+  Future<void> snoozeUpdate(String remoteVersion, {DateTime? now}) =>
+      writeKoboldUpdateSnooze(
+        _storageService.backendSettings.k,
+        remoteVersion,
+        now ?? DateTime.now(),
+      );
+
+  /// The start-up decision: nothing, a newer release, or an engine below
+  /// the floor. Below the floor needs no network; the newer-release look
+  /// follows the same auto-check setting the Settings page uses, and waits
+  /// for the version check start-up began.
+  Future<KoboldUpdateGate> updateGate({
+    DateTime? now,
+    @visibleForTesting bool? autoCheck,
+  }) async {
+    await _storageService.initialized;
+    await engineChecked;
+    return decideKoboldUpdateGate(
+      installed: _backendPath != null && !isIntelMac,
+      installedVersion: installedVersion,
+      autoCheck: autoCheck,
+      awaitVersionCheck: awaitVersionCheck,
+      readSnooze: readUpdateSnooze,
+      remoteVersion: () => _release.version,
+      updateAvailable: () => isUpdateAvailable,
+      now: now ?? DateTime.now(),
+    );
+  }
+
+  /// Stands in for the GitHub lookup in tests.
+  @visibleForTesting
+  void seedRemoteVersion(String version, {int? assetSize}) {
+    _release.version = version;
+    _release.assetSize = assetSize;
+    _release.builtFor = _getExecutableName();
+    notifyListeners();
+  }
+
+  /// Removes the managed engine and its version record, for a user who
+  /// will not update an engine below the floor and uses another backend.
+  /// Every engine file in the closet goes (Linux can hold the variant of
+  /// an earlier GPU choice beside the current one, and the lookup would
+  /// fall back to it), and a half-downloaded `.part`. The app downloads a
+  /// current one again from Settings when asked. Returns what went wrong,
+  /// in a sentence, or null.
+  Future<String?> removeEngine() async {
+    final exe = _backendPath;
+    if (exe == null) return null;
+    try {
+      await deleteEngineFiles(exe);
+    } on FileSystemException catch (e) {
+      final why = 'KoboldCpp could not be removed: ${e.osError?.message ?? e}';
+      _error = why;
+      notifyListeners();
+      return why;
+    }
+    _localVersion = null;
+    _localSize = null;
+    _error = null;
+    await checkBackendAvailability();
+    return null;
   }
 }
 

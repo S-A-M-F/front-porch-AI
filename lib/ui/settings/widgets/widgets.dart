@@ -16,6 +16,7 @@ export 'image_gen_enable_section.dart';
 export 'kobold_idle_unload_row.dart';
 export 'kobold_keep_recent_row.dart';
 export 'launch_choice_row.dart';
+export 'launch_options_notice.dart';
 export 'legacy_cleanup_card.dart';
 export 'photo_understanding_card.dart';
 export 'remote_ready_badge.dart';
@@ -30,3 +31,5 @@ export 'wiki_url_field.dart';
 export 'wiki_url_list.dart';
 export 'tools_folder_note.dart';
 export 'skills_folder_note.dart';
+
+export 'global_prompt_additions.dart';

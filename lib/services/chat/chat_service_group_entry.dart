@@ -84,8 +84,7 @@ extension ChatServiceGroupEntry on ChatService {
       // Defensive: zero key 1:1 scalars so rapid 1:1↔group toggles cannot observe
       // stale values in the brief window before group per-speaker loads take over.
       // (Full reset happens on return to any 1:1 via setActiveCharacter.)
-      _characterEmotion = '';
-      _emotionIntensity = '';
+      _mood.reset();
       // Realism/Needs are per-chat and were never zeroed here. The promotion
       // block below only fires when the group definition carries member realism
       // seeds, so a group authored without them simply INHERITED the previous
@@ -353,9 +352,9 @@ extension ChatServiceGroupEntry on ChatService {
           );
           // Thin delegation to scanner (group greeting scan).
           _lorebookScanner.scanLatest();
-          _writeSlotClock(
+          _clockWriter.writeSlotClock(
             _messages.isEmpty ? null : _messages.first,
-            kind: _SlotClockWrite.seed,
+            kind: SlotClockWrite.seed,
           );
           if (greetingFirstMesEmpty(group.firstMessage) &&
               greetingFirstMesEmpty(_groupCharacters.first.firstMessage)) {
@@ -373,7 +372,7 @@ extension ChatServiceGroupEntry on ChatService {
 
       // Cache growth rings (and any not-yet-distilled legacy evolved blobs)
       // for all group characters so the injection layer can read them sync.
-      await _refreshGrowthCache();
+      await _growthDesk.refreshCache();
     } finally {
       if (ownedLoad) endSessionLoad();
     }

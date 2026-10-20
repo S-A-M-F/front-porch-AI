@@ -17,9 +17,15 @@ import { LookSwiper } from './ChatAvatar';
 import { type Realism, type LoreEntry, NEED_LABELS } from './chatTypes';
 import { NeedBar, StatBar } from './StatBar';
 
+/** Same words as the desktop sidebar's note. */
+const GROUP_LOREBOOK_UNREADABLE_NOTE =
+  "This group's lorebook couldn't be read, so its entries aren't being used. " +
+  'Open Group Settings, Lorebook & Worlds, on the computer to bring it back.';
+
 export function ChatInsight({
   realism,
   lorebook,
+  groupLorebookUnreadable,
   authorNote,
   authorNoteDepth,
   onSaveAuthorNote,
@@ -29,6 +35,7 @@ export function ChatInsight({
   focusedIsHost,
   focusedIsLiteGuest,
   focusedAvatarUrl,
+  focusedPlaceholderPortrait,
   toolsKey,
   focusedId,
   groupId,
@@ -45,6 +52,8 @@ export function ChatInsight({
   /** Focused cast member is a lightweight scene guest with no realism state. */
   focusedIsLiteGuest?: boolean;
   lorebook?: LoreEntry[];
+  /** The group's stored lorebook could not be read — say so, as desktop does. */
+  groupLorebookUnreadable?: boolean;
   authorNote: string;
   authorNoteDepth: number;
   onSaveAuthorNote: (note: string, strength: number) => void;
@@ -53,6 +62,8 @@ export function ChatInsight({
   isGroup: boolean;
   focusedIsHost: boolean;
   focusedAvatarUrl?: string;
+  /** The focused character's picture is only the flat no-portrait colour. */
+  focusedPlaceholderPortrait?: boolean;
   toolsKey: number;
   focusedId: string | null;
   groupId: string | null;
@@ -119,10 +130,12 @@ export function ChatInsight({
         <LookSwiper
           characterId={characterId}
           basePrimary={`/api/chat/expression-avatar?v=${encodeURIComponent(expressionLabel ?? '')}`}
-          baseFallback={`/api/characters/${characterId}/avatar`}
+          baseFallback={
+            focusedPlaceholderPortrait ? undefined : `/api/characters/${characterId}/avatar`
+          }
           mood={realism.mood || realism.emotion}
         />
-      ) : focusedAvatarUrl ? (
+      ) : focusedAvatarUrl && !focusedPlaceholderPortrait ? (
         <LookSwiper
           characterId={characterId}
           basePrimary={focusedAvatarUrl}
@@ -186,8 +199,7 @@ export function ChatInsight({
         percent={realism.trust.percent}
         tone={realism.trust.level < 0 ? 'danger' : ''}
       />
-      <div className="stat-line"><span>Mood</span><span className="muted">{realism.mood || realism.emotion || '—'}</span></div>
-      <div className="stat-line"><span>Arousal</span><span className="muted">{realism.arousal.tier} · {realism.arousal.level}</span></div>
+      <div className="stat-line"><span>Lust</span><span className="muted">{realism.arousal.tier} · {realism.arousal.level}</span></div>
       </>
       )}
       {realism.needsEnabled && Object.keys(realism.needs).length > 0 && (
@@ -226,6 +238,11 @@ export function ChatInsight({
             {(loreOverflow?.length ?? 0) > 0 ? ` — ${loreOverflow!.length} dropped` : ''}
           </span>
         </div>
+      )}
+      {groupLorebookUnreadable && (
+        <p className="small lore-unreadable" role="status">
+          {GROUP_LOREBOOK_UNREADABLE_NOTE}
+        </p>
       )}
       {lorebook && lorebook.length > 0 ? (
         <ul className="lore-list">

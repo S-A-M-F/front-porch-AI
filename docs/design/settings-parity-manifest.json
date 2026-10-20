@@ -1,0 +1,126 @@
+{
+  "$comment": [
+    "Web Settings ↔ desktop Settings parity map (prompt-picker SOW Phase 2).",
+    "Each control names where it lives on each surface: `section`/`group` are",
+    "the web_ui SettingsPage containers (data-section / data-testid), `dart` +",
+    "`dartMarker` pin the desktop home (file + a string that must appear in it),",
+    "`webMarker` pins the string the web control renders. Guards:",
+    "test/hygiene/settings_parity_manifest_test.dart (Dart side) and",
+    "web_ui/src/pages/SettingsPage.parity.test.tsx (web side + section order)."
+  ],
+  "sections": ["general", "porch-life", "generation", "voice-media", "backend", "advanced"],
+  "controls": {
+    "userMessagesOnRight": {
+      "section": "general",
+      "group": "chat-appearance",
+      "dart": "lib/ui/settings/tabs/general_tab.dart",
+      "dartMarker": "My messages on the right",
+      "webMarker": "My messages on the right"
+    },
+    "followStreamingReplies": {
+      "section": "general",
+      "group": "chat-appearance",
+      "dart": "lib/ui/settings/tabs/general_tab.dart",
+      "dartMarker": "Follow streaming replies",
+      "webMarker": "Follow streaming replies"
+    },
+    "readingSize": {
+      "section": "general",
+      "group": "chat-appearance",
+      "dart": "lib/ui/settings/tabs/appearance_tab/chat_appearance_section.dart",
+      "dartMarker": "Reading Size",
+      "webMarker": "Reading size"
+    },
+    "chatColors": {
+      "section": "general",
+      "group": "chat-appearance",
+      "dart": "lib/ui/settings/tabs/appearance_tab/chat_appearance_section.dart",
+      "dartMarker": "Chat Appearance",
+      "webMarker": "Chat colors"
+    },
+    "spellCheckLanguage": {
+      "section": "generation",
+      "dart": "lib/ui/settings/tabs/general_tab.dart",
+      "dartMarker": "SpellCheckLanguageRow",
+      "webMarker": "Spell check language"
+    },
+    "systemPrompt": {
+      "section": "general",
+      "dart": "lib/ui/settings/tabs/general_tab.dart",
+      "dartMarker": "Fallback system prompt",
+      "webMarker": "Fallback system prompt"
+    },
+    "additionalSystemPrompt": {
+      "section": "general",
+      "dart": "lib/ui/settings/widgets/global_prompt_additions.dart",
+      "dartMarker": "Additional system instructions",
+      "webMarker": "Additional system instructions"
+    },
+    "additionalPostHistoryInstructions": {
+      "section": "general",
+      "dart": "lib/ui/settings/widgets/global_prompt_additions.dart",
+      "dartMarker": "Additional post-history instructions",
+      "webMarker": "Additional post-history instructions"
+    },
+    "personas": {
+      "section": "general",
+      "dart": "lib/ui/pages/user_persona_page.dart",
+      "dartMarker": "User Personas",
+      "webMarker": "User personas"
+    },
+    "porchLife": {
+      "section": "porch-life",
+      "dart": "lib/ui/settings/tabs/general_tab.dart",
+      "dartMarker": "Porch Life",
+      "webMarker": "Porch Life"
+    },
+    "generationParameters": {
+      "section": "generation",
+      "dart": "lib/ui/settings/tabs/generation_tab.dart",
+      "dartMarker": "Generation Parameters",
+      "webMarker": "Temperature"
+    },
+    "modelTransport": {
+      "section": "generation",
+      "dart": "lib/ui/settings/tabs/generation_tab.dart",
+      "dartMarker": "Model transport",
+      "webMarker": "Model transport"
+    },
+    "voiceMedia": {
+      "section": "voice-media",
+      "dart": "lib/ui/settings/tabs/voice_media_tab.dart",
+      "dartMarker": "Text-to-Speech",
+      "webMarker": "Voice & Media"
+    },
+    "reclaimDiskSpace": {
+      "section": "advanced",
+      "dart": "lib/ui/settings/tabs/voice_media_tab.dart",
+      "dartMarker": "LegacyCleanupCard",
+      "webMarker": "Reclaim disk space"
+    },
+    "chatSpeechBackend": {
+      "section": "backend",
+      "dart": "lib/ui/settings/tabs/backend_tab.dart",
+      "dartMarker": "BackendModeSelector",
+      "webMarker": "Chat speech"
+    },
+    "koboldIdleUnload": {
+      "section": "backend",
+      "dart": "lib/ui/pages/settings_page.launch.dart",
+      "dartMarker": "KoboldIdleUnloadRow",
+      "webMarker": "Free graphics memory when idle"
+    },
+    "keepRecentChats": {
+      "section": "backend",
+      "dart": "lib/ui/pages/settings_page.launch.dart",
+      "dartMarker": "KoboldKeepRecentRow",
+      "webMarker": "Keep recent chats ready"
+    },
+    "aboutLicense": {
+      "section": "advanced",
+      "dart": "lib/ui/settings/tabs/general_tab.dart",
+      "dartMarker": "About & License",
+      "webMarker": "About & License"
+    }
+  }
+}

@@ -20,6 +20,7 @@
 library;
 
 export 'waifu_brand.dart';
+export 'waifu_card_match.dart';
 export 'waifu_coworker_prompt.dart';
 export 'waifu_emphasis.dart';
 export 'waifu_folder_listing.dart';
@@ -30,14 +31,18 @@ export 'waifu_jail.dart';
 export 'waifu_lang_catalog.dart';
 export 'waifu_lang_runtime.dart';
 export 'waifu_opencode.dart';
+export 'waifu_opencode_seat.dart';
 export 'waifu_permissions.dart';
 export 'waifu_question.dart';
 export 'waifu_session.dart';
 export 'waifu_sit_down.dart';
 export 'waifu_skills.dart';
 export 'waifu_speech.dart';
+export 'waifu_stage.dart';
+export 'waifu_status.dart';
 export 'waifu_store.dart';
 export 'waifu_todos.dart';
 export 'waifu_tokens.dart';
+export 'waifu_tool_rows.dart';
 export 'waifu_tools_mcp.dart';
 export 'waifu_turn_receipt.dart';

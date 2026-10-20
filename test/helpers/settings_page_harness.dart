@@ -146,6 +146,10 @@ class ReadyBackendManager extends ChangeNotifier implements BackendManager {
   @override
   String? get backendPath => exe;
   @override
+  Future<String?> engineForStart() async => exe;
+  @override
+  Future<void> checkBackendAvailability() async {}
+  @override
   bool get isIntelMac => false;
   @override
   String? get error => null;
@@ -385,6 +389,15 @@ Future<void> openTab(WidgetTester tester, String name) async {
   await tester.tap(find.widgetWithText(Tab, name));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 600));
+  await settle(tester);
+}
+
+/// Opens the Advanced tab with Advanced Launch Options expanded: the
+/// acceleration override and the KV cache live there.
+Future<void> openLaunchOptions(WidgetTester tester) async {
+  await openTab(tester, 'Advanced');
+  await tapVisible(tester, find.text('Advanced Launch Options'));
+  await tester.pump(const Duration(milliseconds: 400));
   await settle(tester);
 }
 

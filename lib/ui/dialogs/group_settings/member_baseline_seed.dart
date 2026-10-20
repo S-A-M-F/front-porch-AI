@@ -113,3 +113,20 @@ Map<String, dynamic> applyBaselineToMemberSeed(
   }
   return seed;
 }
+
+/// The engine's mood strengths, the same three every other realism editor
+/// offers.
+const emotionIntensities = ['mild', 'moderate', 'strong'];
+
+/// The strength the tab's dropdown shows for a stored [value]. An earlier
+/// build of this tab offered `calm` / `intense` and saved them; those read
+/// as their engine twins. Anything else outside the list reads as
+/// `moderate`, as a missing value always has: a dropdown handed a value
+/// that is not one of its items fails its assertion and the tab does not
+/// draw.
+String emotionIntensityFromSeed(Object? value) => switch (value) {
+  'calm' => 'mild',
+  'intense' => 'strong',
+  final String s when emotionIntensities.contains(s) => s,
+  _ => 'moderate',
+};

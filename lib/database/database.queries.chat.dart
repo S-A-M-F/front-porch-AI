@@ -9,6 +9,18 @@ part of 'database.dart';
 extension AppDatabaseChatQueries on AppDatabase {
   // ── Session Queries ─────────────────────────────────────────────────
 
+  /// Total live rows in one session — the ⌘F backfill-wait progress
+  /// denominator ("2,400 / 11,382"). Matches the hydration filter:
+  /// soft-deleted rows are not part of any transcript window.
+  Future<int> countMessagesForSession(String sessionId) async {
+    final result = await customSelect(
+      'SELECT COUNT(*) AS cnt FROM messages '
+      'WHERE session_id = ? AND deleted_at IS NULL',
+      variables: [Variable<String>(sessionId)],
+    ).getSingle();
+    return result.read<int>('cnt');
+  }
+
   /// Get total message count per character (for home screen badges).
   Future<Map<String, int>> getMessageCountsPerCharacter() async {
     final result = await customSelect(
@@ -322,12 +334,6 @@ extension AppDatabaseChatQueries on AppDatabase {
     return count;
   }
 
-  Stream<List<Message>> watchMessagesForSession(String sessionId) =>
-      (select(messages)
-            ..where((m) => m.sessionId.equals(sessionId) & m.deletedAt.isNull())
-            ..orderBy([(m) => OrderingTerm.asc(m.position)]))
-          .watch();
-
   Future<int> insertMessage(MessagesCompanion message) async {
     if (!message.id.present) {
       message = message.copyWith(id: Value(_uuid.v4()));
@@ -378,12 +384,6 @@ extension AppDatabaseChatQueries on AppDatabase {
     final count = await (delete(
       messages,
     )..where((m) => m.sessionId.equals(sessionId))).go();
-    await bumpSyncVersion();
-    return count;
-  }
-
-  Future<int> deleteMessageById(String id) async {
-    final count = await (delete(messages)..where((m) => m.id.equals(id))).go();
     await bumpSyncVersion();
     return count;
   }

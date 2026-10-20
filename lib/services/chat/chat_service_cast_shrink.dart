@@ -95,10 +95,10 @@ extension ChatServiceCastShrink on ChatService {
     final bool wasNeedsOn = _needsSimEnabled;
     Map<String, dynamic>? snapshot;
     if (wasRealismOn) {
-      _loadGroupRealismIntoScalars(
+      _realismDance.loadIntoScalars(
         soleId,
       ); // loads the survivor's per-char nsfw flag too
-      snapshot = _captureRealismState();
+      snapshot = _realismSnapshot.capture();
     }
     // Read the survivor's per-char NSFW flag straight from the group store (the
     // per-speaker load only ran above when realism is on; reading the live nsfw
@@ -114,6 +114,7 @@ extension ChatServiceCastShrink on ChatService {
     final Pockets? solePockets = _groupRealism[soleId]?.pockets;
     final bool soleChaosEnabled = _chaosModeService.chaosModeEnabled;
     final int soleChaosPressure = _chaosModeService.chaosPressure;
+    final bool soleChaosNsfw = _chaosModeService.chaosNsfwEnabled;
     final String soleAuthorNote = _groupAuthorNotes[soleId] ?? '';
     final int soleAuthorStrength = _groupAuthorNoteStrengths[soleId] ?? 4;
     // Any undistilled legacy evolved text (pre-rings growth) moves from the
@@ -199,12 +200,9 @@ extension ChatServiceCastShrink on ChatService {
       _realismEnabled = true;
       _needsSimEnabled = wasNeedsOn;
       _relationshipService.restoreFromMessageState(snapshot);
-      _characterEmotion =
-          (snapshot['characterEmotion'] as String?) ?? _characterEmotion;
-      _emotionIntensity =
-          (snapshot['emotionIntensity'] as String?) ?? _emotionIntensity;
+      _mood.restoreFromStamp(snapshot);
       _nsfwService.restoreNsfwFromMessageState(snapshot);
-      _syncLoadedSlotClocks();
+      _clockWriter.syncLoadedSlotClocks();
       if (wasNeedsOn) {
         final needs = snapshot['needs'];
         if (needs is Map && needs['vector'] is Map) {
@@ -227,6 +225,7 @@ extension ChatServiceCastShrink on ChatService {
     _chaosModeService.loadScalars(
       modeEnabled: soleChaosEnabled,
       pressure: soleChaosPressure,
+      nsfwEnabled: soleChaosNsfw,
     );
     _authorNote = soleAuthorNote;
     _authorNoteStrength = soleAuthorStrength;
@@ -245,7 +244,7 @@ extension ChatServiceCastShrink on ChatService {
         ),
       );
     }
-    await _refreshGrowthCache();
+    await _growthDesk.refreshCache();
     await _saveChat();
     notifyListeners();
     debugPrint(
@@ -285,12 +284,9 @@ extension ChatServiceCastShrink on ChatService {
     if (realismOn) {
       _realismEnabled = true;
       _relationshipService.restoreFromMessageState(state);
-      _characterEmotion =
-          (state['characterEmotion'] as String?) ?? _characterEmotion;
-      _emotionIntensity =
-          (state['emotionIntensity'] as String?) ?? _emotionIntensity;
+      _mood.restoreFromStamp(state);
       _nsfwService.restoreNsfwFromMessageState(state);
-      _syncLoadedSlotClocks();
+      _clockWriter.syncLoadedSlotClocks();
       if (needsEnabled) {
         final needs = state['needs'];
         if (needs is Map && needs['vector'] is Map) {
@@ -303,7 +299,7 @@ extension ChatServiceCastShrink on ChatService {
       } else {
         _needsSimulation.clearVector();
       }
-      _saveScalarsIntoGroupRealism(hostId);
+      _realismDance.saveScalarsIntoGroup(hostId);
     }
 
     // Enable-flags (independent of realism; persist via _doSaveChat columns in
@@ -314,6 +310,7 @@ extension ChatServiceCastShrink on ChatService {
     _chaosModeService.loadScalars(
       modeEnabled: state['chaosModeEnabled'] as bool? ?? false,
       pressure: state['chaosPressure'] as int? ?? 0,
+      nsfwEnabled: state['chaosNsfwEnabled'] as bool?,
     );
 
     // Live pockets, regardless of realism — collapse writes `_pockets =
@@ -351,7 +348,7 @@ extension ChatServiceCastShrink on ChatService {
         fromIsGroup: false,
         toIsGroup: true,
       );
-      await _refreshGrowthCache();
+      await _growthDesk.refreshCache();
       // Objectives -> the host MEMBER instance id + new group session.
       final origObjs = await _db.getObjectivesForCharacter(
         originalCharId,
@@ -369,6 +366,13 @@ extension ChatServiceCastShrink on ChatService {
             isPrimary: drift.Value(o.isPrimary),
             checkFrequency: drift.Value(o.checkFrequency),
             injectionDepth: drift.Value(o.injectionDepth),
+            // The rest of the goal comes too: who it is from, where it
+            // stands, which ambition it serves, and when it began and ended.
+            servedAmbition: drift.Value(o.servedAmbition),
+            origin: drift.Value(objectiveOrigin(o)),
+            status: drift.Value(o.status),
+            createdAt: drift.Value(o.createdAt),
+            endedAt: drift.Value(o.endedAt),
           ),
         );
       }

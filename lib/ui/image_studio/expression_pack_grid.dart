@@ -25,6 +25,7 @@ import 'package:front_porch_ai/services/expression_pack_qc.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 import 'expression_pack_widgets.dart';
+import 'expression_intensity_picker.dart';
 
 /// Step 2 of the Expression-pack dialog: the live generation grid. One cell
 /// per emotion, generated sequentially by the [ExpressionPackSession]; this
@@ -75,6 +76,16 @@ class ExpressionPackGrid extends StatelessWidget {
         return Column(
           children: [
             Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ExpressionIntensityPicker(
+                value: session.intensity,
+                onChanged:
+                    session.isRunning || importing || imageGen.isGenerating
+                    ? null
+                    : (level) => session.updateIntensity(level),
+              ),
+            ),
+            Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
               child: Row(
                 children: [
@@ -84,7 +95,7 @@ class ExpressionPackGrid extends StatelessWidget {
                       child: LinearProgressIndicator(
                         value: total == 0 ? 0 : session.doneCount / total,
                         minHeight: 6,
-                        color: AppColors.formMasterAccent,
+                        color: AppColors.formAccentOf(context),
                         backgroundColor: AppColors.surfaceContainerOf(context),
                       ),
                     ),
@@ -237,8 +248,8 @@ class ExpressionPackGrid extends StatelessWidget {
                   : 'Import ${session.keptCount} expressions',
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.formMasterAccent,
-              foregroundColor: AppColors.onChaosAccent,
+              backgroundColor: AppColors.formAccentOf(context),
+              foregroundColor: AppColors.onAccentOf(context),
             ),
           ),
         );
@@ -346,13 +357,13 @@ class _PackCell extends StatelessWidget {
                 gaplessPlayback: true,
               );
             }
-            return const Center(
+            return Center(
               child: SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppColors.formMasterAccent,
+                  color: AppColors.formAccentOf(context),
                 ),
               ),
             );
@@ -386,7 +397,7 @@ class _PackCell extends StatelessWidget {
                       height: 24,
                       child: Checkbox(
                         value: slot.keep,
-                        activeColor: AppColors.formMasterAccent,
+                        activeColor: AppColors.formAccentOf(context),
                         onChanged: locked
                             ? null
                             : (v) => session.setKeep(index, v ?? false),

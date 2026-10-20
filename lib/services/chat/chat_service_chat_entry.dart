@@ -52,7 +52,7 @@ extension ChatServiceChatEntry on ChatService {
       _activeCharacter = card;
     }
     refreshEnjoysLowHygieneFromActiveCharacter();
-    unawaited(_ensureBirthdayState());
+    unawaited(_birthdaySync.ensure());
     notifyListeners();
   }
 
@@ -258,8 +258,7 @@ extension ChatServiceChatEntry on ChatService {
         // bleed would be written to the new chat's row and become permanent.
         _pockets = null;
         _realismEnabled = false;
-        _characterEmotion = '';
-        _emotionIntensity = '';
+        _mood.reset();
         // Time reset via extracted service (keeps multiple reset blocks in sync).
         // See time_service.dart and "keep reset blocks" comments (now lists needs/chaos/relationship/expression/time/nsfw/lorebook_scanner + prompt_injection (stateless builders; no reset calls needed) + llm_eval_engine (stateless or prompt-only; no reset calls needed; incomplete zeroing... now complete (see CLAUDE.md)) + needs_impact_evaluator (stateless or prompt-only; no reset calls needed) + realism_evals (stateless or prompt-only; no reset calls needed) + objective_proposal (stateless or prompt-only; no reset calls needed) + journal_maintenance (stateless or prompt-only; no reset calls needed)). (cross-ref setActiveCharacter:1572 etc)
         _timeService.resetForFreshChat();
@@ -282,7 +281,7 @@ extension ChatServiceChatEntry on ChatService {
         _isCheckingCompletion =
             false; // secondary objective flag zero on setActiveCharacter main path (incomplete zeroing hygiene; keep reset blocks)
         _isGrowthPassRunning =
-            false; // explicit growth-pass flag zero on setActiveCharacter main path (transient guard; keep reset blocks in sync — growth cache itself is session-scoped and re-cached by _refreshGrowthCache in _loadLastSession)
+            false; // explicit growth-pass flag zero on setActiveCharacter main path (transient guard; keep reset blocks in sync — growth cache itself is session-scoped and re-cached by _growthDesk.refreshCache in _loadLastSession)
         debugPrint(
           '[ChatService] setActiveCharacter: Reset realism state (baseline + runtime transients cleared; was: arousal=$prevArousal, fixation=$prevFixation/$prevFixationLife)',
         );
@@ -345,8 +344,7 @@ extension ChatServiceChatEntry on ChatService {
               storyStartTime: ext.storyStartTime,
             );
             _applySeededPassageOfTime();
-            _characterEmotion = ext.characterEmotion;
-            _emotionIntensity = ext.emotionIntensity;
+            _mood.seed(ext.characterEmotion, ext.emotionIntensity);
             _nsfwService.seedFromV2OrExt(
               // Same OR-override rationale as realism above: a globally-enabled
               // NSFW cooldown applies to imported cards too.
@@ -360,11 +358,10 @@ extension ChatServiceChatEntry on ChatService {
                   _storageService.realismSettings.chaosModeDefault,
               false,
             );
-            // AND-gated by the global Needs switch (Porch Life tab): the card
-            // asks, the global setting can veto. Default true = no change.
-            _needsSimEnabled =
-                ext.needsSimEnabled &&
-                _storageService.realismSettings.needsSimDefault;
+            // The Porch Life Needs switch decides for a card that says
+            // nothing (imported Chub/SillyTavern cards) and can veto a card
+            // that asks. A card's explicit false still wins.
+            _needsSimEnabled = _needsPass.seedNeedsSim(ext.needsSimChoice);
             // Objectives seed from the GLOBAL switch only — deliberately no card
             // extension. A per-character default would change the card JSON
             // shape, which ripples to The Stoop and every external reader, and
@@ -400,9 +397,10 @@ extension ChatServiceChatEntry on ChatService {
             // on, open a card you just downloaded, nothing happens.
             //
             // Only the GLOBAL feature switches are applied — the pure
-            // OR-overrides plus the Needs AND-gate. Deliberately NOT the numeric
-            // seeds (bond, trust, day, needs baselines): a plain card has no
-            // opinion about those, and the defaults are already in place.
+            // OR-overrides plus Needs, which a silent card leaves to the
+            // Porch Life switch. Deliberately NOT the numeric seeds (bond,
+            // trust, day, needs baselines): a plain card has no opinion about
+            // those, and the defaults are already in place.
             //
             // `_currentSessionId == null` is the load-bearing part, and the first
             // draft of this fix got it wrong by reusing a default-constructed
@@ -424,9 +422,8 @@ extension ChatServiceChatEntry on ChatService {
               _storageService.realismSettings.chaosModeDefault,
               false,
             );
-            _needsSimEnabled =
-                _needsSimEnabled &&
-                _storageService.realismSettings.needsSimDefault;
+            _needsSimEnabled = _needsPass.seedNeedsSim(null);
+            if (_needsSimEnabled) _needsSimulation.initializeFresh();
             _objectivesEnabled =
                 _storageService.realismSettings.objectivesEnabled;
           }
@@ -445,9 +442,9 @@ extension ChatServiceChatEntry on ChatService {
             );
             // Scan first message for lore (thin delegation to extracted scanner).
             _lorebookScanner.scanLatest();
-            _writeSlotClock(
+            _clockWriter.writeSlotClock(
               _messages.isEmpty ? null : _messages.first,
-              kind: _SlotClockWrite.seed,
+              kind: SlotClockWrite.seed,
             );
             if (_activeCharacter!.firstMessage.trim().isEmpty) {
               await _applyGreetingOpeningSeed(
@@ -459,7 +456,7 @@ extension ChatServiceChatEntry on ChatService {
           // Note: for the direct 0-session setActiveCharacter path (fresh import via home grid <=1 session),
           // _greetingEvalPending is left false here. The post-greeting baseline eval is scheduled only
           // in startNewChat (for explicit New Chat flows). Fresh-import cards rely on the retro path
-          // in setRealismEnabled (or manual enable after first messages) when _hasRealismBaseline==false.
+          // in setRealismEnabled (or manual enable after first messages) when _realismDance.hasBaseline==false.
           // This matches pre-existing behavior for the import entry point; the critical bleed fix
           // ensures the baseline check is now correctly false for no-ext cards.
           // Save the initial message session
@@ -477,7 +474,8 @@ extension ChatServiceChatEntry on ChatService {
               false; // secondary zero in empty subpath of setActiveCharacter (incomplete zeroing... now complete (see CLAUDE.md))
           _isGrowthPassRunning =
               false; // growth-pass flag zero in empty subpath of setActiveCharacter (transient guard; keep reset blocks in sync)
-          await _refreshGrowthCache(); // fresh session id → scope the injection cache to it
+          await _growthDesk
+              .refreshCache(); // fresh session id → scope the injection cache to it
         }
         // Load active objectives for this session (must be after _loadLastSession
         // so _currentSessionId is set)

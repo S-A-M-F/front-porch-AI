@@ -12,10 +12,10 @@ import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
+import '../../widgets/chat_turn_builder.dart';
 import '../sidebar_tokens.dart';
-
-part 'chat_places_panel.cards.dart';
-part 'chat_places_panel.picker.dart';
+import 'chat_places_panel.cards.dart';
+import 'chat_places_panel.picker.dart';
 
 /// Places attached to the open chat — Setting (0..1) + Lore (0..N).
 class ChatPlacesPanel extends StatelessWidget {
@@ -25,8 +25,9 @@ class ChatPlacesPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<ChatService, WorldRepository>(
-      builder: (context, chat, worlds, _) {
+    return ChatTurnBuilder(
+      builder: (context, chat) {
+        final worlds = Provider.of<WorldRepository>(context);
         if (chat.currentSessionId == null) {
           return const SizedBox.shrink();
         }
@@ -66,7 +67,7 @@ class ChatPlacesPanel extends StatelessWidget {
             SidebarSubHeader(
               icon: Icons.public,
               label: 'Places',
-              accent: AppColors.formMasterAccent,
+              accent: AppColors.formAccentOf(context),
               trailing: places.isEmpty
                   ? null
                   : IconButton(
@@ -74,10 +75,10 @@ class ChatPlacesPanel extends StatelessWidget {
                       icon: Icon(
                         Icons.add,
                         size: 18,
-                        color: AppColors.formMasterAccent,
+                        color: AppColors.formAccentOf(context),
                       ),
                       visualDensity: VisualDensity.compact,
-                      onPressed: () => _showAttachPicker(
+                      onPressed: () => showAttachPlacePicker(
                         context,
                         chat: chat,
                         places: places,
@@ -108,10 +109,9 @@ class ChatPlacesPanel extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             if (primary == null)
-              _emptySettingCard(context)
+              const ChatPlaceEmptySettingCard()
             else
-              _settingCard(
-                context,
+              ChatPlaceSettingCard(
                 chat: chat,
                 world: primary,
                 loreIds: loreIds,
@@ -300,8 +300,7 @@ class ChatPlacesPanel extends StatelessWidget {
                 },
                 itemBuilder: (context, i) {
                   final w = lore[i];
-                  return _loreTile(
-                    context,
+                  return ChatPlaceLoreTile(
                     key: ValueKey(w.id),
                     index: i,
                     world: w,

@@ -5,26 +5,27 @@
 // what the model was actually sent last turn, section by section, with the
 // REAL text behind every row (capped + scrollable so Chat History can't
 // blow the modal up) and a copy button. Reopening a chat restores the last
-// saved send; Refresh builds a live estimate.
+// saved send; Refresh builds a live estimate. With `messageIndex` it shows the
+// prompt that produced that one reply instead (no Refresh).
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 
 // Mirrors ContextViewerDialog.sectionColors on desktop.
 const SECTION_COLORS: Record<string, string> = {
-  'System Prompt': '#3B82F6',
-  Lorebook: '#8B5CF6',
-  Persona: '#06B6D4',
-  Scenario: '#10B981',
-  Examples: '#F59E0B',
-  'Chat History': '#6366F1',
-  'Post-History': '#EF4444',
-  Journal: '#F97316',
-  'Realism Mode': '#EC4899',
-  Memories: '#14B8A6',
-  'Speaker Card': '#7C3AED',
+  'System Prompt': '#3B82F6', // theme-keep: legend identity colour
+  Lorebook: '#8B5CF6', // theme-keep: legend identity colour
+  Persona: '#06B6D4', // theme-keep: legend identity colour
+  Scenario: '#10B981', // theme-keep: legend identity colour
+  Examples: '#F59E0B', // theme-keep: legend identity colour
+  'Chat History': '#6366F1', // theme-keep: legend identity colour
+  'Post-History': '#EF4444', // theme-keep: legend identity colour
+  Journal: '#F97316', // theme-keep: legend identity colour
+  'Realism Mode': '#EC4899', // theme-keep: legend identity colour
+  Memories: '#14B8A6', // theme-keep: legend identity colour
+  'Speaker Card': '#7C3AED', // theme-keep: legend identity colour
 };
-const FALLBACK_COLOR = '#9CA3AF';
+const FALLBACK_COLOR = '#9CA3AF'; // theme-keep: legend identity colour
 
 interface BudgetSection {
   label: string;
@@ -35,12 +36,21 @@ interface Budget {
   contextLimit: number;
   source?: string;
   assembledAt?: string | null;
+  textPruned?: boolean;
+  /** Oldest messages left out of Chat History (a count, not tokens). */
+  droppedMessages?: number;
   sections: BudgetSection[];
+}
+
+// Mirrors droppedMessagesNote on desktop.
+export function droppedMessagesNote(count: number): string {
+  return `${count} older message${count === 1 ? '' : 's'} not sent — trimmed to fit the context.`;
 }
 
 function sourceLabel(source?: string): string {
   if (source === 'lastSend') return 'Last send';
   if (source === 'estimate') return 'Estimate (now)';
+  if (source === 'reply') return 'This reply';
   return '';
 }
 
@@ -51,7 +61,14 @@ function fmtTime(iso?: string | null): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function ContextBudgetModal({ onClose }: { onClose: () => void }) {
+export function ContextBudgetModal({
+  onClose,
+  messageIndex,
+}: {
+  onClose: () => void;
+  messageIndex?: number;
+}) {
+  const forReply = messageIndex !== undefined;
   const [budget, setBudget] = useState<Budget | null>(null);
   const [failed, setFailed] = useState(false);
   const [openLabel, setOpenLabel] = useState<string | null>(null);
@@ -61,10 +78,14 @@ export function ContextBudgetModal({ onClose }: { onClose: () => void }) {
   const load = useCallback(() => {
     setFailed(false);
     return api
-      .get<Budget>('/api/chat/context-budget')
+      .get<Budget>(
+        forReply
+          ? `/api/chat/context-budget?index=${messageIndex}`
+          : '/api/chat/context-budget',
+      )
       .then(setBudget)
       .catch(() => setFailed(true));
-  }, []);
+  }, [forReply, messageIndex]);
 
   useEffect(() => {
     void load();
@@ -85,10 +106,12 @@ export function ContextBudgetModal({ onClose }: { onClose: () => void }) {
   };
 
   const sections = budget?.sections ?? [];
+  const dropped = budget?.droppedMessages ?? 0;
   const total = sections.reduce((a, s) => a + s.tokens, 0);
   const limit = budget?.contextLimit ?? 0;
   const usage = limit > 0 ? total / limit : 0;
-  const usageColor = usage >= 0.9 ? '#f87171' : usage >= 0.7 ? '#fbbf24' : '#4ade80';
+  const usageColor =
+    usage >= 0.9 ? 'var(--danger)' : usage >= 0.7 ? 'var(--warn)' : 'var(--ok)';
   const src = sourceLabel(budget?.source);
   const when = fmtTime(budget?.assembledAt);
 
@@ -115,14 +138,16 @@ export function ContextBudgetModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              className="link-btn"
-              onClick={() => void refresh()}
-              disabled={refreshing}
-              title="Refresh estimate from this chat"
-            >
-              {refreshing ? '…' : 'Refresh'}
-            </button>
+            {!forReply && (
+              <button
+                className="link-btn"
+                onClick={() => void refresh()}
+                disabled={refreshing}
+                title="Refresh estimate from this chat"
+              >
+                {refreshing ? '…' : 'Refresh'}
+              </button>
+            )}
             <button className="link-btn" onClick={onClose}>Close</button>
           </div>
         </div>
@@ -155,6 +180,16 @@ export function ContextBudgetModal({ onClose }: { onClose: () => void }) {
                 }}
               />
             </div>
+            {dropped > 0 && (
+              <p className="muted ctxb-dropped" style={{ fontSize: 11 }}>
+                {droppedMessagesNote(dropped)}
+              </p>
+            )}
+            {budget?.textPruned && (
+              <p className="muted" style={{ fontSize: 11 }}>
+                Only the token counts are kept for older replies.
+              </p>
+            )}
             <div className="ctxb-stack">
               {sections.map((s) => (
                 <div
@@ -195,7 +230,10 @@ export function ContextBudgetModal({ onClose }: { onClose: () => void }) {
                       </button>
                       <div className="ctxb-text">
                         <pre>
-                          {s.text || '(Empty in this snapshot.)'}
+                          {s.text ||
+                            (budget?.textPruned
+                              ? '(Not kept for older replies.)'
+                              : '(Empty in this snapshot.)')}
                         </pre>
                       </div>
                     </div>

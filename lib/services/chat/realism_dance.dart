@@ -1,0 +1,411 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This file is part of Front Porch AI.
+//
+// Front Porch AI is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:front_porch_ai/database/database.dart' show Objective;
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/needs_pass.dart';
+import 'package:front_porch_ai/services/chat/needs_simulation.dart';
+import 'package:front_porch_ai/services/chat/nsfw_service.dart';
+import 'package:front_porch_ai/services/chat/mood_registers.dart';
+import 'package:front_porch_ai/services/chat/realism_judges.dart';
+import 'package:front_porch_ai/services/chat/realism_scope.dart';
+import 'package:front_porch_ai/services/chat/realism_snapshot.dart';
+import 'package:front_porch_ai/services/chat/relationship_service.dart';
+
+/// Per-speaker realism evaluation + the load/save impersonation dance
+/// ([evaluateForUpcomingSpeaker] / [loadIntoScalars] /
+/// [saveScalarsIntoGroup]). The 1:1 host and every group speaker run the
+/// same path, one at a time, so observable Realism/Needs match.
+class RealismDance {
+  RealismDance(
+    this._scope, {
+    required this.needsPass,
+    required this.judges,
+    required this.snapshot,
+    required this.realismActiveThisMode,
+    required this.speakerIsSoft,
+    required this.withWorkerLane,
+    required this.tickRefractoryPerReply,
+    required this.stampGroupUserTurnBaseline,
+    required this.applyMoodDecay,
+    required this.seedOpeningPosture,
+    required this.objectives,
+    required this.setObjectives,
+    required this.objectivesFor,
+    required this.evalCancelled,
+    required this.setEvaluating,
+    required this.streamText,
+    required this.setStreamText,
+    required this.chunkTimer,
+    required this.setChunkTimer,
+  });
+
+  final RealismScope _scope;
+  final NeedsPass Function() needsPass;
+  final RealismJudges Function() judges;
+  final RealismSnapshot Function() snapshot;
+
+  /// Realism on, and not a group in observer mode.
+  final bool Function() realismActiveThisMode;
+  final bool Function(CharacterCard speaker) speakerIsSoft;
+  final Future<void> Function(Future<void> Function() work) withWorkerLane;
+
+  /// Clock off: the reply's refractory quarter hour.
+  final void Function({String? loadedId}) tickRefractoryPerReply;
+  final void Function(String charId) stampGroupUserTurnBaseline;
+  final void Function() applyMoodDecay;
+  final Future<void> Function() seedOpeningPosture;
+  final List<Objective> Function() objectives;
+  final void Function(List<Objective>) setObjectives;
+  final Future<List<Objective>> Function(CharacterCard) objectivesFor;
+  final bool Function() evalCancelled;
+
+  /// The Realism overlay: busy flag, streamed eval text, notify debounce.
+  final void Function(bool) setEvaluating;
+  final String Function() streamText;
+  final void Function(String) setStreamText;
+  final Timer? Function() chunkTimer;
+  final void Function(Timer?) setChunkTimer;
+
+  bool get _realismEnabled => _scope.realismEnabled();
+  bool get _realismEvalCancelled => evalCancelled();
+  bool get _observerMode => _scope.observerMode();
+  GroupChat? get _activeGroup => _scope.activeGroup();
+  CharacterCard? get _activeCharacter => _scope.activeCharacter();
+  set _activeCharacter(CharacterCard? c) => _scope.setActiveCharacter(c);
+  List<Objective> get _activeObjectives => objectives();
+  set _activeObjectives(List<Objective> v) => setObjectives(v);
+  String get _realismEvalStreamText => streamText();
+  set _realismEvalStreamText(String v) => setStreamText(v);
+  Timer? get _evalChunkTimer => chunkTimer();
+  set _evalChunkTimer(Timer? t) => setChunkTimer(t);
+  NeedsSimulation get _needsSimulation => _scope.needs();
+  RelationshipService get _relationshipService => _scope.relationship();
+  NsfwService get _nsfwService => _scope.nsfw();
+  String get _characterEmotion => _scope.emotion();
+  late final MoodRegisters _mood = MoodRegisters(_scope);
+  Map<String, dynamic>? get _pendingRealismMetadata => _scope.pending();
+  set _pendingRealismMetadata(Map<String, dynamic>? v) => _scope.setPending(v);
+  String _getCharacterIdFromCard(CharacterCard c) => _scope.characterIdFor(c);
+  Future<void> _saveChat() => _scope.saveChat();
+  void notifyListeners() => _scope.notify();
+
+  /// True if the realism engine has already captured a meaningful baseline
+  /// (emotion or bond score). Used to avoid redundant retroactive scans.
+  bool get hasBaseline =>
+      _characterEmotion.isNotEmpty ||
+      _relationshipService.affectionScore != 0 ||
+      _nsfwService.arousalLevel != 0 ||
+      _relationshipService.activeFixation.isNotEmpty;
+
+  /// Runs targeted realism evaluation for the specific character who is about
+  /// to speak next in a group chat. This is the core of making realism work
+  /// on a per-character, turn-timed basis.
+  ///
+  /// Uses temporary impersonation of _activeCharacter so that all existing
+  /// realism eval methods (RealismEvals.evaluateOneShotCall, etc.)
+  /// and their parsing/inertia logic are reused without duplication.
+  ///
+  /// THE EVAL RUNS BEFORE GENERATION ON PURPOSE, AND A REGENERATED REPLY MUST
+  /// NEVER INFLUENCE ITS OWN EVALUATION. Settled 2026-08-02 — do not re-propose
+  /// moving this after generation.
+  ///
+  /// The deltas answer one question: how does this character feel about what
+  /// the USER just said. They are not a review of the character's own reply.
+  /// Scoring the reply would mean the character's mood was set by words the
+  /// model happened to choose for them, so rerolling a line would reroll their
+  /// feelings — bond and trust would become a slot machine the user pulls by
+  /// pressing Regenerate, instead of a response to what the user actually did.
+  ///
+  /// This is why realism deliberately lags one exchange, and why a regen is
+  /// expected to reproduce the SAME deltas: the input it scores (the user's
+  /// message and the state before the turn) is identical, so the answer should
+  /// be identical. When two regens disagree, that is a bug in what was rewound
+  /// — not the engine being lifelike. See restoreFromMessageState +
+  /// captureCadenceAndFeelings for the pair that keeps the rewind honest.
+  Future<void> evaluateForUpcomingSpeaker(CharacterCard speaker) async {
+    // Unified gate: runs for the 1:1 host AND each group speaker (one at a time);
+    // skips group observer mode and realism-off. This is the single realism eval
+    // path — the former centralized 1:1 block was removed in favour of this.
+    if (!realismActiveThisMode()) return;
+    if (speakerIsSoft(speaker)) {
+      debugPrint('[Realism:Unified] skip lite speaker: ${speaker.name}');
+      return;
+    }
+    return withWorkerLane(
+      () => _evaluateRealismForUpcomingSpeakerUnheld(speaker),
+    );
+  }
+
+  /// A Director Mode turn. {{user}} is off stage, so no judge scores the
+  /// director's note and bond, trust and emotion hold still. The speaker's
+  /// body still lives: [stamp] loads their bars and stamps the Needs base
+  /// the post-gen pass measures from (Continue loads without stamping, the
+  /// same split as the dance). The cast's feelings for each other are
+  /// seeded here because the dance that normally seeds them does not run.
+  void prepareDirectedSpeaker(CharacterCard speaker, {required bool stamp}) {
+    final sid = _getCharacterIdFromCard(speaker);
+    if (sid.isEmpty) return;
+    if (!stamp || needsPass().stampPreTurn(groupSpeaker: speaker) == null) {
+      loadIntoScalars(sid);
+    }
+    if (stamp) {
+      // Clock off: the reply's refractory quarter hour, as in the dance.
+      tickRefractoryPerReply(loadedId: sid);
+      _nsfwService.saveNsfwScalarsToGroup(sid);
+    }
+    if (_realismEnabled) {
+      _relationshipService.ensureInterCharacterRelationshipsSeeded(sid);
+    }
+  }
+
+  Future<void> _evaluateRealismForUpcomingSpeakerUnheld(
+    CharacterCard speaker,
+  ) async {
+    final charId = _getCharacterIdFromCard(speaker);
+    if (charId.isEmpty) return;
+
+    debugPrint(
+      '[Realism:Unified] Pre-turn eval for upcoming speaker: ${speaker.name} '
+      '($charId) — mode=${_activeGroup == null ? "1:1" : "group"}',
+    );
+
+    // Save previous 1:1 context (normally null in pure group sessions)
+    final previousActiveCharacter = _activeCharacter;
+
+    // Impersonate this speaker for the duration of the eval so all existing
+    // LLM eval methods, guards, name/personality reads, and delta application
+    // logic work exactly as they do for 1:1 chats.
+    _activeCharacter = speaker;
+
+    // Short-term bond decay for the PINNED speaker (moved from sendMessage,
+    // where the speaker wasn't picked yet and random turn order made the
+    // decay always hit the first member). The check runs on this speaker's
+    // own cadence counter directly against their map entry, so it is correct
+    // to run it BEFORE the scalar load below (the map write flows into the
+    // load). 1:1 keeps its original sendMessage tick.
+    if (_activeGroup != null && !_observerMode) {
+      stampGroupUserTurnBaseline(charId);
+      applyMoodDecay();
+    }
+
+    // Group: stamp the body as it is now. Wear happens after the clock,
+    // for everyone who is present, not as a per-send tick on the speaker.
+    if (_activeGroup != null && !_observerMode && needsPass().active) {
+      needsPass().stampPreTurn(groupSpeaker: speaker);
+    } else if (_activeGroup != null) {
+      // Group speaker (observer mode or needs-off): load this speaker's persisted
+      // group realism state into the scalar fields the eval will read and mutate.
+      loadIntoScalars(charId);
+    }
+
+    // Clock off: the reply's refractory quarter hour, group only (the 1:1
+    // host ticks in sendMessage). Every member ticks, the speaker on the
+    // scalars just loaded and the rest on their own entries; the old pre-pick
+    // site in sendMessage hit the previous speaker's scalars and lost the
+    // tick on load. Saved back to the per-char map immediately (like the
+    // needs decay write above) so a cancelled eval can't lose the tick.
+    if (_activeGroup != null && !_observerMode) {
+      tickRefractoryPerReply(loadedId: charId);
+      _nsfwService.saveNsfwScalarsToGroup(charId);
+    }
+    // 1:1 host: the scalar fields ALREADY hold this character's loaded + post-decay
+    // state (restored by loadSession, decayed in sendMessage). The _groupRealism map
+    // is a group-only store whose writes are gated on `_activeGroup != null`, so
+    // loading from it here would overwrite the host's real state with empty defaults
+    // (bond 0, trust default, fresh needs) — this was the "loading a 1:1 chat nukes
+    // realism" regression. The eval mutates the scalars in place; _saveChat persists
+    // them as it always has for 1:1.
+
+    // Phase 2: Ensure hidden inter-character relationship tracking is seeded
+    // for all other group members (neutral 0). This happens on the speaker's
+    // first turn with realism so the invisible feelings map is always present.
+    _relationshipService.ensureInterCharacterRelationshipsSeeded(charId);
+
+    setEvaluating(true);
+    _realismEvalStreamText = '';
+    notifyListeners();
+
+    // Capture this speaker's pre-turn needs vector (before decay + eval)
+    Map<String, int>? preTurnVector;
+    if (needsPass().active && _needsSimulation.vector.isNotEmpty) {
+      preTurnVector = Map<String, int>.from(_needsSimulation.vector);
+    }
+
+    // Temporarily load this speaker's personal objectives so the narrative
+    // evaluation (and one-shot) sees the correct primary/secondary context
+    // for "proposed_objective" generation. This is required for 1:1 parity.
+    final previousObjectives = List<Objective>.from(_activeObjectives);
+    final speakerObjectives = await objectivesFor(speaker);
+    _activeObjectives = speakerObjectives.where((o) => o.active).toList();
+
+    void handleChunk(String chunk) {
+      _realismEvalStreamText += chunk;
+      _evalChunkTimer?.cancel();
+      _evalChunkTimer = Timer(const Duration(milliseconds: 150), () {
+        try {
+          notifyListeners();
+        } catch (_) {}
+      });
+    }
+
+    try {
+      // Respect early cancellation. Do NOT consume the flag here: the callers
+      // own it — sendMessage (1:1) and _generateResponse (group) both check it
+      // right after this returns and abort generation. Consuming it here was
+      // why Cancel stopped aborting generation.
+      if (_realismEvalCancelled) {
+        debugPrint(
+          '[Realism:Group] Evaluation cancelled before LLM calls for ${speaker.name}',
+        );
+        return;
+      }
+
+      // ── The opening position, and ONLY the opening one ────────────────
+      // Posture is a post-generation question now (it reads the reply), so
+      // the very first time a character is asked to speak there is nothing
+      // on record and the prompt would carry no "Position:" line at all —
+      // the maintainer's "the part that informs the character where they
+      // are when they start their turn".
+      //
+      // This is the single site that reaches EVERY opening: the 1:1 host
+      // (sendMessage calls us) and every group member (_generateResponse
+      // calls us once the speaker is picked), for cards with and without
+      // frontPorchExtensions, through New Chat, a first-ever open, or a
+      // reload of a session that predates the feature. Wiring the seed to
+      // the chat-entry paths instead is what shipped it to third-party
+      // cards only and skipped groups entirely.
+      //
+      // Per-speaker by construction: this runs AFTER the load above, so the
+      // stance it inspects and the stance it writes are this speaker's own
+      // `_groupRealism` slot, and the save below files it back there. No
+      // stance is shared across the cast and nobody inherits the first
+      // speaker's. See _seedOpeningPosture for why the empty-stance guard
+      // makes this an opening baseline and not a return to pre-generation
+      // evaluation.
+      // NEVER let the seed take the engine down with it. This method is
+      // `try { … } finally { … }` with NO catch, so anything thrown here
+      // propagates out and SKIPS every eval below — bond, trust, emotion,
+      // arousal, the lot. The seed is one fallible network call, and it was
+      // shipped awaited-raw on 2026-08-08; the maintainer hit it the same day
+      // ("no deltas, emotion is sticking across messages") and their Nina
+      // session shows the fingerprint exactly: characterEmotion left at the
+      // card default, trustLevel 0, spatialStance '', and the bond/arousal
+      // keys absent from realism_state altogether because the code that
+      // writes them never ran.
+      //
+      // An opening position is a nice-to-have baseline. The Realism Engine is
+      // not. A seed that fails must cost its own line and nothing else.
+      try {
+        await seedOpeningPosture();
+      } catch (e) {
+        debugPrint('[Realism:Posture] Opening seed failed (continuing): $e');
+      }
+
+      // Trust-repair is a RELATIONSHIP substitute, not a full pre-gen freeze
+      // (audit P1.11). Shared with 1:1 regen so a restored latch still fires.
+      await judges().runPreGenJudges(
+        onChunk: handleChunk,
+        logSpeakerName: speaker.name,
+      );
+
+      // Handle cancellation after the eval calls. The flag is deliberately
+      // left set — the caller (sendMessage / _generateResponse) consumes it
+      // and aborts generation (see the pre-eval check above).
+      if (_realismEvalCancelled) {
+        debugPrint(
+          '[Realism:Unified] Evaluation cancelled during/after LLM calls for ${speaker.name}',
+        );
+        return;
+      }
+
+      // Harvest the now-updated scalar fields back into this speaker's
+      // _groupRealism entry so prompt injection and UI see fresh values.
+      // Group-only: the 1:1 host's scalars are the canonical store (persisted by
+      // _saveChat below); the group-map writes no-op for the host anyway, and
+      // reloading from the map is what nuked the host's state (see the load note above).
+      if (_activeGroup != null) {
+        saveScalarsIntoGroup(charId);
+      }
+
+      // Synthesize metadata for timeline / chips (best-effort, same as 1:1 path)
+      _pendingRealismMetadata ??= {};
+      _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
+      _pendingRealismMetadata!['realism_state'] = snapshot().capture(
+        preTurn: preTurnVector,
+      );
+
+      if (needsPass().active) {
+        final needsDeltas = _needsSimulation.computeNeedsDeltasWithReasons(
+          preTurnVector ?? const <String, int>{},
+        );
+        if (needsDeltas.isNotEmpty) {
+          _pendingRealismMetadata!['needs_deltas'] = needsDeltas;
+        }
+      }
+
+      _saveChat();
+    } finally {
+      // Always restore previous context and clear busy state
+      _activeCharacter = previousActiveCharacter;
+      _activeObjectives = previousObjectives;
+      _evalChunkTimer?.cancel();
+      _evalChunkTimer = null;
+      setEvaluating(false);
+      notifyListeners();
+    }
+  }
+
+  /// Loads the given group character's realism values from _groupRealism into
+  /// the single-character scalar fields so the existing eval methods can
+  /// operate on them during impersonation.
+  void loadIntoScalars(String charId) {
+    // Relationship (affection/trust/fix/tiers etc) now via service load helper (uses the same _getGroup* internally via cbs).
+    _relationshipService.loadRelationshipScalarsForSpeaker(charId);
+    _relationshipService.pendingTrustRepair =
+        _scope.groups.members[charId]?.trustRepairPending ?? false;
+    // Nsfw (arousal + cooldown + nsfwEnabled per char) via service (extends prior arousal-only for full group parity).
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    _nsfwService.loadNsfwScalarsForSpeaker(charId);
+
+    _mood.loadFromMember(charId);
+
+    // Needs vector. No stored map → empty (never invent needDefaults here;
+    // first decay / live-add seed from the card instead).
+    _needsSimulation.restoreFromSnapshot({
+      'vector': _scope.groups.needsOf(charId),
+    });
+  }
+
+  /// Writes the current scalar realism fields back into the target group
+  /// character's _groupRealism entry after an impersonated eval round.
+  void saveScalarsIntoGroup(String charId) {
+    // Relationship scalars (affection/long/trust/fix/tiers/spatial) now via service.
+    _relationshipService.saveRelationshipScalarsToGroup(charId);
+    _scope.groups.memberForWrite(charId).trustRepairPending =
+        _relationshipService.pendingTrustRepair;
+    // Nsfw scalars (arousal + cooldown + enabled) now via service (for group per-char persistence parity).
+    // Note: group uses 'arousal' key (historical) vs snapshot 'arousalLevel' for compat.
+    _nsfwService.saveNsfwScalarsToGroup(charId);
+
+    _mood.saveToMember(charId);
+
+    // Persist current needs vector for this speaker
+    if (_needsSimulation.vector.isNotEmpty) {
+      _scope.groups.setNeeds(
+        charId,
+        Map<String, int>.from(_needsSimulation.vector),
+      );
+    }
+  }
+}

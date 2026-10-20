@@ -31,7 +31,7 @@ export function ChatColorsSettings() {
   const update = (key: keyof ChatColors, v: string) => commit({ ...colors, [key]: v });
 
   return (
-    <section className="card">
+    <section className="card" data-testid="chat-colors-card">
       <h3>Chat colors</h3>
       <p className="muted small">Customize bubble and role-play text colors. Saved on this device.</p>
 

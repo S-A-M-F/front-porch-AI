@@ -3,16 +3,16 @@
  *
  * The "Local model" card and the KoboldCpp preset card, as the approved
  * sketch has them (desktop: KoboldStatusCard, AppColors' slate/inset/load
- * tokens). Dark values match the desktop exactly; light values are the
- * desktop's light pairs. */
+ * tokens). These are the dark defaults; the desktop sends every theme's
+ * values (lib/ui/theme/web_theme_tokens.dart). */
 
 :root {
-  --kc-card: #1e293b;
-  --kc-inset: #172033;
-  --kc-sunken: #111827;
-  --kc-ink: #f3f4f6;
-  --kc-muted: #cbd5e1;
-  --kc-faint: #94a3b8;
+  --kc-card: #251e17;
+  --kc-inset: #1a1510;
+  --kc-sunken: #14110e;
+  --kc-ink: #efe6da;
+  --kc-muted: #a89a89;
+  --kc-faint: #7a6e62;
   --kc-amber: #f4a259;
   --kc-amber-solid: #f4a259;
   --kc-on-amber: #241505;
@@ -22,20 +22,6 @@
   --kc-red: #f87171;
   --kc-line: rgba(255, 255, 255, 0.1);
   --kc-line-strong: rgba(255, 255, 255, 0.12);
-}
-:root[data-theme='light'] {
-  --kc-card: #ffffff;
-  --kc-inset: #f3eee6;
-  --kc-sunken: #e9e2d8;
-  --kc-ink: #1f2937;
-  --kc-muted: #475569;
-  --kc-faint: #64748b;
-  --kc-amber: #b45309;
-  --kc-honey: #8f6400;
-  --kc-teal: #00796b;
-  --kc-red: #b91c1c;
-  --kc-line: rgba(0, 0, 0, 0.09);
-  --kc-line-strong: rgba(0, 0, 0, 0.11);
 }
 
 .kc-card {
@@ -330,3 +316,12 @@
 [data-layout='phone'] .kc-card { padding: 18px 16px; }
 [data-layout='phone'] .kc-speed-btn { align-self: stretch; }
 [data-layout='phone'] .modal.kc-speed-dialog { padding: 18px 16px; }
+
+.kc-template-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.kc-template-actions .kc-label { flex-basis: 100%; }
+.kc-template-actions input { max-width: 100%; min-width: 0; color: var(--kc-muted); font: inherit; }
+.kc-template-actions input::file-selector-button { margin-right: .75rem; padding: .65rem .9rem; border: 1px solid var(--kc-line-strong); border-radius: .6rem; background: var(--kc-inset); color: var(--kc-ink); font: inherit; cursor: pointer; }
+.kc-template-warning { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: .5rem 0; padding: .65rem .9rem; border-left: 3px solid var(--kc-amber); }
+.kc-template-warning p { margin: 0; flex: 1 1 16rem; color: var(--kc-amber); }
+.kc-template-actions + .kc-words { margin-top: .75rem; }
+.kc-plain [role="alert"] { color: var(--kc-red); }

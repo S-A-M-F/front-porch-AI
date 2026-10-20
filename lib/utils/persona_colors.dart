@@ -18,6 +18,7 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'portrait_image_cache.dart';
 
 /// Generates consistent, distinct colors for personas based on their ID.
 /// Used for personas without avatars to provide visual distinction.
@@ -56,7 +57,8 @@ class PersonaColors {
     if (avatarPath != null) {
       return CircleAvatar(
         radius: radius,
-        backgroundImage: FileImage(File(avatarPath)),
+        // Up to the persona page's radius 44, 256 px is enough.
+        backgroundImage: portraitAvatarImage(File(avatarPath)),
       );
     }
 

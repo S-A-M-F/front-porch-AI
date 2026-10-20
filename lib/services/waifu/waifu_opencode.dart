@@ -18,7 +18,8 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
@@ -41,15 +42,6 @@ class OpenCodePorchBackend {
 
 bool openCodeBackendSame(OpenCodePorchBackend a, OpenCodePorchBackend b) =>
     a.baseUrl == b.baseUrl && a.apiKey == b.apiKey && a.modelId == b.modelId;
-
-/// True when a live Settings switch must retarget the same OpenCode session.
-bool waifuBackendNeedsReseat({
-  required OpenCodePorchBackend? seated,
-  required OpenCodePorchBackend? live,
-}) {
-  if (live == null || seated == null) return false;
-  return !openCodeBackendSame(seated, live);
-}
 
 OpenCodePorchBackend openCodeBackendFromProvider(LLMService svc) {
   if (svc is OpenRouterService) {
@@ -98,25 +90,48 @@ Future<void> writeWaifuOpenCodeConfig({
   await writeOpenCodeVoicePluginFile(closet);
   return writeOpenCodeConfigFile(
     closet,
-    buildOpenCodeConfigMap(
-      agentPrompt: buildWaifuOpenCodeAgentPrompt(coworker),
-      voicePrompt: buildWaifuVoiceAgentPrompt(coworker),
-      pluginPath: openCodeVoicePluginSpec(closet),
-      baseUrl: backend.baseUrl,
-      apiKey: backend.apiKey,
-      modelId: backend.modelId,
-      permission: openCodePermissionMap(
-        folderJail: pathMode == WaifuPathMode.folderJail,
-        yolo: mode == WaifuMode.yolo,
-      ),
-      defaultAgent: 'waifu',
+    buildWaifuOpenCodeConfigMap(
+      closet: closet,
+      coworker: coworker,
+      backend: backend,
+      pathMode: pathMode,
+      mode: mode,
       mcp: mcp,
-      skills: skillsDir == null ? null : openCodeSkillsConfig(skillsDir),
+      skillsDir: skillsDir,
     ),
   );
 }
 
-/// Sit-down handshake: write isolated config, start our serve, open a session.
+/// Both coding agents are written every time; the prompt names the agent,
+/// so a Plan/Build switch needs no restart. Yolo is answered in Dart.
+Map<String, dynamic> buildWaifuOpenCodeConfigMap({
+  required OpenCodeCloset closet,
+  required CharacterCard coworker,
+  required OpenCodePorchBackend backend,
+  required WaifuPathMode pathMode,
+  required WaifuMode mode,
+  Map<String, dynamic>? mcp,
+  Directory? skillsDir,
+}) {
+  final jailed = pathMode == WaifuPathMode.folderJail;
+  return buildOpenCodeConfigMap(
+    agentPrompt: buildWaifuOpenCodeAgentPrompt(coworker, pathMode: pathMode),
+    planPrompt: buildWaifuPlanAgentPrompt(coworker, pathMode: pathMode),
+    voicePrompt: buildWaifuVoiceAgentPrompt(coworker),
+    pluginPath: openCodeVoicePluginSpec(closet),
+    baseUrl: backend.baseUrl,
+    apiKey: backend.apiKey,
+    modelId: backend.modelId,
+    permission: openCodePermissionMap(folderJail: jailed, yolo: false),
+    planPermission: openCodePlanPermissionMap(folderJail: jailed),
+    defaultAgent: openCodeAgentForMode(mode),
+    mcp: mcp,
+    skills: skillsDir == null ? null : openCodeSkillsConfig(skillsDir),
+  );
+}
+
+/// Sit-down handshake: write isolated config, start our serve, then resume
+/// [resumeSessionId] when this serve still has it, else open a new session.
 Future<OpenCodeSessionInfo> waifuOpenCodeSitDown({
   required OpenCodeManager manager,
   required OpenCodeClient Function(Uri base, String directory) clientOf,
@@ -127,6 +142,7 @@ Future<OpenCodeSessionInfo> waifuOpenCodeSitDown({
   required OpenCodePorchBackend backend,
   Map<String, dynamic>? mcp,
   Directory? skillsDir,
+  String? resumeSessionId,
 }) async {
   await writeWaifuOpenCodeConfig(
     closet: manager.closet,
@@ -142,47 +158,32 @@ Future<OpenCodeSessionInfo> waifuOpenCodeSitDown({
   await manager.stop();
   await manager.start(workingDirectory: folderRoot);
   final client = clientOf(manager.baseUri, folderRoot);
+  final resume = resumeSessionId;
+  if (resume != null && resume.isNotEmpty) {
+    try {
+      final known = await client.getSession(resume);
+      if (known != null) return known;
+    } catch (e) {
+      debugPrint('[waifu] could not resume OpenCode session $resume: $e');
+    }
+  }
   return client.createSession(
     title: coworker.name,
     agent: openCodeAgentForMode(mode),
   );
 }
 
-/// Point the live OpenCode serve at a new URL/model. Keeps the session.
-Future<void> waifuRetargetOpenCode({
-  required OpenCodeCloset closet,
-  required OpenCodeClient client,
-  required CharacterCard coworker,
-  required WaifuPathMode pathMode,
-  required WaifuMode mode,
-  required OpenCodePorchBackend backend,
-  Map<String, dynamic>? mcp,
-  Directory? skillsDir,
-}) async {
-  await writeWaifuOpenCodeConfig(
-    closet: closet,
-    coworker: coworker,
-    backend: backend,
-    pathMode: pathMode,
-    mode: mode,
-    mcp: mcp,
-    skillsDir: skillsDir,
-  );
-  await client.patchConfig(
-    buildOpenCodeConfigMap(
-      agentPrompt: buildWaifuOpenCodeAgentPrompt(coworker),
-      voicePrompt: buildWaifuVoiceAgentPrompt(coworker),
-      pluginPath: openCodeVoicePluginSpec(closet),
-      baseUrl: backend.baseUrl,
-      apiKey: backend.apiKey,
-      modelId: backend.modelId,
-      permission: openCodePermissionMap(
-        folderJail: pathMode == WaifuPathMode.folderJail,
-        yolo: mode == WaifuMode.yolo,
-      ),
-      defaultAgent: 'waifu',
-      mcp: mcp,
-      skills: skillsDir == null ? null : openCodeSkillsConfig(skillsDir),
-    ),
-  );
+/// First assistant message of the last coding turn in [messages] (oldest
+/// first). The voice wrap-up and the plugin's prompt for it are skipped, so
+/// a revert removes the coding work, not only the wrap-up.
+String? waifuTurnStartAssistantId(List<OpenCodeMessageInfo> messages) {
+  String? start;
+  for (final m in messages.reversed) {
+    if (m.role == 'assistant' && m.agent != 'voice') {
+      start = m.id;
+    } else if (start != null) {
+      break;
+    }
+  }
+  return start;
 }

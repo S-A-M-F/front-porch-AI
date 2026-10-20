@@ -18,37 +18,59 @@
 //
 // ChatPage input-bar actions: the chat-management menu and the button strip
 // (image studio, attach photo, impersonate, mic, call, auto-play, send/stop).
-// Extracted verbatim from the input bar's Row children (god-file campaign,
-// Tranche A). The list is spread back into the same position, so the widget
-// tree is unchanged.
+// The strip is a list spread into the bar's Row, so it is a plain builder
+// rather than a widget: its Expanded message box must stay a direct Row child.
 
-part of 'chat_page.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-extension _ChatPageInputActions on _ChatPageState {
-  /// The folder-icon chat-management popup — verbatim.
-  Widget _buildChatManagementMenu(
-    BuildContext context,
-    ChatService chatService,
-  ) {
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
+import 'package:front_porch_ai/ui/chat_components/chat_components.dart';
+import 'package:front_porch_ai/ui/dialogs/dialogs.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'package:front_porch_ai/ui/pages/chat_page.input.dart';
+import 'package:front_porch_ai/ui/pages/chat_page.session_dialogs.dart';
+import 'package:front_porch_ai/ui/pages/chat_page.regen_shortcut.dart';
+
+/// The folder-icon chat-management popup. Import, export and add-character
+/// are the page's own flows; the rest open from this menu's context.
+class ChatManagementMenu extends StatelessWidget {
+  const ChatManagementMenu({
+    super.key,
+    required this.chatService,
+    required this.onImport,
+    required this.onExport,
+    required this.onConvertToGroup,
+  });
+
+  final ChatService chatService;
+  final VoidCallback onImport;
+  final VoidCallback onExport;
+  final VoidCallback onConvertToGroup;
+
+  @override
+  Widget build(BuildContext context) {
+    final logInk = StatusColors.successOf(context);
     return PopupMenuButton<String>(
       icon: Icon(Icons.folder_open, color: AppColors.iconSecondary(context)),
       padding: EdgeInsets.zero,
       tooltip: 'Chat Management',
       onSelected: (value) {
         if (value == 'new_chat') {
-          _showClearChatConfirmation(context);
+          showNewChatConfirmation(context);
         } else if (value == 'history') {
-          _showHistoryDialog(context);
+          showManageChats(context);
         } else if (value == 'import') {
           // itemBuilder runs once when the menu opens. A turn can start
           // while the menu is still up, leaving a stale-enabled item.
           if (!chatService.isGenerating &&
               !chatService.isSettlingTurn &&
               !chatService.isImporting) {
-            _importChat();
+            onImport();
           }
         } else if (value == 'export') {
-          _exportChat();
+          onExport();
         } else if (value == 'context') {
           showDialog(
             context: context,
@@ -57,126 +79,154 @@ extension _ChatPageInputActions on _ChatPageState {
         } else if (value == 'to_story') {
           ChatToStoryDialog.show(context, chatService: chatService);
         } else if (value == 'fork_group') {
-          _showConvertToGroupPicker(chatService);
+          onConvertToGroup();
         } else if (value == 'kobold_log') {
           showDialog(context: context, builder: (_) => const KoboldLogDialog());
         }
       },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 'new_chat',
-          child: Row(
-            children: [
-              Icon(Icons.chat_bubble_outline, size: 20),
-              SizedBox(width: 12),
-              Text('New Chat'),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'history',
-          child: Row(
-            children: [
-              Icon(Icons.history, size: 20),
-              SizedBox(width: 12),
-              Text('Chat History'),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'import',
-          enabled:
-              !chatService.isGenerating &&
-              !chatService.isSettlingTurn &&
-              !chatService.isImporting,
-          child: Tooltip(
-            message: (!chatService.isGenerating && !chatService.isSettlingTurn)
-                ? 'Import a chat file'
-                : 'Wait until the current reply finishes, then import',
-            child: const Row(
+      itemBuilder: (context) {
+        final amber = AppColors.porchAmberOf(context);
+        return [
+          const PopupMenuItem(
+            value: 'new_chat',
+            child: Row(
               children: [
-                Icon(Icons.file_upload, size: 20),
+                Icon(Icons.chat_bubble_outline, size: 20),
                 SizedBox(width: 12),
-                Text('Import Chat'),
+                Text('New Chat'),
               ],
             ),
           ),
-        ),
-        const PopupMenuItem(
-          value: 'export',
-          child: Row(
-            children: [
-              Icon(Icons.file_download, size: 20),
-              SizedBox(width: 12),
-              Text('Export Chat'),
-            ],
+          const PopupMenuItem(
+            value: 'history',
+            child: Row(
+              children: [
+                Icon(Icons.history, size: 20),
+                SizedBox(width: 12),
+                Text('Manage Chats'),
+              ],
+            ),
           ),
-        ),
-        const PopupMenuItem(
-          value: 'context',
-          child: Row(
-            children: [
-              Icon(
-                Icons.analytics_outlined,
-                size: 20,
-                color: Colors.cyanAccent,
+          PopupMenuItem(
+            value: 'import',
+            enabled:
+                !chatService.isGenerating &&
+                !chatService.isSettlingTurn &&
+                !chatService.isImporting,
+            child: Tooltip(
+              message:
+                  (!chatService.isGenerating && !chatService.isSettlingTurn)
+                  ? 'Import a chat file'
+                  : 'Wait until the current reply finishes, then import',
+              child: const Row(
+                children: [
+                  Icon(Icons.file_upload, size: 20),
+                  SizedBox(width: 12),
+                  Text('Import Chat'),
+                ],
               ),
-              SizedBox(width: 12),
-              Text('Context Budget'),
-            ],
+            ),
           ),
-        ),
-        // Living Time §4: chat → novella. 1:1 only for now
-        // (multi-protagonist novelization is a future effort).
-        if (chatService.activeCharacter != null &&
-            chatService.activeGroup == null)
           const PopupMenuItem(
-            value: 'to_story',
+            value: 'export',
             child: Row(
               children: [
-                Icon(Icons.auto_stories_outlined, size: 20),
+                Icon(Icons.file_download, size: 20),
                 SizedBox(width: 12),
-                Text('Turn Into a Story…'),
+                Text('Export Chat'),
               ],
             ),
           ),
-        // (The old Character Evolution dialog was replaced by the
-        // Growth panel in the sidebar — Journal & Memory group —
-        // which hosts the toggle, timeline, and all actions.)
-        if (chatService.activeCharacter != null &&
-            chatService.activeGroup == null)
-          const PopupMenuItem(
-            value: 'fork_group',
+          PopupMenuItem(
+            value: 'context',
             child: Row(
               children: [
-                Icon(Icons.group_add, size: 20, color: Colors.purpleAccent),
+                Icon(Icons.analytics_outlined, size: 20, color: amber),
                 SizedBox(width: 12),
-                Text('Add Character (Group)…'),
+                Text('Context Budget'),
               ],
             ),
           ),
-        const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'kobold_log',
-          child: Row(
-            children: [
-              Icon(Icons.terminal, size: 20, color: Colors.greenAccent),
-              SizedBox(width: 12),
-              Text('KoboldCpp Log'),
-            ],
+          // Living Time §4: chat → novella. 1:1 only for now
+          // (multi-protagonist novelization is a future effort).
+          if (chatService.activeCharacter != null &&
+              chatService.activeGroup == null)
+            const PopupMenuItem(
+              value: 'to_story',
+              child: Row(
+                children: [
+                  Icon(Icons.auto_stories_outlined, size: 20),
+                  SizedBox(width: 12),
+                  Text('Turn Into a Story…'),
+                ],
+              ),
+            ),
+          // (The old Character Evolution dialog was replaced by the
+          // Growth panel in the sidebar — Journal & Memory group —
+          // which hosts the toggle, timeline, and all actions.)
+          if (chatService.activeCharacter != null &&
+              chatService.activeGroup == null)
+            PopupMenuItem(
+              value: 'fork_group',
+              child: Row(
+                children: [
+                  Icon(Icons.group_add, size: 20, color: amber),
+                  SizedBox(width: 12),
+                  Text('Add Character (Group)…'),
+                ],
+              ),
+            ),
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'kobold_log',
+            child: Row(
+              children: [
+                Icon(Icons.terminal, size: 20, color: logInk),
+                const SizedBox(width: 12),
+                const Text('KoboldCpp Log'),
+              ],
+            ),
           ),
-        ),
-      ],
+        ];
+      },
     );
   }
+}
 
-  /// Every action button to the right of the menu — verbatim Row children,
-  /// spread back in place. A spread of the same widgets in the same order is
-  /// an identical child list.
-  List<Widget> _buildInputActionButtons(
-    BuildContext context,
-    ChatService chatService,
-  ) {
+/// Every action button to the right of the menu, in Row order.
+class ChatInputActionStrip {
+  const ChatInputActionStrip({
+    required this.chatService,
+    required this.controller,
+    required this.focusNode,
+    required this.minLines,
+    required this.isPageMounted,
+    required this.onOpenImageStudio,
+    required this.onAttachImage,
+    required this.onStartCall,
+    required this.onSend,
+  });
+
+  final ChatService chatService;
+
+  /// The chat page's message box. It dies with the page, not with this bar.
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final int minLines;
+  final ValueGetter<bool> isPageMounted;
+  final VoidCallback onOpenImageStudio;
+  final VoidCallback onAttachImage;
+  final VoidCallback onStartCall;
+  final VoidCallback onSend;
+
+  /// Whether the page that owns [controller] is still alive. Async results
+  /// (Impersonate tokens, Whisper transcripts) land after it may have closed.
+  bool get mounted => isPageMounted();
+
+  /// The buttons, spread into the bar's Row (a spread of the same widgets in
+  /// the same order is an identical child list).
+  List<Widget> build(BuildContext context) {
+    final danger = StatusColors.dangerOf(context);
     return <Widget>[
       // Image Generation: the magic-wand button opens the Image
       // Studio, where the user picks a Subject (Freeform / Character
@@ -191,13 +241,13 @@ extension _ChatPageInputActions on _ChatPageState {
               Icons.auto_awesome,
               color: AppColors.resolve(
                 context,
-                AppColors.formMasterAccent,
-                AppColors.formMasterAccent,
+                AppColors.formAccentOf(context),
+                AppColors.formAccentOf(context),
               ),
             ),
             padding: EdgeInsets.zero,
             tooltip: 'Image Studio',
-            onPressed: () => _showImageGenDialog(context, chatService),
+            onPressed: onOpenImageStudio,
           );
         },
       ),
@@ -213,7 +263,7 @@ extension _ChatPageInputActions on _ChatPageState {
           ),
           padding: EdgeInsets.zero,
           tooltip: 'Attach photo',
-          onPressed: _attachImage,
+          onPressed: onAttachImage,
         ),
 
       const SizedBox(width: 4),
@@ -231,11 +281,11 @@ extension _ChatPageInputActions on _ChatPageState {
             return ReadingSizeScope(
               textScale: storage.uiSettings.textScale,
               child: AppTextField(
-                controller: _controller,
-                focusNode: _chatFocusNode,
+                controller: controller,
+                focusNode: focusNode,
                 enabled: !chatService.isLoadingSession,
                 maxLines: 10,
-                minLines: _inputMinLines,
+                minLines: minLines,
                 textInputAction: TextInputAction.newline,
                 style: readingSurfaceStyle(
                   color: AppColors.textPrimary(context),
@@ -254,7 +304,7 @@ extension _ChatPageInputActions on _ChatPageState {
                   fillColor: AppColors.surfaceContainerOf(context),
                   isDense: true,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: AppCorners.of(context).circular(20),
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
@@ -272,12 +322,12 @@ extension _ChatPageInputActions on _ChatPageState {
       Tooltip(
         message: 'Impersonate (AI writes your message)',
         child: IconButton(
-          icon: const Icon(Icons.auto_fix_high, color: Colors.amberAccent),
+          icon: Icon(Icons.auto_fix_high, color: AccentColors.amberOf(context)),
           padding: EdgeInsets.zero,
           onPressed: chatService.isGenerating
               ? null
               : () {
-                  final prefix = _controller.text;
+                  final prefix = controller.text;
                   chatService.impersonateUser(
                     prefix: prefix,
                     onToken: (accumulated) {
@@ -285,8 +335,8 @@ extension _ChatPageInputActions on _ChatPageState {
                       // streaming after the page pops — writing a disposed
                       // controller here throws inside the stream loop.
                       if (!mounted) return;
-                      _controller.text = accumulated;
-                      _controller.selection = TextSelection.fromPosition(
+                      controller.text = accumulated;
+                      controller.selection = TextSelection.fromPosition(
                         TextPosition(offset: accumulated.length),
                       );
                     },
@@ -301,14 +351,14 @@ extension _ChatPageInputActions on _ChatPageState {
             return const SizedBox.shrink();
           }
           if (sttService.isTranscribing) {
-            return const Padding(
+            return Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
               child: SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppColors.formMasterAccent,
+                  color: AppColors.formAccentOf(context),
                 ),
               ),
             );
@@ -319,7 +369,7 @@ extension _ChatPageInputActions on _ChatPageState {
               icon: Icon(
                 sttService.isRecording ? Icons.stop_circle : Icons.mic,
                 color: sttService.isRecording
-                    ? Colors.redAccent
+                    ? danger
                     : AppColors.iconSecondary(context),
               ),
               onPressed: chatService.isGenerating
@@ -331,21 +381,21 @@ extension _ChatPageInputActions on _ChatPageState {
                         if (!mounted) return;
                         if (text != null && text.isNotEmpty) {
                           if (storage.sttSettings.autoSendTranscription &&
-                              _controller.text.isEmpty) {
+                              controller.text.isEmpty) {
                             chatService.sendMessage(text);
                           } else {
-                            _controller.text = _controller.text.isEmpty
+                            controller.text = controller.text.isEmpty
                                 ? text
-                                : '${_controller.text} $text';
-                            _controller.selection = TextSelection.fromPosition(
-                              TextPosition(offset: _controller.text.length),
+                                : '${controller.text} $text';
+                            controller.selection = TextSelection.fromPosition(
+                              TextPosition(offset: controller.text.length),
                             );
                           }
                         }
                       } else {
                         final micOk = await sttService.checkMicAvailable();
                         if (!micOk && context.mounted) {
-                          _showNoMicDialog(context);
+                          showNoMicDialog(context);
                           return;
                         }
                         await sttService.startRecording();
@@ -370,53 +420,36 @@ extension _ChatPageInputActions on _ChatPageState {
                   : () async {
                       final micOk = await sttService.checkMicAvailable();
                       if (!micOk && context.mounted) {
-                        _showNoMicDialog(context);
+                        showNoMicDialog(context);
                         return;
                       }
-                      rebuildState(() => _isCallActive = true);
+                      onStartCall();
                     },
             ),
           );
         },
       ),
-      // Auto-play button (observer mode only)
+      // Auto-play (Director Mode) + Next Character; Next stays greyed out
+      // while auto-play runs so Pause lands where Play was. Pause stays up
+      // through an auto-chat reply: it lets that reply finish.
       if (chatService.isGroupMode &&
-          chatService.observerMode &&
-          !chatService.isGenerating)
-        Tooltip(
-          message: chatService.autoPlayActive
-              ? 'Pause auto-chat'
-              : 'Start auto-chat',
-          child: IconButton(
-            icon: Icon(
-              chatService.autoPlayActive
-                  ? Icons.pause_circle_filled
-                  : Icons.play_circle_filled,
-              color: chatService.autoPlayActive
-                  ? Colors.orangeAccent
-                  : Colors.amberAccent,
-            ),
-            onPressed: () {
-              if (chatService.autoPlayActive) {
-                chatService.stopAutoPlay();
-              } else {
-                chatService.startAutoPlay();
-              }
-            },
-          ),
-        ),
-      // Next Character button (group mode only, not in auto-play)
-      if (chatService.isGroupMode &&
-          !chatService.isGenerating &&
-          !chatService.autoPlayActive)
-        Tooltip(
-          message: chatService.nextCharacter != null
+          (!chatService.isGenerating || chatService.autoPlayActive))
+        DirectorTurnButtons(
+          showAutoPlay: chatService.observerMode,
+          autoPlayActive: chatService.autoPlayActive,
+          autoPlayPaused: chatService.autoPlayPaused,
+          turnsLeft: chatService.autoChatTurnsLeft,
+          onStopAutoPlay: chatService.stopAutoPlay,
+          nextTooltip: chatService.nextCharacter != null
               ? 'Next: ${chatService.nextCharacter!.name}'
               : 'Trigger next character',
-          child: IconButton(
-            icon: const Icon(Icons.group, color: Colors.purpleAccent),
-            onPressed: () => chatService.triggerNextCharacter(),
-          ),
+          onToggleAutoPlay: chatService.autoPlayActive
+              ? chatService.pauseAutoPlay
+              : chatService.startAutoPlay,
+          onNextCharacter: chatService.triggerNextCharacter,
+          playColor: AppColors.porchAmberOf(context),
+          pauseColor: StatusColors.warningOf(context),
+          nextColor: Colors.purpleAccent, // theme-keep: director Next, not Play
         ),
       // Generate reply button (1:1 only) — shown when the AI is
       // "up next", i.e. the last message is the user's (e.g. the
@@ -429,15 +462,15 @@ extension _ChatPageInputActions on _ChatPageState {
           chatService.messages.isNotEmpty &&
           chatService.messages.last.isUser)
         Tooltip(
-          message: 'Generate reply ($_regenShortcutLabel)',
+          message: 'Generate reply ($chatRegenShortcutLabel)',
           child: IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.orangeAccent),
+            icon: Icon(Icons.refresh, color: ChatColors.regenOf(context)),
             onPressed: () => chatService.regenerateLastMessage(),
           ),
         ),
       chatService.isGenerating
           ? IconButton(
-              icon: const Icon(Icons.stop_circle, color: Colors.redAccent),
+              icon: Icon(Icons.stop_circle, color: danger),
               tooltip: chatService.autoPlayActive
                   ? 'Stop Auto-Chat'
                   : 'Stop Generation',
@@ -455,13 +488,9 @@ extension _ChatPageInputActions on _ChatPageState {
                   chatService.observerMode ? Icons.movie_creation : Icons.send,
                   color: chatService.isGuestBusy
                       ? AppColors.iconSecondary(context)
-                      : (chatService.observerMode
-                            ? Colors.amberAccent
-                            : AppColors.porchAmberOf(context)),
+                      : AppColors.porchAmberOf(context),
                 ),
-                onPressed: chatService.isLoadingSession
-                    ? null
-                    : () => _sendCurrentMessage(chatService),
+                onPressed: chatService.isLoadingSession ? null : onSend,
               ),
             ),
     ];

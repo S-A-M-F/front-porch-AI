@@ -18,7 +18,9 @@
 
 part of '../chat_service.dart';
 
-/// Private runtime fields that are not fake-pinned and are not `_groupRealism`.
+/// Runtime fields that are not fake-pinned (no `implements ChatService` double
+/// overrides them). Test hooks ride here too — they are written on real
+/// [ChatService] instances only.
 /// Extensions in this library can still read them; a Dart extension cannot
 /// *declare* instance state, so this mixin is the legal home.
 mixin ChatServiceFieldBag {
@@ -34,6 +36,15 @@ mixin ChatServiceFieldBag {
   String? _pendingForcedWebQuery;
   String? _pendingForcedWikiQuery;
 
+  /// The last message when the user stopped a reply from the Realism
+  /// overlay. The "you stopped this reply" notice shows while it is still
+  /// the chat's last message (same anchor rule as the suggestions below).
+  ChatMessage? _stoppedReplyAnchor;
+
+  /// True while Try again (regenerate on a trailing user line) runs. That
+  /// regen holds `_isPostGenerating`, but no reply exists to keep.
+  bool _answeringUnansweredLine = false;
+
   // Action suggestions
   List<String> _suggestedActions = [];
   bool _isGeneratingActions = false;
@@ -44,6 +55,7 @@ mixin ChatServiceFieldBag {
   ChatMessage? _suggestedActionsAnchor;
   // Objective/quest system
   List<Objective> _activeObjectives = [];
+  ObjectiveTally _objectiveTally = ObjectiveTally.none;
 
   // Sidebar task-generation prefs, hoisted from ObjectivePanel widget state:
   // the panel's State is recreated on sidebar rebuilds (every realism turn),
@@ -58,6 +70,11 @@ mixin ChatServiceFieldBag {
   /// "Check now" (forceCheckCompletion) never records — a regen must not
   /// undo a user-triggered check. Scoped by try/finally; no reset needed.
   bool _objectiveTurnOpsArmed = false;
+
+  /// The reply the post-reply clock pass belongs to, set only around that
+  /// pass. Planner writes made there (a new today quest, a finished one's
+  /// card) record onto THIS reply, so deleting or regenerating it undoes them.
+  ChatMessage? _objectiveTurnReply;
   int _messagesSinceLastCheck = 0;
   // God-side runtime flag mirroring objective_proposal's get/setIsChecking
   // (early guard in the completion check). Must be defensively zeroed on
@@ -127,7 +144,7 @@ mixin ChatServiceFieldBag {
   ///
   /// `_isGenerating` is cleared the moment the last token lands, but the turn
   /// is not finished there: the needs-impact eval, the realism-state re-stamp,
-  /// the `_saveScalarsIntoGroupRealism` persist and the chip attach all run
+  /// the `RealismDance.saveScalarsIntoGroup` persist and the chip attach all run
   /// afterwards, and in a group they run under an impersonation dance that
   /// reassigns `_activeCharacter` and loads that member's scalars. For those
   /// seconds the app used to report "not generating" while the engine was
@@ -158,6 +175,8 @@ mixin ChatServiceFieldBag {
   // drop the shared field entirely.)
   bool _entrancesInFlight = false;
   bool _isLoadingSession = false;
+  // New chat / loadSession runs in flight; sends wait them out.
+  int _chatSwitches = 0;
   final _history = SessionHistoryWindow();
 
   /// Saved position of `messages[0]`. Older rows still loading sit
@@ -236,9 +255,7 @@ mixin ChatServiceFieldBag {
   // so terminal state (isGenerating=false, chips, perf) is never throttled.
   DateTime _lastStreamNotify = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _streamNotifyTimer;
-  // (_kStreamNotifyInterval moved to chat_service_defaults.dart;
-  // _notifyStreamListeners / _cancelStreamNotifyThrottle / tokenStream /
-  // sentenceStream live in chat_service_generation_stream_accessors.dart)
+  // (_notifyStreamListeners lives in chat_service_generation_stream_accessors)
 
   // ── Web token broadcast (the web StreamHub's real-time token feed) ──
   final StreamController<String> _tokenBroadcast =
@@ -266,6 +283,18 @@ mixin ChatServiceFieldBag {
   // (Direction mode). Injected into the prompt, consumed on the next generation;
   // the forced-speaker side is handled by GroupTurnManager.setNextSpeaker.
   String? _entranceDirective;
+
+  /// The director's pinned scene goal and private whispers, saved per chat.
+  final DirectorScene _directorScene = DirectorScene();
+
+  /// A `/narrate` call is in flight (it runs before the turn it starts).
+  bool _narrating = false;
+
+  /// The running auto-chat's turn budget.
+  final AutoChatBudget _autoChatBudget = AutoChatBudget();
+
+  /// The char→char judge, built on first use.
+  CastFeelingsJudge? _castFeelingsJudgeCache;
 
   /// Per-character Author's Notes for group chats (independent of group-level _authorNote).
   /// Keyed by stable charId (from _getCharacterIdFromCard). Populated from the
@@ -350,9 +379,11 @@ mixin ChatServiceFieldBag {
   // are mid-deactivation throw "Looking up a deactivated widget's ancestor".
   Timer? _evalChunkTimer;
 
-  // Emotional state
+  // Emotional state. Cause and hold go through MoodRegisters (`_mood`).
   String _characterEmotion = '';
   String _emotionIntensity = ''; // mild/moderate/strong
+  String _emotionCause = '';
+  int _emotionHeldTurns = 0;
 
   // Chaos Mode state lives on _chaosModeService. UI park flags stay here.
   bool _chanceTimePendingTrigger =
@@ -393,6 +424,7 @@ mixin ChatServiceFieldBag {
   // same as editing semantics elsewhere).
   Lorebook? _cachedGroupBook;
   String? _cachedGroupBookJson;
+  bool _groupLorebookUnreadable = false;
 
   /// Living Worlds: Primary Setting + Lore slots for the open session.
   /// Loaded on session open; group template seeds new chats.
@@ -407,8 +439,6 @@ mixin ChatServiceFieldBag {
   /// In-memory clock for {{idle_duration}} — set on each user send; null
   /// after a restart (the macro passes through untouched then).
   DateTime? _lastUserMessageAt;
-
-  String? _replyFactsRaw; // fused reply-facts carrier — see _prefetchReplyFacts
 
   /// The 1:1 speaker's pockets. In a group each member's record lives in their
   /// `_groupRealism` slot instead, which is what keeps it session-scoped and
@@ -425,6 +455,8 @@ mixin ChatServiceFieldBag {
 
   // ── Per-session generation overrides ──
   ChatGenerationSettings _sessionGenSettings = ChatGenerationSettings();
+  ({String key, ChatGenerationSettings chat})?
+  _promptPickerPending; // prompt-picker SOW: the new 1:1 awaiting the picker
 
   // ── Per-chat theme ──
   ChatThemeOverrides _sessionThemeOverrides = ChatThemeOverrides();
@@ -435,4 +467,31 @@ mixin ChatServiceFieldBag {
   int _greetingIndex = 0;
   String? _evalCleanSrc, _evalCleanOut;
   bool _isGrowthPassRunning = false;
+
+  /// Test-only overrides for driving the real LLM paths (realism evals +
+  /// chat generation) with canned responses without constructing a full
+  /// LLMProvider (heavy deps).
+  @visibleForTesting
+  LLMService? testLlmServiceOverride;
+  @visibleForTesting
+  bool testIsLocalOverride = false;
+  @visibleForTesting
+  LLMService? testWorkerLlmServiceOverride;
+
+  /// Test hook: import awaits this before mutating so a Send can race it.
+  @visibleForTesting
+  Completer<void>? testImportHold;
+
+  /// True while Manual Reprocess → Feelings runs the judges again. They may
+  /// not start quests then, and tier crossings wait in [_rescoreCrossings]
+  /// until the new score is kept (see chat_service_reprocess_choice.dart).
+  bool _rescoringFeelings = false;
+  final List<TierCrossing> _rescoreCrossings = [];
+
+  /// A rewrite from a word waiting for its turn: the next normal reply
+  /// starts with this text (see chat_service_variants.dart).
+  String? _regenSeed;
+
+  /// Shared Journal/Growth tools-vs-XML probe (one per backend identity).
+  final _toolProbe = ToolTransportProbe();
 }

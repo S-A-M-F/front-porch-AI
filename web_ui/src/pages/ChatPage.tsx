@@ -5,20 +5,25 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMous
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { CastBar } from '../components/CastBar';
-import { SmartImg } from '../components/ChatAvatar';
+import { DirectorStrip, ExitUndoBar } from '../components/DirectorStrip';
 import { ChatMessageList } from '../components/ChatMessageList';
 import { ChatComposer } from '../components/ChatComposer';
 import { ChatInsight } from '../components/ChatInsight';
 import { ConversationsDrawer } from '../components/ConversationsDrawer';
 import { ChatThemeSettings } from '../components/ChatThemeSettings';
+import { PromptSourcePickerModal, PromptSourceSettings } from '../components/PromptSource';
 import { ProcessingOverlay } from '../components/ProcessingOverlay';
+import { useEvaluationView } from '../components/useEvaluationView';
 import { type Realism } from '../components/chatTypes';
 import { useLayout } from '../hooks/useBreakpoint';
-import { ChatModelSwitcher } from './chat/ChatModelSwitcher';
+import { ChatHeader } from './chat/ChatHeader';
 import { ChatNotices } from './chat/ChatNotices';
 import { ChatOverlays } from './chat/ChatOverlays';
+import { useChatFind } from './chat/useChatFind';
 import { useChatSend } from './chat/useChatSend';
 import { useChatSession } from './chat/useChatSession';
+import { FindBar } from '../components/FindBar';
+import { FindSurfaceContext } from '../components/chatSearch';
 import { useFollowStreamingReplies } from '../followStreaming';
 import { useUserMessageSide } from '../userMessageSide';
 
@@ -29,26 +34,47 @@ export function ChatPage() {
   // screen. `display:none` does not unmount, so rendering both meant every
   // chat refresh fired the sidebar's GETs (tools / journal / growth / places)
   // for a panel nobody could see, twice over with the drawer open.
-  const { isDesktop } = useLayout();
+  const { isDesktop, isPhone } = useLayout();
   const followStreamingReplies = useFollowStreamingReplies();
+  const evaluationView = useEvaluationView();
   useUserMessageSide();
   const session = useChatSession();
   const send = useChatSend(session.refresh);
   const {
-    opening, state, loadError, streaming, chance, imageProg, genStatus,
+    opening, switching, state, loadError, streaming, chance, imageProg, genStatus,
     processing, showSessions, setShowSessions, sessions, loadingSessions,
     toolsBump, voice, impersonateFill, scrollRef, onTranscriptScroll, refresh, stop, revealFate,
-    acceptFate, cancelRealism, openSessions, loadSession, newChat,
+    acceptFate, cancelRealism, dismissStoppedReply, skipObjectiveCheck, openSessions, loadSession, newChat,
   } = session;
   const {
     sendError, setSendError, actionError, setActionError, reportActionFailure,
     editTarget, setEditTarget, reprocessIndex, setReprocessIndex, sendMessage, retrySend, regenerate, continueGen, fork,
-    swipe, del, beginEdit, saveEdit, saveAuthorNote, saveTheme,
-    submitReprocess, revertNeeds,
+    swipe, del, pendingConfirm, confirmPending, cancelPending, beginEdit, saveEdit, saveAuthorNote, saveTheme,
+    submitReprocess, submitReprocessFeelings, revertNeeds,
   } = send;
 
   // Living Time §2: sessions whose welcome-back banner was dismissed (ephemeral).
   const [absenceDismissed, setAbsenceDismissed] = useState<Set<string>>(new Set());
+  // ⌘F find-in-chat: server-scan counts + leaf highlight surface (parity
+  // with the desktop ChatFindController).
+  const lastTranscriptMsg = state?.messages?.[state.messages.length - 1];
+  // Messages whose speaker label (multi-cast only) shows exactly the name
+  // the engine scanned; sender hits anywhere else have nothing to light.
+  const senderLabelShown = useMemo(() => {
+    const cast = state?.cast ?? [];
+    const shown = new Set<number>();
+    if (cast.length < 2) return shown;
+    const names = new Map(cast.map((c) => [c.id, c.name]));
+    for (const m of state?.messages ?? []) {
+      if (!m.isUser && m.characterId && names.get(m.characterId) === m.sender) shown.add(m.index);
+    }
+    return shown;
+  }, [state?.cast, state?.messages]);
+  const find = useChatFind({
+    sessionId: state?.sessionId,
+    senderLabelShown,
+    transcriptVersion: `${state?.messages?.length ?? 0}|${lastTranscriptMsg?.text?.length ?? 0}`,
+  });
   // Composer draft mirror — powers the lorebook "would trigger next" preview.
   const [draft, setDraft] = useState('');
   // Resizable insight sidebar (desktop) — width persists across sessions.
@@ -139,7 +165,7 @@ export function ChatPage() {
     [state?.cast],
   );
 
-  if (!state || opening || state.isLoadingSession) {
+  if (!state || opening || switching || state.isLoadingSession) {
     if (loadError && !opening) {
       return (
         <div className="page centered-col">
@@ -154,6 +180,13 @@ export function ChatPage() {
   }
 
   const cast = state.cast ?? [];
+  // One Director setting to the app, then a refresh (or the failure shown).
+  const postDirector = (path: string, body: object, what: string) => {
+    api
+      .post(`/api/chat/director/${path}`, body)
+      .then(() => refresh())
+      .catch((e) => reportActionFailure(what, e));
+  };
   // A chat is active if there's a cast (group or 1:1) or a host character.
   // (In a group, state.character is null — the cast carries the participants.)
   if (cast.length === 0 && !state.character) {
@@ -187,6 +220,7 @@ export function ChatPage() {
       realism={realismForPanel}
       focusedIsLiteGuest={focusedIsLiteGuest}
       lorebook={state.lorebook}
+      groupLorebookUnreadable={state.groupLorebookUnreadable}
       loreTokens={state.loreTokens}
       loreBudget={state.loreBudget}
       loreOverflow={state.loreOverflow}
@@ -199,6 +233,7 @@ export function ChatPage() {
       isGroup={state.isGroupMode ?? false}
       focusedIsHost={focused?.isHost ?? !state.isGroupMode}
       focusedAvatarUrl={focused?.avatarUrl}
+      focusedPlaceholderPortrait={focused?.placeholderPortrait}
       toolsKey={toolsBump}
       focusedId={focusedId}
       groupId={state.groupId ?? null}
@@ -212,67 +247,64 @@ export function ChatPage() {
   return (
     <div className="chat-layout">
       <div className="chat-view">
-        <div className="chat-header">
-          <div className="chat-header-id">
-            {focused && (
-              state.isGroupMode ? (
-                // Groups have no single avatar and member images don't resolve in
-                // the cast — show a group glyph rather than a broken image.
-                <span className="chat-header-avatar group" aria-hidden>👥</span>
-              ) : focused.isHost ? (
-                <SmartImg
-                  primary={`/api/chat/expression-avatar?v=${encodeURIComponent(state.expressionLabel ?? '')}`}
-                  fallback={`/api/characters/${focused.dbId ?? state.character?.id ?? ''}/avatar`}
-                  className="chat-header-avatar"
-                />
-              ) : (
-                <SmartImg primary={focused.avatarUrl ?? ''} className="chat-header-avatar" />
-              )
-            )}
-            <span className="chat-title">{title}</span>
-          </div>
-          <div className="chat-header-actions">
-            <ChatModelSwitcher />
-            {editId && (
-              <button
-                className="link-btn"
-                title="Edit character"
-                onClick={() => navigate(`/edit/${editId}`)}
-              >
-                ✎
-              </button>
-            )}
-            {insight && (
-              <button className="link-btn stats-btn" onClick={() => setShowStats(true)}>
-                Stats ▾
-              </button>
-            )}
-            <button
-              className="link-btn"
-              title="Who you are in this chat"
-              onClick={() => setShowPersona(true)}
-            >
-              Persona
-            </button>
-            <button className="link-btn" onClick={() => setShowTheme(true)}>
-              Theme
-            </button>
-            <button className="link-btn conversations-btn" onClick={openSessions}>
-              Conversations ▾
-            </button>
-          </div>
-        </div>
+        <ChatHeader
+          title={title}
+          focused={focused}
+          isGroupMode={state.isGroupMode ?? false}
+          expressionLabel={state.expressionLabel}
+          characterId={state.character?.id}
+          isPhone={isPhone}
+          hasStats={!!insight}
+          onEdit={editId ? () => navigate(`/edit/${editId}`) : undefined}
+          onStats={() => setShowStats(true)}
+          onPersona={() => setShowPersona(true)}
+          onTheme={() => setShowTheme(true)}
+          onConversations={openSessions}
+        />
 
         <CastBar
           cast={cast}
           focusedId={focusedId}
           busy={state.isGenerating}
+          settling={!!state.isSettlingTurn}
           guestStatus={state.guestActivity?.status ?? null}
           guestIsError={state.guestActivity?.isError ?? false}
           pendingDetection={state.pendingDetection ?? null}
           onFocus={focusParticipant}
           onAdd={() => setShowPicker(true)}
           onCommand={sendMessage}
+          onSetAway={(id, away) => {
+            api
+              .post('/api/chat/cast/away', { id, away })
+              .then(() => refresh())
+              .catch((e) => reportActionFailure(away ? 'mark them away' : 'bring them back', e));
+          }}
+          canRemoveMember={state.director?.canRemoveMember ?? true}
+        />
+        {state.director && (state.isGroupMode || cast.length > 1) && (
+          <DirectorStrip
+            director={state.director}
+            busy={state.isGenerating}
+            onCommand={sendMessage}
+            memberNames={cast.map((c) => c.name)}
+            onAutoPlay={(on) => postDirector('autoplay', { on }, 'change auto-chat')}
+            onPauseAutoPlay={() =>
+              postDirector('autoplay', { on: false, pause: true }, 'pause auto-chat')
+            }
+            onDelay={(seconds) => postDirector('delay', { seconds }, 'change the auto-chat delay')}
+            onGoal={(text) => postDirector('goal', { text }, 'change the scene goal')}
+            onClearWhisper={(id) => postDirector('whisper', { id, text: '' }, 'clear the whisper')}
+            onTurnBudget={(turns) => postDirector('budget', { turns }, 'change the auto-chat run')}
+          />
+        )}
+        <ExitUndoBar
+          undo={state.exitUndo ?? null}
+          onUndo={() => {
+            api
+              .post('/api/chat/exit-undo')
+              .then(() => refresh())
+              .catch((e) => reportActionFailure('undo that exit', e));
+          }}
         />
 
         <ChatNotices
@@ -283,6 +315,9 @@ export function ChatPage() {
           onDismissSendError={() => setSendError(null)}
           actionError={actionError}
           onDismissActionError={() => setActionError(null)}
+          stoppedReply={state.stoppedReply ?? null}
+          onRetryStopped={() => void regenerate()}
+          onDismissStopped={() => void dismissStoppedReply()}
         />
         {state.absencePhrase && state.sessionId && !absenceDismissed.has(state.sessionId) && (
           <div className="absence-banner">
@@ -306,36 +341,60 @@ export function ChatPage() {
             </button>
           </div>
         )}
-        <ChatMessageList
-          sessionId={state.sessionId}
-          messages={state.messages}
-          castById={castById}
-          multiCast={multiCast}
-          lastIndex={lastIndex}
-          busy={state.isGenerating}
-          streaming={streaming}
-          followStreamingReplies={followStreamingReplies}
-          genStatus={state.isGenerating ? genStatus : null}
-          scrollRef={scrollRef}
-          onScroll={onTranscriptScroll}
-          canSpeak={!!voice?.ttsEnabled}
-          onBeginEdit={beginEdit}
-          onSwipe={swipe}
-          onRegenerate={regenerate}
-          lookupWeb={!!state.lookupSources?.web}
-          lookupWiki={!!state.lookupSources?.wiki}
-          onContinue={continueGen}
-          onFork={fork}
-          onDelete={del}
-          onReprocess={setReprocessIndex}
-          onRevert={revertNeeds}
-          greetCount={state.totalGreetings}
-          greetingIndex={state.greetingIndex}
-          onVariantPicked={refresh}
-          onActionFailed={reportActionFailure}
-        />
+        <div className="chat-find-host">
+          <FindSurfaceContext.Provider value={find.surface}>
+            <ChatMessageList
+              sessionId={state.sessionId}
+              messages={state.messages}
+              castById={castById}
+              multiCast={multiCast}
+              lastIndex={lastIndex}
+              busy={state.isGenerating}
+              settling={!!state.isSettlingTurn}
+              streaming={streaming}
+              followStreamingReplies={followStreamingReplies}
+              genStatus={state.isGenerating ? genStatus : null}
+              scrollRef={scrollRef}
+              onScroll={onTranscriptScroll}
+              canSpeak={!!voice?.ttsEnabled}
+              onBeginEdit={beginEdit}
+              onSwipe={swipe}
+              onRegenerate={regenerate}
+              lookupWeb={!!state.lookupSources?.web}
+              lookupWiki={!!state.lookupSources?.wiki}
+              onContinue={continueGen}
+              onFork={fork}
+              onDelete={del}
+              onReprocess={setReprocessIndex}
+              onRevert={revertNeeds}
+              greetCount={state.totalGreetings}
+              greetingIndex={state.greetingIndex}
+              onVariantPicked={refresh}
+              onActionFailed={reportActionFailure}
+              revealTarget={find.reveal}
+            />
+          </FindSurfaceContext.Provider>
+          {find.open && (
+            <FindBar
+              value={find.query}
+              onValue={find.setQuery}
+              regexOn={find.regexOn}
+              onToggleRegex={find.toggleRegex}
+              caseOn={find.caseOn}
+              onToggleCase={find.toggleCase}
+              waiting={find.waiting}
+              bad={find.bad}
+              slow={find.slow}
+              counter={find.counter}
+              wildcardChip={find.wildcardChip}
+              onStep={find.step}
+              onClose={find.close}
+            />
+          )}
+        </div>
 
-        <ProcessingOverlay p={processing} onCancel={cancelRealism} />
+        {evaluationView.error && <p role="alert">{evaluationView.error}</p>}
+        <ProcessingOverlay minimized={evaluationView.minimized} onMinimizedChange={evaluationView.change} saving={evaluationView.saving} p={processing} onCancel={cancelRealism} onSkipObjective={skipObjectiveCheck} />
 
         {imageProg && (
           <div className="image-progress-card">
@@ -359,7 +418,7 @@ export function ChatPage() {
         <ChatComposer
           onSend={sendMessage}
           onStop={stop}
-          isGenerating={state.isGenerating}
+          isGenerating={session.replying}
           isSettlingTurn={!!state.isSettlingTurn}
           isSendWaitingOnSettle={!!state.isSendWaitingOnSettle}
           canMic={canMic}
@@ -373,6 +432,7 @@ export function ChatPage() {
           }}
           apiReady={state.llmReady !== false}
           apiHint={state.llmHint}
+          directing={!!state.director?.directing}
         />
       </div>
 
@@ -442,9 +502,16 @@ export function ChatPage() {
         <div className="drawer-backdrop" onClick={() => setShowTheme(false)}>
           <div className="settings-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="drawer-head">
-              <span>Chat theme</span>
+              <span>Chat settings</span>
               <button className="link-btn" onClick={() => setShowTheme(false)}>Close</button>
             </div>
+            {state.promptSource && (
+              <PromptSourceSettings
+                state={state.promptSource}
+                onDone={refresh}
+                onFailed={reportActionFailure}
+              />
+            )}
             <ChatThemeSettings
               overrides={state.themeOverrides ?? null}
               onSave={async (overrides) => {
@@ -476,12 +543,23 @@ export function ChatPage() {
         reprocessIndex={reprocessIndex}
         messages={state.messages}
         onSubmitReprocess={submitReprocess}
+        onSubmitReprocessFeelings={submitReprocessFeelings}
         onCloseReprocess={() => setReprocessIndex(null)}
         chance={chance}
         onReveal={revealFate}
         onAccept={acceptFate}
         imagePromptReview={state.imagePromptReview}
+        pendingConfirm={pendingConfirm}
+        onConfirmPending={confirmPending}
+        onCancelPending={cancelPending}
       />
+      {state.promptSource?.picker && (
+        <PromptSourcePickerModal
+          picker={state.promptSource.picker}
+          onDone={refresh}
+          onFailed={reportActionFailure}
+        />
+      )}
     </div>
   );
 }

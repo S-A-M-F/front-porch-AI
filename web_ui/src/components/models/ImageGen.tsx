@@ -4,21 +4,22 @@
 // Image-generation desk + generate, with one-tap insert into the active chat.
 // Thin over /api/image.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError } from '../../api/client';
-import { ImageRemoteFields } from './ImageRemoteFields';
 import { StudioDesk, type GenerateRequest } from './StudioDesk';
 import { PackBanner } from './studio/PackBanner';
 import type { ImageConfig } from './studio/types';
-import type { Mode } from './studio/types';
 
 const PROGRESS_MS = 1000;
 
 export function ImageGen({
   onError,
   progressMs = PROGRESS_MS,
+  batch,
 }: {
   onError: (s: string) => void;
+  /** The Batch tab, when the desk is Image Studio's own page. */
+  batch?: ReactNode;
   /** How often progress is asked for while a picture is made; for tests. */
   progressMs?: number;
 }) {
@@ -28,8 +29,6 @@ export function ImageGen({
   const [filename, setFilename] = useState<string | null>(null);
   const [inserted, setInserted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [sharedBusy, setSharedBusy] = useState(false);
-  const [configMode, setConfigMode] = useState<Mode>('create');
   const [progress, setProgress] = useState<number | null>(null);
   const [genError, setGenError] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
@@ -40,11 +39,11 @@ export function ImageGen({
     api
       .get<ImageConfig>('/api/image/config')
       .then((next) => live.current && setCfg(withGraphDefaults(next)))
-      .catch(() => {});
+      .catch((e) => console.warn('[image] config load failed', e));
     api
       .get<{ totpEnabled?: boolean }>('/api/auth/state')
       .then((st) => live.current && setTotpEnabled(!!st.totpEnabled))
-      .catch(() => {});
+      .catch((e) => console.warn('[image] auth state load failed', e));
     return () => {
       live.current = false;
     };
@@ -61,6 +60,7 @@ export function ImageGen({
       api
         .get<ImageConfig>('/api/image/config')
         .then((c) => !stop && setProgress(typeof c.genProgress === 'number' ? c.genProgress : null))
+        // Best-effort progress: the next tick asks again, so a miss is not logged.
         .catch(() => {});
     }, progressMs);
     return () => {
@@ -86,7 +86,10 @@ export function ImageGen({
       .catch((e: unknown) => {
         if (e instanceof ApiError && e.payload.totpRequired === true) setTotpEnabled(true);
         onError(e instanceof ApiError ? e.message : 'Save failed');
-        api.get<ImageConfig>('/api/image/config').then(setCfg).catch(() => {});
+        api
+          .get<ImageConfig>('/api/image/config')
+          .then(setCfg)
+          .catch((err) => console.warn('[image] config reload after failed save failed', err));
         return false;
       });
   };
@@ -133,13 +136,12 @@ export function ImageGen({
         onConfig={setCfg}
         save={save}
         totpEnabled={totpEnabled}
+        batch={batch}
         prompt={prompt}
         onPrompt={setPrompt}
         onGenerate={generate}
         generateError={genError}
         busy={busy}
-        onSharedBusy={setSharedBusy}
-        onConfigMode={setConfigMode}
         progress={progress}
         lastSaved={filename ? { name: filename, url: `/api/image/saved/${encodeURIComponent(filename)}` } : null}
         result={
@@ -160,26 +162,6 @@ export function ImageGen({
           ) : null
         }
       />
-      {cfg.backend === 'remote' && (
-        <fieldset disabled={sharedBusy} className="fp-desk-settings">
-        <legend>Remote image account · {configMode === 'edit' ? 'Edit model' : 'Create model'}</legend>
-        <ImageRemoteFields
-          selectedHostId={cfg.imageRemoteHost ?? ''}
-          hosts={cfg.imageRemoteHosts ?? []}
-          modelId={configMode === 'edit' ? cfg.editModel ?? '' : cfg.model}
-          hasApiKey={cfg.hasApiKey}
-          remoteApiUrl={cfg.remoteApiUrl}
-          onHost={(id) => { if (!sharedBusy) void save({ imageRemoteHost: id, ...(configMode === 'edit' ? { mode: 'edit' } : {}) }); }}
-          onModel={(id) => {
-            if (sharedBusy) return;
-            if (configMode === 'create') { void save({ model: id }); return; }
-            api.post<ImageConfig>('/api/image/studio/pick', { kind: 'model', mode: 'edit', file: id })
-              .then(setCfg).catch((e) => onError(e instanceof ApiError ? e.message : 'Could not change the Edit model.'));
-          }}
-          onError={onError}
-        />
-        </fieldset>
-      )}
     </section>
   );
 }

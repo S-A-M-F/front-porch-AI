@@ -12,33 +12,58 @@
  * Each row wraps independently so Realism never bleeds into the Needs line. */
 .chips-block { display: flex; flex-direction: column; gap: 3px; align-self: flex-start; max-width: 85%; margin: 4px 0 2px; }
 .chips-row { display: flex; flex-wrap: wrap; gap: 4px; }
+/* One line per chip: a long label (a Pockets receipt) ends in an ellipsis
+ * inside the bubble's width, the ⓘ stays visible, and a tap shows it whole. */
 .chip {
   font-size: 0.68rem; padding: 2px 7px; border-radius: 999px;
   background: var(--surface-2); color: var(--muted); white-space: nowrap;
+  display: inline-flex; align-items: center; max-width: 100%; min-width: 0;
 }
-.chip.up { background: rgba(105, 240, 174, 0.16); color: var(--ok); }
-.chip.down { background: rgba(255, 107, 107, 0.16); color: var(--danger); }
-.chip.mood { background: rgba(59, 130, 246, 0.18); color: var(--accent); }
-.chip.time { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+.chip-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Chip washes mix over --chip-well: see-through on a dark page, the card on
+   paper, so a deep light-mode ink still reads over any chat background
+   (desktop InkColors.chipWellOf). */
+.chip.up { background: color-mix(in srgb, var(--ok) 16%, var(--chip-well)); color: var(--ok); }
+.chip.down { background: color-mix(in srgb, var(--danger) 16%, var(--chip-well)); color: var(--danger); }
+.chip.mood { background: color-mix(in srgb, var(--accent) 18%, var(--chip-well)); color: var(--accent); }
+.chip.time { background: color-mix(in srgb, var(--wash) 8%, var(--chip-well)); color: var(--muted); }
+/* One hue per stat, as the desktop's chips (RealismColors). */
+.chip[class*='stat-'] { --stat: var(--need-other); background: color-mix(in srgb, var(--stat) 16%, var(--chip-well)); color: var(--stat); }
+.chip.stat-need-hunger { --stat: var(--need-hunger); }
+.chip.stat-need-bladder { --stat: var(--need-bladder); }
+.chip.stat-need-energy { --stat: var(--need-energy); }
+.chip.stat-need-social { --stat: var(--need-social); }
+.chip.stat-need-fun { --stat: var(--need-fun); }
+.chip.stat-need-hygiene { --stat: var(--need-hygiene); }
+.chip.stat-need-comfort { --stat: var(--need-comfort); }
+.chip.stat-bond-up { --stat: var(--bond-up); }
+.chip.stat-bond-down { --stat: var(--bond-down); }
+.chip.stat-trust-up { --stat: var(--trust-up); }
+.chip.stat-trust-down { --stat: var(--trust-down); }
+.chip.stat-lust-up { --stat: var(--lust-up); }
+.chip.stat-lust-down { --stat: var(--lust-down); }
+.chip.warn { background: color-mix(in srgb, var(--bond-low) 16%, var(--chip-well)); color: var(--bond-low); }
+.chip.pocket { background: color-mix(in srgb, var(--porch-amber) 16%, var(--chip-well)); color: var(--porch-amber); }
 /* A chip with a delta reason is tappable (touch) + hoverable (desktop title). */
 .chip.has-reason { cursor: pointer; }
 .chip.has-reason.open { outline: 1px solid var(--border); }
-.chip-info { opacity: 0.6; font-size: 0.62rem; }
+.chip-info { opacity: 0.6; font-size: 0.62rem; flex: none; margin-left: 0.3em; }
 /* The revealed reason text for the currently-open chip. */
 .chip-reason {
   font-size: 0.72rem; line-height: 1.4; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 8px; padding: 6px 9px; max-width: 100%;
+  white-space: pre-line;
 }
 /* Director redo controls under the Needs row (last message only). */
 .needs-reprocess-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .btn-reprocess, .btn-revert {
   font-size: 0.68rem; font-weight: 600; padding: 3px 10px; border-radius: 999px;
   cursor: pointer; background: var(--group-pill-bg, var(--group-pill-bg));
-  color: var(--group-accent-bright, #f0b195);
-  border: 1px solid var(--group-border, rgba(124, 58, 237, 0.3));
+  color: var(--group-accent-bright);
+  border: 1px solid var(--group-border);
 }
-.btn-revert { background: rgba(255, 255, 255, 0.06); color: var(--muted); border-color: var(--border); }
+.btn-revert { background: color-mix(in srgb, var(--wash) 6%, transparent); color: var(--muted); border-color: var(--border); }
 .btn-reprocess:hover, .btn-revert:hover { filter: brightness(1.15); }
 /* Centered modal variant of the drawer backdrop (Reprocess critique dialog). */
 .drawer-backdrop.center { align-items: center; justify-content: center; }
@@ -71,7 +96,7 @@
   font-size: 0.75rem; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
 }
-.need-chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.need-chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .need-chip:disabled { opacity: 0.5; }
 
 /* ── Settings: remote model picker (fetched dropdown) ───────────────────── */
@@ -105,7 +130,7 @@
   cursor: pointer; font: inherit;
 }
 .mp-option:hover { background: var(--surface-2); }
-.mp-option.selected { background: rgba(244, 162, 89, 0.14); }
+.mp-option.selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .mp-name { font-size: 0.85rem; }
 .mp-meta { font-size: 0.7rem; }
 .mp-inline-error { color: var(--danger); font-size: 0.75rem; margin: 4px 0 0; }
@@ -149,7 +174,7 @@
   padding: 5px 10px; border-radius: 999px; font-size: 0.8rem;
   background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
 }
-.insight-cast-chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.insight-cast-chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .lore-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .lore { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
 .lore-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex-shrink: 0; }
@@ -158,6 +183,8 @@
 /* Constant (always-injected) entries: blue dot — desktop sidebar parity. */
 .lore.const .lore-dot { background: var(--bond-mid); }
 .lore.const { color: var(--text); }
+/* Unreadable group lorebook note (desktop sidebar's amber note). */
+.lore-unreadable { color: var(--porch-amber); margin: 0 0 8px; }
 
 /* Lore token meter (desktop sidebar parity). */
 .lore-meter { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 8px; }
@@ -172,13 +199,13 @@
   font-size: 0.65rem; font-weight: 700; padding: 1px 7px; border-radius: 999px;
   background: var(--surface-2); color: var(--muted); border: none; white-space: nowrap;
 }
-.lore-pill.ok { background: rgba(105, 240, 174, 0.14); color: var(--ok); }
-.lore-pill.honey { background: rgba(233, 196, 106, 0.14); color: var(--porch-honey); }
+.lore-pill.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.lore-pill.honey { background: color-mix(in srgb, var(--porch-honey) 14%, transparent); color: var(--porch-honey); }
 
 /* "Would trigger next" live preview strip. */
 .lore-preview {
   margin-top: 8px; padding: 8px; border-radius: 8px;
-  border: 1px dashed rgba(233, 196, 106, 0.45);
+  border: 1px dashed color-mix(in srgb, var(--porch-honey) 45%, transparent);
 }
 .lore-preview-title {
   display: block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em;
@@ -208,7 +235,7 @@
 .lore-wiz-steps { display: flex; gap: 10px; margin: 6px 0 14px; flex-wrap: wrap; }
 .lore-wiz-step { font-size: 0.75rem; color: var(--faint); }
 .lore-wiz-step.on { color: var(--porch-amber); font-weight: 700; }
-.lore-wiz-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; border: 2px dashed rgba(244, 162, 89, 0.5); border-radius: 10px; }
+.lore-wiz-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; border: 2px dashed color-mix(in srgb, var(--porch-amber) 50%, transparent); border-radius: 10px; }
 .lore-wiz-review p { margin: 6px 0; }
 .lore-wiz-warning { color: var(--porch-honey); margin: 6px 0 0; }
 .lore-wiz-dest { display: flex; flex-direction: column; gap: 8px; }
@@ -231,7 +258,7 @@
 .chat-messages::-webkit-scrollbar { width: 14px; }
 .chat-messages::-webkit-scrollbar-track { background: transparent; }
 .chat-messages::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--porch-amber) 75%, #6b6258);
+  background: color-mix(in srgb, var(--porch-amber) 75%, var(--faint));
   border-radius: 8px; border: 3px solid transparent; background-clip: padding-box;
 }
 .chat-messages::-webkit-scrollbar-thumb:hover {

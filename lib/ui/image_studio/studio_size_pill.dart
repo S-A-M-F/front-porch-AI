@@ -12,25 +12,35 @@ class StudioSizePill extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onPressed,
+    this.tall = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onPressed;
 
+  /// The Remote API stove's 40-pixel pills; the local stoves stay compact.
+  final bool tall;
+
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.formMasterAccent;
+    final accent = AppColors.formAccentOf(context);
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        foregroundColor: selected ? AppColors.onChaosAccent : accent,
+        foregroundColor: selected ? AppColors.onAccentOf(context) : accent,
         backgroundColor: selected ? accent : null,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        minimumSize: Size.zero,
+        padding: tall
+            ? const EdgeInsets.symmetric(horizontal: 16, vertical: 10)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        minimumSize: tall ? const Size(0, 40) : Size.zero,
+        visualDensity: tall ? VisualDensity.standard : null,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: StadiumBorder(side: BorderSide(color: accent)),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        textStyle: TextStyle(
+          fontSize: tall ? 14 : 13,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       child: Text(label),
     );

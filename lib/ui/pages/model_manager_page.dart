@@ -21,15 +21,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/ui/widgets/hf_model_card.dart';
 import 'package:front_porch_ai/ui/widgets/local_model_card.dart';
 import 'package:front_porch_ai/ui/widgets/download_queue_panel.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/pages/model_manager/model_manager.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/utils/utils.dart';
-
-part 'model_manager_page.download.dart';
 
 class ModelManagerPage extends StatefulWidget {
   const ModelManagerPage({super.key});
@@ -41,14 +38,8 @@ class ModelManagerPage extends StatefulWidget {
 class _ModelManagerPageState extends State<ModelManagerPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocus = FocusNode();
-
   // Search state
-  List<HFModel> _searchResults = [];
-  Map<String, HFModel> _modelsWithFiles = {};
-  bool _isSearching = false;
-  String? _searchError;
+  final ModelSearchController _search = ModelSearchController();
 
   // Local models filter
   String _localFilter = '';
@@ -57,6 +48,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _search.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ModelManager>(context, listen: false).refreshModels();
     });
@@ -65,12 +57,12 @@ class _ModelManagerPageState extends State<ModelManagerPage>
   @override
   void dispose() {
     _tabController.dispose();
-    _searchController.dispose();
-    _searchFocus.dispose();
+    _search.removeListener(_onSearchChanged);
+    _search.dispose();
     super.dispose();
   }
 
-  void rebuildState(VoidCallback fn) => setState(fn);
+  void _onSearchChanged() => setState(() {});
 
   void _confirmDelete(BuildContext context, String path) {
     showDialog(
@@ -101,7 +93,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
               ).deleteModel(path);
               Navigator.pop(context);
             },
-            child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            child: Text(
+              'Delete',
+              style: TextStyle(color: StatusColors.dangerOf(context)),
+            ),
           ),
         ],
       ),
@@ -128,7 +123,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Model imported successfully!'),
-              backgroundColor: Colors.green,
+              backgroundColor: StatusColors.doneFill,
             ),
           );
         }
@@ -137,7 +132,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Import failed: $e'),
-              backgroundColor: Colors.redAccent,
+              backgroundColor: StatusColors.alertFill,
             ),
           );
         }
@@ -198,7 +193,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: AppColors.formMasterAccent),
+            icon: Icon(Icons.refresh, color: AppColors.formAccentOf(context)),
             onPressed: () => modelManager.refreshModels(),
             tooltip: 'Scan for new models',
           ),
@@ -216,13 +211,22 @@ class _ModelManagerPageState extends State<ModelManagerPage>
       ),
       body: Column(
         children: [
+          // Clips the tabs' ink (focus boxes) to the tab body; on the
+          // Scaffold it showed through the transparent tab bar.
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildMyModelsTab(modelManager, availableVram),
-                _buildSearchTab(modelManager, availableVram),
-              ],
+            child: Material(
+              type: MaterialType.transparency,
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildMyModelsTab(modelManager, availableVram),
+                  ModelManagerSearchTab(
+                    controller: _search,
+                    modelManager: modelManager,
+                    availableVram: availableVram,
+                  ),
+                ],
+              ),
             ),
           ),
           // Download queue panel at bottom
@@ -289,10 +293,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.add_to_drive_rounded,
                       size: 18,
-                      color: Colors.amberAccent,
+                      color: AccentColors.amberOf(context),
                     ),
                     tooltip: 'Import from Computer',
                     onPressed: _importLocalModel,
@@ -301,10 +305,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                   ),
                   const SizedBox(width: 4),
                   IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.drive_file_move_rounded,
                       size: 18,
-                      color: Colors.orangeAccent,
+                      color: StatusColors.warningOf(context),
                     ),
                     tooltip: 'Change Models Folder',
                     onPressed: _changeModelsFolder,
@@ -315,10 +319,10 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                       null) ...[
                     const SizedBox(width: 4),
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.restore_rounded,
                         size: 18,
-                        color: Colors.redAccent,
+                        color: StatusColors.dangerOf(context),
                       ),
                       tooltip: 'Reset to Default Folder',
                       onPressed: _resetModelsFolder,
@@ -386,8 +390,8 @@ class _ModelManagerPageState extends State<ModelManagerPage>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             color: AppColors.resolve(
               context,
-              Colors.blue.withValues(alpha: 0.1),
-              Colors.blue.withValues(alpha: 0.08),
+              AppColors.porchAmberOf(context).withValues(alpha: 0.1),
+              AppColors.porchAmberOf(context).withValues(alpha: 0.08),
             ),
             child: Text(
               modelManager.statusMessage,
@@ -401,9 +405,9 @@ class _ModelManagerPageState extends State<ModelManagerPage>
         // Models list
         Expanded(
           child: localModels.isEmpty
-              ? _buildEmptyState(
-                  'No models found',
-                  'Import a model or download from HuggingFace',
+              ? const ModelManagerEmptyState(
+                  title: 'No models found',
+                  subtitle: 'Import a model or download from HuggingFace',
                 )
               : ListView.separated(
                   padding: const EdgeInsets.all(16),
@@ -420,49 +424,6 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                 ),
         ),
       ],
-    );
-  }
-
-  Widget _buildEmptyState(String title, String subtitle) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.resolve(
-                context,
-                Colors.white.withValues(alpha: 0.03),
-                Colors.black.withValues(alpha: 0.03),
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.cloud_download_rounded,
-              size: 48,
-              color: AppColors.iconSecondary(context).withValues(alpha: 0.4),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: TextStyle(
-              color: AppColors.textSecondary(context),
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: AppColors.textTertiary(context),
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

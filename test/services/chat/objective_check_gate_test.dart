@@ -47,6 +47,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:front_porch_ai/database/database.dart' show Objective;
+import 'package:front_porch_ai/models/models.dart' show ChatMessage;
 import 'package:front_porch_ai/services/chat/chat.dart';
 
 void main() {
@@ -136,41 +138,26 @@ void main() {
   });
 
   group('objective stale detector', () {
-    test('2 consecutive explicit NO retires; 1 NO and unsure keep', () {
-      final t = ObjectiveStaleTracker();
-      expect(
-        t.noteObjectiveIrrelevant(
-          objectiveId: 'o1',
-          explicitIrrelevant: true,
-          thresholdN: 2,
-        ),
-        isFalse,
+    // 2026-10-16 (objectives that keep up): the two-in-a-row "no longer
+    // relevant" counter is gone. The goal sync asks one direct question with
+    // the story in front of it, so ONE "overtaken" answer lets a goal go, and
+    // an unsure answer still changes nothing. This replaces the tracker case.
+    test('one overtaken answer lets a goal go; unsure keeps it', () {
+      final tasks = [
+        {'description': 'pack the car', 'completed': false},
+      ];
+      final letGo = decideObjectiveSync(
+        tasks: tasks,
+        verdict: const ObjectiveSyncVerdict(status: 'overtaken'),
+        stepsAuthored: false,
       );
-      expect(
-        t.noteObjectiveIrrelevant(
-          objectiveId: 'o1',
-          explicitIrrelevant: false,
-          thresholdN: 2,
-        ),
-        isFalse,
-        reason: 'unsure / KEEP resets the count',
+      expect(letGo.end, ObjectiveEnd.letGo);
+      final unsure = decideObjectiveSync(
+        tasks: tasks,
+        verdict: const ObjectiveSyncVerdict(),
+        stepsAuthored: false,
       );
-      expect(
-        t.noteObjectiveIrrelevant(
-          objectiveId: 'o1',
-          explicitIrrelevant: true,
-          thresholdN: 2,
-        ),
-        isFalse,
-      );
-      expect(
-        t.noteObjectiveIrrelevant(
-          objectiveId: 'o1',
-          explicitIrrelevant: true,
-          thresholdN: 2,
-        ),
-        isTrue,
-      );
+      expect(unsure.isNoop, isTrue);
     });
 
     test('mixed completed + last stale is quest stale, not 100% win', () {
@@ -186,8 +173,9 @@ void main() {
     });
 
     test('the 4-miss force-done counter is gone from the orchestrator', () {
-      final src = File('lib/services/chat/objective_proposal.dart')
-          .readAsStringSync();
+      final src = File(
+        'lib/services/chat/objective_proposal.dart',
+      ).readAsStringSync();
       expect(src, isNot(contains('static const int kStaleCheckRetireAfter')));
       expect(src, isNot(contains('final Map<String, int> _staleCheckCounts')));
       expect(src, contains('onObjectiveStale'));
@@ -220,6 +208,627 @@ void main() {
       expect(src, contains('PlannerTodayFate.abandoned'));
       final staleBlock = src.substring(src.indexOf('onObjectiveStale'));
       expect(staleBlock, isNot(contains('_onTodayObjectiveCompleted')));
+    });
+  });
+
+  group('the goal sync decides (objectives-that-keep-up.md)', () {
+    List<Map<String, dynamic>> steps() => [
+      {'description': 'find the receipt', 'completed': false},
+      {'description': 'ask him about it', 'completed': false},
+      {'description': 'decide what to do', 'completed': false},
+    ];
+
+    test('steps tick in any order, not only the first open one', () {
+      final apply = decideObjectiveSync(
+        tasks: steps(),
+        verdict: const ObjectiveSyncVerdict(status: 'on_track', stepsDone: {2}),
+        stepsAuthored: false,
+      );
+      expect(apply.newTasks![0]['completed'], isFalse);
+      expect(apply.newTasks![1]['completed'], isTrue);
+      expect(apply.end, isNull);
+    });
+
+    test(
+      'the next step is rewritten for the character, never for the user',
+      () {
+        const verdict = ObjectiveSyncVerdict(
+          status: 'on_track',
+          nextStep: 'wait until morning to ask',
+        );
+        final own = decideObjectiveSync(
+          tasks: steps(),
+          verdict: verdict,
+          stepsAuthored: false,
+        );
+        expect(own.newTasks![0]['description'], 'wait until morning to ask');
+        final authored = decideObjectiveSync(
+          tasks: steps(),
+          verdict: verdict,
+          stepsAuthored: true,
+        );
+        expect(authored.isNoop, isTrue, reason: 'the user wrote those steps');
+      },
+    );
+
+    // Live run 2026-10-16: the judge ticked a step and named that same step
+    // as next, so the open step after it was overwritten with a copy and the
+    // model was told to do the finished step again.
+    test('a next step already on the list is not written again', () {
+      final apply = decideObjectiveSync(
+        tasks: steps(),
+        verdict: const ObjectiveSyncVerdict(
+          status: 'on_track',
+          stepsDone: {1},
+          nextStep: 'Find the receipt',
+        ),
+        stepsAuthored: false,
+      );
+      expect(apply.newTasks!.map((t) => t['description']), [
+        'find the receipt',
+        'ask him about it',
+        'decide what to do',
+      ]);
+      expect(apply.newTasks![0]['completed'], isTrue);
+    });
+
+    test('done is achieved even with steps open; ticking the last open step '
+        'achieves it too', () {
+      expect(
+        decideObjectiveSync(
+          tasks: steps(),
+          verdict: const ObjectiveSyncVerdict(status: 'done'),
+          stepsAuthored: false,
+        ).end,
+        ObjectiveEnd.achieved,
+      );
+      expect(
+        decideObjectiveSync(
+          tasks: steps(),
+          verdict: const ObjectiveSyncVerdict(
+            status: 'on_track',
+            stepsDone: {1, 2, 3},
+          ),
+          stepsAuthored: false,
+        ).end,
+        ObjectiveEnd.achieved,
+      );
+    });
+
+    test('dormant sets a goal aside, on_track wakes it, the today line is '
+        'never set aside', () {
+      expect(
+        decideObjectiveSync(
+          tasks: steps(),
+          verdict: const ObjectiveSyncVerdict(status: 'dormant'),
+          stepsAuthored: false,
+        ).dormant,
+        isTrue,
+      );
+      expect(
+        decideObjectiveSync(
+          tasks: steps(),
+          verdict: const ObjectiveSyncVerdict(status: 'on_track'),
+          stepsAuthored: false,
+          wasDormant: true,
+        ).dormant,
+        isFalse,
+      );
+      expect(
+        decideObjectiveSync(
+          tasks: const [],
+          verdict: const ObjectiveSyncVerdict(status: 'dormant'),
+          stepsAuthored: false,
+          isHeldToday: true,
+        ).isNoop,
+        isTrue,
+      );
+    });
+
+    // Live run 2026-10-16: a 4B judge set the user's goal aside on the first
+    // sync, which took it out of the prompt for the rest of the chat.
+    test('a goal the user or the card set is never set aside', () {
+      final apply = decideObjectiveSync(
+        tasks: steps(),
+        verdict: const ObjectiveSyncVerdict(status: 'dormant', stepsDone: {1}),
+        stepsAuthored: true,
+      );
+      expect(apply.dormant, isNull);
+      expect(apply.newTasks![0]['completed'], isTrue, reason: 'ticks stay');
+    });
+
+    test('the old 1: YES answer still ticks the current step', () {
+      final apply = decideObjectiveSync(
+        tasks: steps(),
+        verdict: const ObjectiveSyncVerdict(legacyYes: true),
+        stepsAuthored: true,
+      );
+      expect(apply.newTasks![0]['completed'], isTrue);
+    });
+
+    test('a newborn goal of the character waits for its steps', () {
+      ObjectiveSyncEligibility e({
+        bool inFlight = false,
+        bool retried = false,
+      }) => objectiveSyncEligibility(
+        ownWant: true,
+        hasTasks: false,
+        genInFlight: inFlight,
+        genRetried: retried,
+      );
+      expect(e(inFlight: true), ObjectiveSyncEligibility.skip);
+      expect(e(), ObjectiveSyncEligibility.retryThenSkip);
+      expect(e(retried: true), ObjectiveSyncEligibility.include);
+      expect(
+        objectiveSyncEligibility(
+          ownWant: false,
+          hasTasks: false,
+          genInFlight: false,
+          genRetried: false,
+        ),
+        ObjectiveSyncEligibility.include,
+        reason: 'a goal the user typed has no steps by design',
+      );
+    });
+
+    test('the sync parses tool JSON, flat arrays, the text floor and the old '
+        'YES/NO lines', () {
+      final tool = parseObjectiveSync(
+        '{"goals":[{"goal":1,"status":"done","steps_done":[1],'
+        '"next_step":"none"},{"goal":2,"status":"dormant","steps_done":[],'
+        '"next_step":"none"}]}',
+        2,
+      );
+      expect(tool.items[0].status, 'done');
+      expect(tool.items[0].stepsDone, {1});
+      expect(tool.items[1].status, 'dormant');
+      expect(tool.items[1].nextStep, isNull);
+      final flat = parseObjectiveSync(
+        '{"status":["on_track"],"steps_done":[[2,3]],'
+        '"next_step":["call her back"]}',
+        1,
+      );
+      expect(flat.items[0].stepsDone, {2, 3});
+      expect(flat.items[0].nextStep, 'call her back');
+      final text = parseObjectiveSync(
+        '1: on_track | 2,3 | knock on the door\n2: overtaken | none | none',
+        2,
+      );
+      expect(text.items[0].stepsDone, {2, 3});
+      expect(text.items[0].nextStep, 'knock on the door');
+      expect(text.items[1].status, 'overtaken');
+      final legacy = parseObjectiveSync('1: YES\n2: NO', 2);
+      expect(legacy.items[0].legacyYes, isTrue);
+      expect(legacy.items[1].status, 'on_track');
+      expect(parseObjectiveSync('hard to say', 1).hadSignal, isFalse);
+      // A bare word for a single goal is read the way small models mean it.
+      expect(parseObjectiveSync('YES', 1).items.single.legacyYes, isTrue);
+    });
+
+    // Review finding 2026-10-16: an answer whose statuses are all unreadable
+    // changed no goal but still counted as a sync, which used up the
+    // re-plan a time skip had asked for.
+    test('JSON with no readable status is no answer at all', () {
+      expect(
+        parseObjectiveSync(
+          '{"goals":[{"goal":1,"status":"maybe","steps_done":[],'
+          '"next_step":"none"}]}',
+          1,
+        ).hadSignal,
+        isFalse,
+      );
+      expect(
+        parseObjectiveSync('{"status":["unclear"]}', 1).hadSignal,
+        isFalse,
+      );
+    });
+  });
+
+  group('a time skip re-plans (objectives-that-keep-up.md part 2)', () {
+    test('only a crossed story day asks for a re-plan, with the span', () {
+      final noon = DateTime.utc(2026, 1, 1, 12);
+      const stamp = ObjectiveSyncStamp(
+        charId: 'c',
+        day: 1,
+        clockIso: '2026-01-01T12:00:00.000Z',
+      );
+      expect(
+        objectiveReplanMinutes(stamp: stamp, dayNow: 1, clockNow: noon),
+        isNull,
+      );
+      expect(
+        objectiveReplanMinutes(stamp: null, dayNow: 9, clockNow: noon),
+        isNull,
+      );
+      expect(
+        objectiveReplanMinutes(
+          stamp: stamp,
+          dayNow: 15,
+          clockNow: noon.add(const Duration(days: 14)),
+        ),
+        14 * 24 * 60,
+      );
+      expect(objectiveSpanLine(14 * 24 * 60), startsWith('About 2 weeks have'));
+      expect(objectiveSpanLine(24 * 60), startsWith('About a day has'));
+    });
+
+    test('the newest stamp for the character is the one read', () {
+      ChatMessage reply(String char, int day) => ChatMessage(
+        text: 'r',
+        isUser: false,
+        sender: 'C',
+        metadata: {
+          kObjectiveSyncStampKey: {
+            'char': char,
+            'day': day,
+            'clock': '2026-01-0${day}T09:00:00.000Z',
+          },
+        },
+      );
+      final msgs = [reply('a', 1), reply('b', 2), reply('a', 3)];
+      expect(lastObjectiveSyncStamp(msgs, 'a')!.day, 3);
+      expect(lastObjectiveSyncStamp(msgs, 'b')!.day, 2);
+      expect(lastObjectiveSyncStamp(msgs, 'z'), isNull);
+    });
+  });
+
+  group(
+    'a proposal must be a new want (objectives-that-keep-up.md part 3)',
+    () {
+      ObjectiveProposalVerdict decide(
+        String raw, {
+        List<String> open = const ['Find out who sent the letter'],
+        bool hasPrimary = true,
+        int secondaries = 0,
+        bool cooldown = false,
+      }) => decideObjectiveProposal(
+        raw: raw,
+        openGoalTexts: open,
+        hasPrimary: hasPrimary,
+        secondaryCount: secondaries,
+        cap: 4,
+        cooldownActive: cooldown,
+        ignore: const {'carmen'},
+      );
+
+      test('a rewording of an open goal is declined', () {
+        expect(
+          decide('Discover who sent that letter').reason,
+          ObjectiveProposalReason.duplicate,
+        );
+        expect(decide('Learn to bake bread').accepted, isTrue);
+      });
+
+      test('a free main slot takes it; at the cap a side quest is declined and '
+          'nothing is evicted; the cooldown holds side quests', () {
+        final main = decide('Learn to bake bread', hasPrimary: false);
+        expect(main.accepted && main.primary, isTrue);
+        expect(
+          decide('Learn to bake bread', secondaries: 4).reason,
+          ObjectiveProposalReason.atCap,
+        );
+        expect(
+          decide('Learn to bake bread', cooldown: true).reason,
+          ObjectiveProposalReason.cooldown,
+        );
+        expect(
+          decide(
+            'Learn to bake bread',
+            hasPrimary: false,
+            cooldown: true,
+          ).accepted,
+          isTrue,
+          reason: 'the cooldown is for side quests',
+        );
+      });
+
+      test(
+        'the cooldown reads the character\'s own side quest in the last four '
+        'messages up to the user\'s line',
+        () {
+          ChatMessage msg(bool user, [List<Map<String, dynamic>>? ops]) =>
+              ChatMessage(
+                text: 'm',
+                isUser: user,
+                sender: user ? 'User' : 'C',
+                metadata: ops == null ? null : {'objective_turn_ops': ops},
+              );
+          final taken = [
+            {
+              'op': 'created',
+              'id': 'x',
+              'charId': 'c',
+              'origin': kObjectiveOriginCharacter,
+              'primary': false,
+            },
+          ];
+          expect(
+            sideQuestCooldownActive([msg(false, taken), msg(true)], 'c'),
+            isTrue,
+          );
+          expect(
+            sideQuestCooldownActive([
+              msg(false, taken),
+              msg(true),
+              msg(false),
+              msg(true),
+              msg(false),
+              msg(true),
+            ], 'c'),
+            isFalse,
+            reason: 'more than four messages ago',
+          );
+          expect(
+            sideQuestCooldownActive([msg(true), msg(false, taken)], 'c'),
+            isFalse,
+            reason:
+                'the reply after the last user line is the one being redone',
+          );
+        },
+      );
+    },
+  );
+
+  // 2026-10-16, objectives that keep up part 6: a character feels and
+  // remembers how their own goals ended. Only their own wants count; the
+  // user's goals are story direction and the planner moves the mood itself.
+  group('rewards for the character\'s own goals', () {
+    Objective row(
+      String id, {
+      String origin = kObjectiveOriginCharacter,
+      String? status = kObjectiveStatusDone,
+      bool active = false,
+      int minute = 0,
+    }) => Objective(
+      id: id,
+      characterId: 'c',
+      objective: 'goal $id',
+      tasks: '[]',
+      active: active,
+      isPrimary: false,
+      checkFrequency: 3,
+      injectionDepth: 4,
+      createdAt: DateTime(2026),
+      origin: origin,
+      status: status,
+      endedAt: DateTime(2026, 1, 1, 12, minute),
+    );
+
+    test('a win makes them proud, more so for the main goal; letting go '
+        'disappoints mildly', () {
+      final main = objectiveRewardMood(
+        current: MoodState.neutral,
+        end: ObjectiveEnd.achieved,
+        primary: true,
+        goal: 'Throw a block party',
+      )!;
+      expect((main.label, main.intensity), ('proud', 'strong'));
+      expect(main.cause, 'pulled off: Throw a block party');
+      final side = objectiveRewardMood(
+        current: MoodState.neutral,
+        end: ObjectiveEnd.achieved,
+        primary: false,
+        goal: 'x',
+      )!;
+      expect(side.intensity, 'moderate');
+      final lost = objectiveRewardMood(
+        current: MoodState.neutral,
+        end: ObjectiveEnd.letGo,
+        primary: true,
+        goal: 'Learn the fiddle',
+      )!;
+      expect((lost.label, lost.intensity), ('disappointed', 'mild'));
+      expect(lost.cause, 'had to let go of: Learn the fiddle');
+    });
+
+    test('a feeling as strong or stronger stays; a weaker one is replaced', () {
+      const furious = MoodState(label: 'furious', intensity: 'strong');
+      const content = MoodState(label: 'content', intensity: 'moderate');
+      const wistful = MoodState(label: 'wistful', intensity: 'mild');
+      MoodState? win(MoodState now, {bool primary = false}) =>
+          objectiveRewardMood(
+            current: now,
+            end: ObjectiveEnd.achieved,
+            primary: primary,
+            goal: 'g',
+          );
+      expect(win(furious, primary: true), isNull);
+      expect(win(content), isNull, reason: 'equal strength keeps the mood');
+      expect(win(content, primary: true)?.label, 'proud');
+      expect(win(wistful)?.label, 'proud');
+    });
+
+    test('the diary line is in their voice', () {
+      expect(
+        objectiveDiaryLine(ObjectiveEnd.achieved, 'Throw a block party.'),
+        'I pulled it off: Throw a block party.',
+      );
+      expect(
+        objectiveDiaryLine(ObjectiveEnd.letGo, 'Learn the fiddle'),
+        'I had to give up on this: Learn the fiddle.',
+      );
+    });
+
+    test('the tally counts only their own ended goals, newest first', () {
+      final tally = objectiveTallyFrom('c', [
+        row('a', minute: 1),
+        row('b', status: kObjectiveStatusOvertaken, minute: 3),
+        row('c', minute: 2),
+        row('u', origin: kObjectiveOriginUser),
+        row('p', origin: kObjectiveOriginPlanner),
+        row('open', status: null, active: true),
+        row('aside', status: kObjectiveStatusDormant, active: true),
+      ]);
+      expect(tally.label, '2 landed · 1 let go');
+      expect(tally.recent, [
+        ObjectiveEnd.letGo,
+        ObjectiveEnd.achieved,
+        ObjectiveEnd.achieved,
+      ]);
+      expect(objectiveTallyFrom('c', const []).label, '');
+    });
+
+    test('the model hears a streak in words, only when three agree', () {
+      const won = ObjectiveEnd.achieved;
+      const lost = ObjectiveEnd.letGo;
+      expect(objectiveStreakLine([won, won]), isNull);
+      expect(objectiveStreakLine([won, lost, won]), isNull);
+      final up = objectiveStreakLine([won, won, won])!;
+      expect(up, contains('coming together'));
+      expect(objectiveStreakLine([lost, lost, lost]), contains('falling'));
+      expect(RegExp(r'\d').hasMatch(up), isFalse, reason: 'never a number');
+    });
+  });
+
+  // Issue #551: models kept pushing an open goal and replayed the same scene
+  // while the user steered elsewhere. Two brakes, both read from what is
+  // already stored, so a regen decides the same way.
+  group('a character stuck on a goal (issue #551)', () {
+    const goal = ['find the lighthouse keeper'];
+    ChatMessage user(String t) =>
+        ChatMessage(text: t, sender: 'User', isUser: true);
+    ChatMessage bot(String t, {String? id}) =>
+        ChatMessage(text: t, sender: 'Nia', isUser: false, characterId: id);
+    final pushes = [
+      user('want to get dinner?'),
+      bot('First we must find the lighthouse keeper.'),
+      user('the soup here is great'),
+      bot('The keeper is out there somewhere.'),
+      user('try the bread'),
+      bot('I keep thinking about the lighthouse.'),
+      user('so, dessert?'),
+    ];
+
+    test('three replies pushing the goal past the user rest it', () {
+      expect(objectiveFixated(messages: pushes, questTexts: goal), isTrue);
+      expect(
+        objectiveFixated(messages: pushes.sublist(0, 5), questTexts: goal),
+        isFalse,
+        reason: 'two replies are not a run',
+      );
+    });
+
+    test('the user bringing the goal up is engagement, not fixation', () {
+      expect(
+        objectiveFixated(
+          messages: [...pushes, user('fine, where is the keeper?')],
+          questTexts: goal,
+        ),
+        isFalse,
+      );
+    });
+
+    test('the goal rests for three replies after the run, then returns', () {
+      final after = [...pushes];
+      for (var i = 0; i < 2; i++) {
+        after.addAll([bot('Dessert sounds lovely.'), user('great')]);
+        expect(
+          objectiveFixated(messages: after, questTexts: goal),
+          isTrue,
+          reason: 'reply ${i + 1} after the run',
+        );
+      }
+      after.addAll([bot('Cake, then.'), user('yes')]);
+      expect(objectiveFixated(messages: after, questTexts: goal), isFalse);
+    });
+
+    test('in a group only the owner\'s replies count', () {
+      final group = [
+        user('dinner?'),
+        bot('We must find the lighthouse keeper.', id: 'nia'),
+        bot('Dinner sounds good.', id: 'bo'),
+        bot('The keeper waits.', id: 'nia'),
+        bot('Pass the salt.', id: 'bo'),
+        bot('The lighthouse, though.', id: 'nia'),
+        user('dessert?'),
+      ];
+      expect(
+        objectiveFixated(messages: group, questTexts: goal, speakerId: 'nia'),
+        isTrue,
+      );
+      expect(
+        objectiveFixated(messages: group, questTexts: goal, speakerId: 'bo'),
+        isFalse,
+      );
+    });
+
+    List<Map<String, dynamic>> twoSteps() => [
+      {'description': 'ask at the dock', 'completed': false},
+      {'description': 'walk the cliff path', 'completed': false},
+    ];
+    List<Map<String, dynamic>> sync(
+      List<Map<String, dynamic>> tasks, {
+      Set<int> done = const {},
+      String? next,
+      bool authored = false,
+    }) =>
+        decideObjectiveSync(
+          tasks: tasks,
+          verdict: ObjectiveSyncVerdict(
+            status: 'on_track',
+            stepsDone: done,
+            nextStep: next,
+          ),
+          stepsAuthored: authored,
+        ).newTasks ??
+        tasks;
+
+    test('the character\'s step unmoved for three checks is stuck; the '
+        'user\'s steps and a manual check never count', () {
+      var tasks = twoSteps();
+      for (var i = 0; i < kStuckStepChecks; i++) {
+        expect(stepIsStuck(tasks[0]), isFalse);
+        tasks = sync(tasks);
+      }
+      expect(stepIsStuck(tasks[0]), isTrue);
+      expect(stuckChecksOf(tasks[1]), 0, reason: 'only the open step');
+      expect(sync(twoSteps(), authored: true), twoSteps());
+      expect(
+        decideObjectiveSync(
+          tasks: twoSteps(),
+          verdict: const ObjectiveSyncVerdict(status: 'on_track'),
+          stepsAuthored: false,
+          countStuck: false,
+        ).isNoop,
+        isTrue,
+        reason: '"Check now" is not the story stalling',
+      );
+    });
+
+    test('a tick or a new step is progress; set aside is not a check', () {
+      var tasks = sync(sync(twoSteps()));
+      expect(stuckChecksOf(tasks[0]), 2);
+      final ticked = sync(tasks, done: {1});
+      expect(stuckChecksOf(ticked[1]), 0, reason: 'a tick is progress');
+      final rewritten = sync(tasks, next: 'wait for the ferry');
+      expect(rewritten[0]['description'], 'wait for the ferry');
+      expect(stuckChecksOf(rewritten[0]), 0, reason: 'a new step is fresh');
+      final aside = decideObjectiveSync(
+        tasks: tasks,
+        verdict: const ObjectiveSyncVerdict(status: 'dormant'),
+        stepsAuthored: false,
+      );
+      expect(aside.newTasks, isNull);
+    });
+
+    test('the goal check is told which step has not moved', () {
+      String prompt({required bool fixed}) => buildObjectiveSyncPrompt(
+        contextText: 'User: hi',
+        toolsMode: false,
+        items: [
+          ObjectiveSyncItem(
+            goal: 'find the keeper',
+            stepsFixed: fixed,
+            steps: const [('ask at the dock', 'stuck'), ('walk', 'open')],
+          ),
+        ],
+      );
+      expect(prompt(fixed: false), contains('1. [ ] ask at the dock (no '));
+      expect(
+        prompt(fixed: true),
+        isNot(contains('no progress')),
+        reason: 'the user\'s steps get no new next_step',
+      );
     });
   });
 }

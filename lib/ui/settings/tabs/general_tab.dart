@@ -18,19 +18,15 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import 'package:front_porch_ai/app_version.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/settings/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/settings/dialogs/prompt_save_dialog.dart';
 import 'package:front_porch_ai/ui/settings/dialogs/prompt_delete_dialog.dart';
-import 'package:front_porch_ai/ui/settings/dialogs/color_picker_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
-
-part 'general_tab.about.dart';
+import 'package:front_porch_ai/ui/settings/tabs/general_tab/general_tab.dart';
 
 /// Settings → General.
 class GeneralTab extends StatelessWidget {
@@ -38,32 +34,16 @@ class GeneralTab extends StatelessWidget {
 
   final TextEditingController systemPromptController;
 
-  /// Curated chat-suitable Google Fonts. ('' == app default, Inter.)
-  static const List<(String, String)> _chatFonts = [
-    ('Default (Inter)', ''),
-    ('Roboto', 'Roboto'),
-    ('Open Sans', 'Open Sans'),
-    ('Lato', 'Lato'),
-    ('Source Sans 3', 'Source Sans 3'),
-    ('Nunito', 'Nunito'),
-    ('Poppins', 'Poppins'),
-    ('Montserrat', 'Montserrat'),
-    ('Raleway', 'Raleway'),
-    ('Work Sans', 'Work Sans'),
-    ('DM Sans', 'DM Sans'),
-    ('Quicksand', 'Quicksand'),
-    ('Rubik', 'Rubik'),
-    ('Karla', 'Karla'),
-    ('Merriweather', 'Merriweather'),
-    ('Playfair Display', 'Playfair Display'),
-    ('Roboto Mono', 'Roboto Mono'),
-    ('Fira Code', 'Fira Code'),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
     final theme = Theme.of(context);
+    final shownPrompt = storageService.presetSettings.savedPrompts
+        .where(
+          (p) => p['content'] == storageService.generationSettings.systemPrompt,
+        )
+        .map((p) => p['name'])
+        .firstOrNull;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -108,31 +88,18 @@ class GeneralTab extends StatelessWidget {
             onChanged: (v) =>
                 storageService.uiSettings.setFollowStreamingReplies(v),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Dark Mode', style: theme.textTheme.titleMedium),
-              Switch(
-                value: Provider.of<StorageService>(context).uiSettings.isDark,
-                onChanged: (v) {
-                  Provider.of<StorageService>(
-                    context,
-                    listen: false,
-                  ).uiSettings.setIsDark(v);
-                },
-              ),
-            ],
-          ),
           const SizedBox(height: 16),
           if (UpdateService.isSupported) ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Auto-check for Updates',
-                  style: theme.textTheme.titleMedium,
+                Flexible(
+                  child: Text(
+                    'Auto-check for Updates',
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Consumer<UpdateService>(
                   builder: (context, updateService, _) => Switch(
                     value: updateService.autoCheckEnabled,
@@ -153,16 +120,25 @@ class GeneralTab extends StatelessWidget {
                         : () async {
                             final hasUpdate = await updateService
                                 .checkForUpdate();
-                            if (hasUpdate && context.mounted) {
+                            if (!context.mounted) return;
+                            if (hasUpdate) {
                               await UpdateDialog.show(context);
-                            } else if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('You are up to date.'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
+                              return;
                             }
+                            final error = updateService.checkError;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  error == null
+                                      ? 'You are up to date.'
+                                      : 'Update check failed ($error). '
+                                            'Try again later.',
+                                ),
+                                duration: Duration(
+                                  seconds: error == null ? 2 : 4,
+                                ),
+                              ),
+                            );
                           },
                     icon: isBusy
                         ? const SizedBox(
@@ -172,7 +148,11 @@ class GeneralTab extends StatelessWidget {
                           )
                         : const Icon(Icons.refresh, size: 18),
                     label: Text(
-                      isBusy ? 'Checking...' : 'Check for Updates Now',
+                      isBusy
+                          ? 'Checking...'
+                          : updateService.checkError != null
+                          ? 'Check failed, try again'
+                          : 'Check for Updates Now',
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.textSecondary(context),
@@ -185,131 +165,8 @@ class GeneralTab extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          SliderSetting(
-            label: 'Reading Size',
-            value: storageService.uiSettings.textScale,
-            min: 0.7,
-            max: 2.0,
-            onChanged: (val) => storageService.uiSettings.setTextScale(val),
-            divisions: 13,
-          ),
           const SizedBox(height: 16),
           const SpellCheckLanguageRow(),
-          const SizedBox(height: 24),
-          const SectionHeader('Chat Appearance'),
-          const SizedBox(height: 8),
-          ColorRow(
-            label: 'User Bubble',
-            color: storageService.uiSettings.globalUserBubbleColor,
-            onPressed: () => showColorPicker(
-              context,
-              storageService.uiSettings.globalUserBubbleColor,
-              (color) =>
-                  storageService.uiSettings.setGlobalUserBubbleColor(color),
-            ),
-          ),
-          ColorRow(
-            label: 'User Text',
-            color: storageService.uiSettings.globalUserTextColor,
-            onPressed: () => showColorPicker(
-              context,
-              storageService.uiSettings.globalUserTextColor,
-              (color) =>
-                  storageService.uiSettings.setGlobalUserTextColor(color),
-            ),
-          ),
-          ColorRow(
-            label: 'AI Bubble',
-            color: storageService.uiSettings.globalAiBubbleColor,
-            onPressed: () => showColorPicker(
-              context,
-              storageService.uiSettings.globalAiBubbleColor,
-              (color) =>
-                  storageService.uiSettings.setGlobalAiBubbleColor(color),
-            ),
-          ),
-          ColorRow(
-            label: 'AI Text',
-            color: storageService.uiSettings.globalAiTextColor,
-            onPressed: () => showColorPicker(
-              context,
-              storageService.uiSettings.globalAiTextColor,
-              (color) => storageService.uiSettings.setGlobalAiTextColor(color),
-            ),
-          ),
-          ColorRow(
-            label: 'Dialogue (Quoted)',
-            color: storageService.uiSettings.globalDialogueColor,
-            onPressed: () => showColorPicker(
-              context,
-              storageService.uiSettings.globalDialogueColor,
-              (color) =>
-                  storageService.uiSettings.setGlobalDialogueColor(color),
-            ),
-          ),
-          ColorRow(
-            label: 'Actions (*text*)',
-            color: storageService.uiSettings.globalActionColor,
-            onPressed: () => showColorPicker(
-              context,
-              storageService.uiSettings.globalActionColor,
-              (color) => storageService.uiSettings.setGlobalActionColor(color),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Global chat font — per-character overrides still win at render time
-          // (UiSettings.getChatFontFamily). Restored after a refactor left only
-          // a placeholder here; the setter had no other UI caller.
-          Row(
-            children: [
-              Text(
-                'Chat Font',
-                style: TextStyle(
-                  color: AppColors.textSecondary(context),
-                  fontSize: 13,
-                ),
-              ),
-              const Spacer(),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: DropdownButton<String>(
-                  // Clamp to a known item — a stored family not in the list
-                  // (older build / manual pref edit) would otherwise assert.
-                  value:
-                      _chatFonts.any(
-                        (f) =>
-                            f.$2 ==
-                            storageService.uiSettings.globalChatFontFamily,
-                      )
-                      ? storageService.uiSettings.globalChatFontFamily
-                      : '',
-                  isExpanded: true,
-                  dropdownColor: AppColors.cardOf(context),
-                  style: TextStyle(
-                    color: AppColors.textPrimary(context),
-                    fontSize: 13,
-                  ),
-                  underline: const SizedBox.shrink(),
-                  items: _chatFonts.map((font) {
-                    return DropdownMenuItem<String>(
-                      value: font.$2,
-                      child: Text(
-                        font.$1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: font.$2.isEmpty ? null : font.$2,
-                          color: AppColors.textPrimary(context),
-                          fontSize: 13,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) => storageService.uiSettings
-                      .setGlobalChatFontFamily(value ?? ''),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 24),
           const SectionHeader('Porch Life'),
           const SizedBox(height: 8),
@@ -338,16 +195,25 @@ class GeneralTab extends StatelessWidget {
                 storageService.realismSettings.setAdultThemesEnabled(v),
           ),
           const SizedBox(height: 8),
-          _buildPorchLifePointer(context),
+          const PorchLifePointerCard(),
           const SizedBox(height: 24),
-          const SectionHeader('Model Instructions'),
+          const SectionHeader('Fallback system prompt'),
+          const SizedBox(height: 8),
+          Text(
+            'Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.',
+            style: TextStyle(color: AppColors.textSecondary(context)),
+          ),
           const SizedBox(height: 8),
           // Prompt library row simplified for smallest (full chips/load/save use the extracted dialogs)
           Row(
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  initialValue: null,
+                  // Shows the saved prompt whose text is in the box, else
+                  // the hint: a preset chip or a hand edit must not leave
+                  // the last pick's name on show. The key re-seeds it.
+                  key: ValueKey(shownPrompt),
+                  initialValue: shownPrompt,
                   isExpanded: true,
                   hint: const Text(
                     'Load saved prompt...',
@@ -406,20 +272,23 @@ class GeneralTab extends StatelessWidget {
             spacing: 8,
             runSpacing: 4,
             children: [
-              _presetChip(
-                '📡 API Default',
-                defaultApiSystemPrompt,
-                storageService,
+              SystemPromptPresetChip(
+                label: '📡 API Default',
+                prompt: defaultApiSystemPrompt,
+                storage: storageService,
+                systemPromptController: systemPromptController,
               ),
-              _presetChip(
-                '🖥️ KoboldCPP',
-                defaultKoboldSystemPrompt,
-                storageService,
+              SystemPromptPresetChip(
+                label: '🖥️ KoboldCPP',
+                prompt: defaultKoboldSystemPrompt,
+                storage: storageService,
+                systemPromptController: systemPromptController,
               ),
-              _presetChip(
-                '👥 Group Chat',
-                defaultGroupSystemPrompt,
-                storageService,
+              SystemPromptPresetChip(
+                label: '👥 Group Chat',
+                prompt: defaultGroupSystemPrompt,
+                storage: storageService,
+                systemPromptController: systemPromptController,
               ),
             ],
           ),
@@ -429,7 +298,8 @@ class GeneralTab extends StatelessWidget {
             maxLines: 5,
             style: theme.textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: 'System Prompt...',
+              labelText: 'Fallback system prompt',
+              hintText: 'Used when a character has no system prompt...',
               hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
               filled: true,
               fillColor: AppColors.cardOf(context),
@@ -440,9 +310,12 @@ class GeneralTab extends StatelessWidget {
             onChanged: (val) =>
                 storageService.generationSettings.setSystemPrompt(val),
           ),
-
+          const SizedBox(height: 24),
+          const GlobalPromptAdditions(),
+          const SizedBox(height: 24),
           const SectionHeader('About & License'),
-          _buildAboutSection(context),
+          const SizedBox(height: 8),
+          const AboutLicenseCard(),
         ],
       ),
     );

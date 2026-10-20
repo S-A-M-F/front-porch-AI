@@ -128,7 +128,9 @@ class SummarySectionState extends State<SummarySection> {
                       value: enabled,
                       onChanged: (val) =>
                           storage.memorySettings.setJournalEnabled(val),
-                      activeTrackColor: accent,
+                      // Switches are porch amber app-wide; the sage accent
+                      // stays on the section chrome.
+                      activeTrackColor: AppColors.porchAmberOf(context),
                     ),
                   ),
                 ),
@@ -285,11 +287,17 @@ class SummarySectionState extends State<SummarySection> {
               ],
             ),
           ),
-          if (widget.chatService.summaryLastIndex > 0)
+          // summaryLastIndex is the Journal pass cursor: it moves on any
+          // pass that comes back, even one where the model skipped the
+          // recap. So it says how far the Journal has read, never that the
+          // recap was updated, and stays hidden while there is no recap.
+          if (widget.chatService.summaryLastIndex > 0 &&
+              widget.chatService.summary.trim().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 24),
               child: Text(
-                'Last updated at message #${widget.chatService.summaryLastIndex}',
+                'Journal has read up to message '
+                '#${widget.chatService.summaryLastIndex}',
                 style: TextStyle(
                   fontSize: 10,
                   color: AppColors.textTertiary(context),
@@ -378,7 +386,7 @@ class SummarySectionState extends State<SummarySection> {
                           child: FittedBox(
                             child: Switch(
                               value: storage.memorySettings.journalReviewFirst,
-                              activeThumbColor: accent,
+                              activeTrackColor: AppColors.porchAmberOf(context),
                               onChanged: (val) => storage.memorySettings
                                   .setJournalReviewFirst(val),
                             ),
@@ -414,7 +422,7 @@ class SummarySectionState extends State<SummarySection> {
                               value: storage
                                   .memorySettings
                                   .importLlmertaPorchMemories,
-                              activeThumbColor: accent,
+                              activeTrackColor: AppColors.porchAmberOf(context),
                               onChanged: (val) => storage.memorySettings
                                   .setImportLlmertaPorchMemories(val),
                             ),

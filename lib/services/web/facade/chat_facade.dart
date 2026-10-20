@@ -16,25 +16,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:path/path.dart' as p;
-
-import 'package:front_porch_ai/models/models.dart';
-import 'package:front_porch_ai/services/chat/chat.dart'
-    show kNeedsUnaffectedMeta;
 import 'package:front_porch_ai/services/image/comfy_gguf_city96_gate.dart'
     show withoutCity96Ask;
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/chat/chat.dart';
 import 'package:front_porch_ai/services/web/facade/chat_realism_read.dart';
 import 'package:front_porch_ai/services/web/facade/chat_session_facade.dart';
 import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
-import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
-
-part 'chat_facade_history.dart';
-part 'chat_facade_state.dart';
 
 /// Thin adapter over [ChatService] for the rewritten web server. Mirrors the
 /// legacy chat handlers' JSON contract and pushes a `chat_updated` signal over
@@ -77,17 +68,45 @@ class ChatFacade {
     _notify,
   );
 
+  late final ChatStateSnapshot _snapshot = ChatStateSnapshot(
+    _chat,
+    _characters,
+    _personas,
+    _hub,
+    _llm,
+    _realism,
+  );
+
+  late final ChatHistoryActions _history = ChatHistoryActions(
+    _chat,
+    _hub,
+    _notify,
+    resolveSavedImage: _resolveSavedImage,
+  );
+
+  late final ChatPersonas _personaOps = ChatPersonas(_personas, _chat, _notify);
+
+  /// Full chat state payload (matches legacy `/api/chat/state`).
+  Map<String, dynamic> state() => _snapshot.build();
+
   /// Context Budget payload (desktop ContextViewerDialog parity): per-section
   /// token estimate + the REAL text each section contributed to the last
   /// assembled prompt. Additive endpoint — old clients simply never call it.
-  Map<String, dynamic> contextBudget() {
-    final texts = _chat.lastPromptSections;
+  /// The chat's last send, or with [index] the prompt record of that reply
+  /// (null when the reply has none).
+  Map<String, dynamic>? contextBudget({int? index}) {
+    final snap = index == null ? null : _chat.replyContextSnapshot(index);
+    if (index != null && snap == null) return null;
+    final texts = snap?.sections ?? _chat.lastPromptSections;
+    final at = snap != null ? snap.assembledAt : _chat.promptBudgetAssembledAt;
     return {
-      'contextLimit': _chat.contextSize,
-      'source': _chat.promptBudgetSource.name,
-      'assembledAt': _chat.promptBudgetAssembledAt?.toIso8601String(),
+      'contextLimit': snap?.contextLimit ?? _chat.contextSize,
+      'source': snap != null ? 'reply' : _chat.promptBudgetSource.name,
+      'assembledAt': at?.toIso8601String(),
+      if (snap != null) 'textPruned': snap.sections.isEmpty,
+      'droppedMessages': snap?.droppedMessages ?? _chat.promptDroppedMessages,
       'sections': [
-        for (final e in _chat.lastPromptBudget.entries)
+        for (final e in (snap?.budget ?? _chat.lastPromptBudget).entries)
           {'label': e.key, 'tokens': e.value, 'text': texts[e.key] ?? ''},
       ],
     };
@@ -96,7 +115,7 @@ class ChatFacade {
   /// Rebuild a live estimate from the open chat (no model call).
   Future<Map<String, dynamic>> refreshContextBudget() async {
     await _chat.estimateContextBudgetNow();
-    return contextBudget();
+    return contextBudget()!;
   }
 
   /// Re-probe the current backend+model's tool-calling support (the web
@@ -106,148 +125,11 @@ class ChatFacade {
     return _chat.toolSupportJson;
   }
 
-  /// The unified cast as JSON. Each entry carries enough to render a roster
-  /// (avatar, role, emotion, next-up) and to scope the sidebar via [id]
-  /// ([groupMemberStoreId] in groups). Avatars resolve to the character endpoint for host/guests
-  /// and the group-member endpoint for members.
-  List<Map<String, dynamic>> _castJson() {
-    final groupId = _chat.activeGroup?.id;
-    final nextDbId = _chat.nextCharacter?.dbId;
-    final isGroup = _chat.isGroupMode;
-    return _chat.cast.map((p) {
-      final card = p.card;
-      final avatarUrl = (isGroup && groupId != null)
-          ? '/api/groups/$groupId/members/${card.dbId}/avatar'
-          : '/api/characters/${card.dbId}/avatar';
-      return {
-        'id': p.id,
-        'dbId': card.dbId,
-        'name': p.name,
-        'isHost': p.isHost,
-        'isLite': p.isLite,
-        'realismEnabled': p.realismEnabled,
-        'emotion': !p.realismEnabled
-            ? null
-            : (isGroup
-                  ? _chat.getEmotionForGroupCharacter(card)
-                  : _chat.characterEmotion),
-        'isNext': card.dbId != null && card.dbId == nextDbId,
-        'hasAvatar': card.imagePath != null && card.imagePath!.isNotEmpty,
-        'avatarUrl': avatarUrl,
-      };
-    }).toList();
-  }
-
   /// Realism for a single cast participant (focus-scoped sidebar). Delegates to
   /// the [ChatRealismRead] leaf, which co-locates the host snapshot and the
   /// per-member branch (the 1:1-vs-group parity pair).
   Map<String, dynamic>? participantRealism(String participantId) =>
       _realism.participantRealism(participantId);
-
-  /// Extract the per-message Realism chip deltas from a message's active-swipe
-  /// metadata (the same keys the desktop bubble reads). Bond and trust keep
-  /// a recorded 0. Arousal still omits zero. A missing key stays omitted.
-  Map<String, dynamic>? _messageChips(Map<String, dynamic>? md, int index) {
-    if (md == null) return null;
-    final out = <String, dynamic>{};
-    for (final entry in const {
-      'bond_delta': 'bondDelta',
-      'trust_delta': 'trustDelta',
-    }.entries) {
-      final v = md[entry.key];
-      if (v is int) out[entry.value] = v;
-    }
-    final arousal = md['arousal_delta'];
-    if (arousal is int && arousal != 0) out['arousalDelta'] = arousal;
-    // A scored reply with no stored bond/trust is a dropped zero. The
-    // bubble says "unchanged" instead of looking like the judge never ran.
-    final scored =
-        (md['emotion_label'] is String &&
-            (md['emotion_label'] as String).isNotEmpty) ||
-        md['needs_deltas'] is Map ||
-        md[kNeedsUnaffectedMeta] == true ||
-        (md['time_passed'] is String &&
-            (md['time_passed'] as String).isNotEmpty) ||
-        (md['time_skip_to'] is String &&
-            (md['time_skip_to'] as String).isNotEmpty) ||
-        md['realism_verification'] is Map;
-    if (scored) {
-      out.putIfAbsent('bondDelta', () => 0);
-      out.putIfAbsent('trustDelta', () => 0);
-    }
-    for (final entry in const {
-      'emotion_label': 'emotionLabel',
-      'bond_reason': 'bondReason',
-      'trust_reason': 'trustReason',
-      'time_skip_to': 'timeSkipTo',
-      'time_passed': 'timePassed',
-      'chance_time_event': 'chanceTimeEvent',
-    }.entries) {
-      final v = md[entry.key];
-      if (v is String && v.isNotEmpty) out[entry.value] = v;
-    }
-    final needs = md['needs_deltas'];
-    if (needs is Map) {
-      final nz = <String, dynamic>{};
-      needs.forEach((k, v) {
-        // NeedsSimulation.computeNeedsDeltasWithReasons stores {delta, reason}
-        // per need; tolerate a plain int too. Carry BOTH the signed delta and
-        // the reason so the web chip can show the same hover explanation the
-        // desktop bubble does. (Map-not-int is why needs chips never rendered
-        // on the web before — see the chip parser fix.)
-        final delta = v is int
-            ? v
-            : (v is Map && v['delta'] is int ? v['delta'] as int : 0);
-        if (delta == 0) return;
-        final reason = (v is Map && v['reason'] is String)
-            ? (v['reason'] as String)
-            : '';
-        nz[k.toString()] = {'delta': delta, 'reason': reason};
-      });
-      if (nz.isNotEmpty) out['needsDeltas'] = nz;
-    }
-    // Director-redo affordances (mirrors message_bubble.dart): the message can
-    // be reprocessed when the service resolver is non-null (Needs on, at
-    // least one need enabled, group speaker resolved). The client still
-    // gates the button on last + not generating.
-    final target = _chat.reprocessNeedsTargetFor(index);
-    if (target != null) {
-      out['needsReprocessable'] = true;
-      out['enabledNeeds'] = target.enabled;
-      out['needsSpeaker'] = target.speaker;
-    }
-    if (md['needs_deltas_pre_reprocess'] is Map) out['needsRevertable'] = true;
-    if (md[kNeedsUnaffectedMeta] == true) out['needsUnaffected'] = true;
-    final search = md['search_receipt'];
-    if (search is Map) {
-      final q = (search['query'] as String?)?.trim() ?? '';
-      if (q.isNotEmpty) {
-        out['searchQuery'] = q;
-        out['searchOk'] = search['ok'] == true;
-      }
-    }
-    final wiki = md['wiki_receipt'];
-    if (wiki is Map) {
-      final q = (wiki['query'] as String?)?.trim() ?? '';
-      final webQuery = (out['searchQuery'] as String?) ?? '';
-      if (q.isNotEmpty && q != webQuery) {
-        out['wikiQuery'] = q;
-        out['wikiOk'] = wiki['ok'] == true;
-      }
-    }
-    final toolReceipt = md['tool_receipt'];
-    if (toolReceipt is Map) {
-      final tool = (toolReceipt['tool'] as String?)?.trim() ?? '';
-      if (tool.isNotEmpty) {
-        out['toolName'] = tool;
-        out['toolOk'] = toolReceipt['ok'] == true;
-        // Older phone bundles read mcpTool; keep the keys until they age out.
-        out['mcpTool'] = tool;
-        out['mcpOk'] = toolReceipt['ok'] == true;
-      }
-    }
-    return out.isEmpty ? null : out;
-  }
 
   /// Select the active character by its DB id. Returns false if not found.
   Future<bool> select(String characterId) async {
@@ -267,6 +149,39 @@ class ChatFacade {
     await _chat.loadOlderHistory();
     _notify();
     return true;
+  }
+
+  /// ⌘F find-in-chat: engine scan of the open transcript — the single
+  /// semantic truth both surfaces highlight against (desktop re-scans
+  /// locally through the same engine). Awaits the history backfill, so the
+  /// bar shows its wait state while this resolves.
+  Future<Map<String, dynamic>> searchTranscript(
+    String query, {
+    bool regex = false,
+    bool caseSensitive = false,
+  }) async {
+    final outcome = await _chat.findInTranscript(
+      query,
+      regexMode: regex,
+      caseSensitive: caseSensitive,
+    );
+    return {
+      'bad': outcome.badPattern,
+      'stale': outcome.stale,
+      'capped': outcome.capped,
+      'slow': outcome.tooSlow,
+      'totalMessages': outcome.totalMessages,
+      'matches': [
+        for (final m in outcome.matches)
+          {
+            'messageIndex': m.messageIndex,
+            'region': m.region,
+            'occurrence': m.occurrenceInRegion,
+            'start': m.startInRegion,
+            'end': m.endInRegion,
+          },
+      ],
+    };
   }
 
   /// Open a group chat as the active conversation. Returns false if the group
@@ -345,10 +260,71 @@ class ChatFacade {
   /// opens via the chance_time WS edge (isAwaitingChanceTime).
   bool requestChanceTimeSpin() => _chat.requestManualChanceTime();
 
-  /// Escape hatch for the realism-processing overlay's "Cancel Realism" button —
-  /// aborts an in-flight Realism eval (mirrors the desktop overlay action).
+  /// The realism-processing overlay's "Stop this reply" button — aborts an
+  /// in-flight Realism eval and the reply (mirrors the desktop overlay).
   void cancelRealismEval() {
     _chat.cancelRealismEval();
+    _notify();
+  }
+
+  /// The UNDO after an `/exit` or a step out to direct (the desktop
+  /// SnackBar's twin).
+  Future<void> undoLastExit() async {
+    await _chat.undoLastExit();
+    _notify();
+  }
+
+  /// Director Mode's auto-chat Play/Resume, Pause and Stop (the desktop
+  /// input row's twin). [pause] keeps the run's turns for a resume.
+  void setAutoPlay(bool on, {bool pause = false}) {
+    if (on) {
+      _chat.startAutoPlay();
+    } else if (pause) {
+      _chat.pauseAutoPlay();
+    } else {
+      _chat.stopAutoPlay();
+    }
+    _notify();
+  }
+
+  /// The auto-chat delay (the desktop Director panel slider's twin).
+  Future<void> setDirectorDelay(double seconds) async {
+    await _chat.setSavedDirectorDelay(seconds);
+    _notify();
+  }
+
+  Future<void> setDirectorTurnBudget(int turns) async {
+    await _chat.setSavedDirectorTurnBudget(turns);
+    _notify();
+  }
+
+  Future<void> setDirectorGoal(String text) async {
+    await _chat.setDirectorGoal(text);
+    _notify();
+  }
+
+  Future<void> setDirectorWhisper(String memberId, String text) async {
+    await _chat.setDirectorWhisper(memberId, text);
+    _notify();
+  }
+
+  /// The roster's Away / Back (desktop's presence word twin).
+  Future<bool> setMemberAway(String memberId, {required bool away}) async {
+    final changed = await _chat.setGroupMemberAway(memberId, away: away);
+    if (changed) _notify();
+    return changed;
+  }
+
+  /// The stopped-reply notice's dismiss (desktop's ✕ twin).
+  void dismissStoppedReplyNotice() {
+    _chat.dismissStoppedReplyNotice();
+    _notify();
+  }
+
+  /// The goal-check overlay's "Skip goal check" (mirrors the desktop button):
+  /// stops only that check; the reply still comes.
+  void skipObjectiveCheck() {
+    _chat.skipObjectiveCheck();
     _notify();
   }
 
@@ -363,7 +339,24 @@ class ChatFacade {
     _notify();
   }
 
+  /// The words the model weighed in reply [index] (KoboldCpp only).
+  Map<String, dynamic> tokenAlternatives(int index) =>
+      _chat.tokenAlternativesJson(index);
+
+  /// Rewrites reply [index] from [place] with [word]; null once started,
+  /// otherwise why it cannot.
+  String? pickTokenAlternative(int index, int place, String word) {
+    final pick = _chat.tokenAltPick(index, place, word);
+    if (pick.at == null) return pick.refusal;
+    withoutCity96Ask(() => _chat.rewriteFromAlternative(index, pick.at!, word));
+    _notify();
+    return null;
+  }
+
   String? lookupCommandBlock(String text) => _chat.lookupCommandBlock(text);
+
+  /// Why a send would be dropped right now (see ChatService), or null.
+  String? get sendBusyReason => _chat.sendBusyReason;
 
   /// Why a message cannot be sent now (the speed test has the engine), as
   /// the desktop's composer is told; null when it can.
@@ -374,6 +367,119 @@ class ChatFacade {
     withoutCity96Ask(_chat.continueGeneration);
     _notify();
   }
+
+  // ── History: swipe, edit/delete, Needs redo, images, lorebook ─────────
+  Map<String, dynamic> variants(int messageIndex) =>
+      _history.variants(messageIndex);
+
+  Future<void> selectVariant(int messageIndex, int variantIndex) =>
+      _history.selectVariant(messageIndex, variantIndex);
+
+  void impersonate(String prefix) => _history.impersonate(prefix);
+
+  Future<bool> reprocessNeeds(
+    int index,
+    String critique, {
+    Set<String> onlyNeeds = const <String>{},
+  }) => _history.reprocessNeeds(index, critique, onlyNeeds: onlyNeeds);
+
+  Future<FeelingsRescore> reprocessFeelings(int index) =>
+      _history.reprocessFeelings(index);
+
+  Future<bool> revertNeedsReprocess(int index) =>
+      _history.revertNeedsReprocess(index);
+
+  void swipe(int messageIndex, int direction, {String? critique}) =>
+      _history.swipe(messageIndex, direction, critique: critique);
+
+  void edit(int index, String text) => _history.edit(index, text);
+
+  void delete(int index) => _history.delete(index);
+
+  void resolveImageReview(String? prompt) =>
+      _history.resolveImageReview(prompt);
+
+  Future<String?> craftStudioPrompt(String subject, String instruction) =>
+      _history.craftStudioPrompt(subject, instruction);
+
+  Future<bool> insertImage(String filename, {String prompt = ''}) =>
+      _history.insertImage(filename, prompt: prompt);
+
+  void setAuthorNote(String note, {int? strength}) =>
+      _history.setAuthorNote(note, strength: strength);
+
+  Map<String, dynamic> chatLorebookRows() => _history.chatLorebookRows();
+
+  Future<bool> setChatLorebook(dynamic rowsJson) =>
+      _history.setChatLorebook(rowsJson);
+
+  Future<bool> setThemeOverrides(Map<String, dynamic> json) =>
+      _history.setThemeOverrides(json);
+
+  List<String> lorePreview(String draft) => _history.lorePreview(draft);
+
+  // ── Per-chat prompt source (desktop Chat Settings + new-chat picker) ────
+  /// The new-chat picker's answer; a null [preset] is a dismiss. False when
+  /// no 1:1 chat is open.
+  Future<bool> answerPromptPicker({
+    String? preset,
+    bool remember = false,
+    bool askEveryChat = false,
+  }) async {
+    if (_chat.activeGroup != null || _chat.activeCharacter == null) {
+      return false;
+    }
+    await _chat.applyPromptSourceChoice(
+      preset: preset,
+      remember: remember,
+      askEveryChat: askEveryChat,
+    );
+    return true;
+  }
+
+  Future<bool> setPromptSource({String? source, bool? amendments}) =>
+      _chat.setPromptSource(source: source, amendments: amendments);
+
+  // ── Personas ────────────────────────────────────────────────────────────
+  List<Map<String, dynamic>> personas() => _personaOps.personas();
+
+  Future<bool> setPersona(String id) => _personaOps.setPersona(id);
+
+  Future<bool> setChatPersona(String id) => _personaOps.setChatPersona(id);
+
+  Map<String, dynamic>? personaDetail(String id) =>
+      _personaOps.personaDetail(id);
+
+  Future<bool> createPersona(Map<String, dynamic> f) =>
+      _personaOps.createPersona(f);
+
+  Future<bool> updatePersona(String id, Map<String, dynamic> f) =>
+      _personaOps.updatePersona(id, f);
+
+  Future<bool> deletePersona(String id) => _personaOps.deletePersona(id);
+
+  // ── Sessions ────────────────────────────────────────────────────────────
+  /// All saved conversations. See [ChatSessionFacade.list].
+  Future<List<Map<String, dynamic>>> sessions({
+    String? characterId,
+    String? groupId,
+  }) => _sessions.list(characterId: characterId, groupId: groupId);
+
+  /// New / load / delete. See [ChatSessionFacade.apply].
+  Future<String?> session({
+    String? action,
+    String? sessionId,
+    bool startReplacement = true,
+  }) => _sessions.apply(
+    action: action,
+    sessionId: sessionId,
+    startReplacement: startReplacement,
+  );
+
+  /// Fork at [messageIndex]. See [ChatSessionFacade.fork].
+  Future<String?> fork(int messageIndex) => _sessions.fork(messageIndex);
+
+  String? get currentSessionId => _chat.currentSessionId;
 
   void _notify() => _hub?.broadcastChatUpdate();
 }

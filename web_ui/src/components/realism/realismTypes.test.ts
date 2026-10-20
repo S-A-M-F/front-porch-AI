@@ -18,10 +18,25 @@ import { describe, expect, it } from 'vitest';
 
 import {
   REALISM_DEFAULTS,
+  PCD_OPTIONS,
+  PCD_RATE_RARE,
+  PCD_RATE_SOMETIMES,
+  RECOVERY_PRESETS,
   chipsToInventory,
   compactGreetingPairs,
   inventoryToChips,
+  normalizeSex,
   realismFromDetail,
+  recoveryClockOffHint,
+  recoveryFromDetail,
+  recoveryFromPreset,
+  recoveryPresetKey,
+  recoveryResolvesLine,
+  recoverySoftGateHint,
+  recoverySuggestionLine,
+  recoveryWithMinutes,
+  recoveryWithPcdMood,
+  suggestRecoveryPresetKey,
 } from './realismTypes';
 
 describe('inventory survives detail -> form -> save body', () => {
@@ -200,5 +215,134 @@ describe('compactGreetingPairs keeps seed on the surviving greet', () => {
     );
     expect(paired.greetings).toEqual(['Come in.', 'Get out.']);
     expect(paired.seeds).toEqual([null, { characterEmotion: 'furious' }]);
+  });
+});
+
+// Recovery overhaul PR 2 — the mirror of recovery_profile.dart's guards.
+// The browser cannot call Dart, so decision 3's table and every copy line
+// are duplicated HERE; these pins are what keep the two halves from
+// drifting. Edit one side, and this file names the other.
+describe('the recovery mirror matches the Dart source of truth', () => {
+  it('carries decision 3\'s table in menu order', () => {
+    expect(RECOVERY_PRESETS.map((p) => p.key)).toEqual([
+      'auto',
+      'none',
+      'personality',
+      'short',
+      'typical',
+      'long',
+      'custom',
+    ]);
+    const byKey = Object.fromEntries(RECOVERY_PRESETS.map((p) => [p.key, p]));
+    expect(byKey['none'].recoveryMode).toBe('soft');
+    expect(byKey['none'].recoveryMinutes).toBeNull();
+    expect(byKey['personality'].recoveryMode).toBe('hard');
+    expect(byKey['personality'].recoveryMinutes).toBeNull();
+    expect(byKey['short'].recoveryMinutes).toBe(30);
+    expect(byKey['typical'].recoveryMinutes).toBe(90);
+    expect(byKey['long'].recoveryMinutes).toBe(180);
+  });
+
+  it('round-trips preset key and slider the way the menu shows them', () => {
+    for (const key of ['auto', 'none', 'personality', 'short', 'typical', 'long']) {
+      expect(recoveryPresetKey(recoveryFromPreset(key))).toBe(key);
+    }
+    expect(recoveryPresetKey({ recoveryMode: 'hard', recoveryMinutes: 45 })).toBe('custom');
+    expect(recoveryWithMinutes({ recoveryMode: 'soft', recoveryMinutes: null }, 50)).toEqual({
+      recoveryMode: 'hard',
+      recoveryMinutes: 50,
+      pcdMood: 'off',
+    });
+    expect(recoveryWithMinutes({ recoveryMode: 'hard', recoveryMinutes: 90 }, -5).recoveryMinutes).toBe(0);
+    expect(recoveryWithMinutes({ recoveryMode: 'hard', recoveryMinutes: 90 }, 500).recoveryMinutes).toBe(180);
+    // The pcd dial is orthogonal — the slider switch and the preset switch
+    // both carry it through untouched.
+    expect(
+      recoveryWithMinutes({ recoveryMode: 'hard', recoveryMinutes: 90, pcdMood: 'rare' }, 45).pcdMood,
+    ).toBe('rare');
+    expect(recoveryFromPreset('short', 'sometimes').pcdMood).toBe('sometimes');
+    expect(recoveryFromPreset('auto', 'sometimes').pcdMood).toBe('sometimes');
+    expect(recoveryFromPreset('glitch', 'rare').pcdMood).toBe('rare');
+  });
+
+  it('mirrors the pcd dial table byte-for-byte', () => {
+    expect(PCD_OPTIONS.map((o) => o.key)).toEqual(['off', 'rare', 'sometimes']);
+    expect(PCD_OPTIONS.map((o) => o.label)).toEqual([
+      'Off',
+      'Rare — a grey drift after some climaxes (~15%)',
+      'Sometimes — often a grey drift after (~35%)',
+    ]);
+    // The percent numbers in the labels must track the rate constants —
+    // same law as the Dart guard on kPcdOptions.
+    expect(PCD_OPTIONS[1].label).toContain(`~${Math.round(PCD_RATE_RARE * 100)}%`);
+    expect(PCD_OPTIONS[2].label).toContain(`~${Math.round(PCD_RATE_SOMETIMES * 100)}%`);
+  });
+
+  it('reads pcd leniently and keeps the dial off unless asked', () => {
+    expect(recoveryFromDetail({ recoveryMode: 'hard', recoveryMinutes: 90 }).pcdMood).toBe('off');
+    expect(recoveryFromDetail({ pcdMood: 'rare' }).pcdMood).toBe('rare');
+    expect(recoveryFromDetail({ pcdMood: ' SOMETIMES ' }).pcdMood).toBe('sometimes');
+    expect(recoveryFromDetail({ pcdMood: 'always' }).pcdMood).toBe('off');
+    expect(recoveryWithPcdMood({ recoveryMode: 'hard', recoveryMinutes: 30 }, 'rare').recoveryMinutes).toBe(30);
+    expect(recoveryWithPcdMood({ recoveryMode: 'hard', recoveryMinutes: 30 }, 'glitch').pcdMood).toBe('off');
+  });
+
+  it('reads sex leniently in the same order as Dart', () => {
+    expect(normalizeSex('nonbinary female')).toBe('other');
+    expect(normalizeSex('female')).toBe('female');
+    expect(normalizeSex('male, she/her')).toBe('female');
+    expect(normalizeSex('he/him')).toBe('male');
+    expect(normalizeSex('f')).toBe('female');
+    expect(normalizeSex('m')).toBe('male');
+    expect(normalizeSex('glitch')).toBe('other');
+    expect(normalizeSex('  ')).toBe('');
+  });
+
+  it('coerces a detail payload like the Dart reader does', () => {
+    expect(recoveryFromDetail(null)).toEqual({
+      recoveryMode: 'auto',
+      recoveryMinutes: null,
+      pcdMood: 'off',
+    });
+    expect(recoveryFromDetail('insatiable')).toEqual({
+      recoveryMode: 'auto',
+      recoveryMinutes: null,
+      pcdMood: 'off',
+    });
+    expect(recoveryFromDetail({ recoveryMode: 'soft', recoveryMinutes: 30 }).recoveryMinutes).toBeNull();
+    expect(recoveryFromDetail({ recoveryMode: 'hard', recoveryMinutes: 900 }).recoveryMinutes).toBe(180);
+    expect(recoveryFromDetail({ recoveryMode: 'hard', recoveryMinutes: '90' }).recoveryMinutes).toBe(90);
+    expect(recoveryFromDetail({ recoveryMode: 'sometimes', recoveryMinutes: 90 }).recoveryMinutes).toBeNull();
+  });
+
+  it('suggests only on a clean signal, and never silently', () => {
+    expect(suggestRecoveryPresetKey(['insatiable, always ready'])).toBe('none');
+    expect(suggestRecoveryPresetKey(['slow to warm up'])).toBe('long');
+    expect(suggestRecoveryPresetKey(['cuddling'], ['low sex drive things'])).toBe('long');
+    expect(suggestRecoveryPresetKey(['insatiable', 'but slow to warm'])).toBeNull();
+    expect(suggestRecoveryPresetKey(['reading'])).toBeNull();
+    expect(recoverySuggestionLine('none')).toContain('"None / multiorgasmic"');
+    expect(recoverySuggestionLine('none')).toContain('overrides the personality judge');
+    expect(recoverySuggestionLine(null)).toBeNull();
+  });
+
+  it('tells the same truth about what the engine does', () => {
+    expect(recoveryResolvesLine({ recoveryMode: 'auto', recoveryMinutes: null }, '')).toContain(
+      'Auto → hard lock (no structured sex',
+    );
+    expect(
+      recoveryResolvesLine({ recoveryMode: 'hard', recoveryMinutes: 90 }, 'male'),
+    ).toContain("90 min fixed (replaces the judge's number)");
+    expect(recoveryResolvesLine({ recoveryMode: 'soft', recoveryMinutes: null }, 'female')).toContain(
+      'tenderness window halves touch gains',
+    );
+    expect(recoveryClockOffHint(90)).toContain('90 min ≈ 6 replies');
+    expect(recoveryClockOffHint(30)).toContain('2 replies');
+    expect(recoveryClockOffHint(null)).toContain('each reply of theirs is 15');
+    // Byte-identical with recoverySoftGateHint() in recovery_profile.dart —
+    // the soft gate shows this instead of the minutes slider.
+    expect(recoverySoftGateHint()).toContain('no length to set');
+    expect(recoverySoftGateHint()).toContain('~15 min tenderness window is fixed');
+    expect(recoverySoftGateHint()).not.toContain("judge's length");
   });
 });

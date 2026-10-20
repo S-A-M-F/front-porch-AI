@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
+import 'story_when.dart';
 // memory_service.dart is not exported by the curated services.dart barrel, so
 // this one stays a direct import (documented exemption).
 import 'package:front_porch_ai/services/memory_service.dart';
@@ -106,7 +107,11 @@ class JournalInjection {
     final sessionId = getSessionId();
     if (sessionId == null || characterId.isEmpty) return empty;
 
-    final cards = await store.cardsFor(sessionId, characterId);
+    final today = getCurrentStoryDay();
+    final cards = [
+      for (final c in await store.cardsFor(sessionId, characterId))
+        cooledForStoryDay(c, today),
+    ];
     if (cards.isEmpty) return empty;
 
     final currentEmotion = getCurrentEmotion();
@@ -154,7 +159,7 @@ class JournalInjection {
       }
       for (final card in lexical) {
         if (JournalPhysics.isBirthdayCard(card)) continue;
-        await store.rewarmCard(card);
+        await store.rewarmCard(card, storyDay: getCurrentStoryDay());
       }
       if (lexical.isNotEmpty) {
         debugPrint(
@@ -372,7 +377,7 @@ class JournalInjection {
         .map((s) => s.$1)
         .toList();
     for (final card in picked) {
-      await store.rewarmCard(card);
+      await store.rewarmCard(card, storyDay: getCurrentStoryDay());
     }
     if (picked.isNotEmpty) {
       debugPrint(
@@ -414,20 +419,7 @@ class JournalInjection {
   String _when(JournalMemoryData card) {
     final (day, clock) = JournalStore.stampOf(card);
     if (day == null) return '';
-    final date = StoryClock.dateOnly(
-      getStoryStartDate(),
-    ).add(Duration(days: day - 1));
-    final weekday = StoryClock.weekdayName(date);
-    final period = clock == null
-        ? ''
-        : ' ${StoryClock.periodForHour(clock.hour).replaceAll('_', ' ')}';
-    final delta = getCurrentStoryDay() - day;
-    final ago = switch (delta) {
-      <= 0 => 'earlier today',
-      1 => 'yesterday',
-      < 14 => '$delta days ago',
-      _ => '${(delta / 7).round()} weeks ago',
-    };
-    return ' · Day $day, $weekday$period — $ago';
+    final label = storyDayLabel(day, getStoryStartDate(), clock: clock);
+    return ' · $label — ${storyDaysAgo(getCurrentStoryDay() - day)}';
   }
 }

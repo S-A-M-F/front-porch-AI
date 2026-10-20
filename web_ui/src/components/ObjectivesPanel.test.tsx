@@ -141,4 +141,63 @@ describe('ObjectivesPanel', () => {
       description: 'Look under the table',
     });
   });
+
+  // 2026-10-16, objectives that keep up: a goal the story moved away from
+  // is set aside, not deleted, and the phone shows it the way desktop does.
+  it('a set-aside side quest is tagged and dimmed', () => {
+    act(() => {
+      root.render(
+        createElement(ObjectivesPanel, {
+          primary,
+          secondary: [
+            {
+              id: 'obj-2',
+              objective: 'Learn the fiddle',
+              isPrimary: false,
+              checkFrequency: 3,
+              tasks: [],
+              dormant: true,
+            },
+          ],
+          checking: false,
+          enabled: true,
+          query: '',
+          apply: (p) => {
+            void p;
+          },
+        }),
+      );
+    });
+    const dimmed = [...container.querySelectorAll('.obj-dormant')];
+    expect(dimmed).toHaveLength(1);
+    expect(dimmed[0].textContent).toContain('Learn the fiddle');
+    expect(dimmed[0].textContent).toContain('set aside');
+  });
+
+  // 2026-10-16, objectives that keep up part 6: the character's own goals
+  // won and let go, the same line the desktop panel shows.
+  it('shows the tally line, and nothing before a goal has ended', () => {
+    const show = (tally: string) =>
+      act(() => {
+        root.render(
+          createElement(ObjectivesPanel, {
+            primary,
+            secondary: [],
+            checking: false,
+            enabled: true,
+            query: '',
+            apply: (p) => {
+              void p;
+            },
+            tally,
+          }),
+        );
+      });
+    show('3 landed · 1 let go');
+    expect(container.querySelector('.obj-tally')?.textContent).toBe(
+      '3 landed · 1 let go',
+    );
+    show('');
+    expect(container.querySelector('.obj-tally')).toBeNull();
+  });
 });

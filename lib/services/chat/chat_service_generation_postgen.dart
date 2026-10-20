@@ -59,7 +59,7 @@ extension ChatServiceGenerationPostGen on ChatService {
     if (t.epoch == _generationEpoch &&
         emptySpeechAfterPregen(
           accumulated: t.accumulatedResponse,
-          isContinue: t.mode == GenerationMode.continue_,
+          isContinue: t.mode == GenerationMode.continue_ || _isSeeded(t),
         )) {
       debugPrint(
         '[GpuSwap] empty mouth stream after PRE-GEN attach — not success',
@@ -97,7 +97,7 @@ extension ChatServiceGenerationPostGen on ChatService {
       // provider, some thinking models still emit stray <think> text. Strip
       // from the NEW portion only — never re-strip the pre-continue body.
       if (t.mode == GenerationMode.continue_ || _callMode) {
-        newPart = _stripThinkBlocks(newPart);
+        newPart = stripEvalThinkBlocks(newPart);
       }
 
       // Close an open think on the PREFIX before glue — closing after
@@ -107,7 +107,7 @@ extension ChatServiceGenerationPostGen on ChatService {
           : '';
       String finalResponse = t.mode == GenerationMode.continue_
           ? glueContinueText(prefix, newPart)
-          : newPart.trim();
+          : (t.continuePrefix + newPart).trim(); // prefix: a rewrite's seed
 
       // Close a dangling think. Lift only a short closed think-only line.
       // A long reasoning dump stays tagged. An unclosed cut-off stays tagged.
@@ -158,6 +158,7 @@ extension ChatServiceGenerationPostGen on ChatService {
       if (finalResponse.isNotEmpty || t.mode == GenerationMode.continue_) {
         t.streamTarget.text = finalResponse;
       }
+      _stampTokenAlts(t);
 
       // Turn taken = durable, before lorebook/evals.
       await _saveChat();
@@ -226,13 +227,19 @@ extension ChatServiceGenerationPostGen on ChatService {
             '${_storageService.realismSettings.passageOfTimeDefault} '
             'reason=abort',
           );
-          _abortSlotClockIfThisTurnTicked(t);
+          _clockWriter.abortSlotClockIfThisTurnTicked(
+            () => t.streamTarget,
+            isContinue: t.mode == GenerationMode.continue_,
+          );
         } else {
           await _maybeAdvanceStoryClockAfterReply(t);
           if (_postGenAbortRequested) {
-            _abortSlotClockIfThisTurnTicked(t);
+            _clockWriter.abortSlotClockIfThisTurnTicked(
+              () => t.streamTarget,
+              isContinue: t.mode == GenerationMode.continue_,
+            );
           } else {
-            _wearBodiesAfterClock(t);
+            _needsPass.wearBodiesAfterClock(t.mode, t.streamTarget);
             _tickRefractoryAfterClock(t);
             _maybeKickDreamPrefetch();
             await _saveChat();
@@ -267,15 +274,30 @@ extension ChatServiceGenerationPostGen on ChatService {
         );
       }
 
+      // Paused while this auto-chat turn was being written: it still counts.
+      if (!_autoPlayActive &&
+          _autoChatBudget.turnRunning &&
+          !t.streamTarget.isUser) {
+        _autoChatBudget.spendPaused();
+      }
       // Auto-play: if director mode is active, queue the next character
-      if (_autoPlayActive && _observerMode && _activeGroup != null) {
-        // If TTS is active, wait for it to finish before starting the delay
+      // (unless this reply spoke to the absent user, or spent the run).
+      if (_autoPlayActive &&
+          _observerMode &&
+          _activeGroup != null &&
+          !(!t.streamTarget.isUser && _autoChatPausesAfter(t.streamTarget))) {
+        // If TTS is active, wait for it to finish before starting the delay.
+        // A pause and resume inside the wait starts its own turn; this one's
+        // wait then belongs to the old run and must not add a second.
+        final run = _autoChatBudget.run;
         if (_ttsService != null && _ttsService!.isSpeaking) {
-          _waitForTtsThenContinue();
+          _waitForTtsThenContinue(run);
         } else {
           final delayMs = (directorDelaySec * 1000).round();
           Future.delayed(Duration(milliseconds: delayMs), () {
-            if (_autoPlayActive && !_isGenerating) {
+            if (_autoPlayActive &&
+                !_isGenerating &&
+                _autoChatBudget.run == run) {
               _autoPlayNext();
             }
           });
@@ -294,6 +316,17 @@ extension ChatServiceGenerationPostGen on ChatService {
   /// Scene Guests carry no Realism/Needs but the clock is chat-scoped, so
   /// they tick time-only (no Today rewrite).
   Future<void> _maybeAdvanceStoryClockAfterReply(_GenTurn t) async {
+    // The planner's today line moves here (and a day that rolls retires it):
+    // those writes belong to this reply and rewind with it.
+    _objectiveTurnReply = t.streamTarget.isUser ? null : t.streamTarget;
+    try {
+      await _advanceStoryClockAfterReply(t);
+    } finally {
+      _objectiveTurnReply = null;
+    }
+  }
+
+  Future<void> _advanceStoryClockAfterReply(_GenTurn t) async {
     final porch = _storageService.realismSettings.passageOfTimeDefault;
     debugPrint(
       '[Clock] running=$_clockRunning '
@@ -312,7 +345,10 @@ extension ChatServiceGenerationPostGen on ChatService {
         );
         if (named != null) {
           await _timeService.applyReconciledClock(named);
-          _writeSlotClock(t.streamTarget, kind: _SlotClockWrite.tick);
+          _clockWriter.writeSlotClock(
+            t.streamTarget,
+            kind: SlotClockWrite.tick,
+          );
         }
       }
       debugPrint(
@@ -333,15 +369,23 @@ extension ChatServiceGenerationPostGen on ChatService {
       // Stamp the LIVE swipe map. Writing `metadata` is a no-op for
       // regen when swipeMetadata[i] is already set — activeMetadata
       // returns that slot, not the legacy field.
-      _writeSlotClock(
+      _clockWriter.writeSlotClock(
         msg,
-        kind: _SlotClockWrite.beforeOnly,
+        kind: SlotClockWrite.beforeOnly,
         before:
             StoryClock.parse(
               knownStoryClockBefore(msg) ?? _timeService.storyClockIso,
             ) ??
             _timeService.clock,
       );
+    }
+    // "A week later, she…" in the reply's own narration moves the clock
+    // the span, unless a skip (the user's line, a /narrate beat) already
+    // owns this turn. The judge's days_elapsed covers what the regex
+    // misses. Either one settles the scene below; no bridge card.
+    _timeService.takeReplySkipMinutes();
+    if (!msg.isUser && !_timeService.skipOwnsTurn) {
+      await _timeService.applyReplySkip(msg.displayText);
     }
     // Fiction wins (K-A). A named wall-clock is the beat — do not
     // add the conversational floor on top (07:30 + 2 min = 07:32).
@@ -353,15 +397,21 @@ extension ChatServiceGenerationPostGen on ChatService {
       );
     } else {
       await _timeService.applyReconciledClock(named);
+      // No eval consumed the skip's turn ownership; it must not suppress
+      // the next turn's eval.
+      _timeService.releaseSkipOwnership();
       // K-A: overwrite the slot's own before so the stored pair is
       // named/named (07:30/07:30). Clamp still holds. Continue
-      // already stamps through _writeSlotClock above.
-      _writeSlotClock(msg, kind: _SlotClockWrite.tick);
+      // already stamps through writeSlotClock above.
+      _clockWriter.writeSlotClock(msg, kind: SlotClockWrite.tick);
     }
     if (named == null && _isLiteTurn(t) && _clockRunning) {
-      _writeSlotClock(msg, kind: _SlotClockWrite.tick);
+      _clockWriter.writeSlotClock(msg, kind: SlotClockWrite.tick);
     }
-    await _maybeMintEpisodeCrumbs(before, _timeService.clock);
+    if (_timeService.takeReplySkipMinutes() >= kLongSkipMinutes) {
+      LongSkipSettle(_realismScope()).settle();
+    }
+    await _episodeCrumbs.maybeMint(before, _timeService.clock);
     debugPrint(
       '[Clock] running=$_clockRunning '
       'source=${_timeService.clockGateSource} '

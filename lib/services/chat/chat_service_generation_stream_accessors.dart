@@ -28,21 +28,25 @@ extension ChatServiceGenerationStreamAccessors on ChatService {
   /// own. The first aborts an in-flight HTTP stream (there is none during
   /// post-gen), and the second SPINS until the flag clears — broadening it
   /// would hang the caller if post-gen ever failed to settle.
-  bool get _isTurnBusy => _isGenerating || _isPostGenerating || _isImporting;
+  bool get _isTurnBusy =>
+      _isGenerating || _isPostGenerating || _isImporting || _narrating;
 
   void _notifyStreamListeners() {
     if (_streamNotifyTimer != null) return; // trailing notify already queued
     final elapsed = DateTime.now().difference(_lastStreamNotify);
     if (elapsed >= _kStreamNotifyInterval) {
-      _lastStreamNotify = DateTime.now();
-      notifyListeners();
+      _notifyStreamTick();
     } else {
       _streamNotifyTimer = Timer(_kStreamNotifyInterval - elapsed, () {
         _streamNotifyTimer = null;
-        _lastStreamNotify = DateTime.now();
-        notifyListeners();
+        _notifyStreamTick();
       });
     }
+  }
+
+  void _notifyStreamTick() {
+    _lastStreamNotify = DateTime.now();
+    StreamTickNotify.run(notifyListeners);
   }
 
   void _cancelStreamNotifyThrottle() {

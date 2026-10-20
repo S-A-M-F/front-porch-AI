@@ -41,14 +41,14 @@ class WaifuDeleteSessionDialog extends StatelessWidget {
         side: BorderSide(color: danger.withValues(alpha: 0.7), width: 1.6),
       ),
       title: Text(
-        'Delete this session?',
+        'Forget this project?',
         style: TextStyle(
           color: AppColors.textPrimary(context),
           fontWeight: FontWeight.w900,
         ),
       ),
       content: Text(
-        'This removes the $folder porch with $name from Waifu Coder. '
+        'This removes $folder and its chat with $name from Waifu Coder. '
         'The folder on disk stays. This can’t be undone.',
         style: TextStyle(color: AppColors.textSecondary(context)),
       ),
@@ -65,10 +65,11 @@ class WaifuDeleteSessionDialog extends StatelessWidget {
           key: const Key('waifu-delete-session-confirm'),
           style: FilledButton.styleFrom(
             backgroundColor: danger,
+            // theme-keep: ink on the danger fill, not the theme accent.
             foregroundColor: AppColors.onChaosAccent,
           ),
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Delete'),
+          child: const Text('Forget'),
         ),
       ],
     );

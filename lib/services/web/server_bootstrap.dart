@@ -62,11 +62,20 @@ shelf.Handler buildWebHandler(WebServerDeps deps) {
     );
   }
   if (deps.chargenFacade != null) WebChargenRoutes(deps.chargenFacade!, router);
-  if (deps.chatFacade != null) WebChatRoutes(deps.chatFacade!, router);
+  if (deps.chatFacade != null) {
+    WebChatRoutes(deps.chatFacade!, router);
+    WebChatOverlayRoutes(deps.chatFacade!, router);
+    WebChatPromptSourceRoutes(deps.chatFacade!, router);
+    WebChatSearchRoutes(deps.chatFacade!, router);
+    WebTokenAltsRoutes(deps.chatFacade!, router);
+  }
   if (deps.chatPackageFacade != null) {
     WebChatPackageRoutes(deps.chatPackageFacade!, router);
   }
   if (deps.porchFacade != null) WebPorchRoutes(deps.porchFacade!, router);
+  if (deps.personaConversionFacade != null) {
+    WebPersonaConvertRoutes(deps.personaConversionFacade!, router);
+  }
   if (deps.chatToolsFacade != null) {
     WebChatToolsRoutes(deps.chatToolsFacade!, router);
   }

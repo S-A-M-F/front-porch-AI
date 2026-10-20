@@ -18,35 +18,31 @@
 
 import 'dart:convert';
 
-import 'package:front_porch_ai/services/chat/objective_stale_detector.dart'
-    show normalizeObjectiveStaleThreshold;
+import 'package:front_porch_ai/services/chat/chaos/chaos_frequency.dart';
+import 'package:front_porch_ai/services/storage/settings/realism/one_shot_mode.dart';
+import 'package:front_porch_ai/services/storage/settings/realism/realism_prefs_snapshot.dart';
+import 'package:front_porch_ai/services/storage/settings/realism/time_skip_bridge_setting.dart';
 
 import 'settings_base.dart';
 
-part 'realism_settings.load.dart';
-
-/// How the pre-generation realism judges are fused (eval review Tier-1 §3.4,
-/// maintainer-approved 2026-08-10). [auto] — the default — uses the fused
-/// one-shot call on remote backends that have already proven native tool
-/// calls (exactly the class of model the combined prompt is easy for) and the
-/// multi-call path everywhere else, including every local backend. [on]/[off]
-/// are the explicit choices the old bool expressed; the user always wins in
-/// both directions.
-enum OneShotMode { auto, on, off }
+export 'package:front_porch_ai/services/storage/settings/realism/one_shot_mode.dart';
+export 'package:front_porch_ai/services/storage/settings/realism/realism_import_stamp.dart';
 
 /// Realism Engine + Needs simulation + related defaults (oneShot, banned
 /// phrases, per-char enjoys hygiene is in CharacterCard / group member
 /// JSON, not here).
 ///
 /// Lifted Stage 7.
-class RealismSettings with SettingsBase {
+class RealismSettings with SettingsBase, TimeSkipBridgeSetting {
   bool _realismDefault = false;
   bool _nsfwCooldownDefault = false;
   bool _passageOfTimeDefault = true;
 
-  /// Global Needs switch. Defaults TRUE and AND-gates the card's own setting
-  /// (not the NSFW OR-override): with it on nothing changes, with it off
-  /// Needs stops for new chats regardless of what a card asks for. Passage
+  /// Global Needs switch. Defaults TRUE. It decides for a card that says
+  /// nothing about Needs (an imported card with no `needs_sim_enabled`),
+  /// and AND-gates a card that does: with it off Needs stops regardless of
+  /// what a card asks for, and a card's explicit false still wins when it
+  /// is on (maintainer ruling, 2026-10-10). Passage
   /// of Time is a different shape — [_passageOfTimeDefault] is the live
   /// clock gate, not a card AND. Added 2026-08-07 — Needs had no global switch at
   /// all, so the Porch Life tab had nothing to show.
@@ -141,6 +137,9 @@ class RealismSettings with SettingsBase {
   /// The per-chat sidebar switch still wins for an individual story.
   bool _chaosModeDefault = false;
 
+  /// How often Chance Time pops on its own (Porch Life, under Chaos Mode).
+  ChaosFrequency _chaosFrequency = ChaosFrequency.normal;
+
   /// Hand-offs between characters in a group (Pockets). Off by default and
   /// gated on Pockets, because it asks the model for something strictly harder
   /// than the rest of the record: not just WHAT changed but WHO now has it. A
@@ -158,11 +157,6 @@ class RealismSettings with SettingsBase {
   /// it off deliberately. Ambitions hang off this, since quest completion is
   /// the only thing that moves ambition progress.
   bool _objectivesEnabled = true;
-
-  /// Consecutive explicit "this quest is no longer relevant" verdicts before
-  /// the quest retires as stale (not achieved). 0 = off. Allowed: 0, 1, 2, 4.
-  /// Default 2. Task-level stale is immediate and ignores this.
-  int _objectiveStaleThreshold = 2;
 
   /// Whether 18+ themes are on for this install. Gates the Porch Life
   /// "After Dark" group (approved sketch: that group is "shown only when 18+
@@ -208,9 +202,6 @@ class RealismSettings with SettingsBase {
   /// See [_objectivesEnabled]. The switch Objectives never had.
   bool get objectivesEnabled => _objectivesEnabled;
 
-  /// See [_objectiveStaleThreshold].
-  int get objectiveStaleThreshold => _objectiveStaleThreshold;
-
   /// See [_pocketsEnabled]. Costs one short model call per turn while on.
   bool get pocketsEnabled => _pocketsEnabled;
 
@@ -223,6 +214,7 @@ class RealismSettings with SettingsBase {
 
   /// See [_chaosModeDefault]. Depends on nothing.
   bool get chaosModeDefault => _chaosModeDefault;
+  ChaosFrequency get chaosFrequency => _chaosFrequency;
 
   /// See [_sceneGuestDetectionEnabled]. Depends on nothing; default ON.
   bool get sceneGuestDetectionEnabled => _sceneGuestDetectionEnabled;
@@ -297,52 +289,76 @@ class RealismSettings with SettingsBase {
   bool get promiseLedgerEnabled => _promiseLedgerEnabled;
   List<String> get bannedPhrases => List.unmodifiable(_bannedPhrases);
 
-  Future<void> setAmbitionsEnabled(bool value) async {
+  void load() {
+    final s = RealismPrefsSnapshot.read(prefs, k);
+    _realismDefault = s.realismDefault;
+    _nsfwCooldownDefault = s.nsfwCooldownDefault;
+    _passageOfTimeDefault = s.passageOfTimeDefault;
+    _needsSimDefault = s.needsSimDefault;
+    _standaloneClockEnabled = s.standaloneClockEnabled;
+    _objectivesEnabled = s.objectivesEnabled;
+    _pocketsEnabled = s.pocketsEnabled;
+    _standingMoodEnabled = s.standingMoodEnabled;
+    _intimateAgencyEnabled = s.intimateAgencyEnabled;
+    _chaosModeDefault = s.chaosModeDefault;
+    _chaosFrequency = s.chaosFrequency;
+    _sceneGuestDetectionEnabled = s.sceneGuestDetectionEnabled;
+    _pocketTransfersEnabled = s.pocketTransfersEnabled;
+    _adultThemesExplicit = s.adultThemesExplicit;
+    _oneShotMode = s.oneShotMode;
+    _preferTextEvals = s.preferTextEvals;
+    _weatherEnabled = s.weatherEnabled;
+    _weatherFahrenheit = s.weatherFahrenheit;
+    _absenceBannerEnabled = s.absenceBannerEnabled;
+    _userMessagesOnRight = s.userMessagesOnRight;
+    _absenceAckEnabled = s.absenceAckEnabled;
+    _absenceThresholdHours = s.absenceThresholdHours;
+    _dreamsEnabled = s.dreamsEnabled;
+    _ambitionsEnabled = s.ambitionsEnabled;
+    _plannerEnabled = s.plannerEnabled;
+    _promiseLedgerEnabled = s.promiseLedgerEnabled;
+    final banned = s.bannedPhrases;
+    if (banned != null) _bannedPhrases = banned;
+  }
+
+  Future<void> setAmbitionsEnabled(bool value) {
     _ambitionsEnabled = value;
-    await prefs?.setBool(k('ambitions_enabled'), value);
-    notify();
+    return _saveBool('ambitions_enabled', value);
   }
 
-  Future<void> setPlannerEnabled(bool value) async {
+  Future<void> setPlannerEnabled(bool value) {
     _plannerEnabled = value;
-    await prefs?.setBool(k('planner_enabled'), value);
-    notify();
+    return _saveBool('planner_enabled', value);
   }
 
-  Future<void> setPromiseLedgerEnabled(bool value) async {
+  Future<void> setPromiseLedgerEnabled(bool value) {
     _promiseLedgerEnabled = value;
-    await prefs?.setBool(k('promise_ledger_enabled'), value);
-    notify();
+    return _saveBool('promise_ledger_enabled', value);
   }
 
-  Future<void> setWeatherEnabled(bool value) async {
+  Future<void> setWeatherEnabled(bool value) {
     _weatherEnabled = value;
-    await prefs?.setBool(k('weather_enabled'), value);
-    notify();
+    return _saveBool('weather_enabled', value);
   }
 
-  Future<void> setWeatherFahrenheit(bool value) async {
+  Future<void> setWeatherFahrenheit(bool value) {
     _weatherFahrenheit = value;
-    await prefs?.setBool(k('weather_fahrenheit'), value);
-    notify();
+    return _saveBool('weather_fahrenheit', value);
   }
 
-  Future<void> setUserMessagesOnRight(bool value) async {
+  Future<void> setUserMessagesOnRight(bool value) {
     _userMessagesOnRight = value;
-    await prefs?.setBool(k('user_messages_on_right'), value);
-    notify();
+    return _saveBool('user_messages_on_right', value);
   }
 
-  Future<void> setAbsenceBannerEnabled(bool value) async {
+  Future<void> setAbsenceBannerEnabled(bool value) {
     _absenceBannerEnabled = value;
-    await prefs?.setBool(k('absence_banner_enabled'), value);
-    notify();
+    return _saveBool('absence_banner_enabled', value);
   }
 
-  Future<void> setAbsenceAckEnabled(bool value) async {
+  Future<void> setAbsenceAckEnabled(bool value) {
     _absenceAckEnabled = value;
-    await prefs?.setBool(k('absence_ack_enabled'), value);
-    notify();
+    return _saveBool('absence_ack_enabled', value);
   }
 
   Future<void> setAbsenceThresholdHours(int value) async {
@@ -351,10 +367,9 @@ class RealismSettings with SettingsBase {
     notify();
   }
 
-  Future<void> setDreamsEnabled(bool value) async {
+  Future<void> setDreamsEnabled(bool value) {
     _dreamsEnabled = value;
-    await prefs?.setBool(k('dreams_enabled'), value);
-    notify();
+    return _saveBool('dreams_enabled', value);
   }
 
   Future<void> setOneShotMode(OneShotMode value) async {
@@ -363,10 +378,9 @@ class RealismSettings with SettingsBase {
     notify();
   }
 
-  Future<void> setPreferTextEvals(bool value) async {
+  Future<void> setPreferTextEvals(bool value) {
     _preferTextEvals = value;
-    await prefs?.setBool(k('prefer_text_evals'), value);
-    notify();
+    return _saveBool('prefer_text_evals', value);
   }
 
   /// Legacy bool surface over [setOneShotMode]: an explicit toggle is an
@@ -378,96 +392,85 @@ class RealismSettings with SettingsBase {
     await setOneShotMode(value ? OneShotMode.on : OneShotMode.off);
   }
 
-  Future<void> setRealismDefault(bool value) async {
+  Future<void> setRealismDefault(bool value) {
     _realismDefault = value;
-    await prefs?.setBool(k('realism_default'), value);
-    notify();
+    return _saveBool('realism_default', value);
   }
 
-  Future<void> setNsfwCooldownDefault(bool value) async {
+  Future<void> setNsfwCooldownDefault(bool value) {
     _nsfwCooldownDefault = value;
-    await prefs?.setBool(k('nsfw_cooldown_default'), value);
-    notify();
+    return _saveBool('nsfw_cooldown_default', value);
   }
 
-  Future<void> setNeedsSimDefault(bool value) async {
+  Future<void> setNeedsSimDefault(bool value) {
     _needsSimDefault = value;
-    await prefs?.setBool(k('needs_sim_default'), value);
-    notify();
+    return _saveBool('needs_sim_default', value);
   }
 
-  Future<void> setPassageOfTimeDefault(bool value) async {
+  Future<void> setPassageOfTimeDefault(bool value) {
     _passageOfTimeDefault = value;
-    await prefs?.setBool(k('passage_of_time_default'), value);
-    notify();
+    return _saveBool('passage_of_time_default', value);
   }
 
-  Future<void> setStandaloneClockEnabled(bool value) async {
+  Future<void> setStandaloneClockEnabled(bool value) {
     _standaloneClockEnabled = value;
-    await prefs?.setBool(k('standalone_clock_enabled'), value);
-    notify();
+    return _saveBool('standalone_clock_enabled', value);
   }
 
-  Future<void> setAdultThemesEnabled(bool value) async {
+  Future<void> setAdultThemesEnabled(bool value) {
     _adultThemesExplicit = value;
-    await prefs?.setBool(k('adult_themes_enabled'), value);
-    notify();
+    return _saveBool('adult_themes_enabled', value);
   }
 
-  Future<void> setObjectivesEnabled(bool value) async {
+  Future<void> setObjectivesEnabled(bool value) {
     _objectivesEnabled = value;
-    await prefs?.setBool(k('objectives_enabled'), value);
-    notify();
+    return _saveBool('objectives_enabled', value);
   }
 
-  Future<void> setObjectiveStaleThreshold(int value) async {
-    _objectiveStaleThreshold = normalizeObjectiveStaleThreshold(value);
-    await prefs?.setInt(
-      k('objective_stale_threshold'),
-      _objectiveStaleThreshold,
-    );
-    notify();
-  }
-
-  Future<void> setPocketsEnabled(bool value) async {
+  Future<void> setPocketsEnabled(bool value) {
     _pocketsEnabled = value;
-    await prefs?.setBool(k('pockets_enabled'), value);
-    notify();
+    return _saveBool('pockets_enabled', value);
   }
 
-  Future<void> setStandingMoodEnabled(bool value) async {
+  Future<void> setStandingMoodEnabled(bool value) {
     _standingMoodEnabled = value;
-    await prefs?.setBool(k('standing_mood_enabled'), value);
-    notify();
+    return _saveBool('standing_mood_enabled', value);
   }
 
-  Future<void> setIntimateAgencyEnabled(bool value) async {
+  Future<void> setIntimateAgencyEnabled(bool value) {
     _intimateAgencyEnabled = value;
-    await prefs?.setBool(k('intimate_agency_enabled'), value);
-    notify();
+    return _saveBool('intimate_agency_enabled', value);
   }
 
-  Future<void> setChaosModeDefault(bool value) async {
+  Future<void> setChaosModeDefault(bool value) {
     _chaosModeDefault = value;
-    await prefs?.setBool(k('chaos_mode_default'), value);
+    return _saveBool('chaos_mode_default', value);
+  }
+
+  Future<void> setChaosFrequency(ChaosFrequency value) async {
+    _chaosFrequency = value;
+    await prefs?.setString(k('chaos_frequency'), value.name);
     notify();
   }
 
-  Future<void> setSceneGuestDetectionEnabled(bool value) async {
+  Future<void> setSceneGuestDetectionEnabled(bool value) {
     _sceneGuestDetectionEnabled = value;
-    await prefs?.setBool(k('scene_guest_detection_enabled'), value);
-    notify();
+    return _saveBool('scene_guest_detection_enabled', value);
   }
 
-  Future<void> setPocketTransfersEnabled(bool value) async {
+  Future<void> setPocketTransfersEnabled(bool value) {
     _pocketTransfersEnabled = value;
-    await prefs?.setBool(k('pocket_transfers_enabled'), value);
-    notify();
+    return _saveBool('pocket_transfers_enabled', value);
   }
 
   Future<void> setBannedPhrases(List<String> value) async {
     _bannedPhrases = value.where((s) => s.isNotEmpty).toList();
     await prefs?.setString(k('banned_phrases'), jsonEncode(_bannedPhrases));
+    notify();
+  }
+
+  Future<void> _saveBool(String key, bool value) async {
+    await prefs?.setBool(k(key), value);
     notify();
   }
 }

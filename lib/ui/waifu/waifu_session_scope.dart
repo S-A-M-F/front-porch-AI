@@ -33,7 +33,7 @@ WaifuStore? waifuStoreForContext(BuildContext context, {WaifuStore? injected}) {
     final root = storage.rootPath;
     if (root == null || root.isEmpty) return null;
     return WaifuStore(waifuStoreDirectory(root));
-  } catch (_) {
+  } on ProviderNotFoundException {
     return null;
   }
 }
@@ -41,30 +41,21 @@ WaifuStore? waifuStoreForContext(BuildContext context, {WaifuStore? injected}) {
 /// Sit-down estimate. OpenCode owns the real window; this is chrome only
 /// until a session.updated / GET session usage lands.
 int waifuIdleRequestTokens(WaifuSession session, {int mcpToolCount = 0}) {
-  final sys = buildWaifuOpenCodeAgentPrompt(session.coworker);
-  final speech = [for (final m in session.transcript) m.text].join('\n');
+  final sys = session.mode == WaifuMode.plan
+      ? buildWaifuPlanAgentPrompt(session.coworker, pathMode: session.pathMode)
+      : buildWaifuOpenCodeAgentPrompt(
+          session.coworker,
+          pathMode: session.pathMode,
+        );
+  final speech = [
+    for (final m in session.transcript)
+      if (m.kind != WaifuMsgKind.stage) m.text,
+  ].join('\n');
   return waifuOpenCodePromptEstimate(
     systemPrompt: sys,
     speech: speech,
     mcpToolCount: mcpToolCount,
   );
-}
-
-/// Remeter then persist so sit-down is never saved as 0/N.
-void waifuArmSessionMeter({
-  required WaifuSession session,
-  WaifuHarness? harness,
-  WaifuStore? store,
-  int mcpToolCount = 0,
-}) {
-  if (session.tokensUsed == 0 && !session.tokensFromApi) {
-    session.tokensUsed = waifuIdleRequestTokens(
-      session,
-      mcpToolCount: mcpToolCount,
-    );
-  }
-  harness?.refreshMeter();
-  store?.saveLast(session);
 }
 
 /// Bind OpenCode manager + Porch backend. Null when neither is available.
@@ -82,16 +73,15 @@ WaifuHarness? waifuBindSessionHarness({
   OpenCodePorchBackend? backend;
   OpenCodePorchBackend? Function()? backendOf;
   if (provider != null) {
-    try {
-      backend = openCodeBackendFromProvider(provider.activeService);
-    } catch (_) {}
     backendOf = () {
       try {
         return openCodeBackendFromProvider(provider.activeService);
-      } catch (_) {
+      } on StateError catch (e) {
+        debugPrint('[Waifu] No OpenCode backend for this model: $e');
         return null;
       }
     };
+    backend = backendOf();
   }
   if (manager == null && backend == null) return null;
   return WaifuHarness(
@@ -110,7 +100,6 @@ WaifuHarness? waifuBindSessionHarness({
     onChanged: onChanged,
     onAsk: onAsk,
     onQuestion: onQuestion,
-    mcpOptIn: session.mcpOptIn,
     mcpConfigOf: mcpConfigOf,
     skillsDirOf: skillsDirOf,
   );

@@ -16,11 +16,11 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:front_porch_ai/services/image/comfy_gguf_city96_gate.dart';
+import 'package:front_porch_ai/services/image/comfy_create_presets.dart';
 import 'package:front_porch_ai/services/image/comfy_edit_presets.dart';
 import 'package:front_porch_ai/services/image/comfy_workflow_convert.dart';
 import 'package:front_porch_ai/services/image/image_studio_remote.dart';
 import 'package:front_porch_ai/services/image/model_family.dart';
-import 'package:front_porch_ai/services/storage/settings/image_gen_settings.dart';
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/image_studio/studio_desk.dart';
@@ -159,9 +159,15 @@ Future<_Comfy> _serve({
           (n as Map)['class_type'].toString(): <String, dynamic>{},
     },
     'CheckpointLoaderSimple': loader('ckpt_name', checkpoints),
-    'UNETLoader': loader('unet_name', ['flux-2-klein-4b.safetensors']),
+    'UNETLoader': loader('unet_name', [
+      'flux-2-klein-4b.safetensors',
+      'flux-2-klein-base-4b.safetensors',
+    ]),
     'CLIPLoader': loader('clip_name', clips),
-    'VAELoader': loader('vae_name', ['flux2-vae.safetensors']),
+    'VAELoader': loader('vae_name', [
+      'flux2-vae.safetensors',
+      'qwen_image_2.1_vae_bf16.safetensors',
+    ]),
   };
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   final comfy = _Comfy(server);
@@ -301,6 +307,64 @@ void main() {
     }
   }
 
+  _deskTest('switching backend never carries the last one\'s picks', (
+    tester,
+  ) async {
+    await initSettings();
+    // The bundled SD graph's nodes, so only its empty checkpoint list is
+    // missing.
+    final comfy = (await tester.runAsync(
+      () => _serve(
+        templates: {
+          'sd_nodes': {
+            for (final c in kSdCreatePreset.requiredNodes) c: {'class_type': c},
+          },
+        },
+      ),
+    ))!;
+    final s = storage.imageGenSettings;
+    await s.setComfyUiUrl(comfy.url);
+    // Nothing answers Automatic1111 here, so its own lists stay empty.
+    await s.setLocalImageGenUrl(comfy.url);
+    await s.setImageGenBackend('a1111');
+    await s.setImageGenModel('ponyRealism_V22.safetensors');
+    await s.setImageGenLoraSlot(0, file: 'add-detail-xl.safetensors');
+
+    await pumpDesk(tester, comfy: comfy);
+    expect(find.textContaining('ponyRealism_V22'), findsWidgets);
+    expect(find.textContaining('add-detail-xl'), findsWidgets);
+    // Automatic1111 isn't answering, so an empty chooser blames no folder.
+    await tester.tap(find.text('Change model').first);
+    await tester.pump();
+    await settle(tester, comfy);
+    expect(find.textContaining('lists no model files'), findsNothing);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    Future<void> change(String backend) async {
+      await tester.tap(find.text('Change…'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(backend).last);
+      await tester.pump();
+      await settle(tester, comfy);
+    }
+
+    await change('ComfyUI');
+    expect(s.imageGenBackend, 'comfyui');
+    expect(find.textContaining('ponyRealism_V22'), findsNothing);
+    expect(find.textContaining('add-detail-xl'), findsNothing);
+    expect(find.text('Ready to generate.'), findsNothing);
+    // This ComfyUI lists no checkpoints, so the line says where they go.
+    expect(
+      find.textContaining('lists no files in its models/checkpoints'),
+      findsWidgets,
+    );
+
+    await change('Automatic1111');
+    expect(s.imageGenModel, 'ponyRealism_V22.safetensors');
+    expect(find.textContaining('add-detail-xl'), findsWidgets);
+  });
+
   group('a template graph', () {
     _deskTest('is Ready and is not replaced by a bundled graph', (
       tester,
@@ -386,6 +450,8 @@ void main() {
           find.descendant(of: row.first, matching: find.text('Change')),
         );
         await tester.pump();
+        // The sheet lists the install again as it opens; let that read finish.
+        await settle(tester, comfy);
 
         expect(find.text('a_clip_l.safetensors'), findsOneWidget);
         expect(find.text('qwen_3_4b.safetensors'), findsWidgets);
@@ -794,7 +860,7 @@ void main() {
       await storage.backendSettings.setRemoteApiKeyFor(host, 'test-key');
       await pumpDesk(tester);
 
-      await tester.tap(find.textContaining('Advanced'));
+      await tester.tap(find.textContaining('Prompt options'));
       await tester.pump();
       expect(find.text('Nano-GPT'), findsWidgets);
       expect(find.text('Style'), findsOneWidget);

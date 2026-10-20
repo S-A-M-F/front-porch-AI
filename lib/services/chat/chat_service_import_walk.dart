@@ -40,8 +40,7 @@ extension ChatServiceImportWalk on ChatService {
       );
       _applySeededPassageOfTime();
     }
-    _characterEmotion = ext.characterEmotion;
-    _emotionIntensity = ext.emotionIntensity;
+    _mood.seed(ext.characterEmotion, ext.emotionIntensity);
     _nsfwService.seedFromV2OrExt(nsfwCooldownEnabled: keepNsfwCooldown);
     _nsfwService.resetRuntimeArousalAndCooldown();
 
@@ -122,9 +121,9 @@ extension ChatServiceImportWalk on ChatService {
     // who never spoke after the handoff have no own stamp of the item.
     // Apply EVERY stamp oldest → newest: a later giver-only move has no
     // `others`, so it must not wipe Sam's keys from an earlier give.
-    _restorePocketsStampsChronologically(start);
+    _pocketsRewinds.restoreChronologically(start);
 
-    _syncLoadedSlotClocks();
+    _clockWriter.syncLoadedSlotClocks();
 
     seedPocketsFromCards();
 
@@ -141,7 +140,7 @@ extension ChatServiceImportWalk on ChatService {
     scratch ??= _groupCharacters.isNotEmpty ? _groupCharacters.first : null;
     if (scratch != null) {
       final id = _getCharacterIdFromCard(scratch);
-      if (id.isNotEmpty) _loadGroupRealismIntoScalars(id);
+      if (id.isNotEmpty) _realismDance.loadIntoScalars(id);
     }
 
     _chaosModeService.seedFromGroupOrExt(keepChaos, keepChaosNsfw);
@@ -183,7 +182,7 @@ extension ChatServiceImportWalk on ChatService {
       if (meta?['realism_state'] is Map) {
         _restoreRealismStateForSpeaker(m, restoreClock: false);
         if (m.metadata?['pockets_before'] is Map) {
-          _restorePocketsFromStamp(m, after: true);
+          _pocketsRewinds.restoreFromStamp(m, after: true);
         }
         restored = true;
         break;
@@ -198,6 +197,6 @@ extension ChatServiceImportWalk on ChatService {
         seedClock: seedClockIfUnstamped,
       );
     }
-    _syncLoadedSlotClocks();
+    _clockWriter.syncLoadedSlotClocks();
   }
 }

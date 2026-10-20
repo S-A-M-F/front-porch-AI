@@ -134,12 +134,13 @@ extension ChatServiceReprocess on ChatService {
         wikiQuery: wikiQuery,
       );
     } catch (e) {
-      _restoreCapturedThroughReader();
+      _clockWriter.restoreCapturedThroughReader();
       rethrow;
     } finally {
+      _groupManager?.endRegeneration();
       _isPostGenerating = false;
       _clearPostGenAbortFlags();
-      _applyTipClock();
+      _clockReader.applyTipClock();
       // Listeners (web isSettlingTurn → chat_updated) only see the clear
       // through a notification. The flag alone does not broadcast.
       notifyListeners();
@@ -156,26 +157,10 @@ extension ChatServiceReprocess on ChatService {
     // restore it; see _abortIfBackendDown).
     if (await _abortIfBackendDown()) return;
 
-    // A failed turn leaves `user -> System(error banner)`, and that matched
-    // NEITHER branch below: not a character message (the first), not a user
-    // message (the second). So regenerate was a silent no-op after any failed
-    // generation, and the only recovery a user could find was to copy their
-    // own text out, delete the message, and retype it.
-    //
-    // Drop the banner when a USER turn is sitting directly behind it — the
-    // "last message is a user turn" branch below then regenerates from that
-    // prompt, which is precisely the intent. The test is structural rather
-    // than tagged by producer because that is what makes it safe: all three
-    // System banners (generation error, backend-down, failed entrance) are
-    // only discardable when there is an unanswered user turn behind them. A
-    // banner following a CHARACTER message is left alone.
-    if (_messages.length >= 2 &&
-        !_messages.last.isUser &&
-        _messages.last.sender == 'System' &&
-        _messages[_messages.length - 2].isUser) {
-      _messages.removeLast();
-      await _saveChat(replaceAll: true);
-    }
+    // A failed turn's banner (and empty bubble) go; the user line behind
+    // them is then answered by the last branch below, as the member who
+    // failed. Without this, regenerate after any failure did nothing.
+    final failedSpeaker = await _dropFailedTurnLeftovers();
 
     // Check if the last message is from the character. Narration banners
     // (dreams, Chance Time) carry a character-name sender but must never be
@@ -238,11 +223,10 @@ extension ChatServiceReprocess on ChatService {
         }
       }
 
-      // In group mode, force the turn manager to the *original* speaker of the
-      // removed message before generation. This prevents regen from picking a
-      // different character (the core of the "speaker changed after regen" bug).
+      // In group mode the original speaker re-speaks. The rotation is held
+      // and put back by regenerateLastMessage's finally, success or not.
       if (regenSpeakerCard != null) {
-        _groupManager?.setNextSpeaker(regenSpeakerCard);
+        _groupManager?.beginRegeneration(regenSpeakerCard);
       }
 
       // Roll back objective mutations recorded for the rejected turn (eval
@@ -261,13 +245,13 @@ extension ChatServiceReprocess on ChatService {
         // review 2026-08-11). Group-safe: the stamp carries the speaker's
         // own charId. The journal invalidation above already took the
         // rejected turn's item cards with it.
-        _restorePocketsFromStamp(lastMsg, after: false);
+        _pocketsRewinds.restoreFromStamp(lastMsg, after: false);
       }
 
       // Capture the live clock first. Fail/cancel/abort put it back so
       // a rejected regen never leaves the sidebar on the rewound before.
       // Then rewind to the shared message-level before (every swipe).
-      _rewindClockToPreReply(lastMsg);
+      _clockWriter.rewindClockToPreReply(lastMsg);
 
       if (!_revertRegenRealismBaseline(
         lastMsg: lastMsg,
@@ -276,15 +260,23 @@ extension ChatServiceReprocess on ChatService {
         regenSpeakerSid: regenSpeakerSid,
       )) {
         _messages.add(lastMsg);
-        _restoreCapturedThroughReader();
+        _clockWriter.restoreCapturedThroughReader();
         _restoreRealismStateForSpeaker(lastMsg);
-        _restorePocketsFromStamp(lastMsg, after: true);
+        _pocketsRewinds.restoreFromStamp(lastMsg, after: true);
         return;
       }
+      // A long skip's reply: the revert put the pre-skip mood back.
+      final longSkip =
+          ((lastMsg.activeMetadata?[kLongSkipMinutesMeta] ??
+                      preservedRejectedMeta?[kLongSkipMinutesMeta])
+                  as num?)
+              ?.toInt() ??
+          0;
+      if (longSkip > 0) LongSkipSettle(_realismScope()).settle();
 
       // After the unreadable-baseline bail: the bubble stays, so its
       // journal/growth cites must stay too (same rule as a departed guest).
-      _invalidateJournalFrom(
+      _timeline.invalidateFrom(
         persistMessagePosition(
           base: _history.basePosition,
           index: _messages.length,
@@ -319,7 +311,7 @@ extension ChatServiceReprocess on ChatService {
         // (and deleting the regenerated reply under-refunds by it — caught by
         // regen_chip_attach_test: the original showed a hygiene chip, the
         // regen didn't).
-        if (_needsSimEnabled && _needsSimulation.vector.isNotEmpty) {
+        if (_needsPass.active && _needsSimulation.vector.isNotEmpty) {
           _pendingRealismMetadata ??= {};
           _pendingRealismMetadata!['needs_pre_turn_vector'] =
               Map<String, int>.from(_needsSimulation.vector);
@@ -329,9 +321,9 @@ extension ChatServiceReprocess on ChatService {
 
         // Wear waits until the clock commits on the replayed reply.
         _applyMoodDecay();
-        _tickRefractoryPerReply();
+        _afterglow.tickPerReply();
 
-        await _runPreGenRealismJudges(
+        await _realismJudges.runPreGenJudges(
           onChunk: handleChunk,
           logSpeakerName: _activeCharacter?.name,
         );
@@ -360,9 +352,9 @@ extension ChatServiceReprocess on ChatService {
           // session row no longer agreed with, and `_saveChat()` persisted the
           // wrong scalars. 1:1-only branch, host-only (guests never get here).
           _messages.add(lastMsg);
-          _applyTipClock();
+          _clockReader.applyTipClock();
           _restoreRealismStateForSpeaker(lastMsg);
-          _restorePocketsFromStamp(lastMsg, after: true);
+          _pocketsRewinds.restoreFromStamp(lastMsg, after: true);
           _pendingRealismMetadata = null;
           _realismEvalCancelled = false;
           _evalChunkTimer?.cancel();
@@ -381,7 +373,7 @@ extension ChatServiceReprocess on ChatService {
       }
 
       // In group mode the per-speaker realism eval (and its metadata / needs deltas)
-      // happens inside _generateResponse via _evaluateRealismForUpcomingSpeaker
+      // happens inside _generateResponse via RealismDance.evaluateForUpcomingSpeaker
       // for the correctly-forced speaker. Skip the 1:1 scalar synthesis here.
       Map<String, int>? regenPreTurn;
       if (_activeGroup == null && regenGuest == null) {
@@ -400,7 +392,7 @@ extension ChatServiceReprocess on ChatService {
         if (_realismEnabled) {
           _pendingRealismMetadata!['emotion_label'] = _characterEmotion;
         }
-        _pendingRealismMetadata!['realism_state'] = _captureRealismState(
+        _pendingRealismMetadata!['realism_state'] = _realismSnapshot.capture(
           preTurn: regenPreTurn,
         );
 
@@ -412,9 +404,9 @@ extension ChatServiceReprocess on ChatService {
           _messages.add(lastMsg);
           // Same put-back contract as the cancel point above: the message
           // returns WITH the state it was accepted under.
-          _applyTipClock();
+          _clockReader.applyTipClock();
           _restoreRealismStateForSpeaker(lastMsg);
-          _restorePocketsFromStamp(lastMsg, after: true);
+          _pocketsRewinds.restoreFromStamp(lastMsg, after: true);
           _pendingRealismMetadata = null;
           _realismEvalCancelled = false;
           notifyListeners();
@@ -453,6 +445,11 @@ extension ChatServiceReprocess on ChatService {
         }
         _timeService.reclaimSkipOwnership();
       }
+      // A skip line or a calendar jump: the replay lands the bodies again,
+      // before its prompt is built, as the first reply did.
+      if (longSkip > 0) {
+        _timeService.renoteLongSkip(minutes: longSkip, destination: skipTo);
+      }
 
       final preGenLen = _messages.length;
       _armForcedLookup(webQuery: webQuery, wikiQuery: wikiQuery);
@@ -488,9 +485,12 @@ extension ChatServiceReprocess on ChatService {
       );
     } else if (_messages.last.isUser) {
       // No reply to swipe: rewind to the user line's stamp and score it again.
+      // A failed member is forced, not picked: the rotation already moved
+      // past them, and a pick would move it again.
       await _generateFromTrailingUserTurn(
         webQuery: webQuery,
         wikiQuery: wikiQuery,
+        forceSpeaker: failedSpeaker,
       );
     }
   }

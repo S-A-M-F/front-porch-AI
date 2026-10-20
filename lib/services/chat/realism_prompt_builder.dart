@@ -16,15 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-// Stage words come from AmbitionService so the eval prompt, the per-turn
-// ambition injection and the journal progress cards all describe the same
-// progress with the same word. A local copy here would drift the first time a
-// band moved.
-import 'package:front_porch_ai/services/chat/ambition_service.dart';
 import 'package:front_porch_ai/services/chat/preference_scoring.dart';
-import 'package:front_porch_ai/services/chat/refractory.dart';
-
-part 'realism_prompt_builder.fragments.dart';
+import 'package:front_porch_ai/services/chat/realism_prompt_builder/realism_prompt_fragments.dart';
 
 /// Per-eval delta limits for the realism LLM calls (relationship, emotional
 /// state, one-shot). These are the authoritative ranges for what each eval is
@@ -95,7 +88,7 @@ class RealismPromptBuilder {
     final parts = <String>[];
 
     if (p.isNotEmpty) {
-      final t = _trimTo(
+      final t = RealismPromptFragments.trimTo(
         p,
         _personalityCap < remaining ? _personalityCap : remaining,
       );
@@ -107,7 +100,7 @@ class RealismPromptBuilder {
     // never squeeze out how the character has actually changed.
     String growthPart = '';
     if (g.isNotEmpty && remaining > 120) {
-      growthPart = _trimTo(
+      growthPart = RealismPromptFragments.trimTo(
         g,
         _growthCap < remaining ? _growthCap : remaining,
         fromEnd: true,
@@ -116,7 +109,7 @@ class RealismPromptBuilder {
     }
 
     if (d.isNotEmpty && remaining > 120) {
-      parts.add(_trimTo(d, remaining));
+      parts.add(RealismPromptFragments.trimTo(d, remaining));
     }
 
     if (growthPart.isNotEmpty) {
@@ -146,9 +139,22 @@ class RealismPromptBuilder {
     String emotion = '',
     String emotionIntensity = '',
     String posture = '',
+    String emotionCause = '',
+    int emotionHeldTurns = 0,
   }) {
+    // Mood with bite (docs/design/mood-with-bite.md): the judge is told why
+    // and for how long, and asked to keep the feeling unless the turn moves
+    // it, so inertia is an instruction and not a hope.
+    final held = emotionHeldTurns >= 5
+        ? ', and it has held for a while now'
+        : emotionHeldTurns >= 2
+        ? ', and it has held for the last few exchanges'
+        : '';
     final emo = emotion.isNotEmpty
-        ? ' $charName\'s current mood: $emotion${emotionIntensity.isNotEmpty ? ' ($emotionIntensity)' : ''}.'
+        ? ' $charName\'s current mood: $emotion${emotionIntensity.isNotEmpty ? ' ($emotionIntensity)' : ''}'
+              '${emotionCause.isNotEmpty ? ', because $emotionCause' : ''}$held. '
+              'Keep that mood unless this turn genuinely moves it; a strong '
+              'feeling eases over several exchanges, it does not vanish in one.'
         : '';
     final pos = posture.isNotEmpty ? ' Position: "$posture".' : '';
     return 'Where things stand between $charName and $userName: short-term tension "$shortTermTier", '
@@ -235,7 +241,7 @@ class RealismPromptBuilder {
   /// — so fast-forward was defeated from token one and every call re-prefilled
   /// its full copy of the same dossier/standing/frame. With a byte-identical
   /// prefix, call one pays the prefill and calls two and three fast-forward
-  /// through it. The dispatch order in `_fireStaggeredRealismEvals` keeps the
+  /// through it. The dispatch order in `RealismJudges._fireStaggeredRealismEvals` keeps the
   /// three prefix-sharing judges CONSECUTIVE (scene-time, whose prompt is
   /// deliberately lean and shares nothing, fires last) — firing order is
   /// free to change, eval PHASE is not (nothing moved across the generation
@@ -268,8 +274,8 @@ class RealismPromptBuilder {
       'what they feel, and what they want.\n\n'
       '$dossier'
       '$standing'
-      '${_ambitionRoster(ambitions)}'
-      '${_subjectivityFrame(charName, userName, preferences)}';
+      '${RealismPromptFragments.ambitionRoster(ambitions)}'
+      '${RealismPromptFragments.subjectivityFrame(charName, userName, preferences)}';
 
   static String relationshipEvalPrompt({
     required String charName,
@@ -283,11 +289,11 @@ class RealismPromptBuilder {
   }) =>
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Score how this exchange truly landed for $charName. Evaluate:\n'
-      '${_bondSection(charName, userName)}'
-      '${_trustSection(charName, userName)}'
+      '${RealismPromptFragments.bondSection(charName, userName)}'
+      '${RealismPromptFragments.trustSection(charName, userName)}'
       '\n'
-      '${_recentBlock(recent)}'
-      '${toolsMode ? _toolInstruction('report_relationship') : _jsonInstruction(const ['relationship_delta', 'bond_reason', 'trust_delta', 'trust_reason'])}';
+      '${RealismPromptFragments.recentBlock(recent)}'
+      '${toolsMode ? RealismPromptFragments.toolInstruction('report_relationship') : RealismPromptFragments.jsonInstruction(const ['relationship_delta', 'bond_reason', 'trust_delta', 'trust_reason'])}';
 
   static String emotionalEvalPrompt({
     required String charName,
@@ -299,6 +305,10 @@ class RealismPromptBuilder {
     required int arousalLevel,
     int refractoryMinutesLeft = 0,
     bool clockRunning = true,
+    bool refractorySoft = false,
+    int warmthTailMinutes = 0,
+    bool mutualOpening = false,
+    bool pcdActive = false,
     List<String> allowedEmotionLabels = const [],
     String preferences = '',
     List<({String text, int progress})> ambitions = const [],
@@ -306,11 +316,17 @@ class RealismPromptBuilder {
   }) =>
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Name what $charName truly feels right now. Evaluate:\n'
-      '${_emotionSection(charName, allowedEmotionLabels)}'
-      '${arousalEnabled ? _arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning) : ''}'
+      '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels, userName: userName, pcdActive: pcdActive)}'
+      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes, mutualOpening: mutualOpening) : ''}'
       '\n'
-      '${_recentBlock(recent)}'
-      '${toolsMode ? _toolInstruction('report_emotional_state') : _jsonInstruction(['emotion', 'emotion_intensity', if (arousalEnabled) 'arousal_delta'])}';
+      '${RealismPromptFragments.recentBlock(recent)}'
+      '${toolsMode ? RealismPromptFragments.toolInstruction('report_emotional_state') : RealismPromptFragments.jsonInstruction([
+              'emotion',
+              'emotion_intensity',
+              'emotion_cause',
+              'emotion_change',
+              if (arousalEnabled) ...['arousal_delta', 'arousal_reason'],
+            ])}';
 
   static String narrativeEvalPrompt({
     required String charName,
@@ -321,17 +337,19 @@ class RealismPromptBuilder {
     String preferences = '',
     String? primaryObjective,
     List<({String text, int progress})> ambitions = const [],
+    List<String> openGoals = const [],
+    List<String> recentEnded = const [],
     bool toolsMode = false,
   }) =>
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Judge what $charName now wants and what lingers with them — both must '
       'fit who they are (their ambitions, wounds, and style), '
       'not generic story beats. Evaluate:\n'
-      '${_objectiveSection(charName, userName, primaryObjective, ambitions)}'
-      '${_fixationSection(charName)}'
+      '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions, openGoals: openGoals, recentEnded: recentEnded)}'
+      '${RealismPromptFragments.fixationSection(charName)}'
       '\n'
-      '${_recentBlock(recent)}'
-      '${toolsMode ? _toolInstruction('report_narrative') : _jsonInstruction(['proposed_objective', if (_ambitionRoster(ambitions).isNotEmpty) 'serves_ambition', 'fixation_topic'])}';
+      '${RealismPromptFragments.recentBlock(recent)}'
+      '${toolsMode ? RealismPromptFragments.toolInstruction('report_narrative') : RealismPromptFragments.jsonInstruction(['proposed_objective', if (RealismPromptFragments.ambitionRoster(ambitions).isNotEmpty) 'serves_ambition', 'fixation_topic'])}';
 
   static String oneShotEvalPrompt({
     required String charName,
@@ -343,23 +361,43 @@ class RealismPromptBuilder {
     required int arousalLevel,
     int refractoryMinutesLeft = 0,
     bool clockRunning = true,
+    bool refractorySoft = false,
+    int warmthTailMinutes = 0,
+    bool mutualOpening = false,
+    bool pcdActive = false,
     List<String> allowedEmotionLabels = const [],
     String? primaryObjective,
     List<({String text, int progress})> ambitions = const [],
+    List<String> openGoals = const [],
+    List<String> recentEnded = const [],
     String preferences = '',
     bool toolsMode = false,
   }) =>
       '${judgePrefix(charName: charName, userName: userName, dossier: dossier, standing: standing, preferences: preferences, ambitions: ambitions)}'
       'Score how this exchange truly landed for $charName across every '
       'dimension below. Evaluate ALL of the following at once:\n'
-      '${_bondSection(charName, userName)}'
-      '${_trustSection(charName, userName)}'
-      '${_emotionSection(charName, allowedEmotionLabels)}'
-      '${arousalEnabled ? _arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning) : ''}'
-      '${_objectiveSection(charName, userName, primaryObjective, ambitions)}'
-      '${_fixationSection(charName)}'
-      '${_reasonSection()}'
+      '${RealismPromptFragments.bondSection(charName, userName)}'
+      '${RealismPromptFragments.trustSection(charName, userName)}'
+      '${RealismPromptFragments.emotionSection(charName, allowedEmotionLabels, userName: userName, pcdActive: pcdActive)}'
+      '${arousalEnabled ? RealismPromptFragments.arousalSection(charName, userName, arousalLevel, refractoryMinutesLeft, clockRunning, refractorySoft: refractorySoft, warmthTailMinutes: warmthTailMinutes, mutualOpening: mutualOpening, bondScoredHere: true) : ''}'
+      '${RealismPromptFragments.objectiveSection(charName, userName, primaryObjective, ambitions, openGoals: openGoals, recentEnded: recentEnded)}'
+      '${RealismPromptFragments.fixationSection(charName)}'
+      '${RealismPromptFragments.reasonSection()}'
       '\n'
-      '${_recentBlock(recent)}'
-      '${toolsMode ? _toolInstruction('report_realism') : _jsonInstruction(['relationship_delta', 'bond_reason', 'trust_delta', 'trust_reason', 'emotion', 'emotion_intensity', if (arousalEnabled) 'arousal_delta', 'proposed_objective', if (_ambitionRoster(ambitions).isNotEmpty) 'serves_ambition', 'fixation_topic', 'reason'])}';
+      '${RealismPromptFragments.recentBlock(recent)}'
+      '${toolsMode ? RealismPromptFragments.toolInstruction('report_realism') : RealismPromptFragments.jsonInstruction([
+              'relationship_delta',
+              'bond_reason',
+              'trust_delta',
+              'trust_reason',
+              'emotion',
+              'emotion_intensity',
+              'emotion_cause',
+              'emotion_change',
+              if (arousalEnabled) ...['arousal_delta', 'arousal_reason'],
+              'proposed_objective',
+              if (RealismPromptFragments.ambitionRoster(ambitions).isNotEmpty) 'serves_ambition',
+              'fixation_topic',
+              'reason',
+            ])}';
 }

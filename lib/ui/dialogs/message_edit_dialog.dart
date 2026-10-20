@@ -21,10 +21,15 @@ import 'package:front_porch_ai/utils/utils.dart';
 /// `showDialog` lands in the navigator overlay, which sits *above* the
 /// chat's Reading Size scope. Prefer [StorageService.textScale]; fall back
 /// to the launching MediaQuery when no storage is in the tree (widget tests).
+///
+/// [showThinking] is false for the user's own messages: they have no model
+/// reasoning, so the Thinking section stays hidden unless the stored text
+/// already carries some (it is never dropped on save).
 Future<String?> showMessageEditDialog({
   required BuildContext context,
   required String initialText,
   String title = 'Edit Message',
+  bool showThinking = true,
 }) {
   late final TextScaler appScaler;
   try {
@@ -39,7 +44,11 @@ Future<String?> showMessageEditDialog({
     barrierDismissible: false,
     builder: (ctx) => MediaQuery(
       data: MediaQuery.of(ctx).copyWith(textScaler: appScaler),
-      child: _MessageEditDialog(initialText: initialText, title: title),
+      child: _MessageEditDialog(
+        initialText: initialText,
+        title: title,
+        showThinking: showThinking,
+      ),
     ),
   );
 }
@@ -47,8 +56,13 @@ Future<String?> showMessageEditDialog({
 class _MessageEditDialog extends StatefulWidget {
   final String initialText;
   final String title;
+  final bool showThinking;
 
-  const _MessageEditDialog({required this.initialText, required this.title});
+  const _MessageEditDialog({
+    required this.initialText,
+    required this.title,
+    required this.showThinking,
+  });
 
   @override
   State<_MessageEditDialog> createState() => _MessageEditDialogState();
@@ -60,6 +74,7 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
   late final String _initialThinking;
   late final String _initialBody;
   late bool _thinkingExpanded;
+  late final bool _showThinking;
 
   @override
   void initState() {
@@ -68,6 +83,7 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
     _initialThinking = parts.thinking;
     _initialBody = parts.body;
     _thinkingExpanded = parts.thinking.isNotEmpty;
+    _showThinking = widget.showThinking || parts.thinking.isNotEmpty;
     _bodyController = StyledTextController(
       text: parts.body,
       preset: StyledTextPreset.prose,
@@ -153,6 +169,11 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
         const SingleActivator(LogicalKeyboardKey.escape): _cancel,
         SingleActivator(LogicalKeyboardKey.enter, meta: isMac, control: !isMac):
             _save,
+        SingleActivator(
+          LogicalKeyboardKey.numpadEnter,
+          meta: isMac,
+          control: !isMac,
+        ): _save,
       },
       child: Focus(
         autofocus: true,
@@ -178,8 +199,10 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildThinkingSection(context),
-                        const SizedBox(height: 8),
+                        if (_showThinking) ...[
+                          _buildThinkingSection(context),
+                          const SizedBox(height: 8),
+                        ],
                         Text(
                           'Message',
                           style: TextStyle(
@@ -241,8 +264,8 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
             icon: const Icon(Icons.check, size: 16),
             label: const Text('Save'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.formMasterAccent,
-              foregroundColor: AppColors.onChaosAccent,
+              backgroundColor: AppColors.formAccentOf(context),
+              foregroundColor: AppColors.onAccentOf(context),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -295,13 +318,15 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
                       vertical: 1,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.formMasterAccent.withValues(alpha: 0.15),
+                      color: AppColors.formAccentOf(
+                        context,
+                      ).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '${_thinkingController.text.trim().length} chars',
                       style: TextStyle(
-                        color: AppColors.formMasterAccent,
+                        color: AppColors.formAccentOf(context),
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
@@ -352,7 +377,9 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(
-                    color: AppColors.formMasterAccent.withValues(alpha: 0.5),
+                    color: AppColors.formAccentOf(
+                      context,
+                    ).withValues(alpha: 0.5),
                   ),
                 ),
                 contentPadding: const EdgeInsets.all(12),
@@ -387,7 +414,7 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.formMasterAccent),
+          borderSide: BorderSide(color: AppColors.formAccentOf(context)),
         ),
         contentPadding: const EdgeInsets.all(16),
       ),
@@ -415,7 +442,7 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
               width: 6,
               height: 6,
               decoration: BoxDecoration(
-                color: AppColors.formMasterAccent,
+                color: AppColors.formAccentOf(context),
                 shape: BoxShape.circle,
               ),
             ),
@@ -423,7 +450,7 @@ class _MessageEditDialogState extends State<_MessageEditDialog> {
             Text(
               'Unsaved',
               style: TextStyle(
-                color: AppColors.formMasterAccent,
+                color: AppColors.formAccentOf(context),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),

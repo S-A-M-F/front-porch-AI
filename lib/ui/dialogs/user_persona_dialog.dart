@@ -16,17 +16,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/dialogs/user_persona/persona_edit_form.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/utils/utils.dart';
-
-part 'user_persona_dialog.edit_form.dart';
 
 class UserPersonaDialog extends StatefulWidget {
   const UserPersonaDialog({super.key});
@@ -135,13 +132,27 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF1F2937),
+      backgroundColor: AppColors.surfaceOf(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: 600,
         height: 500,
         padding: const EdgeInsets.all(24),
-        child: _isEditing ? _buildEditForm() : _buildList(),
+        child: _isEditing
+            ? PersonaEditForm(
+                formKey: _formKey,
+                isNew: _editingPersona == null,
+                titleController: _titleController,
+                nameController: _nameController,
+                personaController: _personaController,
+                avatarPath: _avatarPath,
+                birthday: _birthday,
+                onBirthdayChanged: _setBirthday,
+                onPickAvatar: _pickAvatar,
+                onCancel: _cancelEditing,
+                onSave: _savePersona,
+              )
+            : _buildList(),
       ),
     );
   }
@@ -167,16 +178,19 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Speak as…',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppColors.textPrimary(context),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white54),
+                  icon: Icon(
+                    Icons.close,
+                    color: AppColors.textSecondary(context),
+                  ),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
@@ -193,11 +207,13 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: isActive
-                          ? AppColors.formMasterAccent.withValues(alpha: 0.1)
-                          : Colors.white.withValues(alpha: 0.05),
+                          ? AppColors.formAccentOf(
+                              context,
+                            ).withValues(alpha: 0.1)
+                          : InkColors.washOf(context, 0.05, 0.03),
                       borderRadius: BorderRadius.circular(8),
                       border: isActive
-                          ? Border.all(color: AppColors.formMasterAccent)
+                          ? Border.all(color: AppColors.formAccentOf(context))
                           : null,
                     ),
                     child: Material(
@@ -210,8 +226,8 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                         ),
                         title: Text(
                           persona.displayLabel,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: AppColors.textPrimary(context),
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -225,7 +241,9 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                               : '',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white70),
+                          style: TextStyle(
+                            color: AppColors.textSecondary(context),
+                          ),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -240,19 +258,19 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                                 child: const Text('Use in this chat'),
                               ),
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.edit,
                                 size: 20,
-                                color: Colors.white70,
+                                color: AppColors.textSecondary(context),
                               ),
                               onPressed: () => _startEditing(persona),
                             ),
                             if (service.personas.length > 1)
                               IconButton(
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.delete,
                                   size: 20,
-                                  color: Colors.redAccent,
+                                  color: StatusColors.dangerOf(context),
                                 ),
                                 onPressed: () =>
                                     _showDeleteConfirmation(context, persona),
@@ -275,8 +293,8 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
                 icon: const Icon(Icons.add),
                 label: const Text('Add New Persona'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.formMasterAccent,
-                  foregroundColor: AppColors.onChaosAccent,
+                  backgroundColor: AppColors.formAccentOf(context),
+                  foregroundColor: AppColors.onAccentOf(context),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
@@ -291,7 +309,7 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
+        backgroundColor: AppColors.surfaceOf(context),
         title: const Text('Delete Persona'),
         content: Text('Are you sure you want to delete "${persona.name}"?'),
         actions: [
@@ -307,7 +325,9 @@ class _UserPersonaDialogState extends State<UserPersonaDialog> {
               ).deletePersona(persona.id);
               Navigator.of(context).pop();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: StatusColors.alertFill,
+            ),
             child: const Text('Delete'),
           ),
         ],

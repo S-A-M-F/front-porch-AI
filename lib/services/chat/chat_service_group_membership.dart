@@ -59,12 +59,13 @@ extension ChatServiceGroupMembership on ChatService {
     // realism-gated.
     final Map<String, dynamic> hostState = <String, dynamic>{
       'realismOn': _realismEnabled,
-      if (_realismEnabled) ..._captureRealismState(),
+      if (_realismEnabled) ..._realismSnapshot.capture(),
       'needsSimEnabled': _needsSimEnabled,
       'nsfwCooldownEnabled': _nsfwService.nsfwCooldownEnabled,
       'passageOfTimeEnabled': _timeService.passageOfTimeEnabled,
       'chaosModeEnabled': _chaosModeService.chaosModeEnabled,
       'chaosPressure': _chaosModeService.chaosPressure,
+      'chaosNsfwEnabled': _chaosModeService.chaosNsfwEnabled,
       'authorNote': _authorNote,
       'authorNoteStrength': _authorNoteStrength,
       // Live kit, regardless of realism — collapse copies this back onto

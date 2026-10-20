@@ -17,33 +17,22 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:drift/drift.dart' show Value;
-import 'dart:io';
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 
-import 'package:front_porch_ai/database/database.dart' as db;
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/ui/pages/edit_character_page.dart';
-import 'package:front_porch_ai/ui/widgets/widgets.dart';
-import 'package:front_porch_ai/ui/widgets/group_alternate_greetings_editor.dart';
+import 'package:front_porch_ai/ui/pages/edit_group/edit_group.dart';
 import 'package:front_porch_ai/ui/widgets/group_realism_dynamics_editor.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
-// The Details, Dialogue, and Lore & Worlds tab builders live in these
-// `part of` files (extensions on _EditGroupPageState) to keep every file
-// under the 500-LOC cap — same pattern model_settings_dialog.dart uses. They
-// share this library's imports and access the page's private state directly,
-// so behavior is unchanged. The Realism & Dynamics tab builder stays inline
-// in build() below — it's 22 lines and reads 4 state fields, simplest left
-// as-is.
-part 'edit_group_page.details.dart';
-part 'edit_group_page.dialogue.dart';
-part 'edit_group_page.lore_worlds.dart';
+export 'package:front_porch_ai/ui/pages/edit_group/edit_group_lore_worlds_tab.dart'
+    show kEditGroupUnreadableLoreNote;
 
 /// Tabbed group editor (edit-only flow).
 /// Matches the visual tabbed style, section cards, and field treatment of EditCharacterPage
@@ -106,7 +95,7 @@ class _EditGroupPageState extends State<EditGroupPage>
 
   final List<LorebookEntry> _groupLoreEntries = [];
   final List<String> _worldIds = [];
-  bool _inheritCharacterLorebooks = true;
+  bool _inheritCharacterLorebooks = false;
 
   // Preserved on edit (baseline is immutable per spec; default seeds passed through)
   String _baselineRealismState = '{}';
@@ -118,6 +107,10 @@ class _EditGroupPageState extends State<EditGroupPage>
   // Guards + data-loss protection (smallest possible additions)
   bool _membersLoaded = false;
   String _originalRawLorebook = '';
+
+  /// The stored group lorebook could not be read. It is kept as stored
+  /// unless the user, asked on Save, chooses to replace it.
+  bool _bookUnreadable = false;
 
   @override
   void initState() {
@@ -202,19 +195,42 @@ class _EditGroupPageState extends State<EditGroupPage>
     }
 
     // Parse existing group lorebook (preserve raw on failure for data safety)
-    if (g.groupLorebook.isNotEmpty &&
-        g.groupLorebook != '{}' &&
-        g.groupLorebook != '[]') {
-      try {
-        final decoded = jsonDecode(g.groupLorebook);
-        if (decoded is Map<String, dynamic>) {
-          _groupLoreEntries.addAll(Lorebook.fromJson(decoded).entries);
-        }
-      } catch (_) {
-        // Keep _originalRawLorebook; do not clear on bad parse
-      }
+    try {
+      final book = parseGroupLorebookJson(g.groupLorebook);
+      if (book != null) _groupLoreEntries.addAll(book.entries);
+    } catch (e) {
+      debugPrint('[EditGroup] group lorebook could not be read: $e');
+      _bookUnreadable = true;
     }
+    _startFingerprint = _fingerprint();
   }
+
+  /// Everything Save writes, so leaving can tell whether anything changed.
+  /// Empty per-character prompts are dropped, as Save drops them.
+  String _fingerprint() => jsonEncode([
+    _nameController.text.trim(),
+    _firstMessageController.text.trim(),
+    _altGreetings,
+    [for (final s in _altGreetingSeeds) s?.toJson()],
+    _scenarioController.text.trim(),
+    _systemPromptController.text.trim(),
+    _turnOrder.name,
+    _autoAdvance,
+    _directorMode,
+    _worldIds,
+    _inheritCharacterLorebooks,
+    {
+      for (final e in _charPromptControllers.entries)
+        if (e.value.text.trim().isNotEmpty) e.key: e.value.text.trim(),
+    },
+    [for (final e in _groupLoreEntries) e.toJson()],
+    _defaultMemberRealismState,
+    _baselineRealismState,
+  ]);
+  String? _startFingerprint;
+
+  bool _isDirty() =>
+      _startFingerprint != null && _fingerprint() != _startFingerprint;
 
   @override
   void dispose() {
@@ -239,14 +255,16 @@ class _EditGroupPageState extends State<EditGroupPage>
       if (t.isNotEmpty) charPrompts[entry.key] = t;
     }
 
-    // Lore JSON: protect against silent loss from parse failure in init (use original raw if user made no edits to lore)
-    String groupLoreJson;
-    if (_groupLoreEntries.isEmpty && _originalRawLorebook.isNotEmpty) {
-      groupLoreJson = _originalRawLorebook;
-    } else {
-      final lb = Lorebook(entries: List.from(_groupLoreEntries));
-      groupLoreJson = jsonEncode(lb.toJson());
-    }
+    // An unreadable stored book is never replaced without the user saying so.
+    final keepRaw = await keepUnreadableGroupLorebook(
+      context,
+      bookUnreadable: _bookUnreadable,
+      hasEntries: _groupLoreEntries.isNotEmpty,
+    );
+    if (keepRaw == null) return;
+    final String groupLoreJson = keepRaw
+        ? _originalRawLorebook
+        : jsonEncode(Lorebook(entries: List.from(_groupLoreEntries)).toJson());
 
     final updated = GroupChat(
       id: widget.group.id,
@@ -316,16 +334,21 @@ class _EditGroupPageState extends State<EditGroupPage>
     }
   }
 
-  /// Re-exposes the protected [setState] for the `part of` extensions
-  /// (`edit_group_page.*.dart`), which hold the Details, Dialogue, and Lore &
-  /// Worlds tab builders but can't call a State's protected members directly.
-  void rebuildState(VoidCallback fn) => setState(fn);
+  Future<void> _editMember(CharacterCard member, String memberId) async {
+    final edited = await editGroupMemberCard(context, member, memberId);
+    if (edited != null && mounted) {
+      // The member card was mutated in place, so a rebuild reflects the edits.
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('“${edited.name}” updated in this group.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     // Only the Realism & Dynamics tab builder stays local here; Details,
-    // Dialogue, and Lore & Worlds moved to `part of` extension methods
-    // (_buildDetailsTab / _buildDialogueTab / _buildLoreWorldsTab below).
+    // Dialogue, and Lore & Worlds are widgets under edit_group/.
     // All colors via AppColors.* only — no 0xFF, no raw Colors.* introduced.
 
     Widget buildRealismTab() {
@@ -351,71 +374,105 @@ class _EditGroupPageState extends State<EditGroupPage>
       );
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundOf(context),
-      appBar: AppBar(
-        backgroundColor: AppColors.surfaceOf(context),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text('Edit Group'),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppColors.formMasterAccent,
-          unselectedLabelColor: AppColors.textTertiary(context),
-          indicatorColor: AppColors.formMasterAccent,
-          indicatorWeight: 3,
-          isScrollable: true,
-          tabs: const [
-            Tab(icon: Icon(Icons.person_outline, size: 18), text: 'Details'),
-            Tab(
-              icon: Icon(Icons.chat_bubble_outline, size: 18),
-              text: 'Dialogue',
-            ),
-            Tab(
-              icon: Icon(Icons.auto_stories_outlined, size: 18),
-              text: 'Lore & Worlds',
-            ),
-            Tab(
-              icon: Icon(Icons.favorite_outline, size: 18),
-              text: 'Realism & Dynamics',
+    return UnsavedChangesGuard(
+      isDirty: _isDirty,
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundOf(context),
+        appBar: AppBar(
+          backgroundColor: AppColors.surfaceOf(context),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          title: const Text('Edit Group'),
+          bottom: TabBar(
+            controller: _tabController,
+            labelColor: AppColors.formAccentOf(context),
+            unselectedLabelColor: AppColors.textTertiary(context),
+            indicatorColor: AppColors.formAccentOf(context),
+            indicatorWeight: 3,
+            isScrollable: true,
+            tabs: const [
+              Tab(icon: Icon(Icons.person_outline, size: 18), text: 'Details'),
+              Tab(
+                icon: Icon(Icons.chat_bubble_outline, size: 18),
+                text: 'Dialogue',
+              ),
+              Tab(
+                icon: Icon(Icons.auto_stories_outlined, size: 18),
+                text: 'Lore & Worlds',
+              ),
+              Tab(
+                icon: Icon(Icons.favorite_outline, size: 18),
+                text: 'Realism & Dynamics',
+              ),
+            ],
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _nameController,
+                builder: (context, value, _) {
+                  final hasName = value.text.trim().isNotEmpty;
+                  return ElevatedButton.icon(
+                    onPressed: hasName ? _saveGroup : null,
+                    icon: Icon(
+                      widget.popWithGroupOnSave
+                          ? Icons.arrow_forward
+                          : Icons.save_outlined,
+                      size: 18,
+                    ),
+                    label: Text(widget.saveLabel),
+                  );
+                },
+              ),
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _nameController,
-              builder: (context, value, _) {
-                final hasName = value.text.trim().isNotEmpty;
-                return ElevatedButton.icon(
-                  onPressed: hasName ? _saveGroup : null,
-                  icon: Icon(
-                    widget.popWithGroupOnSave
-                        ? Icons.arrow_forward
-                        : Icons.save_outlined,
-                    size: 18,
-                  ),
-                  label: Text(widget.saveLabel),
-                );
-              },
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                EditGroupDetailsTab(
+                  nameController: _nameController,
+                  systemPromptController: _systemPromptController,
+                  scenarioController: _scenarioController,
+                  members: _members,
+                  charPromptControllers: _charPromptControllers,
+                  onEditMember: _editMember,
+                ),
+                EditGroupDialogueTab(
+                  firstMessageController: _firstMessageController,
+                  altGreetings: _altGreetings,
+                  altGreetingSeeds: _altGreetingSeeds,
+                  onAltGreetingsChanged: _setAltGreetings,
+                ),
+                // A LISTENING read, as before: world changes rebuild the page.
+                EditGroupLoreWorldsTab(
+                  allWorlds: Provider.of<WorldRepository>(context).placeWorlds,
+                  loreEntries: _groupLoreEntries,
+                  bookUnreadable: _bookUnreadable,
+                  inheritCharacterLorebooks: _inheritCharacterLorebooks,
+                  worldIds: _worldIds,
+                  onAddEntry: (entry) {
+                    if (mounted) setState(() => _groupLoreEntries.add(entry));
+                  },
+                  onReplaceEntry: (i, entry) {
+                    if (mounted) setState(() => _groupLoreEntries[i] = entry);
+                  },
+                  onRemoveEntry: (i) =>
+                      setState(() => _groupLoreEntries.removeAt(i)),
+                  onInheritChanged: (v) =>
+                      setState(() => _inheritCharacterLorebooks = v),
+                  onLinkWorld: (id) => setState(() => _worldIds.add(id)),
+                  onUnlinkWorld: (id) => setState(() => _worldIds.remove(id)),
+                ),
+                buildRealismTab(),
+              ],
             ),
-          ),
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildDetailsTab(),
-              _buildDialogueTab(),
-              _buildLoreWorldsTab(),
-              buildRealismTab(),
-            ],
           ),
         ),
       ),
