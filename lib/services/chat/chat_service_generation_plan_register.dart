@@ -159,6 +159,10 @@ extension ChatServiceGenerationPlanRegister on ChatService {
       label: 'Needs Catastrophe',
       text: needsCatastropheBlock,
     );
+    // After a long skip: one plain fact line saying how long it was, right
+    // where the transcript resumes and outside the state frame, so the new
+    // date is not one more note that "may be behind" (time_skip_anchor.dart).
+    plan.add(id: 'time_skip', label: 'Time Skip', text: _timeSkipAnchorBlock());
     // The latest beat (latestTurnStart), cut off the transcript and rendered
     // here: the last thing the model reads before the speaker's name is the
     // turn it answers, not the notes above or its own long replies. Local
@@ -220,6 +224,8 @@ extension ChatServiceGenerationPlanRegister on ChatService {
     }
     plan.section('chance_time').text = '';
     plan.section('state_frame').text = '';
+    // The partial already answered the skip; Continue drops the time line too.
+    plan.section('time_skip').text = '';
     // Porch Night is registered outside kStateZoneSectionIds (force-ack
     // table-talk, not a permanent state fragment). Leaving it armed made
     // Continue inject "HARD REQUIRED OPENING / first 2–4 sentences" into

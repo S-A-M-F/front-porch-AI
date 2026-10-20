@@ -326,11 +326,12 @@ extension ChatServiceCast on ChatService {
               : [?_activeCharacter?.name],
           userName: _userPersonaService.persona.name,
           skipLine: skipLine.text,
-          from:
-              '${StoryClock.formatShortDate(from)} · '
-              '${StoryClock.formatClock(from)}',
-          to: '${_timeService.displayShortDate} · ${_timeService.displayClock}',
+          from: '${skipMomentWords(from)} (${StoryClock.formatClock(from)})',
+          to:
+              '${skipMomentWords(_timeService.clock)} '
+              '(${_timeService.displayClock})',
           minutes: skipped,
+          context: _timeSkipBridgeContext(),
         ),
         label: 'time_skip_bridge',
       );
@@ -342,8 +343,18 @@ extension ChatServiceCast on ChatService {
         debugPrint('[TimeSkip] bridge came back empty; replying without it');
         return true;
       }
-      // Before the skip line, like a dream: the line that skipped stays the
-      // user's turn for every pass that looks for it.
+      // The clock is the truth: a bridge claiming more time than it moved
+      // would be one more disagreement for the reply to reconcile.
+      if (bridgeOverstatesSpan(beat, skipped)) {
+        debugPrint(
+          '[TimeSkip] bridge names a longer span than '
+          '${skipSpanWords(skipped)}; replying without it',
+        );
+        return true;
+      }
+      // Stored before the skip line, so the line that skipped stays the
+      // user's turn for every pass that looks for it. The prompt reads it
+      // after that line (bridgesAfterSkipLines).
       final at = _messages.indexOf(skipLine);
       _messages.insert(
         at < 0 ? _messages.length : at,

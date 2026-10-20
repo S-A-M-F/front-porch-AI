@@ -36,11 +36,15 @@ class OpenPromise {
   /// `'open'` | `'kept'` | `'broken'`.
   final String status;
 
+  /// Story day the promise was made on, when the card was stamped.
+  final int? storyDay;
+
   const OpenPromise({
     required this.cardId,
     required this.text,
     required this.party,
     required this.status,
+    this.storyDay,
   });
 }
 
@@ -290,6 +294,7 @@ class PromiseDebtService {
           text: desc is String && desc.isNotEmpty ? desc : card.content,
           party: party == 'char' ? 'char' : 'user',
           status: 'open',
+          storyDay: JournalStore.stampOf(card).$1,
         ),
       );
     }

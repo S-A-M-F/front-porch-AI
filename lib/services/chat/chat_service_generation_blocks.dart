@@ -322,6 +322,14 @@ extension ChatServiceGenerationBlocks on ChatService {
       // `_isLiteTurn` — written out so the journal-off recap pin still
       // sees guestSpeaker, and a host/full turn still gets the recap.
       isGuest: t.guestSpeaker != null || t.speakingCharacter.isLite,
+      asOf: _clockRunning
+          ? recapAsOf(
+              messages: _messages,
+              cursor: _summaryLastIndex,
+              startDate: _timeService.startDate,
+              currentDay: _timeService.dayCount,
+            )
+          : null,
     );
 
     // Cued query for journal cold-resurface AND RAG (not last-3 live lines

@@ -445,7 +445,11 @@ class TimeService {
   String get displayShortDate => _state.displayShortDate;
   String get displayDate => StoryClock.formatDate(
     _state.clock,
-    realYear: StoryClock.todayAnchor().year,
+    realYear: StoryClock.yearAnchorFor(
+      _state.clock,
+      _state.startDate,
+      realYear: StoryClock.todayAnchor().year,
+    ),
   );
 
   // ── Mutation for control / loads (side-effect free; wrappers do save/notify) ──

@@ -16,6 +16,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/clock_resolve.dart';
+import 'package:front_porch_ai/services/chat/story_clock.dart';
+
+import 'story_when.dart';
+
 /// The "Where we are" recap block — the plot spine of the state zone
 /// (docs/design/prompt-state-injection.md §6/§6.1). The last past-channel
 /// without its own builder; the Journal, RAG and the world all had one, and
@@ -72,7 +78,10 @@
 ///    block is back after the transcript now (kStateZoneSectionIds, in
 ///    chat_service_generation_plan.dart) so a moving byte is cheap here — but
 ///    it bought nothing even at that price. These bytes now change only when
-///    the recap itself is rewritten, which is the floor.
+///    the recap itself is rewritten, which is the floor. The one stamp
+///    allowed is the story moment the recap was written at ([recapAsOf]):
+///    it is fixed by the pass cursor, and after a long skip it is the only
+///    thing dating the recap's present tense.
 ///  * **Keep the anti-echo guard.** "not new prose — do not continue or
 ///    restate it" is load-bearing for this block's post-transcript seat: it is
 ///    the last prose the model reads before it starts writing, and without the
@@ -117,16 +126,44 @@ String recapBlockForTurn({
   required String recap,
   required bool journalEnabled,
   required bool isGuest,
+  String? asOf,
 }) {
   if (!journalEnabled || isGuest) return '';
-  return buildRecapBlock(recap: recap);
+  return buildRecapBlock(recap: recap, asOf: asOf);
 }
 
-String buildRecapBlock({required String recap}) {
+/// [asOf] ("Day 1, Tuesday night") is the story moment the recap was
+/// written at. Unlike a lag counter it moves only when the recap is
+/// rewritten, and after a long skip it is what tells the model the recap's
+/// "tonight" was two weeks ago.
+String buildRecapBlock({required String recap, String? asOf}) {
   if (recap.isEmpty) return '';
+  final when = asOf == null || asOf.isEmpty ? '' : ', as of $asOf';
   // Leading \n: this block's own separator, so it sits one blank line clear of
   // the state-zone frame above it (the transcript and the retrieved-memories
   // block before that carry no trailing blank line of their own).
-  return '\n[Earlier in this story (a recap for memory; not new prose — do '
-      'not continue or restate it): $recap]\n';
+  return '\n[Earlier in this story (a recap for memory$when; not new prose — '
+      'do not continue or restate it): $recap]\n';
+}
+
+/// The story moment the recap covers up to: the clock stamp of the newest
+/// reply before the pass [cursor] (an index into [messages]), as
+/// "Day 1, Tuesday night — 2 weeks ago". Null when no reply there carries
+/// a clock, so an unstamped recap reads as it always did.
+String? recapAsOf({
+  required List<ChatMessage> messages,
+  required int cursor,
+  required DateTime startDate,
+  required int currentDay,
+}) {
+  for (var i = cursor.clamp(0, messages.length) - 1; i >= 0; i--) {
+    final m = messages[i];
+    if (m.isUser) continue;
+    final at = slotClockAfter(m.activeMetadata);
+    if (at == null) continue;
+    final day = StoryClock.dayCountFor(at, startDate);
+    return '${storyDayLabel(day, startDate, clock: at)} — '
+        '${storyDaysAgo(currentDay - day)}';
+  }
+  return null;
 }

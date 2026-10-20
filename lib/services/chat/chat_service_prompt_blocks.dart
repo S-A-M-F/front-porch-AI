@@ -18,10 +18,9 @@
 
 part of '../chat_service.dart';
 
-/// Static prompt-block builders: the Author's Note (setter + strength-modulated
-/// wrapper) and the user-persona block. Extracted verbatim from the god file
-/// (zero behaviour change); both are pure string builders with no Realism/Needs
-/// state, identical in 1:1 and group modes.
+/// Prompt-block builders: the Author's Note (setter + strength-modulated
+/// wrapper), the user-persona block, and the time-skip anchor and bridge
+/// context. All read state only; identical in 1:1 and group modes.
 extension ChatServicePromptBlocks on ChatService {
   void setAuthorNote(String note, {int? strength}) {
     _authorNote = note;
@@ -73,5 +72,65 @@ extension ChatServicePromptBlocks on ChatService {
     );
     buf.writeln();
     return buf.toString();
+  }
+
+  /// The time-skip anchor for this reply prompt: '' unless the clock runs
+  /// and a long skip is this turn's or a recent one (time_skip_anchor.dart).
+  String _timeSkipAnchorBlock() {
+    if (!_clockRunning) return '';
+    final pending = _pendingRealismMetadata?[kLongSkipMinutesMeta] as num?;
+    return buildTimeSkipAnchor(
+      latestLongSkip(
+        messages: _messages,
+        clock: _timeService.clock,
+        pendingMinutes: pending?.toInt(),
+      ),
+    );
+  }
+
+  /// What the bridge narrator should know beyond the last lines: who the
+  /// cast are, their bond with the user, the place, the recap and the
+  /// promises still open. Same fields in 1:1 and group.
+  TimeSkipBridgeContext _timeSkipBridgeContext() {
+    final cast = _activeGroup != null
+        ? _groupCharacters.toList()
+        : [?_activeCharacter];
+    final user = _userPersonaService.persona.name;
+    String tone(CharacterCard c) {
+      if (!_realismEnabled) return '';
+      final tier = _activeGroup != null
+          ? _groupRealism[_getCharacterIdFromCard(c)]?.longTermTier
+          : _relationshipService.longTermTier;
+      if (tier == null) return '';
+      return 'with $user: ${RelationshipService.longTermTierLabel(tier)}';
+    }
+
+    final sessionId = _currentSessionId;
+    final threads = <String>[
+      if (sessionId != null)
+        for (final c in cast)
+          for (final p
+              in _promiseDebtService.cachedOpen(
+                    sessionId,
+                    _getCharacterIdFromCard(c),
+                  ) ??
+                  const <OpenPromise>[])
+            p.party == 'user'
+                ? '$user promised ${c.name}: ${p.text}'
+                : '${c.name} promised $user: ${p.text}',
+    ];
+    final primaryId = _chatPlaceSlots.primaryId;
+    final world = primaryId == null
+        ? null
+        : _worldRepository.resolveWorld(primaryId);
+    final place = world == null
+        ? ''
+        : clipGuestCite('${world.name}. ${world.description}', max: 240);
+    return TimeSkipBridgeContext(
+      castNotes: [for (final c in cast) bridgeCastNote(c, tone: tone(c))],
+      place: place,
+      recap: _storageService.memorySettings.journalEnabled ? _summary : '',
+      openThreads: threads.take(4).toList(),
+    );
   }
 }

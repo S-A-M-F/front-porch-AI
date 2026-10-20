@@ -406,6 +406,17 @@ class StoryClock {
     return clock.year == realYear ? base : '$base, ${clock.year}';
   }
 
+  /// The year [formatDate] compares a story's clock against, decided by
+  /// when the story STARTED rather than by today's calendar: a story that
+  /// began within a year of [realYear] is contemporary and never shows a
+  /// year (a skip across New Year must not suddenly add ", 2027"); a period
+  /// story always shows its own.
+  static int yearAnchorFor(
+    DateTime clock,
+    DateTime startDate, {
+    required int realYear,
+  }) => (startDate.year - realYear).abs() <= 1 ? clock.year : realYear;
+
   /// "Tue, Mar 3" — compact strip/chip form.
   static String formatShortDate(DateTime clock) =>
       '${weekdayName(clock).substring(0, 3)}, '
