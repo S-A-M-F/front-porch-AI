@@ -130,11 +130,14 @@ With world `S` in the Setting slot:
 ### Overloading: nearest place wins its inclusion group
 
 `LoreEntryRef` gains a specificity rank set by `collectLoreEntryRefs`: the
-Setting leaf is 0, its parent 1, and so on; Lore-slot places and character
-books rank behind the whole chain. `_pickGroupWinner` checks that rank
-right after the sticky check. Among members from chain worlds the nearest
-place wins; the existing prioritize, scoring and random steps still break
-ties at the same rank.
+Setting leaf is 0, its parent 1, and so on. `_pickGroupWinner` checks that
+rank right after the sticky check, **but only among members whose worlds
+are ancestors of one another** (one chain). Members from unrelated worlds
+(a Lore-slot place that is not in the Setting's chain, a character book)
+fall through to today's prioritize, scoring and random steps unchanged.
+Among chain members the nearest place wins; ties at the same rank break
+as today. This narrowing is what makes the upgrade a no-op for every
+existing chat (see §8).
 
 Authoring: put both "teacup" entries in inclusion group `teacup`. The
 palace version injects whenever the palace or a room inside it is the
@@ -226,13 +229,20 @@ with bulk delete in the Worlds library.
 **Worlds library.** Cards group by root; a root card shows an "N places"
 chip that expands the children indented beneath it. Flat list is unchanged
 for users with no locations. Root card action: "Add a place inside".
-Filter: "model-made", with bulk delete.
+Filter: "model-made", with bulk delete. Multi-select action **"Move
+into…"** sets the parent on many worlds at once, for authors who already
+built their places as separate worlds.
 
 **World editor.** Basics gains a **Part of** picker (none, or any root or
 depth-1 world excluding self and descendants). With a parent set, the
 climate section offers "Inherit from <parent> (<biome>)" or "Own climate";
-the existing climate editor shows under "Own". A Setting-prose preview
-under the description shows what the chain emits at the 600 cap.
+the existing climate editor shows under "Own". Setting a parent never
+flips the climate flag: a climate-on world opens with "Own climate"
+already selected. When a parent is set on a world that existing chats use
+as their Setting, the editor says what changes: "Chats set here will get
+<parent>'s lore, and its weather if this place inherits." A
+Setting-prose preview under the description shows what the chain emits at
+the 600 cap.
 
 **Places sidebar / web ChatPlacesSection.** Setting card shows the
 breadcrumb ("Tea Rooms · Bletchfield") as the move dropdown and names the
@@ -255,8 +265,8 @@ chat page. Rendered text is plain strings; no enum names leak.
 | # | Slice | Depends on | Guard that goes red first |
 |---|-------|-----------|---------------------------|
 | 1 | Model + schema v61 + `chainFor` / `climateAuthorFor` on the repository, cycle check, re-root on delete | — | `world_repository_test`: chain, cycle refusal, re-root; `repair_covers_ladder_columns_test` |
-| 2 | Engine: chain climate (own or inherited), leaf-first prose, chain lore for Setting and Lore slots, specificity rank + nearest-wins group rule, biome span on author change | 1 | `chat_places_primary_lore_test`: location Setting gets ancestor weather, lore-only root keeps weather off, continent-level climates differ, grouped teacup flips with the Setting (1:1 and group); `world_injection_test`: leaf wins budget; `lorebook_scanner_test`: ancestor books enumerate once |
-| 3 | Desktop UI: Part of picker, inherit-or-own climate, grouped library, breadcrumb dropdown, prose preview | 2 | `integration_test/worlds_management_test`: make a town, make a place inside, attach, see "Weather from <town>", move by dropdown; `layout_sweep` at 400 and 1440 |
+| 2 | Engine: chain climate (own or inherited), leaf-first prose, chain lore for Setting and Lore slots, specificity rank + nearest-wins group rule, biome span on author change | 1 | `chat_places_primary_lore_test`: location Setting gets ancestor weather, lore-only root keeps weather off, continent-level climates differ, grouped teacup flips with the Setting (1:1 and group), an unrelated Lore place's group member still wins by today's rules; `world_injection_test`: leaf wins budget; `lorebook_scanner_test`: ancestor books enumerate once |
+| 3 | Desktop UI: Part of picker, inherit-or-own climate, grouped library, bulk "Move into…", breadcrumb dropdown, prose preview | 2 | `integration_test/worlds_management_test`: make a town, make a place inside, attach, see "Weather from <town>", move by dropdown; `layout_sweep` at 400 and 1440 |
 | 4 | Web + relay twins of 3 | 3 | `WorldsPage.*.test.tsx` for the picker; journey in `web_ui/e2e/journeys.spec.ts` |
 | 5 | `.fpworld` `locations[]`, Stoop ride-along, Rawhide notes | 1 | `world_repository_test` import group: round-trip keeps children, old envelope still imports |
 | 6 | Confirmed scene moves: `scene_place` on the clock judge, `pendingPlaceMove`, dialog, declined memory, the global Porch Life "Scene suggestions" row, both shells | 2, 3, 4 | scene-time evaluator test: arrival sets the flag without changing slots, a plan does not, Move swaps and demotes, Stay is not re-offered until the Setting changes; dialog widget test; web journey |
@@ -284,3 +294,52 @@ input. Slices 6 and 7 add no per-message state because the user confirms.
 - No automatic travel without confirmation.
 - One global switch for scene suggestions (moves and new places), in
   Porch Life, default off. No per-chat switches.
+
+## 8. Migration and compatibility
+
+Nothing changes for an existing library until someone sets a parent. An
+existing world is a location with no parent.
+
+**On upgrade (schema v61).**
+
+- Every existing world gets `parent_world_id = NULL`: a root. Its chain is
+  itself alone, so climate, Setting prose, lore and the 600-char budget
+  resolve exactly as before.
+- Chat attachments, Setting and Lore roles, character world links and
+  group templates are not rewritten. No row changes.
+- Climate flags stay as they are. Climate-on worlds keep authoring
+  weather; climate-off worlds stay lore-only.
+- Inclusion-group winners in existing chats do not change, because the
+  specificity rule applies only within one ancestor chain (§3). A chat
+  with a Setting and an unrelated Lore place sharing a group keeps today's
+  sticky → prioritize → score → random pick. The slice 2 test pins this.
+- Existing `.fpworld` files and Stoop cards import as before; they carry
+  no `locations` key. A file exported by the new app and opened in an
+  older app imports the root and drops the children, the same additive
+  rule every world field has followed.
+- The new column is additive, so an older build that opens the newer
+  library file ignores it, as with every previous additive migration.
+- Nightly / Rawhide data isolation (`FrontPorchAI-Beta/`) is unaffected.
+
+**Adopting the system with places built the old way.** The common
+pre-existing shape is a town plus several climate-off worlds attached as
+Lore. It keeps working as is. To adopt: open each place and set "Part of"
+to the town, or multi-select them in the library and use "Move into…".
+No lore moves, no re-import, ids stay the same, so every chat that already
+attaches a place keeps that attachment. Two things change at that moment,
+and the editor copy says so:
+
+- A climate-off place that now inherits gets the parent's weather in any
+  chat where it is the Setting. An author who wants that place to stay
+  weather-free picks "Own climate" and leaves climate off.
+- The parent's lore now arrives through the place even in chats where the
+  parent is not attached separately. That is the feature, but it is new
+  lore in old chats.
+
+Making a climate-on world a child never changes its weather: it opens with
+"Own climate" selected and stays the climate author for its subtree.
+
+**Chats whose Setting becomes a location later.** The next turn resolves
+the chain; nothing is stamped on old messages, and regen of an old message
+uses the chain as it is now, the same as editing a world's description
+does today.
