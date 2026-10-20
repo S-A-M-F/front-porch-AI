@@ -109,7 +109,10 @@ class TimeClockApplier {
   /// earlier). Same swipe-survival patch as a nudge.
   Future<void> setClockDirect(DateTime newClock) async {
     final dayBefore = state.dayCount;
+    final before = state.clock;
     _setClockPullingStartDate(newClock);
+    // Days moved by hand were lived; the next reply's bodies show it.
+    state.noteLivedJump(state.clock.difference(before).inMinutes);
     state.turnsSinceClockMoved = 0;
     onPatchLastMessageRealismState(
       state.timeOfDay,
@@ -299,7 +302,7 @@ class TimeClockApplier {
   /// Regen of a long skip's reply: the clock already sits at [destination],
   /// so only the body beat is noted again, and the replayed reply lands the
   /// bodies the same way the first one did.
-  void renoteLongSkip({required int minutes, required String destination}) {
+  void renoteLongSkip({required int minutes, String? destination}) {
     state.noteBodyBeat(
       minutes: minutes,
       nextMorning: false,

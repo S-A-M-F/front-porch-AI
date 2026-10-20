@@ -78,6 +78,7 @@ export 'needs_simulation.dart';
 export 'needs_wear.dart';
 export 'needs_rewinds.dart';
 export 'needs_reprocess.dart';
+export 'needs_beat_wear.dart';
 export 'needs_pass.dart';
 export 'nsfw_service.dart';
 export 'objective_fixation.dart';

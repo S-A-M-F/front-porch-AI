@@ -54,17 +54,28 @@ const int needsWearStopsAt = 1;
 /// Where the bars land after days lived off-screen ([kLongSkipMinutes] or
 /// more): every need in [on] at its [everyday] level. A body that lived two
 /// weeks ate, slept and washed, so it is neither starving nor at a skip
-/// floor. Needs that are off keep what they hold.
+/// floor. A card whose everyday hunger, bladder or energy sits below the
+/// skip floors still lands on the floor: they looked after themselves.
+/// A character who [enjoysLowHygiene] did not wash for the occasion, so
+/// their hygiene never lands cleaner than it was or than their everyday.
+/// Needs that are off keep what they hold.
 Map<String, int> livedSkipBars({
   required Map<String, int> current,
   required Map<String, int> everyday,
   required List<String> on,
+  bool enjoysLowHygiene = false,
 }) {
   final next = Map<String, int>.from(current);
   for (final need in on) {
     final level = everyday[need];
-    if (level == null || !next.containsKey(need)) continue;
-    next[need] = level.clamp(0, 100);
+    final now = next[need];
+    if (level == null || now == null) continue;
+    if (need == 'hygiene' && enjoysLowHygiene) {
+      next[need] = level < now ? level.clamp(0, 100) : now;
+      continue;
+    }
+    final floor = needsSkipFloors[need] ?? 0;
+    next[need] = (level < floor ? floor : level).clamp(0, 100);
   }
   return next;
 }

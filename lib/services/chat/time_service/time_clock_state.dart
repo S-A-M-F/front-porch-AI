@@ -55,15 +55,21 @@ class TimeClockState {
   int takeBodyWearMinutes() {
     final minutes = bodyWearMinutes;
     bodyWearMinutes = 0;
+    _livedOwed = 0;
     return minutes;
   }
+
+  /// A calendar jump of a day or more, not yet landed. The next beat noted
+  /// before the bodies land adds to it rather than replacing it, once.
+  int _livedOwed = 0;
 
   /// True when the beat was lived off-screen (a skip, next morning, time
   /// away): wear then stops at the skip floors, not the on-screen stop.
   bool bodyBeatOffScreen = false;
 
-  /// True when that off-screen beat was days long ([kLongSkipMinutes]):
-  /// the bodies land at their everyday level instead of wearing down.
+  /// True when the beat was days long ([kLongSkipMinutes]), whatever moved
+  /// the clock: the bodies land at their everyday level instead of wearing
+  /// down. A span that long is always lived off-screen.
   bool bodyBeatLongSkip = false;
 
   /// Chip text for that beat. Null when the skip chip already says it.
@@ -78,6 +84,7 @@ class TimeClockState {
 
   void clearBodyBeat() {
     bodyWearMinutes = 0;
+    _livedOwed = 0;
     bodyBeatOffScreen = false;
     bodyBeatLongSkip = false;
     _timePassedLabel = null;
@@ -93,20 +100,39 @@ class TimeClockState {
     required bool offScreen,
     String? skipDestination,
   }) {
-    bodyWearMinutes = minutes < 0 ? 0 : minutes;
-    bodyBeatOffScreen = offScreen;
-    bodyBeatLongSkip = isSkip && offScreen && minutes >= kLongSkipMinutes;
+    final owed = _livedOwed;
+    _livedOwed = 0;
+    final total = (minutes < 0 ? 0 : minutes) + owed;
+    bodyWearMinutes = total;
+    bodyBeatLongSkip = total >= kLongSkipMinutes;
+    bodyBeatOffScreen = offScreen || bodyBeatLongSkip;
     _timePassedLabel = timePassedLabel(
-      minutes: minutes,
+      minutes: total,
       nextMorning: nextMorning,
       isSkip: isSkip,
     );
     _needsSpanLabel = needsSpanForBeat(
-      minutes: minutes,
+      minutes: total,
       nextMorning: nextMorning,
       isSkip: isSkip,
       skipDestination: skipDestination,
     );
+  }
+
+  /// The one door for a clock jump of a day or more that no skip line
+  /// announced (the calendar, a skip read from a reply): the bodies lived
+  /// those [minutes] and land at their everyday level on the next wear.
+  /// Shorter jumps are not noted here.
+  void noteLivedJump(int minutes, {String? destination}) {
+    if (minutes < kLongSkipMinutes) return;
+    noteBodyBeat(
+      minutes: minutes,
+      nextMorning: false,
+      isSkip: false,
+      offScreen: true,
+      skipDestination: destination,
+    );
+    _livedOwed = bodyWearMinutes;
   }
 
   // ── Derivations ───────────────────────────────────────────────────────────

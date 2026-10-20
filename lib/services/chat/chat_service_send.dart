@@ -363,10 +363,13 @@ extension ChatServiceSend on ChatService {
         final before = _timeService.clock;
         final skipped = await _timeService.detectOocTimeSkip(outbound);
         await _episodeCrumbs.maybeMint(before, _timeService.clock);
-        // A day or more: settle the moment the scene left, then let the
-        // narrator fill in the gap before anyone replies.
-        if (skipped >= kLongSkipMinutes) {
+        // A day or more (this line, or the calendar since the last turn):
+        // settle the moment the scene left; a skip line also gets the
+        // narrator to fill in the gap before anyone replies.
+        if (_timeService.bodyBeatLivedOwed) {
           LongSkipSettle(_realismScope()).settle();
+        }
+        if (skipped >= kLongSkipMinutes) {
           final stillHere = await _bridgeLongSkip(
             from: before,
             skipped: skipped,

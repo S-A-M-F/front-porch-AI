@@ -94,17 +94,27 @@ const int kLongSkipMinutes = 24 * 60;
 const String kLongSkipMinutesMeta = 'long_skip_minutes';
 
 /// The only realism keys a guest or lite reply keeps: the skip that owned
-/// the turn ([skip], the `time_skip_to` destination) and, for a long skip,
-/// its minutes, so a regen of that reply replays the same skip.
+/// the turn ([skip], the `time_skip_to` destination), for a long skip its
+/// minutes, so a regen of that reply replays the same skip, and the bodies
+/// that skip landed before the reply, so regen and delete can put them back.
 Map<String, dynamic>? liteSkipMetadata(
   String skip,
   Map<String, dynamic>? pending,
-) => skip.isEmpty
-    ? null
-    : {
-        'time_skip_to': skip,
-        kLongSkipMinutesMeta: ?pending?[kLongSkipMinutesMeta],
-      };
+) {
+  final kept = <String, dynamic>{
+    if (skip.isNotEmpty) 'time_skip_to': skip,
+    for (final key in const [
+      kLongSkipMinutesMeta,
+      kNeedsPreWearByMember,
+      kNeedsPreWearCarryByMember,
+      kNeedsWornByMember,
+    ])
+      key: ?pending?[key],
+  };
+  return kept.isEmpty || (skip.isEmpty && pending?[kNeedsWornByMember] == null)
+      ? null
+      : kept;
+}
 
 /// Span the needs judge should score. A skip has no tick chip
 /// ([timePassedLabel] is null), so a night stays "Next morning" and any

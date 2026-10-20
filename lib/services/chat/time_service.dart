@@ -186,8 +186,16 @@ class TimeService {
   /// away): wear then stops at the skip floors, not the on-screen stop.
   bool get bodyBeatOffScreen => _state.bodyBeatOffScreen;
 
-  /// True when that beat was a skip of a day or more.
+  /// True when that beat was a day or more, whatever moved the clock.
   bool get bodyBeatLongSkip => _state.bodyBeatLongSkip;
+
+  /// A beat of a day or more whose bodies have not landed yet.
+  bool get bodyBeatLivedOwed =>
+      _state.bodyBeatLongSkip && _state.bodyWearMinutes > 0;
+
+  /// A jump of a day or more no skip line announced: the bodies lived it.
+  void noteLivedJump(int minutes, {String? destination}) =>
+      _state.noteLivedJump(minutes, destination: destination);
 
   /// Chip text for that beat. Null when the skip chip already says it.
   String? get bodyTimeLabel => _state.bodyTimeLabel;
@@ -374,7 +382,7 @@ class TimeService {
   Future<int> detectOocTimeSkip(String text) =>
       _applier.detectOocTimeSkip(text);
 
-  void renoteLongSkip({required int minutes, required String destination}) =>
+  void renoteLongSkip({required int minutes, String? destination}) =>
       _applier.renoteLongSkip(minutes: minutes, destination: destination);
 
   // ── Public surface ────────────────────────────────────────────────────────

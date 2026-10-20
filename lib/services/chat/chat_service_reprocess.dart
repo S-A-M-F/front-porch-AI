@@ -444,9 +444,11 @@ extension ChatServiceReprocess on ChatService {
           _pendingRealismMetadata!['time_passed'] = passed;
         }
         _timeService.reclaimSkipOwnership();
-        if (longSkip > 0) {
-          _timeService.renoteLongSkip(minutes: longSkip, destination: skipTo);
-        }
+      }
+      // A skip line or a calendar jump: the replay lands the bodies again,
+      // before its prompt is built, as the first reply did.
+      if (longSkip > 0) {
+        _timeService.renoteLongSkip(minutes: longSkip, destination: skipTo);
       }
 
       final preGenLen = _messages.length;

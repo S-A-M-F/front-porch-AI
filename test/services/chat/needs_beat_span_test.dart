@@ -320,4 +320,22 @@ void main() {
     );
     expect(bars, {'hunger': 80, 'energy': 70, 'social': 30});
   });
+
+  test('livedSkipBars never lands hunger, bladder or energy under the skip '
+      'floors, and leaves a musky character as unwashed as they were', () {
+    final bars = livedSkipBars(
+      current: const {'hunger': 5, 'bladder': 5, 'hygiene': 20},
+      everyday: const {'hunger': 10, 'bladder': 30, 'hygiene': 80},
+      on: const ['hunger', 'bladder', 'hygiene'],
+      enjoysLowHygiene: true,
+    );
+    expect(bars, {'hunger': 45, 'bladder': 60, 'hygiene': 20});
+    final dirtier = livedSkipBars(
+      current: const {'hygiene': 90},
+      everyday: const {'hygiene': 30},
+      on: const ['hygiene'],
+      enjoysLowHygiene: true,
+    );
+    expect(dirtier, {'hygiene': 30});
+  });
 }

@@ -26,6 +26,8 @@ part of '../chat_service.dart';
 /// (docs/design/god-file-elimination.md). Zero behaviour change.
 extension ChatServiceGenerationBlocks on ChatService {
   Future<void> _assembleGenerationBlocks(_GenTurn t) async {
+    // Days lived off-screen land before any prompt reads a body.
+    if (t.mode == GenerationMode.normal) _needsPass.landLivedBeatBeforeReply();
     // ── System prompt selection (Path B clean hierarchy) ──
     // 1. Group-level system prompt (if set) — base for the whole group.
     // 2. Per-character group override (if set for the speaker in this group) — appended.

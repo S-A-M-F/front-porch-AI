@@ -27,6 +27,7 @@ import 'package:front_porch_ai/services/chat/body_clock.dart';
 import 'package:front_porch_ai/services/chat/enabled_needs.dart';
 import 'package:front_porch_ai/services/chat/group_member_realism.dart';
 import 'package:front_porch_ai/services/chat/group_speaker_resolution.dart';
+import 'package:front_porch_ai/services/chat/needs_beat_wear.dart';
 import 'package:front_porch_ai/services/chat/needs_simulation.dart';
 import 'package:front_porch_ai/services/chat/needs_wear.dart';
 import 'package:front_porch_ai/services/chat/realism_scope.dart';
@@ -56,13 +57,11 @@ class NeedsPass {
   Map<String, dynamic>? get _pendingRealismMetadata => _scope.pending();
   set _pendingRealismMetadata(Map<String, dynamic>? v) => _scope.setPending(v);
   String _getCharacterIdFromCard(CharacterCard c) => _scope.characterIdFor(c);
-  String _getCurrentSpeakerIdForRealism() => _scope.groups.currentSpeakerId();
   Map<String, int> _getGroupNeeds(String id) => _scope.groups.needsOf(id);
-  void _setGroupNeeds(String id, Map<String, int> needs) =>
-      _scope.groups.setNeeds(id, needs);
   GroupMemberRealism _memberForWrite(String id) =>
       _scope.groups.memberForWrite(id);
   void _loadGroupRealismIntoScalars(String id) => loadIntoScalars(id);
+  late final NeedsBeatWear _wear = NeedsBeatWear(_scope);
 
   /// After the clock commits: wear every present body for the beat's
   /// minutes at that character's pace, with the skip floors off-screen and
@@ -139,6 +138,30 @@ class NeedsPass {
     wearBeatOn(target);
   }
 
+  /// A beat of a day or more ([kLongSkipMinutes]: a skip line, a calendar
+  /// jump) lands every body at its everyday level before the reply prompt
+  /// is built, so the reply to "two weeks later" reads bodies that lived
+  /// those weeks. Runs after the turn's pre-turn stamp, so regen and the
+  /// chip still measure from the body before the skip. The minutes are
+  /// taken here, so the post-gen wear charges nothing twice; the stamps
+  /// ride the turn's pending map onto the reply, where regen, swipe and
+  /// delete read them.
+  void landLivedBeatBeforeReply() {
+    if (!_needsActive || !_clockRunning) return;
+    if (!_timeService.bodyBeatLivedOwed) return;
+    final minutes = _timeService.takeBodyWearMinutes();
+    final beat = _activeGroup == null
+        ? _wear.host(minutes, offScreen: true, lived: true)
+        : _wear.group(minutes, offScreen: true, lived: true);
+    _pendingRealismMetadata ??= {};
+    final pending = _pendingRealismMetadata!;
+    pending[kLongSkipMinutesMeta] = minutes;
+    if (beat.before.isEmpty) return;
+    pending.putIfAbsent(kNeedsPreWearByMember, () => beat.before);
+    pending.putIfAbsent(kNeedsPreWearCarryByMember, () => beat.carryBefore);
+    pending[kNeedsWornByMember] = beat.after;
+  }
+
   /// Wears whatever minutes the clock has not yet charged, taking them so
   /// they cannot be charged twice, and records the result on [target]. A
   /// second call in the same turn (a named-time correction read from the
@@ -148,17 +171,17 @@ class NeedsPass {
   /// so regen, swipe and delete rewind it the same way.
   void wearBeatOn(ChatMessage target) {
     if (!_needsActive) return;
-    final _BeatWear beat;
+    final BeatWear beat;
     if (_clockRunning) {
       final minutes = _timeService.takeBodyWearMinutes();
       if (minutes <= 0) return;
       final offScreen = _timeService.bodyBeatOffScreen;
       final lived = _timeService.bodyBeatLongSkip;
       beat = _activeGroup == null
-          ? _wearHost(minutes, offScreen: offScreen, lived: lived)
-          : _wearGroup(minutes, offScreen: offScreen, lived: lived);
+          ? _wear.host(minutes, offScreen: offScreen, lived: lived)
+          : _wear.group(minutes, offScreen: offScreen, lived: lived);
     } else {
-      beat = _tickSpeaker();
+      beat = _wear.tickSpeaker();
     }
     if (beat.before.isNotEmpty) {
       // Mutate the attached slot in place: the legacy `metadata` field
@@ -181,192 +204,6 @@ class NeedsPass {
       wear[e.key] = (wear[e.key] ?? 0) - e.value;
     }
     _pendingRealismMetadata!['needs_time_wear'] = wear;
-  }
-
-  /// The 1:1 host lives on the scalar vector.
-  _BeatWear _wearHost(
-    int minutes, {
-    required bool offScreen,
-    required bool lived,
-  }) {
-    final card = _activeCharacter;
-    final ext = card?.frontPorchExtensions;
-    final hostId = card != null ? _getCharacterIdFromCard(card) : '';
-    final before = Map<String, int>.from(_needsSimulation.vector);
-    if (before.isEmpty) return _BeatWear.none;
-    final carryBefore = Map<String, double>.from(_needsSimulation.wearCarry);
-    final on = needsThatAreOn(
-      NeedsSimulation.needKeys,
-      ext?.needsOff ?? const [],
-    );
-    final Map<String, int> taken;
-    if (lived) {
-      taken = _needsSimulation.applyLivedSkip(
-        livedSkipBars(
-          current: before,
-          everyday: NeedsSimulation.baselinesFromExtensions(ext),
-          on: on,
-        ),
-      );
-    } else {
-      final wear = needsWearForSpan(
-        minutes: minutes,
-        pace: BodyPace.parse(ext?.needsPace),
-        on: on,
-        carry: carryBefore,
-      );
-      taken = _needsSimulation.applyTimeWear(
-        points: wear.points,
-        carry: wear.carry,
-        offScreen: offScreen,
-      );
-    }
-    return _BeatWear(
-      speakerTaken: taken,
-      before: {hostId: before},
-      after: {hostId: Map<String, int>.from(_needsSimulation.vector)},
-      carryBefore: {hostId: carryBefore},
-    );
-  }
-
-  /// The clock-off beat: the speaker's body alone, a fixed step per reply,
-  /// the carry left as it was for when the clock comes back. Version 1
-  /// ticked the speaker, not the room, so the room is left alone here too.
-  _BeatWear _tickSpeaker() {
-    final card = _activeGroup == null
-        ? _activeCharacter
-        : _groupCharacters
-              .where(
-                (c) =>
-                    _getCharacterIdFromCard(c) ==
-                    _getCurrentSpeakerIdForRealism(),
-              )
-              .firstOrNull;
-    if (card == null) return _BeatWear.none;
-    final id = _getCharacterIdFromCard(card);
-    final on = needsThatAreOn(
-      needsTickPerReply.keys.toList(),
-      card.frontPorchExtensions?.needsOff ?? const [],
-    );
-    final points = {for (final need in on) need: needsTickPerReply[need]!};
-    if (_activeGroup == null) {
-      final before = Map<String, int>.from(_needsSimulation.vector);
-      if (before.isEmpty) return _BeatWear.none;
-      final carry = Map<String, double>.from(_needsSimulation.wearCarry);
-      final taken = _needsSimulation.applyTimeWear(
-        points: points,
-        carry: carry,
-        offScreen: false,
-      );
-      return _BeatWear(
-        speakerTaken: taken,
-        before: {id: before},
-        after: {id: Map<String, int>.from(_needsSimulation.vector)},
-        carryBefore: {id: carry},
-      );
-    }
-    final stored = _getGroupNeeds(id);
-    if (stored.isEmpty) return _BeatWear.none;
-    final carry = Map<String, double>.from(_memberForWrite(id).needsWearCarry);
-    final worn = Map<String, int>.from(stored);
-    for (final e in points.entries) {
-      final current = worn[e.key];
-      if (current == null) continue;
-      worn[e.key] = wornBar(
-        need: e.key,
-        current: current,
-        drop: e.value,
-        offScreen: false,
-      );
-    }
-    _setGroupNeeds(id, worn);
-    final taken = _needsSimulation.applyTimeWear(
-      points: points,
-      carry: carry,
-      offScreen: false,
-    );
-    return _BeatWear(
-      speakerTaken: taken,
-      before: {id: Map<String, int>.from(stored)},
-      after: {id: worn},
-      carryBefore: {id: carry},
-    );
-  }
-
-  /// Every member with a stored body wears, at their own pace. The speaker's
-  /// scalars (loaded for this turn) wear too, so the eval reads worn bars and
-  /// the post-gen save writes them back.
-  _BeatWear _wearGroup(
-    int minutes, {
-    required bool offScreen,
-    required bool lived,
-  }) {
-    final speakerId = _getCurrentSpeakerIdForRealism();
-    final before = <String, Map<String, int>>{};
-    final after = <String, Map<String, int>>{};
-    final carryBefore = <String, Map<String, double>>{};
-    var speakerTaken = const <String, int>{};
-    for (final card in _groupCharacters) {
-      final id = _getCharacterIdFromCard(card);
-      final stored = _getGroupNeeds(id);
-      if (stored.isEmpty) continue;
-      final ext = card.frontPorchExtensions;
-      final member = _memberForWrite(id);
-      final carried = Map<String, double>.from(member.needsWearCarry);
-      final on = needsThatAreOn(
-        NeedsSimulation.needKeys,
-        ext?.needsOff ?? const [],
-      );
-      before[id] = Map<String, int>.from(stored);
-      carryBefore[id] = carried;
-      if (lived) {
-        final bars = livedSkipBars(
-          current: stored,
-          everyday: NeedsSimulation.baselinesFromExtensions(ext),
-          on: on,
-        );
-        _setGroupNeeds(id, bars);
-        member.needsWearCarry = const <String, double>{};
-        after[id] = bars;
-        if (id == speakerId) {
-          speakerTaken = _needsSimulation.applyLivedSkip(bars);
-        }
-        continue;
-      }
-      final wear = needsWearForSpan(
-        minutes: minutes,
-        pace: BodyPace.parse(ext?.needsPace),
-        on: on,
-        carry: carried,
-      );
-      final worn = Map<String, int>.from(stored);
-      for (final e in wear.points.entries) {
-        final current = worn[e.key];
-        if (current == null) continue;
-        worn[e.key] = wornBar(
-          need: e.key,
-          current: current,
-          drop: e.value,
-          offScreen: offScreen,
-        );
-      }
-      _setGroupNeeds(id, worn);
-      member.needsWearCarry = wear.carry;
-      after[id] = worn;
-      if (id == speakerId) {
-        speakerTaken = _needsSimulation.applyTimeWear(
-          points: wear.points,
-          carry: wear.carry,
-          offScreen: offScreen,
-        );
-      }
-    }
-    return _BeatWear(
-      speakerTaken: speakerTaken,
-      before: before,
-      after: after,
-      carryBefore: carryBefore,
-    );
   }
 
   Map<String, int> _coerceNeedsVector(dynamic src) {
@@ -467,27 +304,4 @@ class NeedsPass {
       '${_messages.last.sender}',
     );
   }
-}
-
-/// One beat's wear: what the speaker lost, and every present body before
-/// and after, with the fractions each carried in.
-class _BeatWear {
-  const _BeatWear({
-    required this.speakerTaken,
-    required this.before,
-    required this.after,
-    required this.carryBefore,
-  });
-
-  static const none = _BeatWear(
-    speakerTaken: {},
-    before: {},
-    after: {},
-    carryBefore: {},
-  );
-
-  final Map<String, int> speakerTaken;
-  final Map<String, Map<String, int>> before;
-  final Map<String, Map<String, int>> after;
-  final Map<String, Map<String, double>> carryBefore;
 }
