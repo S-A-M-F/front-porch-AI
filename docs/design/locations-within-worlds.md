@@ -260,7 +260,7 @@ Passage of Time." Same row on the web Porch Life settings.
 `showWarmDialog`, for both the move and the mint offers; web twin on the
 chat page. Rendered text is plain strings; no enum names leak.
 
-## 6. Delivery: seven PRs in strict order, each shippable alone
+## 6. Delivery: eight PRs in strict order, each shippable alone
 
 | # | Slice | Depends on | Guard that goes red first |
 |---|-------|-----------|---------------------------|
@@ -271,9 +271,12 @@ chat page. Rendered text is plain strings; no enum names leak.
 | 5 | `.fpworld` `locations[]`, Stoop ride-along, Rawhide notes | 1 | `world_repository_test` import group: round-trip keeps children, old envelope still imports |
 | 6 | Confirmed scene moves: `scene_place` on the clock judge, `pendingPlaceMove`, dialog, declined memory, the global Porch Life "Scene suggestions" row, both shells | 2, 3, 4 | scene-time evaluator test: arrival sets the flag without changing slots, a plan does not, Move swaps and demotes, Stay is not re-offered until the Setting changes; dialog widget test; web journey |
 | 7 | Minted places: `new` value, `PlaceFactory`, `model-made` marker, library filter + bulk delete, both shells | 6 | pure test of the tool payload decoder; the mint itself in the E2E journey (real model, no stub) |
+| 8 | World from Wiki v2: tagged catalog, places in the scout, per-place lore, description and climate, review grouped by place, root + children on save, web twin and relay payloads | 1, 2, 5 | `world_from_wiki_test`: tagged characters land in their nation's book, a place with a climate hint gets its own biome, an untagged wiki still yields one flat world as today; `wiki_page_tiddly_test`: tags survive the Tiddly index |
 
-Slices 1 to 5 are a complete, useful V1 on their own. If 6 or 7 slip,
-nothing ships half-wired. Slice 7 carries the one real open risk, the
+Slices 1 to 5 are a complete, useful V1 on their own. If 6, 7 or 8 slip,
+nothing ships half-wired. Slice 8 depends only on the data model and the
+engine, not on the dialogs, so it can land before 6 and 7 if the wiki
+case is the priority. Slice 7 carries the one real open risk, the
 quality of minted lore on small local models; it is held behind the same
 global switch, default off, and every mint is confirmed before it exists.
 
@@ -343,3 +346,87 @@ Making a climate-on world a child never changes its weather: it opens with
 the chain; nothing is stamped on old messages, and regen of an old message
 uses the chain as it is now, the same as editing a world's description
 does today.
+
+## 9. World from Wiki v2 and the Neokosmos test case
+
+The auto world creator (`lib/services/world_from_wiki/`, wizard under
+`lib/ui/character_creator/world_from_wiki/`, web `WorldFromWikiPage.tsx`,
+relay `/api/worlds/from-wiki/*`) builds **one flat world**: the scout
+proposes 20–40 cards into one lorebook, climate runs once from titles that
+match a word list, and hub/leaf/crown roles plus inclusion groups shape
+the book. It needs an overhaul to emit a root with locations.
+
+### The test case: Neokosmos (`https://quietoak.github.io/NeokosmosWiki/`)
+
+Pulled 2026-10-20. Single-file TiddlyWiki, 859 tiddlers, **88 text
+documents**; the rest are images, video and audio.
+
+| What | Count | Notes |
+|------|-------|-------|
+| Character pages | 52 | tagged `Characters` plus a nation / faction tag |
+| Reustran Empire | 12 | e.g. Durandus, Dux Louvin l'Audice, Emperor Charles |
+| Alnhama Republic | 11 | e.g. Aelric Stillhand, Bealdric, Ceolmund, Ceolwynn |
+| Elves | 11 | Hrívë Court: a winter court in mist-bound forests |
+| Picts | 9 | four tribe sub-tags: Bear, Boar, Thunderhoof, Shadowfang |
+| Fresnia | 5 | |
+| Atlantis | 2 | maritime |
+| Cross-cutting tags | — | Knights 7, Royals 11, Cult of Sol Eternel 5 |
+| World lore chapters | ~12 | Peoples of Neokosmos (one ~8k-char chapter per people), World Timeline (8k), Leylines and World Mana, Accounts of Faith, Geography chapters "Scope, Method" and "The Great Waters: Seas, Currents, and Maritime Boundaries" |
+
+**There are no place pages.** Nations exist only as tags on characters
+and as passages inside the Peoples and Geography chapters. The Geography
+index page is a Tiddly list widget over the tag `A Measured World`.
+
+Target output under the new system:
+
+- Root **Neokosmos**, climate off, carrying the shared chapters (timeline,
+  leylines, faiths, peoples) as its book.
+- One location per nation: Reustran Empire, Alnhama Republic, Fresnia,
+  Atlantis, the Elven realms, the Pictish lands; the four tribes at depth
+  two under the Picts. Each holds its characters' cards and its own facts.
+- Per-location climate authored from The Great Waters and the matching
+  peoples chapter (winter forests for the elves, maritime for Atlantis,
+  northern for the Picts). This is the Earth-with-continents shape of §3.
+- Cross-cutting tags (Knights, Royals, the cult) stay inclusion groups or
+  plain keys on the root, not places.
+
+### Why today's wizard cannot produce that
+
+- **The scout sees titles only.** `WikiStudioCatalog` carries titles, no
+  tags. On Neokosmos the title list reads "Ceolwynn, Bealdric, Aelric
+  Stillhand…" with nothing saying which nation they belong to. Tags are the
+  only signal that places exist, and the Tiddly parser already has them in
+  hand and drops them.
+- **One book, one climate.** No notion that two regions differ.
+- **Hub and leaf are already the right idea.** A hub is "a place or
+  faction that may pull leaves". The overhaul promotes a hub from a
+  lorebook entry to a child World.
+
+### The overhaul (slice 8)
+
+1. **Catalog gains tags** (Tiddly) and categories (MediaWiki). The scout
+   prompt lists each title with its tags. `wiki_page_tiddly_test` pins that
+   tags survive the index.
+2. **Scout tool** gains a `places` array (name, keys, source titles,
+   optional parent place, climate hint) and every card gains a `place`
+   field naming one of them or the root. Roles and inclusion groups stay.
+   The 20–40 card cap stays global.
+3. **Review step** groups the shelf by place. Each place row has an "own
+   climate" switch; signing stays per card. An unsigned place with no
+   signed cards is dropped.
+4. **Write** runs the existing lore batch per place, writes a short
+   description per place (sized to the Setting budget), and runs climate
+   per place that was flagged, instead of once for the world. Root climate
+   becomes optional. Progress copy and abort cover the extra calls:
+   Neokosmos goes from one climate call to about six.
+5. **Save** creates the root and the children through `saveWorld` with
+   parents set, so cycle checks, name uniqueness and export all hold. The
+   preview shows the tree.
+6. **Web twin** of the wizard and the relay scout/write payloads carry the
+   same fields (additive; an older client sends no `places` and gets one
+   flat world).
+7. **Unchanged path:** a wiki with no tags or categories still yields one
+   flat world exactly as today. That is a pinned test, not an assumption.
+
+The wizard stays tools-only (`worldFromWikiToolsGate`), so this changes
+nothing about which models can run it.
