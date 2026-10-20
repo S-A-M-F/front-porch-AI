@@ -161,8 +161,11 @@ dropdown uses now.
 **Suggested, confirmed by the user.** No new model call. The clock judge
 gains one field, `scene_place`, whose only legal values are the ids of the
 reachable places plus `same`. The field is sent only when Passage of Time
-is on, the per-chat switch "Suggest scene moves" (default off) is on, and
-the Setting has relatives; otherwise the prompt is unchanged. The rubric
+is on, the **global** Porch Life setting "Scene suggestions" (default off,
+one switch covering moves and new places, same row shape as Passage of
+Time) is on, and the Setting has relatives; otherwise the prompt is
+unchanged. There is no per-chat switch: a chat that should never move is
+one where the user taps Stay. The rubric
 mirrors the days rule: report a move only when the reply narrates
 arriving; a plan or a mention is not a move; missing or unparseable means
 `same`. The service never applies the answer. It sets `pendingPlaceMove`
@@ -198,9 +201,10 @@ checks, export and the Stoop envelope behave as for a hand-made place.
 
 Transport: the **eval transport** (native tool call first, then the JSON
 text floor), not the World-from-Wiki tools gate, so a local KoboldCpp model
-can mint. Guardrails: a separate per-chat switch "Let the model add
-places" (default off), never climate on the fly, entry count capped, and a
-`model-made` filter with bulk delete in the Worlds library.
+can mint. Guardrails: the same global "Scene suggestions" setting gates
+the `new` value (no second switch), every mint is confirmed by a tap,
+never climate on the fly, entry count capped, and a `model-made` filter
+with bulk delete in the Worlds library.
 
 ## 4. Data and portability
 
@@ -234,8 +238,13 @@ under the description shows what the chain emits at the 600 cap.
 breadcrumb ("Tea Rooms · Bletchfield") as the move dropdown and names the
 climate author ("Weather from Bletchfield"). Attach picker lists roots with
 children indented. Group wizard and group settings pickers get the same
-indented list. Two per-chat switches under the panel: "Suggest scene moves"
-and "Let the model add places".
+indented list. No switches in the panel: one line notes that scene
+suggestions are on and links to Settings › Porch Life.
+
+**Settings › Porch Life.** One new row, "Scene suggestions", default off:
+"When the story arrives somewhere nearby, or names a new place, the model
+offers to move the scene or save the place. You confirm each one. Needs
+Passage of Time." Same row on the web Porch Life settings.
 
 **Dialogs.** `PlaceMoveDialog` in the `SceneGuestDetectedDialog` style, via
 `showWarmDialog`, for both the move and the mint offers; web twin on the
@@ -250,13 +259,13 @@ chat page. Rendered text is plain strings; no enum names leak.
 | 3 | Desktop UI: Part of picker, inherit-or-own climate, grouped library, breadcrumb dropdown, prose preview | 2 | `integration_test/worlds_management_test`: make a town, make a place inside, attach, see "Weather from <town>", move by dropdown; `layout_sweep` at 400 and 1440 |
 | 4 | Web + relay twins of 3 | 3 | `WorldsPage.*.test.tsx` for the picker; journey in `web_ui/e2e/journeys.spec.ts` |
 | 5 | `.fpworld` `locations[]`, Stoop ride-along, Rawhide notes | 1 | `world_repository_test` import group: round-trip keeps children, old envelope still imports |
-| 6 | Confirmed scene moves: `scene_place` on the clock judge, `pendingPlaceMove`, dialog, declined memory, both shells | 2, 3, 4 | scene-time evaluator test: arrival sets the flag without changing slots, a plan does not, Move swaps and demotes, Stay is not re-offered until the Setting changes; dialog widget test; web journey |
+| 6 | Confirmed scene moves: `scene_place` on the clock judge, `pendingPlaceMove`, dialog, declined memory, the global Porch Life "Scene suggestions" row, both shells | 2, 3, 4 | scene-time evaluator test: arrival sets the flag without changing slots, a plan does not, Move swaps and demotes, Stay is not re-offered until the Setting changes; dialog widget test; web journey |
 | 7 | Minted places: `new` value, `PlaceFactory`, `model-made` marker, library filter + bulk delete, both shells | 6 | pure test of the tool payload decoder; the mint itself in the E2E journey (real model, no stub) |
 
 Slices 1 to 5 are a complete, useful V1 on their own. If 6 or 7 slip,
 nothing ships half-wired. Slice 7 carries the one real open risk, the
-quality of minted lore on small local models, which is why it has its own
-switch, default off.
+quality of minted lore on small local models; it is held behind the same
+global switch, default off, and every mint is confirmed before it exists.
 
 Path-complete matrix for slice 2: generation ✓; Continue reads the same
 slots, no change; regen/swipe: slots are per chat, not per message, no
@@ -273,3 +282,5 @@ input. Slices 6 and 7 add no per-message state because the user confirms.
   does today.
 - No implicit key shadowing in V1.
 - No automatic travel without confirmation.
+- One global switch for scene suggestions (moves and new places), in
+  Porch Life, default off. No per-chat switches.
