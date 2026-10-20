@@ -117,7 +117,7 @@ class _GroupGridCardState extends State<GroupGridCard> {
           color: AppColors.cardOf(context),
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppCorners.of(context).circular(16),
             side: BorderSide(
               color: isSelectedCard
                   ? AppColors.porchTerracottaOf(context)

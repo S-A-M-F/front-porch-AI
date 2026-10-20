@@ -150,7 +150,9 @@ class CharacterGridCard extends StatelessWidget {
       child: Card(
         color: AppColors.cardOf(context),
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: AppCorners.of(context).circular(12),
+        ),
         child: character.imagePath != null
             ? CharacterGridCardCover(
                 character: character,
@@ -198,7 +200,7 @@ class CharacterGridCard extends StatelessWidget {
       color: AppColors.cardOf(context),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppCorners.of(context).circular(16),
         side: BorderSide(
           color: isSelectedCard
               ? AppColors.porchTerracottaOf(context)
