@@ -333,7 +333,13 @@ extension ChatServiceGenerationBlocks on ChatService {
       final speakerId = _getCharacterIdFromCard(t.speakingCharacter);
       final cards = speakerId.isEmpty
           ? const <JournalMemoryData>[]
-          : await _journalStore.cardsFor(_currentSessionId!, speakerId);
+          : [
+              for (final c in await _journalStore.cardsFor(
+                _currentSessionId!,
+                speakerId,
+              ))
+                cooledForStoryDay(c, _timeService.dayCount),
+            ];
       // Cover-drop uses THIS-BEAT injected gist only (set after the
       // journal block builds). The whole cabinet here would eat a
       // fallen-off fact that shares filler with a cold card.

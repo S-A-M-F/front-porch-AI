@@ -206,8 +206,10 @@ extension ChatServiceWiringMemory on ChatService {
       getMessages: () => _messages,
       getUserName: () => _userPersonaService.persona.name,
       getRecap: () => _summary,
-      getJournalCards: (sessionId, charId) =>
-          _journalStore.cardsFor(sessionId, charId),
+      getJournalCards: (sessionId, charId) async => [
+        for (final c in await _journalStore.cardsFor(sessionId, charId))
+          cooledForStoryDay(c, _timeService.dayCount),
+      ],
       getGrowthEnabled: () =>
           _storageService.memorySettings.characterEvolutionEnabled,
       getReviewFirst: () => _storageService.memorySettings.growthReviewFirst,

@@ -106,7 +106,11 @@ class JournalInjection {
     final sessionId = getSessionId();
     if (sessionId == null || characterId.isEmpty) return empty;
 
-    final cards = await store.cardsFor(sessionId, characterId);
+    final today = getCurrentStoryDay();
+    final cards = [
+      for (final c in await store.cardsFor(sessionId, characterId))
+        cooledForStoryDay(c, today),
+    ];
     if (cards.isEmpty) return empty;
 
     final currentEmotion = getCurrentEmotion();
@@ -154,7 +158,7 @@ class JournalInjection {
       }
       for (final card in lexical) {
         if (JournalPhysics.isBirthdayCard(card)) continue;
-        await store.rewarmCard(card);
+        await store.rewarmCard(card, storyDay: getCurrentStoryDay());
       }
       if (lexical.isNotEmpty) {
         debugPrint(
@@ -372,7 +376,7 @@ class JournalInjection {
         .map((s) => s.$1)
         .toList();
     for (final card in picked) {
-      await store.rewarmCard(card);
+      await store.rewarmCard(card, storyDay: getCurrentStoryDay());
     }
     if (picked.isNotEmpty) {
       debugPrint(

@@ -7,6 +7,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/episode_crumbs.dart';
+import 'package:front_porch_ai/services/chat/journal_day_cooling.dart';
 import 'package:front_porch_ai/services/chat/journal_store.dart';
 import 'package:front_porch_ai/services/chat/session_open_window.dart';
 import 'package:front_porch_ai/services/chat/story_clock.dart';
@@ -95,7 +96,25 @@ class EpisodeCrumbMinter {
         ),
         category: 'moment',
         kind: 'episode',
-        extraMetadata: {'episode': 'work', 'occupation': work.occupation},
+        extraMetadata: {
+          'episode': 'work',
+          'occupation': work.occupation,
+          // Fresh only on the day the shift ended: a skip that crossed the
+          // clock-out leaves an old crumb, not one still in their teeth.
+          kJournalLivedDayMeta: StoryClock.dayCountFor(
+            before.add(
+              Duration(
+                minutes:
+                    minutesLeftOnShift(
+                      before.hour * 60 + before.minute,
+                      work.hours,
+                    ) ??
+                    0,
+              ),
+            ),
+            time().startDate,
+          ),
+        },
         sourcePositions: cite,
         storyDay: leftDay,
         storyClock: StoryClock.serializeClock(before),

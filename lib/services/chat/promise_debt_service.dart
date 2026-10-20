@@ -36,11 +36,16 @@ class OpenPromise {
   /// `'open'` | `'kept'` | `'broken'`.
   final String status;
 
+  /// Story day the commitment was made (the card's stamp), so the prompt
+  /// can say how long it has been open. Null for unstamped cards.
+  final int? storyDay;
+
   const OpenPromise({
     required this.cardId,
     required this.text,
     required this.party,
     required this.status,
+    this.storyDay,
   });
 }
 
@@ -290,6 +295,7 @@ class PromiseDebtService {
           text: desc is String && desc.isNotEmpty ? desc : card.content,
           party: party == 'char' ? 'char' : 'user',
           status: 'open',
+          storyDay: JournalStore.stampOf(card).$1,
         ),
       );
     }
