@@ -243,7 +243,7 @@ extension ChatServiceCast on ChatService {
     _clearExitUndo();
     if (_sceneChanged(token) || !_directing || _isTurnBusy) return false;
     _narrating = true;
-    var landed = false;
+    var landed = '';
     try {
       _setGuestStatus('The narrator sets the scene…', sticky: true);
       final recent = _messages.length > kNarrationHistoryLines
@@ -278,7 +278,7 @@ extension ChatServiceCast on ChatService {
       _setGuestStatus(null);
       _messages.add(narrationMessage(beat));
       await _saveChat();
-      landed = true;
+      landed = beat;
     } catch (e) {
       debugPrint('[Director] narration failed: $e');
       _setGuestStatus('⚠ The narrator could not set the scene.', isError: true);
@@ -288,10 +288,22 @@ extension ChatServiceCast on ChatService {
       notifyListeners();
     }
     // No await since the flag dropped: the reply raises _isGenerating first.
-    if (landed && !_sceneChanged(token)) {
+    if (landed.isNotEmpty && !_sceneChanged(token)) {
+      await _skipNarratedTime(landed);
       await _generateResponse(GenerationMode.normal);
     }
     return true;
+  }
+
+  /// A beat that skips time moves the clock the way a user's skip line
+  /// does: same turn ownership and regen replay, same settle for a day or
+  /// more. No bridge card: the beat already narrated the gap.
+  Future<void> _skipNarratedTime(String beat) async {
+    if (!_clockRunning) return;
+    final before = _timeService.clock;
+    final skipped = await _timeService.detectOocTimeSkip(beat);
+    await _episodeCrumbs.maybeMint(before, _timeService.clock);
+    if (skipped >= kLongSkipMinutes) LongSkipSettle(_realismScope()).settle();
   }
 
   /// A skip of a day or more ([skipped] minutes from [from]): the narrator

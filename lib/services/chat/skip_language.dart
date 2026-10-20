@@ -13,8 +13,8 @@ final _skipPhrase = RegExp(
   r'next (morning|day|evening|afternoon|night|dawn)|'
   r'hours? pass(?:ed)?|time passes|the following (morning|day)|'
   r'wake up the next|woke up|the next day|'
-  r'(a|one) week (later|passes)|next week|weeks? later|'
-  r'(a|one) month (later|passes)|next month|'
+  r'(a|one) week (later|passes)|weeks? later|'
+  r'(a|one) month (later|passes)|'
   r'(?:sleep|slept|sleeping) through (?:the )?night|'
   r'(?:sleep|slept|sleeping) through (?:till|until|to) (?:dawn|morning)|'
   r'(?:sleep|slept|sleeping) (?:till|until) (?:dawn|morning)|'
@@ -45,8 +45,26 @@ final _durationHint = RegExp(
   caseSensitive: false,
 );
 
+/// "Next week, we…" opens a clause; "see you next week, I say" is speech
+/// without quotes, not a skip. Group 1 is week or month.
+final RegExp nextWeekOrMonthSkip = RegExp(
+  r'(?:^|[.!?;:*\[(\n—–]\s*|\b(?:skip|jump|fast.?forward)(?:\s+ahead)?'
+  r'(?:\s+to)?\s+)(?:the\s+)?next\s+(week|month)\b',
+);
+
+/// OOC chatter about the player, not the story: "(OOC: brb, will reply
+/// later)" is no skip.
+final _oocChatter = RegExp(
+  r'\b(?:brb|afk|gtg|g2g|ttyl|bbl|be right back|'
+  r'(?:reply|respond|answer|post|write|continue|talk|chat|be back|back|'
+  r'catch you|see you)\s+later)\b',
+  caseSensitive: false,
+);
+
 bool hasSkipPhrase(String lower) =>
-    _skipPhrase.hasMatch(lower) || SkipSpan.namesLongSkip(lower);
+    _skipPhrase.hasMatch(lower) ||
+    nextWeekOrMonthSkip.hasMatch(lower) ||
+    SkipSpan.namesLongSkip(lower);
 
 /// Clock lands at next morning AND the body may restore. Not "hours later".
 bool isNightSkip(String lower) => _nightSkip.hasMatch(lower);
@@ -56,5 +74,5 @@ bool shouldDetectTimeSkip(String lower) {
   final skip = hasSkipPhrase(lower);
   if (skip) return true;
   if (!_oocMarker.hasMatch(lower)) return false;
-  return _durationHint.hasMatch(lower);
+  return _durationHint.hasMatch(lower.replaceAll(_oocChatter, ' '));
 }

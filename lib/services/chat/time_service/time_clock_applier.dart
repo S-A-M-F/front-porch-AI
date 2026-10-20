@@ -19,7 +19,9 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/services/chat/body_clock.dart';
+import 'package:front_porch_ai/services/chat/skip_landing.dart';
 import 'package:front_porch_ai/services/chat/skip_language.dart';
+import 'package:front_porch_ai/services/chat/skip_span.dart';
 import 'package:front_porch_ai/services/chat/story_clock.dart';
 import 'package:front_porch_ai/services/chat/time_service/time_clock_state.dart';
 import 'package:front_porch_ai/utils/utils.dart' show stripQuotedSpeech;
@@ -308,6 +310,60 @@ class TimeClockApplier {
       skipDestination: destination,
     );
     onSetPendingRealismMetadata(kLongSkipMinutesMeta, minutes);
+  }
+
+  // ── Skips the reply narrates ──────────────────────────────────────────────
+
+  int _replySkipMinutes = 0;
+
+  /// Minutes a skip the reply narrated moved the clock, taken once: the
+  /// post-reply pass settles the scene when this is a day or more.
+  int takeReplySkipMinutes() {
+    final minutes = _replySkipMinutes;
+    _replySkipMinutes = 0;
+    return minutes;
+  }
+
+  /// "A week later, she…" in the reply's own narration (quotes stripped):
+  /// a day-plus span moves the clock after the reply. Shorter beats stay
+  /// with the scene-time judge. Owns the turn, so the judge adds nothing.
+  /// Unlike [detectOocTimeSkip] it stamps no `time_skip_to`: a regen
+  /// rewinds to the turn's before and the new reply is read afresh.
+  Future<int> applyReplySkip(String text) async {
+    if (!isPassageOfTimeEnabled()) return 0;
+    final lower = stripQuotedSpeech(text).toLowerCase();
+    final next = SkipSpan.longLanding(state.clock, lower);
+    return next == null ? 0 : _applyLivedSkip(next);
+  }
+
+  /// The judge's `days_elapsed` for a jump the regex could not read.
+  Future<int> applyJudgedDays(int days) => _applyLivedSkip(
+    landSkipInDay(state.clock.add(Duration(days: days.clamp(1, 365))), ''),
+  );
+
+  Future<int> _applyLivedSkip(DateTime next) async {
+    if (!next.isAfter(state.clock)) return 0;
+    final dayBefore = state.dayCount;
+    final skipped = next.difference(state.clock).inMinutes;
+    state.clock = next;
+    state.turnsSinceClockMoved = 0;
+    state.oocSkipMovedClockThisTurn = true;
+    state.namedReconcileExact = false;
+    state.noteBodyBeat(
+      minutes: skipped,
+      nextMorning: false,
+      isSkip: true,
+      offScreen: true,
+      skipDestination: '${state.displayShortDate} · ${state.displayClock}',
+    );
+    _replySkipMinutes += skipped;
+    onNotify();
+    debugPrint(
+      '[Realism:Time] Reply skip → ${state.displayClock} '
+      '${state.displayShortDate} (Day ${state.dayCount})',
+    );
+    await onDayChanged(dayBefore);
+    return skipped;
   }
 
   // ── Per-turn time advance (delegated from the physical / one-shot evals) ──

@@ -272,7 +272,8 @@ void main() {
         '(OOC: fast forward to next week)',
       );
 
-      expect(t.clock, DateTime.utc(2026, 7, 9, 18, 30));
+      // 2026-10-20: a day-plus skip lands in the morning (skip_landing).
+      expect(t.clock, DateTime.utc(2026, 7, 9, 9, 0));
       expect(t.dayCount, 10);
     });
 
