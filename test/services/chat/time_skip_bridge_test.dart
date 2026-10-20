@@ -67,6 +67,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setupReprocessPathProviderMock();
 
+  // 2026-10-20: a day-plus skip lands in the morning of the day it names
+  // (skip_landing.dart), not at the hour it left.
+  DateTime morningAfter(DateTime from, int days) {
+    final d = from.add(Duration(days: days));
+    return DateTime.utc(d.year, d.month, d.day, 9);
+  }
+
   late ReprocessHarness h;
   late _SkipLlm llm;
   setUp(() async {
@@ -137,7 +144,7 @@ void main() {
       await h.chat.sendMessage('*Two weeks later, I knock on her door again.*');
       await h.settleTurn();
 
-      expect(h.chat.timeService.clock, before.add(const Duration(days: 14)));
+      expect(h.chat.timeService.clock, morningAfter(before, 14));
       expect(h.chat.messages, hasLength(sent + 3));
       final card = h.chat.messages[sent];
       expect(card.isDirectorNarration, isTrue);
@@ -150,7 +157,10 @@ void main() {
       expectUserTurnLast(sent);
       final reply = h.chat.messages.last;
       expect(reply.isUser, isFalse);
-      expect(reply.activeMetadata?[kLongSkipMinutesMeta], 14 * 24 * 60);
+      expect(
+        reply.activeMetadata?[kLongSkipMinutesMeta],
+        morningAfter(before, 14).difference(before).inMinutes,
+      );
       expect(llm.replyPrompts.last, contains('[Narration: $_bridge]'));
       expect(llm.replyPrompts.last, isNot(contains('curled up on the couch')));
       expectSettled();
@@ -177,7 +187,7 @@ void main() {
       hasLength(1),
     );
     expect(llm.bridgePrompts, hasLength(1));
-    expect(h.chat.timeService.clock, before.add(const Duration(days: 14)));
+    expect(h.chat.timeService.clock, morningAfter(before, 14));
     expectSettled();
     expectEveryday();
   });
@@ -192,7 +202,7 @@ void main() {
       await h.chat.sendMessage('A few days later we meet at the market.');
       await h.settleTurn();
 
-      expect(h.chat.timeService.clock, before.add(const Duration(days: 3)));
+      expect(h.chat.timeService.clock, morningAfter(before, 3));
       expect(h.chat.messages, hasLength(sent + 2));
       expect(h.chat.messages.last.isUser, isFalse);
       expect(llm.bridgePrompts, isEmpty);

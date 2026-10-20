@@ -152,4 +152,61 @@ void main() {
       expect(await t.detectOocTimeSkip('I smile at her.'), 0);
     });
   });
+
+  // 2026-10-20 (time-skip findings §B). Proven red against the old parser:
+  // every skip row (missed, +1h, +7 days, or the hour it left) and the
+  // first three not-skip rows failed. The other not-skip rows guard the
+  // new count-less and "have passed" forms against backstory.
+  group('phrasing table: Tue Mar 3, 10:47 PM', () {
+    final night = DateTime.utc(2026, 3, 3, 22, 47);
+    DateTime morning(int day, [int hour = 9, int minute = 0]) =>
+        DateTime.utc(2026, 3, day, hour, minute);
+
+    final skips = <String, DateTime>{
+      'Two weeks have passed.': morning(17),
+      'Two weeks had passed when the letter came.': morning(17),
+      'A fortnight later, the letter arrives.': morning(17),
+      'A week and a half later, we meet again.': morning(14),
+      'Days later, the bruise fades.': morning(6),
+      'Weeks later, we talk again.': morning(17),
+      'Months later, spring arrives.': DateTime.utc(2026, 6, 3, 9),
+      'Fifteen years later, I return.': DateTime.utc(2036, 3, 3, 9),
+      'Twenty-one days later, the cast comes off.': morning(24),
+      '*Time skip: two weeks*': morning(17),
+      'fast forward: 3 months': DateTime.utc(2026, 6, 3, 9),
+      '(OOC: skip two weeks)': morning(17),
+      '(OOC: time skip two weeks)': morning(17),
+      'timeskip 3 days': morning(6),
+      '(ooc: time skip, it has been weeks)': morning(17),
+      'Next week, we drive to the coast.': morning(10),
+      'Two weeks later, one bright morning, I knock.': morning(17),
+      'Three days later, that evening, she calls.': morning(6, 18, 30),
+      'A week later at dawn we leave.': morning(10, 6),
+      'Two weeks later, around noon.': morning(17, 12),
+      'Two weeks later, that afternoon.': morning(17, 14, 30),
+      'Two weeks later, late that night.': morning(17, 22, 30),
+    };
+    for (final MapEntry(key: line, value: target) in skips.entries) {
+      test(line, () {
+        final lower = line.toLowerCase();
+        expect(shouldDetectTimeSkip(lower), isTrue);
+        expect(StoryClock.resolveSkipTarget(night, lower), target);
+      });
+    }
+
+    for (final line in [
+      'See you next week, I say with a wave.',
+      '(OOC: brb, will reply later)',
+      '(ooc: gtg, talk later)',
+      'as the days passed, she smiled more',
+      'for two weeks I waited by the phone',
+      'three years had passed since the accident',
+      '*a few days have passed since our date*',
+      'I skip a day of school to see you',
+    ]) {
+      test('not a skip: $line', () {
+        expect(shouldDetectTimeSkip(line.toLowerCase()), isFalse);
+      });
+    }
+  });
 }
