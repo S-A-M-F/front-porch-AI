@@ -59,6 +59,9 @@ class TimeClockState {
     return minutes;
   }
 
+  /// A beat of a day or more whose bodies have not landed yet.
+  bool get bodyBeatLivedOwed => bodyBeatLongSkip && bodyWearMinutes > 0;
+
   /// A calendar jump of a day or more, not yet landed. The next beat noted
   /// before the bodies land adds to it rather than replacing it, once.
   int _livedOwed = 0;

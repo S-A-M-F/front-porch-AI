@@ -243,7 +243,7 @@ extension ChatServiceCast on ChatService {
     _clearExitUndo();
     if (_sceneChanged(token) || !_directing || _isTurnBusy) return false;
     _narrating = true;
-    var landed = false;
+    var landed = '';
     try {
       _setGuestStatus('The narrator sets the scene…', sticky: true);
       final recent = _messages.length > kNarrationHistoryLines
@@ -278,7 +278,7 @@ extension ChatServiceCast on ChatService {
       _setGuestStatus(null);
       _messages.add(narrationMessage(beat));
       await _saveChat();
-      landed = true;
+      landed = beat;
     } catch (e) {
       debugPrint('[Director] narration failed: $e');
       _setGuestStatus('⚠ The narrator could not set the scene.', isError: true);
@@ -288,10 +288,22 @@ extension ChatServiceCast on ChatService {
       notifyListeners();
     }
     // No await since the flag dropped: the reply raises _isGenerating first.
-    if (landed && !_sceneChanged(token)) {
+    if (landed.isNotEmpty && !_sceneChanged(token)) {
+      await _skipNarratedTime(landed);
       await _generateResponse(GenerationMode.normal);
     }
     return true;
+  }
+
+  /// A beat that skips time moves the clock the way a user's skip line
+  /// does: same turn ownership and regen replay, same settle for a day or
+  /// more. No bridge card: the beat already narrated the gap.
+  Future<void> _skipNarratedTime(String beat) async {
+    if (!_clockRunning) return;
+    final before = _timeService.clock;
+    final skipped = await _timeService.detectOocTimeSkip(beat);
+    await _episodeCrumbs.maybeMint(before, _timeService.clock);
+    if (skipped >= kLongSkipMinutes) LongSkipSettle(_realismScope()).settle();
   }
 
   /// A skip of a day or more ([skipped] minutes from [from]): the narrator
@@ -326,11 +338,12 @@ extension ChatServiceCast on ChatService {
               : [?_activeCharacter?.name],
           userName: _userPersonaService.persona.name,
           skipLine: skipLine.text,
-          from:
-              '${StoryClock.formatShortDate(from)} · '
-              '${StoryClock.formatClock(from)}',
-          to: '${_timeService.displayShortDate} · ${_timeService.displayClock}',
+          from: '${skipMomentWords(from)} (${StoryClock.formatClock(from)})',
+          to:
+              '${skipMomentWords(_timeService.clock)} '
+              '(${_timeService.displayClock})',
           minutes: skipped,
+          context: _timeSkipBridgeContext(),
         ),
         label: 'time_skip_bridge',
       );
@@ -342,8 +355,18 @@ extension ChatServiceCast on ChatService {
         debugPrint('[TimeSkip] bridge came back empty; replying without it');
         return true;
       }
-      // Before the skip line, like a dream: the line that skipped stays the
-      // user's turn for every pass that looks for it.
+      // The clock is the truth: a bridge claiming more time than it moved
+      // would be one more disagreement for the reply to reconcile.
+      if (bridgeOverstatesSpan(beat, skipped)) {
+        debugPrint(
+          '[TimeSkip] bridge names a longer span than '
+          '${skipSpanWords(skipped)}; replying without it',
+        );
+        return true;
+      }
+      // Stored before the skip line, so the line that skipped stays the
+      // user's turn for every pass that looks for it. The prompt reads it
+      // after that line (bridgesAfterSkipLines).
       final at = _messages.indexOf(skipLine);
       _messages.insert(
         at < 0 ? _messages.length : at,

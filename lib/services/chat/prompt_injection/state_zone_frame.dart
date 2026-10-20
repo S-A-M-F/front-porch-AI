@@ -67,6 +67,10 @@
 /// runs — those genuinely ARE the user's, and attributing them to the app
 /// would be a new lie in place of the old one.
 ///
+/// The date and time line is exempt from "simply behind": the clock is
+/// written before the reply, so it is never behind, and after a long skip
+/// the transcript's own "tonight" and "tomorrow" are the stale side.
+///
 /// The newest beat renders AFTER the zone (`latest_turn`), so the transcript
 /// is named as above-and-after rather than "above": the zone sits inside it.
 ///
@@ -91,6 +95,7 @@ String buildStateZoneFrame({
       '(above, and its newest message after these notes) is the record of '
       'what actually happened, so where these notes '
       'disagree with it about events the conversation is right and the notes '
-      'are simply behind; on feelings and inner state, which the conversation '
+      'are simply behind, except the date and time stated here, which are '
+      'current; on feelings and inner state, which the conversation '
       'does not record, the notes are the truer guide.]\n';
 }

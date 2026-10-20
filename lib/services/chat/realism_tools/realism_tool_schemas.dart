@@ -268,6 +268,10 @@ final Map<String, Map<String, dynamic>> _sceneTimeFields = {
   'posture': _strField(
     'Current physical position and location (brief phrase), or "none".',
   ),
+  'days_elapsed': _intField(
+    'Whole days skipped ONLY when the reply explicitly narrates a jump of '
+    'days or more ("a week later"). 0 otherwise.',
+  ),
 };
 
 /// The POST-generation posture pass (TimeService's `postureOnly` mode). It
@@ -297,6 +301,7 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalTools = [
       'minutes_elapsed': _sceneTimeFields['minutes_elapsed']!,
       'continuous_instant': _sceneTimeFields['continuous_instant']!,
       'new_day': _sceneTimeFields['new_day']!,
+      'days_elapsed': _sceneTimeFields['days_elapsed']!,
     },
     const ['minutes_elapsed'],
   ),
@@ -316,6 +321,7 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalToolsWithToday = [
       'minutes_elapsed': _sceneTimeFields['minutes_elapsed']!,
       'continuous_instant': _sceneTimeFields['continuous_instant']!,
       'new_day': _sceneTimeFields['new_day']!,
+      'days_elapsed': _sceneTimeFields['days_elapsed']!,
       'today_sentence': _todaySentenceField,
     },
     const ['minutes_elapsed', 'today_sentence'],

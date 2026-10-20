@@ -219,6 +219,7 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
 
   PromiseDebtInjection _buildPromiseDebtInjection() {
     return PromiseDebtInjection(
+      getCurrentStoryDay: () => _clockRunning ? _timeService.dayCount : null,
       promiseDebtService: _promiseDebtService,
       getSessionId: () => _currentSessionId,
       getActiveCharacter: () => _activeCharacter,

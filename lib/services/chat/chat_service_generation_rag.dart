@@ -208,10 +208,12 @@ extension ChatServiceGenerationRag on ChatService {
                     )
                   : null,
           };
+          final today = _clockRunning ? _timeService.dayCount : null;
           String lineFor(RetrievedMemory m) => formatRagLine(
             m.content,
             day: days[m],
             otherChat: m.sessionId != sessionForStamps,
+            today: today,
           );
           final included = <RetrievedMemory>[];
           int usedTokens = 0;
@@ -238,6 +240,7 @@ extension ChatServiceGenerationRag on ChatService {
                   currentSessionId: sessionForStamps,
                   days: days,
                   reachingForQuote: reaching,
+                  today: today,
                 );
             t.memoriesBlock = buildBlock(included);
 

@@ -56,6 +56,12 @@ extension ChatServiceHistory on ChatService {
   /// and generated-image shares keep their brackets.
   String _formatHistoryLine(ChatMessage m) => m.toPromptHistoryLine();
 
+  /// One line per message, a time-skip bridge read after its skip line.
+  List<String> _promptOrderedLines() => bridgesAfterSkipLines(
+    _messages,
+    _messages.map(_formatHistoryLine).toList(),
+  );
+
   Iterable<String> _promptHistoryLines(Iterable<String> lines) =>
       lines.where((l) => l.isNotEmpty);
 
@@ -85,7 +91,7 @@ extension ChatServiceHistory on ChatService {
   }
 
   String _buildChatHistory({List<LoreDepthEntry> depthLore = const []}) {
-    final lines = _messages.map(_formatHistoryLine).toList();
+    final lines = _promptOrderedLines();
     if (lines.any((l) => _macroPattern.hasMatch(l))) {
       debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
     }
@@ -115,7 +121,7 @@ extension ChatServiceHistory on ChatService {
     }
 
     // Format all messages, skipping hidden group realism checkpoints
-    final formatted = _messages.map(_formatHistoryLine).toList();
+    final formatted = _promptOrderedLines();
     if (formatted.any((l) => _macroPattern.hasMatch(l))) {
       debugPrint('[MacroResolver] ⚠ Unresolved macro detected in chat history');
     }

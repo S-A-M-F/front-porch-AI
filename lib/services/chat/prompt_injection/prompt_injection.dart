@@ -46,6 +46,8 @@ export 'search_injection.dart';
 export 'regen_critique_injection.dart';
 export 'speaker_resolution.dart';
 export 'state_zone_frame.dart';
+export 'story_when.dart';
 export 'time_injection.dart';
+export 'time_skip_anchor.dart';
 export 'weather_injection.dart';
 export 'world_injection.dart';

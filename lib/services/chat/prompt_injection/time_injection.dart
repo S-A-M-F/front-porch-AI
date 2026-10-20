@@ -21,8 +21,8 @@ import 'package:front_porch_ai/services/chat/chat.dart';
 /// Scene-time fragment for the words-only state block
 /// (docs/design/prompt-state-injection.md §3). One line; clock digits and
 /// dates are normal fiction, unlike meters (design: story-calendar.md §7).
-/// The year appears only when the story isn't set in the current real-world
-/// year. State stays in TimeService.
+/// The year appears only for a period story ([StoryClock.yearAnchorFor]).
+/// State stays in TimeService.
 class TimeInjection {
   final TimeService timeService;
 

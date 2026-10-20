@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
+import 'story_when.dart';
 // memory_service.dart is not exported by the curated services.dart barrel, so
 // this one stays a direct import (documented exemption).
 import 'package:front_porch_ai/services/memory_service.dart';
@@ -418,20 +419,7 @@ class JournalInjection {
   String _when(JournalMemoryData card) {
     final (day, clock) = JournalStore.stampOf(card);
     if (day == null) return '';
-    final date = StoryClock.dateOnly(
-      getStoryStartDate(),
-    ).add(Duration(days: day - 1));
-    final weekday = StoryClock.weekdayName(date);
-    final period = clock == null
-        ? ''
-        : ' ${StoryClock.periodForHour(clock.hour).replaceAll('_', ' ')}';
-    final delta = getCurrentStoryDay() - day;
-    final ago = switch (delta) {
-      <= 0 => 'earlier today',
-      1 => 'yesterday',
-      < 14 => '$delta days ago',
-      _ => '${(delta / 7).round()} weeks ago',
-    };
-    return ' · Day $day, $weekday$period — $ago';
+    final label = storyDayLabel(day, getStoryStartDate(), clock: clock);
+    return ' · $label — ${storyDaysAgo(getCurrentStoryDay() - day)}';
   }
 }

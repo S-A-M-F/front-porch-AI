@@ -36,8 +36,7 @@ class OpenPromise {
   /// `'open'` | `'kept'` | `'broken'`.
   final String status;
 
-  /// Story day the commitment was made (the card's stamp), so the prompt
-  /// can say how long it has been open. Null for unstamped cards.
+  /// Story day the promise was made on, when the card was stamped.
   final int? storyDay;
 
   const OpenPromise({

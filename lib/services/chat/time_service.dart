@@ -190,12 +190,7 @@ class TimeService {
   bool get bodyBeatLongSkip => _state.bodyBeatLongSkip;
 
   /// A beat of a day or more whose bodies have not landed yet.
-  bool get bodyBeatLivedOwed =>
-      _state.bodyBeatLongSkip && _state.bodyWearMinutes > 0;
-
-  /// A jump of a day or more no skip line announced: the bodies lived it.
-  void noteLivedJump(int minutes, {String? destination}) =>
-      _state.noteLivedJump(minutes, destination: destination);
+  bool get bodyBeatLivedOwed => _state.bodyBeatLivedOwed;
 
   /// Chip text for that beat. Null when the skip chip already says it.
   String? get bodyTimeLabel => _state.bodyTimeLabel;
@@ -371,6 +366,16 @@ class TimeService {
 
   void reclaimSkipOwnership() => _applier.reclaimSkipOwnership();
 
+  /// A skip (user line, `/narrate`, time away) already moved the clock.
+  bool get skipOwnsTurn => _state.oocSkipMovedClockThisTurn;
+
+  /// No scene-time eval consumed the ownership: the next turn is its own.
+  void releaseSkipOwnership() => _state.oocSkipMovedClockThisTurn = false;
+
+  Future<int> applyReplySkip(String text) => _applier.applyReplySkip(text);
+
+  int takeReplySkipMinutes() => _applier.takeReplySkipMinutes();
+
   Future<void> applyReconciledClock(DateTime newClock) =>
       _applier.applyReconciledClock(newClock);
 
@@ -453,7 +458,11 @@ class TimeService {
   String get displayShortDate => _state.displayShortDate;
   String get displayDate => StoryClock.formatDate(
     _state.clock,
-    realYear: StoryClock.todayAnchor().year,
+    realYear: StoryClock.yearAnchorFor(
+      _state.clock,
+      _state.startDate,
+      realYear: StoryClock.todayAnchor().year,
+    ),
   );
 
   // ── Mutation for control / loads (side-effect free; wrappers do save/notify) ──

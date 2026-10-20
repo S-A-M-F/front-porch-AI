@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'package:front_porch_ai/services/chat/skip_landing.dart';
 import 'package:front_porch_ai/services/chat/skip_language.dart';
 import 'package:front_porch_ai/services/chat/skip_span.dart';
 
@@ -222,18 +223,15 @@ class StoryClock {
   /// Callers still gate on skip language; this only interprets the target.
   static DateTime resolveSkipTarget(DateTime clock, String lower) {
     // A counted day-plus span first: "two weeks later" is fourteen days,
-    // "3 months pass" is three calendar months.
+    // "3 months pass" is three calendar months. Both land at the time of
+    // day the line names, else morning (skip_landing.dart).
     final long = SkipSpan.longLanding(clock, lower);
     if (long != null) return long;
-    if (RegExp(
-      r'\b(a|one)? ?month (later|passes)|next month\b',
-    ).hasMatch(lower)) {
-      return DateTime.utc(clock.year, clock.month + 1, 1, 9);
-    }
-    if (RegExp(
-      r'\b((a|one) week (later|passes)|next week|weeks? later)\b',
-    ).hasMatch(lower)) {
-      return clock.add(const Duration(days: 7));
+    final nextWeekOrMonth = nextWeekOrMonthSkip.firstMatch(lower);
+    if (nextWeekOrMonth != null) {
+      return nextWeekOrMonth.group(1) == 'month'
+          ? landSkipInDay(DateTime.utc(clock.year, clock.month + 1), lower)
+          : landSkipInDay(clock.add(const Duration(days: 7)), lower);
     }
     if (isNightSkip(lower)) {
       return nextMorning(clock);
@@ -282,6 +280,10 @@ class StoryClock {
     // so the skip chip stamped a time the strip barely moved.
     final counted = SkipSpan.shortLanding(clock, lower);
     if (counted != null) return counted;
+    // A day-plus unit the forms above missed still lands days on: never
+    // the +1h default for "(ooc: time skip, it's been weeks)".
+    final anyLong = SkipSpan.anyLongLanding(clock, lower);
+    if (anyLong != null) return anyLong;
     if (RegExp(
       r'\b(several hours|many hours|a long time|hours? pass)\b',
     ).hasMatch(lower)) {
@@ -405,6 +407,17 @@ class StoryClock {
         '${weekdayName(clock)}, ${monthName(clock)} ${_ordinal(clock.day)}';
     return clock.year == realYear ? base : '$base, ${clock.year}';
   }
+
+  /// The year [formatDate] compares a story's clock against, decided by
+  /// when the story STARTED rather than by today's calendar: a story that
+  /// began within a year of [realYear] is contemporary and never shows a
+  /// year (a skip across New Year must not suddenly add ", 2027"); a period
+  /// story always shows its own.
+  static int yearAnchorFor(
+    DateTime clock,
+    DateTime startDate, {
+    required int realYear,
+  }) => (startDate.year - realYear).abs() <= 1 ? clock.year : realYear;
 
   /// "Tue, Mar 3" — compact strip/chip form.
   static String formatShortDate(DateTime clock) =>
