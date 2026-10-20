@@ -6,6 +6,7 @@
 // installed palette must reach every helper, including Porch Stories'.
 
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -275,5 +276,70 @@ void main() {
       }
     }
     expect(offenders, isEmpty);
+  });
+
+  testWidgets('light-mode status, chip and chat inks clear 4.5:1 on the chip '
+      'well', (t) async {
+    // Light mode takes deeper tones of the Material accents dark mode uses.
+    // They are checked on the chip well over the surface, and on the
+    // surface itself, where the status bar and Memory setup draw them.
+    late Map<String, Color> inks;
+    late Color ground, surface;
+    await t.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.build(brightness: Brightness.light),
+        home: Builder(
+          builder: (c) {
+            surface = AppColors.surfaceOf(c);
+            ground = Color.alphaBlend(
+              InkColors.chipWellOf(c),
+              AppColors.surfaceOf(c),
+            );
+            inks = {
+              'danger': StatusColors.dangerOf(c),
+              'warning': StatusColors.warningOf(c),
+              'success': StatusColors.successOf(c),
+              'info': StatusColors.infoOf(c),
+              'hunger': RealismColors.hungerOf(c),
+              'bladder': RealismColors.bladderOf(c),
+              'energy': RealismColors.energyOf(c),
+              'social': RealismColors.socialOf(c),
+              'fun': RealismColors.funOf(c),
+              'hygiene': RealismColors.hygieneOf(c),
+              'comfort': RealismColors.comfortOf(c),
+              'other need': RealismColors.otherNeedOf(c),
+              'bond down': RealismColors.bondDownOf(c),
+              'trust up': RealismColors.trustUpOf(c),
+              'lust up': RealismColors.lustUpOf(c),
+              'thought': ChatColors.thoughtInkOf(c),
+              'director': ChatColors.directorOf(c),
+              'memory': ChatColors.memoryOf(c),
+              'regen': ChatColors.regenOf(c),
+              'continue': ChatColors.continueOf(c),
+              'swipe': ChatColors.swipeOf(c),
+              'preparing': ChatColors.preparingOf(c),
+              'prefilling': ChatColors.prefillingOf(c),
+              'thinking': ChatColors.thinkingOf(c),
+              'buffering': ChatColors.bufferingOf(c),
+              'generating': ChatColors.generatingOf(c),
+              'speed': ChatColors.speedOf(c),
+            };
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    double contrast(Color a, Color b) {
+      final la = a.computeLuminance(), lb = b.computeLuminance();
+      return (max(la, lb) + 0.05) / (min(la, lb) + 0.05);
+    }
+
+    final faint = [
+      for (final g in [ground, surface])
+        for (final e in inks.entries)
+          if (contrast(e.value, g) < 4.5)
+            '${e.key} ${contrast(e.value, g).toStringAsFixed(2)}',
+    ];
+    expect(faint, isEmpty);
   });
 }
