@@ -80,7 +80,7 @@ String timeSkipBridgePrompt({
   TimeSkipBridgeContext context = const TimeSkipBridgeContext(),
 }) {
   final span = skipSpanWords(minutes);
-  final most = minutes >= 14 * 24 * 60 ? 'six' : 'five';
+  final most = (minutes / (24 * 60)).round() >= 14 ? 'six' : 'five';
   final place = context.place.trim();
   final recap = context.recap.trim();
   final b = StringBuffer(

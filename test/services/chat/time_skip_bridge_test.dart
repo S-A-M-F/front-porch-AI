@@ -308,7 +308,7 @@ void main() {
   String anchorFor(DateTime from, int days, String span) =>
       '[Time skip: about $span passed between the earlier scene and now '
       '(${skipMomentWords(from)} → '
-      '${skipMomentWords(from.add(Duration(days: days)))}). Everything in '
+      '${skipMomentWords(morningAfter(from, days))}). Everything in '
       'the conversation from before the skip happened back then, not now.]';
 
   /// The anchor comes after the whole state zone (the time line included),
