@@ -34,7 +34,6 @@ class GroupWizardDraft extends ChangeNotifier {
     nameController.addListener(updateEstimates);
     scenarioController.addListener(updateEstimates);
     firstMessageController.addListener(updateEstimates);
-    groupSystemController.addListener(updateEstimates);
     _blank = fingerprint();
   }
 
@@ -55,7 +54,6 @@ class GroupWizardDraft extends ChangeNotifier {
     firstMessageController.text,
     altGreetings,
     [for (final s in altGreetingSeeds) s?.toJson()],
-    groupSystemController.text,
     {
       for (final e in characterSystemPrompts.entries)
         if (e.value.text.isNotEmpty) e.key: e.value.text,
@@ -115,9 +113,6 @@ class GroupWizardDraft extends ChangeNotifier {
   bool isGeneratingFirst = false;
 
   // Prompts
-  final groupSystemController = StyledTextController(
-    preset: StyledTextPreset.prose,
-  );
   final Map<String, TextEditingController> characterSystemPrompts =
       {}; // charId -> prompt
 
@@ -157,7 +152,6 @@ class GroupWizardDraft extends ChangeNotifier {
     nameController.dispose();
     scenarioController.dispose();
     firstMessageController.dispose();
-    groupSystemController.dispose();
     // Dispose per-character controllers
     for (final ctrl in characterSystemPrompts.values) {
       ctrl.dispose();
@@ -176,7 +170,6 @@ class GroupWizardDraft extends ChangeNotifier {
     total += (nameController.text.length / 4).ceil();
     total += (scenarioController.text.length / 4).ceil();
     total += (firstMessageController.text.length / 4).ceil();
-    total += (groupSystemController.text.length / 4).ceil();
     for (final ctrl in characterSystemPrompts.values) {
       total += (ctrl.text.length / 4).ceil();
     }

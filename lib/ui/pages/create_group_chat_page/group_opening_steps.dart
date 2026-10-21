@@ -264,11 +264,13 @@ class GroupPromptsStep extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              AppTextField(
-                controller: draft.groupSystemController,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  hintText: 'Global instructions for this group...',
+              Text(
+                'Every group uses the Group system prompt in Settings → '
+                'General. To give this group its own, open Group Settings '
+                'after it is created.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary(context),
                 ),
               ),
             ],

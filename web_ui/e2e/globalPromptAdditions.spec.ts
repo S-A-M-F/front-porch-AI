@@ -43,3 +43,31 @@ test('global prompt additions save, reload, and clear under General settings', a
     }})).ok()).toBe(true);
   }
 });
+
+test('the Group system prompt saves under General, starts from the built-in prompt, and clears', async ({ page }) => {
+  const read = async () => (await (await page.request.get('/api/settings')).json()) as {
+    groupSystemPrompt?: string; builtInGroupSystemPrompt?: string;
+  };
+  const original = await read();
+  try {
+    await openRoute(page, '/settings');
+    const card = page.locator('[data-section="general"] [data-testid="group-system-prompt"]');
+    await expect(card).toBeVisible();
+    const field = page.getByRole('textbox', { name: 'Group system prompt', exact: true });
+    await field.fill('Novel style for every group.');
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPrompt).toBe('Novel style for every group.');
+    await page.getByRole('button', { name: 'Start from the built-in prompt', exact: true }).click();
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    const builtIn = (await read()).builtInGroupSystemPrompt;
+    expect(builtIn).toBeTruthy();
+    await expect.poll(async () => (await read()).groupSystemPrompt).toBe(builtIn);
+    await field.fill('');
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPrompt).toBe('');
+  } finally {
+    expect((await page.request.post('/api/settings', { data: {
+      groupSystemPrompt: original.groupSystemPrompt ?? '',
+    }})).ok()).toBe(true);
+  }
+});

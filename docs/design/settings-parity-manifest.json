@@ -56,6 +56,12 @@
       "dartMarker": "Additional system instructions",
       "webMarker": "Additional system instructions"
     },
+    "groupSystemPrompt": {
+      "section": "general",
+      "dart": "lib/ui/settings/widgets/group_system_prompt_field.dart",
+      "dartMarker": "Group system prompt",
+      "webMarker": "Group system prompt"
+    },
     "additionalPostHistoryInstructions": {
       "section": "general",
       "dart": "lib/ui/settings/widgets/global_prompt_additions.dart",

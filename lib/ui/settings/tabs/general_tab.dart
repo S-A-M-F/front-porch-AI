@@ -200,7 +200,7 @@ class GeneralTab extends StatelessWidget {
           const SectionHeader('Fallback system prompt'),
           const SizedBox(height: 8),
           Text(
-            'Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.',
+            'Used in one-to-one chats whose character card has no system prompt of its own. Group chats use the Group system prompt further down instead.',
             style: TextStyle(color: AppColors.textSecondary(context)),
           ),
           const SizedBox(height: 8),
@@ -284,12 +284,6 @@ class GeneralTab extends StatelessWidget {
                 storage: storageService,
                 systemPromptController: systemPromptController,
               ),
-              SystemPromptPresetChip(
-                label: '👥 Group Chat',
-                prompt: defaultGroupSystemPrompt,
-                storage: storageService,
-                systemPromptController: systemPromptController,
-              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -310,6 +304,8 @@ class GeneralTab extends StatelessWidget {
             onChanged: (val) =>
                 storageService.generationSettings.setSystemPrompt(val),
           ),
+          const SizedBox(height: 24),
+          const GroupSystemPromptField(),
           const SizedBox(height: 24),
           const GlobalPromptAdditions(),
           const SizedBox(height: 24),
