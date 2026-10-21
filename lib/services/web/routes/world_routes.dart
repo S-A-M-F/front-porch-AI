@@ -35,6 +35,9 @@ class WebWorldRoutes {
     // swallowed as a world name.
     router.post('/api/worlds/import', _import);
     router.post('/api/worlds/climate/check', _climateCheck);
+    // Static suffix; register before the '<name>' captures, same
+    // discipline as /import above (slice 4 web twin: "Part of" picker).
+    router.get('/api/worlds/parent-candidates', _parentCandidates);
     router.post('/api/lorebook/import', _importLorebook);
     router.get('/api/chat/places', _chatPlaces);
     router.post('/api/chat/places', _setChatPlaces);
@@ -133,15 +136,35 @@ class WebWorldRoutes {
     if ((body['name']?.toString().trim() ?? '').isEmpty) {
       return JsonResponse.badRequest(kPlaceNameRequired);
     }
-    final ok = await _facade.save(body);
-    if (!ok) return JsonResponse.badRequest('name is required');
+    try {
+      final ok = await _facade.save(body);
+      if (!ok) return JsonResponse.badRequest('name is required');
+    } on StateError catch (e) {
+      // The unknown-parent / cycle law's own sentence, not shelf's bare
+      // 500 (slice 4): the PWA's Part-of save must hear exactly what the
+      // desktop dialog would have shown.
+      return JsonResponse.badRequest(e.message);
+    }
     return JsonResponse.ok({'worlds': _facade.list()});
   }
 
   Future<shelf.Response> _delete(shelf.Request request, String name) async {
-    final ok = await _facade.delete(Uri.decodeComponent(name));
+    int reRooted = 0;
+    final ok = await _facade.delete(
+      Uri.decodeComponent(name),
+      onReRooted: (n) => reRooted = n,
+    );
     if (!ok) return JsonResponse.error(404, 'World not found');
-    return JsonResponse.ok({'worlds': _facade.list()});
+    // Count lets the PWA copy desktop's "N places became their own
+    // worlds" announcement instead of deleting in silence.
+    return JsonResponse.ok({'worlds': _facade.list(), 'reRooted': reRooted});
+  }
+
+  /// GET `/api/worlds/parent-candidates?for=<nameOrId>` — the candidate
+  /// list for the PWA's "Part of" picker; empty `for` = a create.
+  shelf.Response _parentCandidates(shelf.Request request) {
+    final forId = request.url.queryParameters['for'] ?? '';
+    return JsonResponse.ok({'candidates': _facade.parentCandidates(forId)});
   }
 
   /// Import a world from a JSON body (SillyTavern / Chub.ai / Front Porch). The

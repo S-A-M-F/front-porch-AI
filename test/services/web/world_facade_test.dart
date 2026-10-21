@@ -208,4 +208,104 @@ void main() {
       );
     });
   });
+
+  // Slice 4 (web + relay twins): the PWA groups the library, preselects
+  // "Part of", and moves places through these payloads. Each guard is
+  // red until the relay carries the field the desktop already renders.
+  group('locations relay fields (slice 4)', () {
+    late AppDatabase db;
+    late WorldFacade facade;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      db = AppDatabase.forTesting();
+      await db.select(db.characters).get();
+      final storage = StorageService();
+      await storage.setRootPath(
+        Directory.systemTemp.createTempSync('fpai_root_').path,
+      );
+      final repo = WorldRepository(storage, db);
+      await repo.loadWorlds();
+      facade = WorldFacade(repo);
+    });
+
+    tearDown(() => db.close());
+
+    Future<String> createWorld(Map<String, dynamic> form) async {
+      expect(await facade.save(form), isTrue);
+      final name = form['name'] as String;
+      return facade.list().firstWhere((m) => m['name'] == name)['id'] as String;
+    }
+
+    test('list and detail carry parentWorldId; roots are null', () async {
+      final rootId = await createWorld({
+        'name': 'Bletchport',
+        'description': 'A town',
+      });
+      final list = facade.list();
+      final root = list.firstWhere((m) => m['id'] == rootId);
+      expect(root.containsKey('parentWorldId'), isTrue);
+      expect(root['parentWorldId'], isNull);
+      expect(root['isModelMade'], isFalse);
+      expect(facade.detail('Bletchport')!['parentWorldId'], isNull);
+    });
+
+    test('save sets a parent; the child lists and details under it', () async {
+      final rootId = await createWorld({'name': 'Bletchport'});
+      final childId = await createWorld({
+        'name': 'The Lighthouse',
+        'parentWorldId': rootId,
+        'climateEnabled': false,
+      });
+      final child = facade.list().firstWhere((m) => m['id'] == childId);
+      expect(child['parentWorldId'], rootId);
+      expect(facade.detail('The Lighthouse')!['parentWorldId'], rootId);
+    });
+
+    test(
+      'an unknown parent is refused and does not stick in the cache',
+      () async {
+        final id = await createWorld({'name': 'Orphan'});
+        await expectLater(
+          facade.save({
+            'name': 'Orphan',
+            'id': id,
+            'parentWorldId': 'no-such-world',
+          }),
+          throwsA(isA<StateError>()),
+        );
+        // The cache object must have rolled its parent back (review #592's
+        // honesty rule, enforced on the relay side too).
+        expect(facade.detail('Orphan')!['parentWorldId'], isNull);
+      },
+    );
+
+    test(
+      'parentCandidates is the one law: depth cap and cycle excluded',
+      () async {
+        final earthId = await createWorld({'name': 'Earth'});
+        final townId = await createWorld({
+          'name': 'Bletchfield',
+          'parentWorldId': earthId,
+        });
+        final roomId = await createWorld({
+          'name': 'Back Room',
+          'parentWorldId': townId,
+        });
+        // Editing the depth-2 room: Earth and the town are candidates, but
+        // never its own descendant, and a root stays offered.
+        final ids = facade.parentCandidates(roomId).map((c) => c['id']).toSet();
+        expect(ids, containsAll(<String>[earthId, townId]));
+        expect(ids.contains(roomId), isFalse);
+        // A depth-1 place proposing itself under its own child would ring:
+        // the room is not offered the child it parents deeper than the cap.
+        final townCands = facade
+            .parentCandidates(townId)
+            .map((c) => c['id'])
+            .toSet();
+        expect(townCands.contains(roomId), isFalse, reason: 'cycle');
+        expect(townCands, contains(earthId));
+      },
+    );
+  });
 }

@@ -20,6 +20,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.import.dart';
 
@@ -99,6 +100,11 @@ class WorldFacade {
               (w.linkedCharacterName != null
                   ? idByName[w.linkedCharacterName!]
                   : null),
+          // Locations slice 4 (web twin): the PWA groups the library,
+          // paints "inside X" tags and runs the model-made filter from
+          // these. Additive — old builds ignore them (mixed-version law).
+          'parentWorldId': w.parentWorldId,
+          'isModelMade': w.isModelMade,
         },
     ];
   }
@@ -135,6 +141,9 @@ class WorldFacade {
       'entries': lorebookEntriesToJson(w.lorebook),
       if (w.climateEnabled) 'atmosphere': w.atmosphere.name,
       if (w.climateEnabled) 'gravity': w.gravity.name,
+      // Slice 4 web twin: the editor preselects "Part of" and shows the
+      // inherit-or-own radios from this. Additive.
+      'parentWorldId': w.parentWorldId,
     };
   }
 
@@ -178,6 +187,18 @@ class WorldFacade {
     if (f.containsKey('injectDescription')) {
       world.injectDescription = f['injectDescription'] == true;
     }
+    // Slice 4 web twin: "Part of" changes the parent. Absent key keeps
+    // the row's parent (same upsert discipline as the climate fields);
+    // an explicit null or '' detaches it to its own world. The unknown/
+    // cycle law still runs inside saveWorld and its StateError escapes
+    // to the route, which answers 400 with the law's own sentence —
+    // the PWA must never be able to persist what the desktop refuses.
+    String? originalParent;
+    if (f.containsKey('parentWorldId')) {
+      final parent = f['parentWorldId']?.toString().trim();
+      originalParent = world.parentWorldId;
+      world.parentWorldId = (parent == null || parent.isEmpty) ? null : parent;
+    }
     if (f.containsKey('coverImage')) {
       final raw = f['coverImage']?.toString();
       world.coverImage = (raw == null || raw.isEmpty) ? null : raw;
@@ -195,14 +216,30 @@ class WorldFacade {
           buildLorebookFromJson(f['entries'], bookFields: f) ??
           Lorebook(entries: []);
     }
-    await _worlds.saveWorld(world);
+    try {
+      await _worlds.saveWorld(world);
+    } on StateError {
+      // The save law (unknown parent / cycle) refused this write, but
+      // this World object IS the repository cache's instance — put the
+      // parent back so the cache never outlives the DB (review #592's
+      // cache-honesty class, one frame earlier on the relay side).
+      if (f.containsKey('parentWorldId')) world.parentWorldId = originalParent;
+      rethrow;
+    }
     return true;
   }
 
-  Future<bool> delete(String nameOrId) async {
+  /// [onReRooted] reports how many children the delete turned into their
+  /// own worlds (slice 4 web twin of desktop's re-root snack). Optional —
+  /// callers that only care about success keep the bool contract.
+  Future<bool> delete(
+    String nameOrId, {
+    void Function(int reRooted)? onReRooted,
+  }) async {
     final w = _worlds.resolveWorld(nameOrId);
     if (w == null) return false;
-    await _worlds.deleteWorld(w);
+    final moved = await _worlds.deleteWorld(w);
+    onReRooted?.call(moved);
     return true;
   }
 
@@ -212,6 +249,29 @@ class WorldFacade {
     if (w == null) return null;
     // Shared envelope core — same builder file export and Stoop upload use.
     return _worlds.fpWorldJson(w);
+  }
+
+  /// Worlds the PWA's "Part of" picker may offer. `forNameOrId` empty =
+  /// a create. The candidate law (depth cap, self/descendant exclusion)
+  /// is [parentPickCandidates] — the SAME function the desktop picker and
+  /// the save path lean on, served here so TypeScript renders a list
+  /// rather than re-deciding legality (one source of truth per law).
+  List<Map<String, dynamic>> parentCandidates(String forNameOrId) {
+    final self = forNameOrId.isEmpty ? null : _worlds.resolveWorld(forNameOrId);
+    return [
+      for (final c in parentPickCandidates(
+        self,
+        _worlds.placeWorlds,
+        _worlds.worldById,
+      ))
+        {
+          'id': c.id,
+          'name': c.name,
+          // Depth-2 candidates render "X · inside Y" on the web exactly
+          // as on desktop; the client resolves the label from this id.
+          'parentWorldId': c.parentWorldId,
+        },
+    ];
   }
 
   /// Chat session places (ids + names) + active climate for mid-chat override.
@@ -224,6 +284,8 @@ class WorldFacade {
         'places': <Map<String, dynamic>>[],
         'lorePlaces': <Map<String, dynamic>>[],
         'climateAuthors': false,
+        'climateAuthorName': null,
+        'reachable': <Map<String, dynamic>>[],
         'weatherOff': 'no_setting',
         'climateId': 'temperate',
         'climateDisplayName': Biome.temperate.displayName,
@@ -237,6 +299,7 @@ class WorldFacade {
     final ids = chat.chatWorldIds;
 
     Map<String, dynamic> placeJson(World w, {required String role}) {
+      final parentId = w.parentWorldId;
       return {
         'id': w.id,
         'name': w.name,
@@ -248,6 +311,12 @@ class WorldFacade {
               : (w.biomeId ?? 'temperate'),
         'hasCustomClimate': w.climateEnabled && w.biomeJson != null,
         'description': w.description,
+        // Slice 4 web twin: "inside X" breadcrumbs on Setting and Lore
+        // tiles read these (desktop cards' parity, mockup p3).
+        'parentWorldId': parentId,
+        'parentName': parentId == null || parentId.isEmpty
+            ? null
+            : _worlds.resolveWorld(parentId)?.name,
       };
     }
 
@@ -288,6 +357,22 @@ class WorldFacade {
       'places': places,
       'lorePlaces': lorePlaces,
       'climateAuthors': climateAuthors,
+      // Slice 4 web twin: the PWA names the weather author on an
+      // inheriting Setting ("Weather from <name>", desktop parity) and
+      // fills the "Move the scene" dropdown from the ONE Dart reach law
+      // — no second TypeScript implementation of the rule.
+      'climateAuthorName': climateAuthor?.name,
+      'reachable': [
+        for (final r
+            in primaryWorld == null
+                ? const <World>[]
+                : reachablePlaces(
+                    primaryWorld,
+                    _worlds.placeWorlds,
+                    _worlds.worldById,
+                  ))
+          {'id': r.id, 'name': r.name},
+      ],
       'weatherOff': ?weatherOff,
       'climateId': climate.id,
       'climateDisplayName': climate.displayName,
