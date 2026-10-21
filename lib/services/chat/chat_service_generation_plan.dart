@@ -203,15 +203,16 @@ extension ChatServiceGenerationPlan on ChatService {
           ? ''
           : _macroResolver.resolve(rawRealism, macroCtx, section: 'realism');
 
-      // Living Worlds — setting prose from Primary ONLY (budget-capped).
-      // Lore attachments contribute lorebook entries, not room description.
+      // Living Worlds — setting prose from the Setting's chain, leaf first
+      // (locations slice 2): the place's own prose wins the 600-char budget
+      // and the town fills what is left. A root alone is exactly [root], so
+      // every pre-locations chat injects byte-identically. Lore attachments
+      // contribute lorebook entries, not room description.
       final primaryId = _chatPlaceSlots.primaryId;
-      final primaryWorld = primaryId == null
-          ? null
-          : _worldRepository.resolveWorld(primaryId);
-      final rawWorld = buildWorldInjection(
-        primaryWorld == null ? const <World>[] : [primaryWorld],
-      );
+      final settingChain = primaryId == null
+          ? const <World>[]
+          : _worldRepository.chainFor(primaryId);
+      final rawWorld = buildWorldInjection(settingChain);
       final worldBlock = rawWorld.isEmpty
           ? ''
           : _macroResolver.resolve(rawWorld, macroCtx, section: 'world');

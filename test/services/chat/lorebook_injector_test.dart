@@ -4,6 +4,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/character_card.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/models/world.dart';
 import 'package:front_porch_ai/services/chat/lorebook_collection.dart';
 import 'package:front_porch_ai/services/chat/lorebook_injector.dart';
 import 'package:front_porch_ai/services/storage/settings/lorebook_settings.dart';
@@ -16,25 +17,25 @@ LorebookInjector injectorFor(
   final theBook = book ?? Lorebook(entries: entries);
   final ch = CharacterCard(name: 'T', lorebook: theBook);
   return LorebookInjector(
-    getEntryRefs: () => collectLoreEntryRefs(
-      characters: [ch],
-      resolveWorld: (_) => null,
-    ),
+    getEntryRefs: () =>
+        collectLoreEntryRefs(characters: [ch], resolveWorld: (_) => null),
     getSettings: LorebookSettings.new, // unloaded prefs → pure defaults
     isStickyActive: isStickyActive ?? (_) => false,
   );
 }
 
-LorebookEntry active(String content,
-    {int order = 100,
-    int position = 0,
-    int depth = 4,
-    String group = '',
-    int groupWeight = 100,
-    bool groupOverride = false,
-    bool? useGroupScoring,
-    bool ignoreBudget = false,
-    String name = ''}) {
+LorebookEntry active(
+  String content, {
+  int order = 100,
+  int position = 0,
+  int depth = 4,
+  String group = '',
+  int groupWeight = 100,
+  bool groupOverride = false,
+  bool? useGroupScoring,
+  bool ignoreBudget = false,
+  String name = '',
+}) {
   final e = LorebookEntry(
     keys: const ['k'],
     content: content,
@@ -54,8 +55,7 @@ LorebookEntry active(String content,
 
 void main() {
   group('position bucketing', () {
-    test('each position lands in its bucket; outlet falls back to before',
-        () {
+    test('each position lands in its bucket; outlet falls back to before', () {
       final inj = injectorFor([
         active('B', position: 0),
         active('A', position: 1),
@@ -135,10 +135,10 @@ void main() {
     test('sticky-active entries fill first', () {
       final sticky = active('s' * 200, order: 1, name: 'sticky');
       final loud = active('l' * 200, order: 999, name: 'loud');
-      final inj = injectorFor(
-        [sticky, loud],
-        isStickyActive: (e) => identical(e, sticky),
-      );
+      final inj = injectorFor([
+        sticky,
+        loud,
+      ], isStickyActive: (e) => identical(e, sticky));
       // Budget 80 tokens: only one 50-token entry fits — the sticky one,
       // despite its far lower order.
       final r = inj.buildInjection(sessionSeed: 's', contextSize: 320);
@@ -162,8 +162,18 @@ void main() {
 
     test('groupOverride wins by highest order', () {
       final a = active('normal', group: 'g', order: 999);
-      final b = active('override-low', group: 'g', order: 10, groupOverride: true);
-      final c = active('override-high', group: 'g', order: 20, groupOverride: true);
+      final b = active(
+        'override-low',
+        group: 'g',
+        order: 10,
+        groupOverride: true,
+      );
+      final c = active(
+        'override-high',
+        group: 'g',
+        order: 20,
+        groupOverride: true,
+      );
       final inj = injectorFor([a, b, c]);
       final r = inj.buildInjection(sessionSeed: 'seed', contextSize: 8192);
       expect(r.beforeChar.contains('override-high'), isTrue);
@@ -183,12 +193,14 @@ void main() {
     });
 
     test('sticky-active member wins the group outright', () {
-      final a = active('challenger', group: 'g', order: 999, groupOverride: true);
-      final b = active('champ', group: 'g', order: 1);
-      final inj = injectorFor(
-        [a, b],
-        isStickyActive: (e) => identical(e, b),
+      final a = active(
+        'challenger',
+        group: 'g',
+        order: 999,
+        groupOverride: true,
       );
+      final b = active('champ', group: 'g', order: 1);
+      final inj = injectorFor([a, b], isStickyActive: (e) => identical(e, b));
       final r = inj.buildInjection(sessionSeed: 'seed', contextSize: 8192);
       expect(r.beforeChar.contains('champ'), isTrue);
       expect(r.beforeChar.contains('challenger'), isFalse);
@@ -229,6 +241,122 @@ void main() {
       // The loser keeps its trigger state (it can step up later) but is
       // not reported active.
       expect(a.isTriggered && b.isTriggered, isTrue);
+    });
+  });
+
+  group('inclusion groups within one place chain (locations slice 2)', () {
+    // Design §3: the nearest place wins its inclusion group — but only
+    // among members whose worlds are ancestors of one another. Members of
+    // unrelated worlds keep today's sticky → prioritize → score → random.
+    World world(
+      String name, {
+      String? parent,
+      required List<LorebookEntry> entries,
+    }) => World(
+      id: name,
+      name: name,
+      lorebook: Lorebook(entries: entries),
+      parentWorldId: parent,
+      climateEnabled: false,
+    );
+
+    LorebookInjector injectorForWorlds({
+      required List<World> worlds,
+      required List<String> chatWorldIds,
+      required List<World> settingChain,
+    }) {
+      final byId = {for (final w in worlds) w.id: w};
+      return LorebookInjector(
+        getEntryRefs: () => collectLoreEntryRefs(
+          characters: const [],
+          chatWorldIds: chatWorldIds,
+          resolveWorld: (ref) => byId[ref],
+          settingChain: settingChain,
+        ),
+        getSettings: LorebookSettings.new,
+        isStickyActive: (_) => false,
+      );
+    }
+
+    test('the palace teacup injects while the palace chain is the Setting', () {
+      // The town entry carries groupOverride — without the rank rule it
+      // wins the group, which is exactly the behavior this slice changes
+      // for chain members.
+      final townTeacup = active(
+        'town teacup',
+        group: 'teacup',
+        groupOverride: true,
+      );
+      final palaceTeacup = active('palace teacup', group: 'teacup');
+      final town = world('Bletchfield', entries: [townTeacup]);
+      final palace = world(
+        'Palace',
+        parent: 'Bletchfield',
+        entries: [palaceTeacup],
+      );
+      final inj = injectorForWorlds(
+        worlds: [palace, town],
+        // Setting = Palace; its chain is [Palace, Bletchfield]. The town's
+        // book arrives through the walk, not as an explicit attach.
+        chatWorldIds: ['Palace'],
+        settingChain: [palace, town],
+      );
+      final r = inj.buildInjection(sessionSeed: 'seed', contextSize: 8192);
+      expect(r.beforeChar.contains('palace teacup'), isTrue);
+      expect(r.beforeChar.contains('town teacup'), isFalse);
+    });
+
+    test('mid-chain ancestor still beats the town', () {
+      // Setting = Library (depth 2). Palace (rank 1) beats town (rank 2)
+      // even with the town's override — nearest wins between chain
+      // members, and the nearest here is the palace, not the room.
+      final townTeacup = active(
+        'town teacup',
+        group: 'teacup',
+        groupOverride: true,
+      );
+      final palaceTeacup = active('palace teacup', group: 'teacup');
+      final town = world('Bletchfield', entries: [townTeacup]);
+      final palace = world(
+        'Palace',
+        parent: 'Bletchfield',
+        entries: [palaceTeacup],
+      );
+      final room = world('Back corner table', parent: 'Palace', entries: []);
+      final inj = injectorForWorlds(
+        worlds: [room, palace, town],
+        chatWorldIds: ['Back corner table'],
+        settingChain: [room, palace, town],
+      );
+      final r = inj.buildInjection(sessionSeed: 'seed', contextSize: 8192);
+      expect(r.beforeChar.contains('palace teacup'), isTrue);
+      expect(r.beforeChar.contains('town teacup'), isFalse);
+    });
+
+    test('an unrelated Lore place still wins by today\'s rules', () {
+      // Setting = the town; Palace rides along as a plain Lore place, so
+      // its member never takes part in the rank step. groupOverride is
+      // today's law for it — the narrowing must not disturb this.
+      final townTeacup = active('town teacup', group: 'teacup');
+      final palaceTeacup = active(
+        'palace teacup',
+        group: 'teacup',
+        groupOverride: true,
+      );
+      final town = world('Bletchfield', entries: [townTeacup]);
+      final palace = world(
+        'Palace',
+        parent: 'Bletchfield',
+        entries: [palaceTeacup],
+      );
+      final inj = injectorForWorlds(
+        worlds: [palace, town],
+        chatWorldIds: ['Bletchfield', 'Palace'],
+        settingChain: [town],
+      );
+      final r = inj.buildInjection(sessionSeed: 'seed', contextSize: 8192);
+      expect(r.beforeChar.contains('palace teacup'), isTrue);
+      expect(r.beforeChar.contains('town teacup'), isFalse);
     });
   });
 }

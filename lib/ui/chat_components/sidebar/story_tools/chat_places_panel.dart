@@ -41,17 +41,22 @@ class ChatPlacesPanel extends StatelessWidget {
           for (final id in loreIds)
             if (worlds.resolveWorld(id) != null) worlds.resolveWorld(id)!,
         ];
-        final climateAuthors = primaryWorldAllowsClimate(primary);
+        // The Setting's chain author owns climate (locations slice 2): a
+        // location inherits from the nearest climate-enabled ancestor, and
+        // the custom option is the AUTHOR's book, keyed world:<author-id>.
+        final climateAuthor = primary == null
+            ? null
+            : worlds.climateAuthorFor(primary.id);
+        final climateAuthors = climateAuthor != null;
         final activeClimate = chat.activeChatBiome;
         final customOptions = <(String, World, Biome)>[
           if (climateAuthors &&
-              primary != null &&
-              primary.biomeJson != null &&
-              Biome.tryParse(primary.biomeJson) != null)
+              climateAuthor.biomeJson != null &&
+              Biome.tryParse(climateAuthor.biomeJson) != null)
             (
-              'world:${primary.id}',
-              primary,
-              Biome.tryParse(primary.biomeJson)!,
+              'world:${climateAuthor.id}',
+              climateAuthor,
+              Biome.tryParse(climateAuthor.biomeJson)!,
             ),
         ];
         final optionValues = {for (final (v, _, _) in customOptions) v};

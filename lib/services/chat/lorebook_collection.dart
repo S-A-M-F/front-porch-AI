@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 
 /// One lorebook entry plus the book it came from — the book carries the
 /// V2 book-level overrides (scanDepth / tokenBudget / recursiveScanning)
@@ -26,13 +27,26 @@ class LoreEntryRef {
   final Lorebook book;
 
   /// Where the entry lives ("group", "world:name", "char:name") — used
-  /// for debug/overflow reporting, never for logic.
+  /// for debug/overflow reporting, never for logic. (The place-rank pair
+  /// below is the one structured field injection logic reads.)
   final String sourceLabel;
+
+  /// Location chain the entry's world sits in, keyed by the Setting leaf's
+  /// id — set only for worlds inside the current Setting's ancestor chain.
+  /// Inclusion-group winners break ties by [placeRank] within one chain
+  /// (docs/design/locations-within-worlds.md §3: the nearest place wins);
+  /// members of unrelated worlds keep today's ladder.
+  final String? chainId;
+
+  /// Depth inside [chainId]: Setting leaf is 0, its parent 1, and so on.
+  final int? placeRank;
 
   const LoreEntryRef({
     required this.entry,
     required this.book,
     required this.sourceLabel,
+    this.chainId,
+    this.placeRank,
   });
 }
 
@@ -71,9 +85,23 @@ List<LoreEntryRef> collectLoreEntryRefs({
   /// attached worlds) enumerate. Scanner leaves this null so every
   /// member still updates trigger state.
   CharacterCard? speaker,
+
+  /// The Setting's ancestor chain, leaf-first (WorldRepository.chainFor).
+  /// Worlds in it carry a [LoreEntryRef.placeRank] for inclusion-group
+  /// nearest-wins; everything else keeps today's group ladder. Empty ⇒ no
+  /// ranks — pre-locations enumeration, byte-identical for every chat
+  /// without a parent (docs/design/locations-within-worlds.md §3).
+  List<World> settingChain = const [],
 }) {
   final refs = <LoreEntryRef>[];
   final seenWorldIds = <String>{};
+
+  // Place-rank context (slice 2): the chain is keyed by its leaf, so two
+  // members share a chain iff both are ancestors of the current Setting.
+  final settingChainKey = settingChain.isEmpty ? null : settingChain.first.id;
+  final rankOf = {
+    for (var i = 0; i < settingChain.length; i++) settingChain[i].id: i,
+  };
 
   // Chat-scoped book scans and enumerates FIRST (ST order: chat book first).
   if (chatLorebook != null) {
@@ -93,16 +121,24 @@ List<LoreEntryRef> collectLoreEntryRefs({
   void addWorld(String ref) {
     final world = resolveWorld(ref);
     if (world == null) return;
-    final key = world.id.isNotEmpty ? world.id : world.name;
-    if (!seenWorldIds.add(key)) return;
-    for (final e in world.lorebook.entries) {
-      refs.add(
-        LoreEntryRef(
-          entry: e,
-          book: world.lorebook,
-          sourceLabel: 'world:${world.name}',
-        ),
-      );
+    // A place brings its parents' books too, leaf first. Dedupe by id
+    // keeps a town attached both as an ancestor and as an explicit Lore
+    // place enumerating exactly once (Living Worlds contract).
+    for (final w in worldChain(world, resolveWorld)) {
+      final key = w.id.isNotEmpty ? w.id : w.name;
+      if (!seenWorldIds.add(key)) continue;
+      final rank = rankOf[w.id];
+      for (final e in w.lorebook.entries) {
+        refs.add(
+          LoreEntryRef(
+            entry: e,
+            book: w.lorebook,
+            sourceLabel: 'world:${w.name}',
+            chainId: rank == null ? null : settingChainKey,
+            placeRank: rank,
+          ),
+        );
+      }
     }
   }
 

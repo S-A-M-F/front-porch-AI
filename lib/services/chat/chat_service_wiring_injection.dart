@@ -237,6 +237,14 @@ extension ChatServiceWiringInjection on ChatService {
   }) async {
     final sid = _currentSessionId;
     if (sid == null) return;
+    // A move that changes the climate author must not rewrite history:
+    // pin the old author's biome from day 1 (only if nothing is pinned
+    // there yet — a user's dropdown span at day 1 stays law), then let
+    // the new author take over from the current story day. Same
+    // ChatBiomeSpans machinery the climate dropdown uses.
+    final oldAuthorId = _chatPlaceSlots.primaryId == null
+        ? null
+        : _worldRepository.climateAuthorFor(_chatPlaceSlots.primaryId!)?.id;
     await _worldRepository.setChatWorldAttachments(
       sid,
       primaryId: primaryId,
@@ -252,6 +260,30 @@ extension ChatServiceWiringInjection on ChatService {
           if (id.isNotEmpty && id != resolvedPrimary) id,
       ]),
     );
+    final newAuthor = resolvedPrimary == null
+        ? null
+        : _worldRepository.climateAuthorFor(resolvedPrimary);
+    if (newAuthor != null && newAuthor.id != oldAuthorId) {
+      final day = _timeService.dayCount < 1 ? 1 : _timeService.dayCount;
+      if (oldAuthorId != null && day > 1) {
+        final rows = await _worldRepository.getChatBiomeSpanRows(sid);
+        if (!rows.any((r) => r.effectiveFromDay == 1)) {
+          final oldAuthor = _worldRepository.worldById(oldAuthorId);
+          if (oldAuthor != null) {
+            await _worldRepository.setChatBiome(
+              chatId: sid,
+              dayCount: 1,
+              biome: _biomeOfAuthor(oldAuthor),
+            );
+          }
+        }
+      }
+      await _worldRepository.setChatBiome(
+        chatId: sid,
+        dayCount: day,
+        biome: _biomeOfAuthor(newAuthor),
+      );
+    }
     await _reloadBiomeSchedule();
     notifyListeners();
   }
@@ -262,10 +294,10 @@ extension ChatServiceWiringInjection on ChatService {
     final sid = _currentSessionId;
     if (sid == null) return;
     final primaryId = _chatPlaceSlots.primaryId;
-    final primary = primaryId == null
-        ? null
-        : _worldRepository.resolveWorld(primaryId);
-    if (!primaryWorldAllowsClimate(primary)) return;
+    final chain = primaryId == null
+        ? const <World>[]
+        : _worldRepository.chainFor(primaryId);
+    if (!chainAllowsClimate(chain)) return;
     final day = _timeService.dayCount < 1 ? 1 : _timeService.dayCount;
     await _worldRepository.setChatBiome(
       chatId: sid,
@@ -297,6 +329,10 @@ extension ChatServiceWiringInjection on ChatService {
       chatLorebook: _loreTimedEffects.chatLorebook,
       groupLorebook: _activeGroupLorebook,
       chatWorldIds: _chatPlaceSlots.allIds,
+      // Place-rank context for inclusion-group nearest-wins (slice 2).
+      settingChain: _chatPlaceSlots.primaryId == null
+          ? const []
+          : _worldRepository.chainFor(_chatPlaceSlots.primaryId!),
       // Decided empty must stay empty — never ghost to group.worldIds.
       groupWorldNames: const [],
       resolveWorld: _worldRepository.resolveWorld,
