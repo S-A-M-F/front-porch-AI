@@ -216,6 +216,28 @@ describe('the grouped library', () => {
     expect(sectionHeads).toHaveLength(1);
   });
 
+  it('a section child keeps its weather tag but drops the redundant inside-tag', () => {
+    // The CI journey caught these two being conflated: the weather tag
+    // rides the parent (every location gets one); the inside-tag only
+    // renders where the tree is not visually obvious. A child under its
+    // root is obvious — but still must say what its weather does.
+    const grid = container.querySelector('.wsg-child-grid')!;
+    const childCard = Array.from(grid.querySelectorAll('.wsg-world-card')).find(
+      (c) => c.querySelector('.wsg-world-name')?.textContent === 'Bletchfield',
+    )!;
+    expect(
+      childCard.querySelector('.wsg-weather-tag--inherit')?.textContent,
+    ).toBe('Inherits weather');
+    expect(childCard.querySelector('.wsg-inside-tag')).toBeNull();
+    // The flat 'Solo'-style card would carry the inside-tag; here the
+    // root's own card carries the places chip instead.
+    expect(
+      container
+        .querySelector('.wsg-section-head .wsg-place-chip')
+        ?.textContent ?? '',
+    ).toContain('1 place');
+  });
+
   it('a library with no tree stays the pre-locations flat grid', async () => {
     act(() => root.unmount());
     root = createRoot(container);

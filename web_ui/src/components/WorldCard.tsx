@@ -117,12 +117,17 @@ export function WorldCard({
           {/* Locations slice 4 tags (mockup p1): the weather story every
               location carries, the depth line where the tree is not
               visually obvious, and the model-made provenance chip. */}
-          {parentName && world.climateEnabled === false && (
+          {/* Weather tag rides the PARENT (every location gets one, per
+              the desktop card); the inside-tag is separate and only
+              where the tree context is not visually obvious. Gating the
+              weather tag on parentName was caught by the CI journey:
+              section children pass parentName null and lost the tag. */}
+          {world.parentWorldId && world.climateEnabled === false && (
             <span className="wsg-weather-tag wsg-weather-tag--inherit">
               {hasWeatherToInherit ? 'Inherits weather' : 'Weather off'}
             </span>
           )}
-          {parentName && world.climateEnabled === true && (
+          {world.parentWorldId && world.climateEnabled === true && (
             <span className="wsg-weather-tag wsg-weather-tag--own">
               Own climate
             </span>
