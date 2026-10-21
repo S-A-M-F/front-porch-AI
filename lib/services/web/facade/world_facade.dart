@@ -269,7 +269,13 @@ class WorldFacade {
     // Older clients: flat places list (primary first, then lore).
     final places = <Map<String, dynamic>>[?primaryPlace, ...lorePlaces];
 
-    final climateAuthors = primaryWorldAllowsClimate(primaryWorld);
+    // The Setting's chain author owns climate (locations slice 2) — the
+    // same resolution the desktop weather gate uses. A location inherits;
+    // the custom dropdown entry stays `world:<climate-author-id>`.
+    final climateAuthor = primaryId == null
+        ? null
+        : _worlds.climateAuthorFor(primaryId);
+    final climateAuthors = climateAuthor != null;
     final String? weatherOff = primaryId == null
         ? 'no_setting'
         : (!climateAuthors ? 'setting_lore_only' : null);
@@ -287,17 +293,16 @@ class WorldFacade {
       'climateDisplayName': climate.displayName,
       'climateFeel': climate.feel,
       'dayCount': chat.timeService.dayCount,
-      // Built-ins + Primary custom only (never lore climate-on).
+      // Built-ins + the climate AUTHOR's custom only (never lore climate-on).
       'climateOptions': [
         if (climateAuthors) ...[
           for (final b in Biome.builtIns)
             {'id': b.id, 'displayName': b.displayName},
-          if (primaryWorld != null &&
-              primaryWorld.biomeJson != null &&
-              Biome.tryParse(primaryWorld.biomeJson) != null)
+          if (climateAuthor.biomeJson != null &&
+              Biome.tryParse(climateAuthor.biomeJson) != null)
             {
-              'id': 'world:${primaryWorld.id}',
-              'displayName': '${primaryWorld.name} (custom)',
+              'id': 'world:${climateAuthor.id}',
+              'displayName': '${climateAuthor.name} (custom)',
             },
         ],
       ],
@@ -350,8 +355,12 @@ class WorldFacade {
       return {'ok': false, 'error': 'No active chat'};
     }
     final primaryId = chat.chatPrimaryWorldId;
-    final primary = primaryId == null ? null : _worlds.resolveWorld(primaryId);
-    if (!primaryWorldAllowsClimate(primary)) {
+    // The chain author owns the switch (locations slice 2): a location
+    // setting may change climate because its parent authors one.
+    final author = primaryId == null
+        ? null
+        : _worlds.climateAuthorFor(primaryId);
+    if (author == null) {
       return {
         'ok': false,
         'error': primaryId == null
@@ -361,9 +370,9 @@ class WorldFacade {
     }
     Biome? biome = Biome.builtInById(biomeId);
     if (biome == null && biomeId.startsWith('world:')) {
-      // Custom climate only from the Primary setting.
+      // Custom climate only from the chain's climate author.
       final w = _worlds.resolveWorld(biomeId.substring(6));
-      if (w != null && w.id == primaryId) {
+      if (w != null && w.id == author.id) {
         biome = Biome.tryParse(w.biomeJson)?.withId('world:${w.id}');
       }
     }

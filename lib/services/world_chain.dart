@@ -43,6 +43,11 @@ World? climateAuthorOf(List<World> chain) {
   return null;
 }
 
+/// A chat's weather runs only when its Setting chain has a climate author.
+/// For a root alone this is exactly the old `primaryWorldAllowsClimate`
+/// answer — the gate just widened from "the Primary" to "the chain".
+bool chainAllowsClimate(List<World> chain) => climateAuthorOf(chain) != null;
+
 /// Why saving [worldId] with parent [parentId] must be refused, or null
 /// when it is legal. [parents] is every known id → parent id, straight from
 /// the database — the cache can still be loading.

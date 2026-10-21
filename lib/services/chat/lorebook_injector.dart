@@ -241,9 +241,69 @@ class LorebookInjector {
     final sticky = members.where((m) => isStickyActive(m.entry));
     if (sticky.isNotEmpty) return highestOrder(sticky);
 
-    final override = members.where((m) => m.entry.groupOverride);
-    if (override.isNotEmpty) return highestOrder(override);
+    // Locations slice 2 (docs/design/locations-within-worlds.md §3): within
+    // ONE Setting chain the nearest place wins its inclusion group — the
+    // palace "teacup" reads while the palace or a room under it is the
+    // Setting. Members of unrelated worlds (a Lore place outside the
+    // chain, a character book) never take part; each chain collapses to
+    // its nearest member and the survivors re-enter today's ladder below.
+    members = _collapseChainRanks(groupName, members, sessionSeed);
+    if (members.length == 1) return members.single;
 
+    return _pickGroupWinnerTail(groupName, members, sessionSeed);
+  }
+
+  /// Replace every multi-member Setting chain with its lowest-[placeRank]
+  /// member (ties fall through to the caller's ladder unchanged) and keep
+  /// unranked members as-is. Returns [members] untouched when no chain has
+  /// two active members — every pre-locations group takes exactly
+  /// today's path (§8 compatibility).
+  List<LoreEntryRef> _collapseChainRanks(
+    String groupName,
+    List<LoreEntryRef> members,
+    String sessionSeed,
+  ) {
+    final byChain = <String, List<LoreEntryRef>>{};
+    for (final m in members) {
+      final chainId = m.chainId;
+      if (chainId == null || m.placeRank == null) continue;
+      byChain.putIfAbsent(chainId, () => []).add(m);
+    }
+    final contested = byChain.values.where((g) => g.length >= 2).toList();
+    if (contested.isEmpty) return members;
+    final survivors = <LoreEntryRef>{};
+    for (final chain in contested) {
+      var best = chain.first.placeRank!;
+      for (final m in chain.skip(1)) {
+        if (m.placeRank! < best) best = m.placeRank!;
+      }
+      final nearest = chain.where((m) => m.placeRank == best).toList();
+      if (nearest.length == 1) {
+        survivors.add(nearest.single);
+      } else {
+        // Same rank = same book: today's order/scoring/random decides,
+        // so re-run the caller's ladder on the tied slice by handing it
+        // back through _pickGroupWinner's non-sticky tail.
+        survivors.add(_pickGroupWinnerTail(groupName, nearest, sessionSeed));
+      }
+    }
+    return [
+      for (final m in members)
+        if (m.chainId == null || survivors.contains(m)) m,
+    ];
+  }
+
+  /// The caller's ladder minus the sticky and rank steps (which already
+  /// ran on the full membership).
+  LoreEntryRef _pickGroupWinnerTail(
+    String groupName,
+    List<LoreEntryRef> members,
+    String sessionSeed,
+  ) {
+    final override = members.where((m) => m.entry.groupOverride);
+    if (override.isNotEmpty) {
+      return override.reduce((a, b) => b.entry.order > a.entry.order ? b : a);
+    }
     final scoring = members.where((m) => m.entry.useGroupScoring ?? false);
     if (scoring.isNotEmpty) {
       var best = members.first;
@@ -252,8 +312,6 @@ class LorebookInjector {
       }
       return best;
     }
-
-    // Weighted random, deterministic while the active membership holds.
     final membershipKey =
         (members.map((m) => loreEntryHash(m.entry)).toList()..sort()).join(',');
     final rng = Random(fnv1a32('$sessionSeed|$groupName|$membershipKey'));

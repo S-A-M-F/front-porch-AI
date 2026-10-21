@@ -47,13 +47,15 @@ extension ChatServiceAccessorsLiving on ChatService {
     if (!_clockRunning || !_storageService.realismSettings.weatherEnabled) {
       return null;
     }
-    // Primary owns weather. Empty Primary OR climate-off Primary ⇒ off.
-    // Lore climate-on (e.g. Mars in Lore) never turns weather on.
+    // The Setting's chain owns weather (locations slice 2): the nearest
+    // climate-enabled ancestor authors it. Empty chain OR an all-lore-only
+    // chain ⇒ off. Lore climate-on (e.g. Mars in Lore) never turns weather
+    // on — a chain walk only ever reaches the Setting's own ancestors.
     final primaryId = _chatPlaceSlots.primaryId;
-    final primary = primaryId == null
-        ? null
-        : _worldRepository.resolveWorld(primaryId);
-    if (!primaryWorldAllowsClimate(primary)) {
+    final chain = primaryId == null
+        ? const <World>[]
+        : _worldRepository.chainFor(primaryId);
+    if (!chainAllowsClimate(chain)) {
       return null;
     }
     final seed = _currentSessionId;
