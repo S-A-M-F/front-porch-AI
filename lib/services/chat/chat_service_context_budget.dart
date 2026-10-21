@@ -101,6 +101,7 @@ extension ChatServiceContextBudget on ChatService {
         postHistory,
       );
     }
+    systemPrompt = withDirectorSceneRules(systemPrompt, directing: _directing);
 
     // The send's own line format (think blocks stripped) and trim rules,
     // so the estimate shows what a send would carry, not the whole chat.
@@ -109,7 +110,7 @@ extension ChatServiceContextBudget on ChatService {
     final snap = buildContextBudgetEstimate(
       ContextBudgetEstimateInput(
         userName: _userPersonaService.persona.name,
-        userPersonaText: _userPersonaService.persona.persona,
+        userPersonaText: _directing ? '' : _userPersonaService.persona.persona,
         systemPrompt: systemPrompt,
         identityBlock: identity.toString(),
         personaBlock: personaBlock,

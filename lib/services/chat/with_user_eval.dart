@@ -45,7 +45,7 @@ class WithUserEval {
       'False when $charName is at their own home, at work, in another room, '
       'elsewhere in town, or only talking by phone / text / video. '
       'Same city is not enough. Do not move anyone — only report whether '
-      'they are together.\\n\\n';
+      'they are together.\n\n';
 
   /// Director Mode: the user directs from outside and is never in the
   /// scene, so "with the user" was false for every speaker and the whole
@@ -57,7 +57,7 @@ class WithUserEval {
       'is "the user" — never answer about one. False ONLY when the scene '
       'shows $charName has left it: gone home, walked out, at work, in '
       'another room, or only talking by phone / text / video. Do not move '
-      'anyone — only report whether they are still in the scene.\\n\\n';
+      'anyone — only report whether they are still in the scene.\n\n';
 
   static String buildPrompt({
     required String charName,
@@ -72,7 +72,7 @@ class WithUserEval {
     final stanceLine = stance.trim().isEmpty
         ? ''
         : 'Last known position of $charName (do not change this, only use it): '
-              '"$stance".\\n\\n';
+              '"$stance".\n\n';
     final sceneLabel = quiet
         ? 'The current scene (they have not spoken this turn)'
         : 'The reply that just happened';
@@ -81,14 +81,14 @@ class WithUserEval {
         : reply;
     final recentBlock = quiet || recentExchange.trim().isEmpty
         ? ''
-        : 'Recent exchange for context:\\n$recentExchange\\n\\n';
-    return 'Read the scene below and answer one yes/no about $charName.\\n\\n'
+        : 'Recent exchange for context:\n$recentExchange\n\n';
+    return 'Read the scene below and answer one yes/no about $charName.\n\n'
         '${directing ? sceneRubric(charName) : rubric(charName, userName)}'
         '$stanceLine'
-        '$sceneLabel:\\n$sceneBody\\n\\n'
+        '$sceneLabel:\n$sceneBody\n\n'
         '$recentBlock'
         '${toolsMode ? 'Report by calling the $kWithUserTool tool with "with_user". Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "with_user" as true or false. '
-                  'Do NOT use markdown code blocks — raw JSON only.\\n'
+                  'Do NOT use markdown code blocks — raw JSON only.\n'
                   'Example: {"with_user": true} or {"with_user": false}'}';
   }
 

@@ -801,4 +801,51 @@ void main() {
       );
     });
   });
+
+  group('director rules under any group prompt', () {
+    String systemOf(String full) => full.split('\n<START>').first;
+
+    test('a custom group prompt keeps the director rules, the user is not '
+        '"the human you are talking with", and stepping back in removes '
+        'both', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      h.chat.activeGroup!.systemPrompt =
+          'Write in novel style. Quotes for dialogue.';
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('The porch light flickers out.');
+      await h.settleTurn();
+      final directed = systemOf(llm.replyPrompts.last);
+      expect(directed, contains('Write in novel style.'));
+      expect(directed, contains('[Director Mode]'));
+      expect(directed, contains('is directing this scene from outside it'));
+      expect(directed, isNot(contains('{{user}}')));
+      expect(directed, isNot(contains('human you are talking with')));
+      expect(directed, isNot(contains('*asterisks*')));
+
+      await h.chat.sendMessage('/director off');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('Evening, Bram.');
+      await h.settleTurn();
+      final back = systemOf(llm.replyPrompts.last);
+      expect(back, contains('Write in novel style.'));
+      expect(back, isNot(contains('[Director Mode]')));
+      expect(back, contains('human you are talking with'));
+    });
+
+    test('the built-in director prompt carries the rules once', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Somebody knocks.');
+      await h.settleTurn();
+      final directed = systemOf(llm.replyPrompts.last);
+      expect('[Director Mode]'.allMatches(directed), hasLength(1));
+      expect(directed, isNot(contains('human you are talking with')));
+    });
+  });
 }

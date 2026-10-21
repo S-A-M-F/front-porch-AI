@@ -50,6 +50,10 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.systemPrompt = _storageService.generationSettings
           .withSystemPromptAddition(t.systemPrompt);
     }
+    t.systemPrompt = withDirectorSceneRules(
+      t.systemPrompt,
+      directing: _directing,
+    );
 
     // Per-character group overlay used to append here and churn the system
     // prefix every speaker. It now rides [t.speakerCardBlock] after history.
@@ -127,7 +131,11 @@ extension ChatServiceGenerationBlocks on ChatService {
     );
 
     // User persona — inject user's self-description + learned facts
-    t.userPersonaBlock = await _buildUserPersonaBlock(t.userName);
+    // A directed scene has no user in it: "the human you are talking with"
+    // would overrule kDirectorSceneRules, so the block is left out.
+    t.userPersonaBlock = _directing
+        ? ''
+        : await _buildUserPersonaBlock(t.userName);
 
     // Scenario — the group scene is SHARED across the whole cast (one identical
     // scenario), so a group never uses a per-character EVOLVED scenario (that

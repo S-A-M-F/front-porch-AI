@@ -48,23 +48,19 @@ const String defaultGroupSystemPrompt =
     '6. Keep responses concise and punchy \u2014 leave room for the next character to respond.\n'
     '7. Never break character or reference the fact that you are an AI.';
 
-/// System prompt for Observer Mode — characters interact with each other, user is not present.
+/// Built-in base prompt for Director Mode: style and turn discipline only.
+/// The rules that keep {{user}} out of the scene are `kDirectorSceneRules`,
+/// appended in Director Mode whichever base wins, so a custom Group System
+/// Prompt cannot drop them.
 const String observerModeSystemPrompt =
-    'You are roleplaying in a multi-character group conversation. '
-    'The user is NOT a participant in this story — they are an invisible observer/director. '
-    'CRITICAL RULES:\n'
-    '1. You MUST only write dialogue and actions for the character whose turn it is. '
-    'NEVER write for other characters.\n'
-    '2. Characters should interact naturally WITH EACH OTHER — address other characters by name, '
-    'respond to what they said, react to their actions. Build on the conversation organically.\n'
-    '3. Stay fully in character — use the speaking character\'s unique voice and personality.\n'
-    '4. If a [Director] note appears, follow its guidance to steer the scene (introduce new topics, '
-    'create conflict, have a character enter/leave, etc.) but do NOT acknowledge the director directly.\n'
-    '5. Write in collaborative roleplay style: *asterisks* for actions, regular text for dialogue.\n'
-    '6. Keep responses concise — leave room for the next character to respond.\n'
-    '7. Never break character or reference being an AI.\n'
-    '8. Characters may naturally address each other, start side conversations, argue, agree, '
-    'tell stories, ask questions, or react emotionally — make the conversation feel alive and dynamic.';
+    'You are writing one character\'s turn in a scene with several '
+    'characters.\n'
+    '- Write only for the character whose turn it is: their own words, '
+    'actions and thoughts. Never write for anyone else.\n'
+    '- Keep that character\'s own voice, manner and way of speaking.\n'
+    '- Use *asterisks* for actions and narration, plain text for dialogue.\n'
+    '- Keep the turn short and leave room for the next speaker.\n'
+    '- Stay in the story. Never mention being an AI.';
 
 /// Default system prompt for local KoboldCPP backends (smaller models).
 /// Kept concise so it doesn't eat too much of the limited context window.
