@@ -201,4 +201,24 @@ describe('useChatSession overlapping refreshes', () => {
     });
     expect(session.state?.sessionId).toBe('chat-newer');
   });
+
+  it('an older failure after a newer answer shows no error', async () => {
+    let failOld: (e: unknown) => void = () => {};
+    get.mockImplementationOnce(() => new Promise((_, reject) => (failOld = reject)));
+    let older: Promise<void> = Promise.resolve();
+    await act(async () => {
+      older = session.refresh();
+    });
+    get.mockResolvedValueOnce(chatState('chat-newer', false));
+    await act(async () => {
+      await session.refresh();
+    });
+
+    await act(async () => {
+      failOld(new Error('connection reset'));
+      await older;
+    });
+    expect(session.loadError).toBe('');
+    expect(session.state?.sessionId).toBe('chat-newer');
+  });
 });
