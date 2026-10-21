@@ -20,7 +20,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
-import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/services/web/facade/world_facade.locations.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.import.dart';
 
@@ -66,6 +66,17 @@ class WorldFacade {
     description: description,
     characterIds: characterIds,
   );
+
+  // Locations-tree relay surface (slice 4): candidate law + reach set.
+  late final WorldLocationsRelay _locations = WorldLocationsRelay(_worlds);
+
+  /// See [WorldLocationsRelay.parentCandidates].
+  List<Map<String, dynamic>> parentCandidates(String forNameOrId) =>
+      _locations.parentCandidates(forNameOrId);
+
+  /// See [WorldLocationsRelay.reachable].
+  List<Map<String, dynamic>> reachable(String? primaryId) =>
+      _locations.reachable(primaryId);
 
   List<Map<String, dynamic>> list() {
     // Build a single name→dbId index so the per-world map below is O(1) and we
@@ -251,29 +262,6 @@ class WorldFacade {
     return _worlds.fpWorldJson(w);
   }
 
-  /// Worlds the PWA's "Part of" picker may offer. `forNameOrId` empty =
-  /// a create. The candidate law (depth cap, self/descendant exclusion)
-  /// is [parentPickCandidates] — the SAME function the desktop picker and
-  /// the save path lean on, served here so TypeScript renders a list
-  /// rather than re-deciding legality (one source of truth per law).
-  List<Map<String, dynamic>> parentCandidates(String forNameOrId) {
-    final self = forNameOrId.isEmpty ? null : _worlds.resolveWorld(forNameOrId);
-    return [
-      for (final c in parentPickCandidates(
-        self,
-        _worlds.placeWorlds,
-        _worlds.worldById,
-      ))
-        {
-          'id': c.id,
-          'name': c.name,
-          // Depth-2 candidates render "X · inside Y" on the web exactly
-          // as on desktop; the client resolves the label from this id.
-          'parentWorldId': c.parentWorldId,
-        },
-    ];
-  }
-
   /// Chat session places (ids + names) + active climate for mid-chat override.
   Map<String, dynamic> chatPlaces() {
     final chat = _chat;
@@ -362,17 +350,7 @@ class WorldFacade {
       // fills the "Move the scene" dropdown from the ONE Dart reach law
       // — no second TypeScript implementation of the rule.
       'climateAuthorName': climateAuthor?.name,
-      'reachable': [
-        for (final r
-            in primaryWorld == null
-                ? const <World>[]
-                : reachablePlaces(
-                    primaryWorld,
-                    _worlds.placeWorlds,
-                    _worlds.worldById,
-                  ))
-          {'id': r.id, 'name': r.name},
-      ],
+      'reachable': reachable(primaryId),
       'weatherOff': ?weatherOff,
       'climateId': climate.id,
       'climateDisplayName': climate.displayName,
