@@ -262,6 +262,7 @@ extension AppDatabaseMaintenance on AppDatabase {
         // v51 — climate/weather/atmosphere/gravity plug. DEFAULT 1 so
         // existing worlds keep climate; 0 is a lorebook-only bookshelf.
         'climate_enabled INTEGER NOT NULL DEFAULT 1',
+        'parent_world_id TEXT', // v61 — Locations within Worlds
       ],
       'chat_worlds': [
         // v52 — Setting vs Lore role. DEFAULT 0 (lore).

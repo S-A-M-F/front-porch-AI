@@ -138,10 +138,10 @@ void main() {
     // objectives.origin, status and ended_at (objectives that keep up).
     // 2026-10-17: v59 adds sessions.refractory_soft and refractory_peaks
     // (soft gate, recovery PR 3) and v60 adds sessions.refractory_tail_
-    // minutes / refractory_tail_total (warmth tail, recovery PR 4), so the
-    // ladder ends at 60. (The v59/v60 bump left this pin stale — found
-    // by the full-suite sweep during recovery PR 8, disclosed not hidden.)
-    expect(first['_meta']!['user_version'], 60);
+    // minutes / refractory_tail_total (warmth tail, recovery PR 4).
+    // 2026-10-20: v61 adds worlds.parent_world_id (locations within
+    // worlds, slice 1), so the ladder ends at 61.
+    expect(first['_meta']!['user_version'], 61);
     expect(first['_meta']!['has_gate'], isTrue);
     for (final spec in chats) {
       final label = spec['label'] as String;
@@ -166,7 +166,7 @@ void main() {
     }
 
     final second = await hydrateOnce();
-    expect(second['_meta']!['user_version'], 60);
+    expect(second['_meta']!['user_version'], 61);
     for (final spec in chats) {
       final label = spec['label'] as String;
       expect(second[label]!['clock'], first[label]!['clock']);

@@ -96,6 +96,17 @@ class World {
   /// worlds keep the weather machine plugged in.
   bool climateEnabled;
 
+  /// v61 — set when this place is a Location inside another world
+  /// (docs/design/locations-within-worlds.md). Null = root; every world was a
+  /// root before the column existed. Climate, prose and lore resolve by
+  /// walking parents through [WorldRepository.chainFor]; the repository
+  /// refuses unknown parents and cycles at save time.
+  String? parentWorldId;
+
+  /// Convenience for UI and facade code: a world with a parent is a place
+  /// inside one, everything else is a root.
+  bool get isLocation => parentWorldId != null;
+
   /// Raw place-traits map (one future-proof field: unknown keys survive a
   /// round-trip so older apps never strip newer traits — mixed-fleet rule).
   /// Read through the typed getters; write through the setters.
@@ -128,6 +139,7 @@ class World {
     this.avatarPath,
     this.injectDescription = true,
     this.climateEnabled = true,
+    this.parentWorldId,
     Map<String, dynamic>? placeTraits,
   }) : id = id ?? const Uuid().v4(),
        placeTraits = placeTraits ?? {};
@@ -149,6 +161,7 @@ class World {
       if (avatarPath != null) 'avatar_path': avatarPath,
       'inject_description': injectDescription,
       'climate_enabled': climateEnabled,
+      if (parentWorldId != null) 'parent_world_id': parentWorldId,
       if (climateEnabled && placeTraits.isNotEmpty) 'place_traits': placeTraits,
     };
   }
@@ -196,6 +209,9 @@ class World {
           json['injectDescription'] as bool? ??
           true,
       climateEnabled: climateEnabled,
+      parentWorldId:
+          json['parent_world_id']?.toString() ??
+          json['parentWorldId']?.toString(),
       placeTraits: climateEnabled
           ? json['place_traits'] is Map
                 ? Map<String, dynamic>.from(json['place_traits'] as Map)
