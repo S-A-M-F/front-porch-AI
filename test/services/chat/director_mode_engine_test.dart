@@ -801,4 +801,101 @@ void main() {
       );
     });
   });
+
+  group('director rules under any group prompt', () {
+    String systemOf(String full) => full.split('\n<START>').first;
+
+    test('a custom group prompt keeps the director rules, the user is not '
+        '"the human you are talking with", and stepping back in removes '
+        'both', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      h.chat.activeGroup!.systemPrompt =
+          'Write in novel style. Quotes for dialogue.';
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('The porch light flickers out.');
+      await h.settleTurn();
+      final directed = systemOf(llm.replyPrompts.last);
+      expect(directed, contains('Write in novel style.'));
+      expect(directed, contains('[Director Mode]'));
+      expect(directed, contains('is directing this scene from outside it'));
+      expect(directed, isNot(contains('{{user}}')));
+      expect(directed, isNot(contains('human you are talking with')));
+      expect(directed, isNot(contains('*asterisks*')));
+
+      await h.chat.sendMessage('/director off');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('Evening, Bram.');
+      await h.settleTurn();
+      final back = systemOf(llm.replyPrompts.last);
+      expect(back, contains('Write in novel style.'));
+      expect(back, isNot(contains('[Director Mode]')));
+      expect(back, contains('human you are talking with'));
+    });
+
+    test('the built-in director prompt carries the rules once', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Somebody knocks.');
+      await h.settleTurn();
+      final directed = systemOf(llm.replyPrompts.last);
+      expect('[Director Mode]'.allMatches(directed), hasLength(1));
+      expect(directed, isNot(contains('human you are talking with')));
+    });
+
+    test('the Settings group prompt is every group\'s base, a group\'s own '
+        'prompt overrides it, and Director rules ride on either', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.storage.generationSettings.setGroupSystemPrompt(
+        'Global group style: past tense.',
+      );
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Evening, Ayla.');
+      await h.settleTurn();
+      final plain = systemOf(llm.replyPrompts.last);
+      expect(plain, startsWith('Global group style: past tense.'));
+      expect(plain, isNot(contains('CRITICAL RULES')));
+      expect(plain, isNot(contains('[Director Mode]')));
+
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('A dog barks.');
+      await h.settleTurn();
+      final directed = systemOf(llm.replyPrompts.last);
+      expect(directed, startsWith('Global group style: past tense.'));
+      expect(directed, contains('[Director Mode]'));
+
+      h.chat.activeGroup!.systemPrompt = 'This group only: present tense.';
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Thunder rolls.');
+      await h.settleTurn();
+      final own = systemOf(llm.replyPrompts.last);
+      expect(own, startsWith('This group only: present tense.'));
+      expect(own, isNot(contains('Global group style')));
+      expect(own, contains('[Director Mode]'));
+
+      // "Start from the built-in prompt" seeds the normal group prompt into
+      // the global slot, which then also bases directed turns; it must not
+      // put the user back in the scene the Director block keeps them out of.
+      h.chat.activeGroup!.systemPrompt = '';
+      await h.storage.generationSettings.setGroupSystemPrompt(
+        defaultGroupSystemPrompt,
+      );
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('The lamp gutters.');
+      await h.settleTurn();
+      final seeded = systemOf(llm.replyPrompts.last);
+      expect(seeded, contains('[Director Mode]'));
+      final base = seeded.split('[Director Mode]').first;
+      expect(base, startsWith('You are roleplaying in a multi-character'));
+      expect(base, isNot(contains('have said')));
+      await h.storage.generationSettings.setGroupSystemPrompt('');
+    });
+  });
 }

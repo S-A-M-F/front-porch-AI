@@ -135,6 +135,8 @@ class SettingsSnapshot {
       // General-tab extras the Generation card on web also hosts.
       'systemPrompt': g.systemPrompt,
       'additionalSystemPrompt': g.additionalSystemPrompt,
+      'groupSystemPrompt': g.groupSystemPrompt,
+      'builtInGroupSystemPrompt': defaultGroupSystemPrompt,
       'additionalPostHistoryInstructions': g.additionalPostHistoryInstructions,
       'bannedPhrases': _storage.realismSettings.bannedPhrases,
       // Ambitions + the promise ledger. Both work with the Realism Engine off,

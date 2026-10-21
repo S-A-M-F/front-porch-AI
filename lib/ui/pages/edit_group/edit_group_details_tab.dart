@@ -175,7 +175,7 @@ class EditGroupDetailsTab extends StatelessWidget {
                   controller: systemPromptController,
                   maxLines: 6,
                   decoration: const InputDecoration(
-                    hintText: 'Global instructions for this group...',
+                    hintText: 'Blank uses the Group system prompt in Settings',
                   ),
                 ),
                 const SizedBox(height: 16),

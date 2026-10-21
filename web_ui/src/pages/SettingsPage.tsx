@@ -78,6 +78,8 @@ interface Settings {
   spellCheckLanguages?: string[];
   systemPrompt?: string;
   additionalSystemPrompt?: string;
+  groupSystemPrompt?: string;
+  builtInGroupSystemPrompt?: string;
   additionalPostHistoryInstructions?: string;
   bannedPhrases?: string[];
   workerBackend?: string;
@@ -118,6 +120,7 @@ const savedFields = (s: Settings) =>
     s.generation,
     s.systemPrompt,
     s.additionalSystemPrompt,
+    s.groupSystemPrompt ?? '',
     s.additionalPostHistoryInstructions,
     s.bannedPhrases,
     s.workerBackend ?? '',
@@ -244,6 +247,7 @@ export function SettingsPage() {
         systemPrompt: s.systemPrompt,
         additionalSystemPrompt: s.additionalSystemPrompt,
         additionalPostHistoryInstructions: s.additionalPostHistoryInstructions,
+        ...(s.groupSystemPrompt !== undefined ? { groupSystemPrompt: s.groupSystemPrompt } : {}),
         bannedPhrases: s.bannedPhrases,
         workerBackend: s.workerBackend ?? '',
         workerRemoteApiUrl: s.workerRemoteApiUrl ?? '',
@@ -381,6 +385,8 @@ export function SettingsPage() {
           systemPrompt={s.systemPrompt}
           additionalSystemPrompt={s.additionalSystemPrompt}
           additionalPostHistoryInstructions={s.additionalPostHistoryInstructions}
+          groupSystemPrompt={s.groupSystemPrompt}
+          builtInGroupSystemPrompt={s.builtInGroupSystemPrompt}
           patch={(p) => patch(p as Partial<Settings>)}
         />
 

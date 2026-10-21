@@ -184,7 +184,6 @@ class GroupChatCommitter {
       alternateGreetings: List.from(d.altGreetings),
       greetingSeeds: List.from(d.altGreetingSeeds),
       scenario: d.scenarioController.text.trim(),
-      systemPrompt: d.groupSystemController.text.trim(),
       characterSystemPrompts: charPrompts,
       worldIds: List.from(d.worldIds),
       groupLorebook: groupLoreJson,

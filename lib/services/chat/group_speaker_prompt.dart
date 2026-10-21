@@ -20,6 +20,27 @@ import 'package:front_porch_ai/services/chat/scene_guest_prompt.dart';
 
 String _safeName(String name) => clipGuestCite(name, max: 80);
 
+/// Director Mode's own rules. They ride after whichever base prompt won —
+/// the built-in one or a group's custom one — so a custom Group System
+/// Prompt restyles the cast without putting {{user}} back in the scene.
+/// No formatting words: style belongs to the base the user may replace.
+const String kDirectorSceneRules =
+    '[Director Mode]\n'
+    '{{user}} is directing this scene from outside it and is not a '
+    'character in it. No one can see, hear, address, mention or react to '
+    '{{user}}.\n'
+    'The characters talk to each other. They use each other\'s names, '
+    'answer what was just said, and can argue, agree, tease, ask questions, '
+    'tell stories or start side conversations.\n'
+    'Lines marked [Director: …] and hidden notes from the director say where '
+    'the scene should go. Act on them through the characters; never quote '
+    'them or mention a director.';
+
+/// [systemPrompt] with [kDirectorSceneRules] appended while [directing],
+/// unchanged otherwise.
+String withDirectorSceneRules(String systemPrompt, {required bool directing}) =>
+    directing ? '$systemPrompt\n\n$kDirectorSceneRules' : systemPrompt;
+
 /// Full-cast roll call for the system head. Same bytes every speaker.
 String buildGroupRosterLine({
   required List<String> memberNames,
