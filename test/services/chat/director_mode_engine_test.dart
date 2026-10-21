@@ -879,6 +879,22 @@ void main() {
       expect(own, startsWith('This group only: present tense.'));
       expect(own, isNot(contains('Global group style')));
       expect(own, contains('[Director Mode]'));
+
+      // "Start from the built-in prompt" seeds the normal group prompt into
+      // the global slot, which then also bases directed turns; it must not
+      // put the user back in the scene the Director block keeps them out of.
+      h.chat.activeGroup!.systemPrompt = '';
+      await h.storage.generationSettings.setGroupSystemPrompt(
+        defaultGroupSystemPrompt,
+      );
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('The lamp gutters.');
+      await h.settleTurn();
+      final seeded = systemOf(llm.replyPrompts.last);
+      expect(seeded, contains('[Director Mode]'));
+      final base = seeded.split('[Director Mode]').first;
+      expect(base, startsWith('You are roleplaying in a multi-character'));
+      expect(base, isNot(contains('have said')));
       await h.storage.generationSettings.setGroupSystemPrompt('');
     });
   });

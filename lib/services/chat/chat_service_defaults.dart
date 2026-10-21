@@ -43,7 +43,7 @@ const String defaultGroupSystemPrompt =
     'NEVER write dialogue, thoughts, or actions for other characters or {{user}}.\n'
     '2. Stay fully in character \u2014 use the speaking character\'s unique voice, mannerisms, personality, and speech patterns.\n'
     '3. Keep your response focused on ONE character\'s contribution. Do not narrate what other characters do or say.\n'
-    '4. React naturally to what other characters and {{user}} have said. Reference their words, but do not put words in their mouths.\n'
+    '4. React naturally to what was just said. Reference others\' words, but never put words in their mouths.\n'
     '5. Write in the style of collaborative roleplay: use *asterisks* for actions/narration and regular text for dialogue.\n'
     '6. Keep responses concise and punchy \u2014 leave room for the next character to respond.\n'
     '7. Never break character or reference the fact that you are an AI.';

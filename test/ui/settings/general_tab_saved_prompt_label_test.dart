@@ -14,6 +14,8 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/storage/storage.dart';
 import 'package:front_porch_ai/ui/settings/tabs/general_tab.dart';
 
+import '../../helpers/double_tap.dart';
+
 const _saved = 'Immersive Roleplay';
 const _savedText = 'You are {{char}}. Stay in character.';
 
@@ -134,7 +136,7 @@ void main() {
     expect(ink, isNot(fill));
 
     await tester.enterText(find.byType(TextField).last, 'Mine');
-    await tester.tap(save);
+    await doubleTapNoFrame(tester, save);
     await tester.pump(const Duration(milliseconds: 400));
     final mine = storage.presetSettings.savedPrompts.where(
       (p) => p['name'] == 'Mine',
