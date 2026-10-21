@@ -64,12 +64,21 @@ export function useChatSession() {
   // reload repeatedly while the engines work.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Refreshes overlap (an action's own refresh, a debounced chat_updated, a
+  // WS frame) and can answer out of order. Only a snapshot newer than the
+  // last one applied may land, or an older answer reverts the screen (a
+  // cleared whisper reappears) until something refreshes again.
+  const refreshIssued = useRef(0);
+  const refreshApplied = useRef(0);
+
   const refresh = useCallback(async () => {
     const seqAtRequest = processingSeq.current;
+    const mine = ++refreshIssued.current;
     let s: ChatState;
     try {
       s = await api.get<ChatState>('/api/chat/state');
     } catch (e) {
+      if (mine < refreshApplied.current) return;
       // Never rethrow: every caller fires this and walks away, so a rejection
       // here used to be an unhandled promise AND a permanent spinner.
       const failure = describeChatLoadFailure(e);
@@ -78,6 +87,8 @@ export function useChatSession() {
       setLoadError(failure.message);
       return;
     }
+    if (mine < refreshApplied.current) return;
+    refreshApplied.current = mine;
     setLoadError('');
     if (!s.isGenerating) tokenGateRef.current.replyOver();
     setState(s);

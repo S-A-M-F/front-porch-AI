@@ -159,3 +159,46 @@ describe('useChatSession gen-status after a send from this page', () => {
     expect(session.state?.isGenerating).toBe(true);
   });
 });
+
+describe('useChatSession overlapping refreshes', () => {
+  beforeEach(async () => {
+    vi.stubGlobal('WebSocket', TestSocket);
+    get.mockReset();
+    get.mockResolvedValue(chatState('chat-a', false));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(Probe)));
+    });
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  // The Director whisper journey: a refresh asked before the clear answered
+  // after the clear's own refresh, and its stale snapshot pinned the cleared
+  // whisper back on screen.
+  it('an older answer never overwrites a newer one', async () => {
+    let answerOld: (s: unknown) => void = () => {};
+    get.mockImplementationOnce(() => new Promise((resolve) => (answerOld = resolve)));
+    let older: Promise<void> = Promise.resolve();
+    await act(async () => {
+      older = session.refresh();
+    });
+    get.mockResolvedValueOnce(chatState('chat-newer', false));
+    await act(async () => {
+      await session.refresh();
+    });
+    expect(session.state?.sessionId).toBe('chat-newer');
+
+    await act(async () => {
+      answerOld(chatState('chat-stale', false));
+      await older;
+    });
+    expect(session.state?.sessionId).toBe('chat-newer');
+  });
+});
