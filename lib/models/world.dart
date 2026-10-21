@@ -124,6 +124,13 @@ class World {
       ? placeTraits.remove('gravity')
       : placeTraits['gravity'] = v.name;
 
+  /// Provenance marker for places the model minted from narration
+  /// (locations slice 7 writes it; the library's model-made filter and
+  /// bulk delete read it from slice 3 on). Rides the flexible
+  /// [placeTraits] map so it never needs a migration and survives
+  /// round-trips in newer builds.
+  bool get isModelMade => placeTraits['madeBy']?.toString() == 'model';
+
   World({
     String? id,
     required this.name,

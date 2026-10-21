@@ -48,6 +48,84 @@ World? climateAuthorOf(List<World> chain) {
 /// answer — the gate just widened from "the Primary" to "the chain".
 bool chainAllowsClimate(List<World> chain) => climateAuthorOf(chain) != null;
 
+/// Worlds the editor may offer as the parent of [self] (null = a create):
+/// every root and every depth-1 world, minus [self] and minus its own
+/// descendants — attaching one of those would ring the chain. Depth is
+/// counted in places below a root (town → building → room is the cap;
+/// docs/design/locations-within-worlds.md §3), and the cap is UI policy,
+/// so it lives here rather than in the save path.
+List<World> parentPickCandidates(
+  World? self,
+  List<World> all,
+  World? Function(String id) lookup,
+) {
+  bool tooDeepOrCycled(World candidate) {
+    if (self != null) {
+      // A descendant of self (or self itself) would close a ring.
+      final chain = worldChain(candidate, lookup);
+      if (chain.any((w) => w.id == self.id)) return true;
+    }
+    // Depth after the move: candidate's depth must leave room for self's
+    // subtree under the two-level cap.
+    final candidateDepth = worldChain(candidate, lookup).length - 1;
+    final selfHeight = self == null ? 1 : _subtreeHeight(self, all, lookup);
+    return candidateDepth + selfHeight > 2;
+  }
+
+  return [
+    for (final w in all)
+      if (w.id != self?.id && !tooDeepOrCycled(w)) w,
+  ];
+}
+
+/// Longest leaf-first chain below (and including) [world] — 1 for a world
+/// with no children.
+int _subtreeHeight(
+  World world,
+  List<World> all,
+  World? Function(String id) lookup,
+) {
+  final children = all.where((w) {
+    final p = w.parentWorldId;
+    return p != null && p.isNotEmpty && lookup(p)?.id == world.id;
+  }).toList();
+  if (children.isEmpty) return 1;
+  return 1 +
+      children
+          .map((c) => _subtreeHeight(c, all, lookup))
+          .reduce((a, b) => a > b ? a : b);
+}
+
+/// Places a chat may move to in one step from the current Setting: the
+/// Setting itself, its parent, its siblings, and its children — everything
+/// the breadcrumb dropdown offers (design §5). Unrelated worlds stay behind
+/// the attach picker.
+List<World> reachablePlaces(
+  World setting,
+  List<World> all,
+  World? Function(String id) lookup,
+) {
+  final parent = setting.parentWorldId;
+  final resolvedParent = (parent == null || parent.isEmpty)
+      ? null
+      : lookup(parent);
+  return [
+    setting,
+    ?resolvedParent,
+    for (final w in all)
+      if (w.id != setting.id &&
+          w.parentWorldId != null &&
+          lookup(w.parentWorldId!)?.id == setting.id)
+        w, // children
+    if (resolvedParent != null)
+      for (final w in all)
+        if (w.id != setting.id &&
+            w.parentWorldId != null &&
+            lookup(w.parentWorldId!)?.id == resolvedParent.id)
+          w, // siblings
+  ];
+}
+
 /// Why saving [worldId] with parent [parentId] must be refused, or null
 /// when it is legal. [parents] is every known id → parent id, straight from
 /// the database — the cache can still be loading.
