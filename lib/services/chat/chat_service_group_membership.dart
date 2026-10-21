@@ -182,6 +182,13 @@ extension ChatServiceGroupMembership on ChatService {
           _summaryLastIndex > 0 ? _summaryLastIndex : null,
         ),
         parentSession: drift.Value(_currentSessionId),
+        // setActiveGroup re-activates the persona from this row; without it
+        // the group fell back to the default persona instead of the 1:1's.
+        userPersonaId: drift.Value(
+          _userPersonaService.persona.id.isEmpty
+              ? null
+              : _userPersonaService.persona.id,
+        ),
         forkIndex: drift.Value(_messages.length - 1),
         trustLevel: drift.Value(_relationshipService.trustLevel),
         activeFixation: drift.Value(_relationshipService.activeFixation),
