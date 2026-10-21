@@ -233,6 +233,10 @@ OpenCode install or config.
 No personal names in anything that ships to users. What's New: nightly in
 `docs/Rawhide.md`, stable in `docs/main.md`, long form in
 `docs/release-notes.md`. Never paste commit messages or session logs there.
+`docs/Rawhide.md` holds only bullets no nightly has shipped yet, one line
+each under a single `## Unreleased` heading; the nightly's `rotate-notes`
+job clears what it shipped (`tools/rotate-rawhide-notes.sh`) and
+`rawhide_notes_test` fails on a second heading, a duplicate, or a stall.
 `.claude/changelog.md` is a pointer, not a diary. Never commit screenshots
 of real chats or user data; evidence goes in the PR thread.
 
