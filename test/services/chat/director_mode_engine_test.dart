@@ -847,5 +847,39 @@ void main() {
       expect('[Director Mode]'.allMatches(directed), hasLength(1));
       expect(directed, isNot(contains('human you are talking with')));
     });
+
+    test('the Settings group prompt is every group\'s base, a group\'s own '
+        'prompt overrides it, and Director rules ride on either', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.storage.generationSettings.setGroupSystemPrompt(
+        'Global group style: past tense.',
+      );
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Evening, Ayla.');
+      await h.settleTurn();
+      final plain = systemOf(llm.replyPrompts.last);
+      expect(plain, startsWith('Global group style: past tense.'));
+      expect(plain, isNot(contains('CRITICAL RULES')));
+      expect(plain, isNot(contains('[Director Mode]')));
+
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('A dog barks.');
+      await h.settleTurn();
+      final directed = systemOf(llm.replyPrompts.last);
+      expect(directed, startsWith('Global group style: past tense.'));
+      expect(directed, contains('[Director Mode]'));
+
+      h.chat.activeGroup!.systemPrompt = 'This group only: present tense.';
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Thunder rolls.');
+      await h.settleTurn();
+      final own = systemOf(llm.replyPrompts.last);
+      expect(own, startsWith('This group only: present tense.'));
+      expect(own, isNot(contains('Global group style')));
+      expect(own, contains('[Director Mode]'));
+      await h.storage.generationSettings.setGroupSystemPrompt('');
+    });
   });
 }

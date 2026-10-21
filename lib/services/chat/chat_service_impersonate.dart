@@ -52,12 +52,8 @@ extension ChatServiceImpersonate on ChatService {
       // Build prompt the same way _generateResponse does
       // Path B clean hierarchy (same as the main generation path)
       String systemPrompt;
-      if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _activeGroup!.systemPrompt;
-      } else if (_activeGroup != null) {
-        systemPrompt = _observerMode
-            ? observerModeSystemPrompt
-            : defaultGroupSystemPrompt;
+      if (_activeGroup != null) {
+        systemPrompt = _groupBasePrompt;
       } else {
         // All backends speak the OpenAI chat protocol now (KoboldCpp via its
         // /v1/chat/completions door), so use the chat-style default prompt.

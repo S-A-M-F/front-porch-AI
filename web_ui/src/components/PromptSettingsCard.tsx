@@ -3,24 +3,29 @@
 //
 // The prompt family for web Settings, mirroring the desktop General tab:
 // the Fallback system prompt box with the Global prompt additions flat
-// under it (prompt-picker SOW Phase 2 — one prompt family, one place).
+// under it (prompt-picker SOW Phase 2 — one prompt family, one place),
+// then the Group system prompt every group chat uses.
 
 export function PromptSettingsCard({
   systemPrompt,
   additionalSystemPrompt,
   additionalPostHistoryInstructions,
+  groupSystemPrompt,
+  builtInGroupSystemPrompt,
   patch,
 }: {
   systemPrompt?: string;
   additionalSystemPrompt?: string;
   additionalPostHistoryInstructions?: string;
+  groupSystemPrompt?: string;
+  builtInGroupSystemPrompt?: string;
   patch: (p: Record<string, unknown>) => void;
 }) {
   if (systemPrompt === undefined) return null;
   return (
     <section className="card" data-testid="prompt-settings-card">
       <h3>Fallback system prompt</h3>
-      <p className="muted small">Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.</p>
+      <p className="muted small">Used in one-to-one chats whose character card has no system prompt of its own. Group chats use the Group system prompt further down instead.</p>
       <label data-testid="fallback-system-prompt">
         Fallback system prompt
         <textarea
@@ -46,6 +51,21 @@ export function PromptSettingsCard({
             <p className="muted small">Appended after existing post-history instructions.</p>
           </div>
         )}
+      <div className="prompt-additions" data-testid="group-system-prompt">
+        <h4>Group system prompt</h4>
+        <p className="muted small">Used in every group chat, unless that group has its own prompt in Group Settings. Leave blank for the built-in group prompt. Director Mode adds its own rules on top either way.</p>
+        <label>Group system prompt
+          <textarea rows={5} value={groupSystemPrompt ?? ''}
+            placeholder="Blank uses the built-in group prompt"
+            onChange={(e) => patch({ groupSystemPrompt: e.target.value })} />
+        </label>
+        {builtInGroupSystemPrompt && (
+          <button type="button" className="ghost"
+            onClick={() => patch({ groupSystemPrompt: builtInGroupSystemPrompt })}>
+            Start from the built-in prompt
+          </button>
+        )}
+      </div>
     </section>
   );
 }

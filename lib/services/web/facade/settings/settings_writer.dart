@@ -377,6 +377,9 @@ class SettingsWriter {
         body['additionalSystemPrompt'] as String,
       );
     }
+    if (body['groupSystemPrompt'] is String) {
+      await g.setGroupSystemPrompt(body['groupSystemPrompt'] as String);
+    }
     if (body['additionalPostHistoryInstructions'] is String) {
       await g.setAdditionalPostHistoryInstructions(
         body['additionalPostHistoryInstructions'] as String,

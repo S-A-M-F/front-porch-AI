@@ -29,16 +29,13 @@ extension ChatServiceGenerationBlocks on ChatService {
     // Days lived off-screen land before any prompt reads a body.
     if (t.mode == GenerationMode.normal) _needsPass.landLivedBeatBeforeReply();
     // ── System prompt selection (Path B clean hierarchy) ──
-    // 1. Group-level system prompt (if set) — base for the whole group.
+    // 1. Group base: the group's own prompt, else Settings' Group system
+    //    prompt, else the built-in one for the mode (`_groupBasePrompt`).
     // 2. Per-character group override (if set for the speaker in this group) — appended.
     // 3. Character's normal card system prompt (fallback if no group override for them).
     // 4. (Later) Per-character Author's Note is injected separately with its own strength.
-    if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-      t.systemPrompt = _activeGroup!.systemPrompt;
-    } else if (_activeGroup != null) {
-      t.systemPrompt = _observerMode
-          ? observerModeSystemPrompt
-          : defaultGroupSystemPrompt;
+    if (_activeGroup != null) {
+      t.systemPrompt = _groupBasePrompt;
     } else {
       // Every backend now speaks the OpenAI chat protocol (local KoboldCpp
       // via its /v1/chat/completions door), so the server applies the model's

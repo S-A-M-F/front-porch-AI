@@ -88,9 +88,57 @@ void main() {
     expect(controller.text, _savedText);
     expect(_shown(tester), _saved);
 
-    await _tapVisible(tester, find.widgetWithText(ActionChip, '👥 Group Chat'));
-    expect(controller.text, defaultGroupSystemPrompt);
+    await _tapVisible(
+      tester,
+      find.widgetWithText(ActionChip, '📡 API Default'),
+    );
+    expect(controller.text, defaultApiSystemPrompt);
     expect(_shown(tester), isNull, reason: 'the old pick\'s name stayed');
     expect(find.text('Load saved prompt...'), findsOneWidget);
+  });
+
+  testWidgets('the save-prompt dialog\'s Save button shows its label and '
+      'saves the prompt once', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final storage = _FakeStorage();
+    addTearDown(storage.dispose);
+    final controller = TextEditingController(
+      text: storage.generationSettings.systemPrompt,
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<StorageService>.value(
+        value: storage,
+        child: MaterialApp(
+          home: Scaffold(body: GeneralTab(systemPromptController: controller)),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await _tapVisible(tester, find.byTooltip('Save current prompt'));
+    final save = find.widgetWithText(ElevatedButton, 'Save');
+    expect(save, findsOneWidget);
+    final button = tester.widget<ElevatedButton>(save);
+    final states = <WidgetState>{};
+    final fill = button.style!.backgroundColor!.resolve(states);
+    final ink = button.style!.foregroundColor?.resolve(states);
+    expect(
+      ink,
+      isNotNull,
+      reason:
+          'no label colour: the theme default '
+          'vanished into the accent fill',
+    );
+    expect(ink, isNot(fill));
+
+    await tester.enterText(find.byType(TextField).last, 'Mine');
+    await tester.tap(save);
+    await tester.pump(const Duration(milliseconds: 400));
+    final mine = storage.presetSettings.savedPrompts.where(
+      (p) => p['name'] == 'Mine',
+    );
+    expect(mine.single['content'], 'MY OWN PROMPT');
   });
 }

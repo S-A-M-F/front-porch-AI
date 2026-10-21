@@ -36,6 +36,7 @@ class GenerationSettings with SettingsBase {
 
   String _systemPrompt = defaultSystemPrompt;
   String _additionalSystemPrompt = '';
+  String _groupSystemPrompt = '';
   String _additionalPostHistoryInstructions = '';
 
   /// Prompt-picker SOW: stableGroupId → preset ('card+amend' | 'card' |
@@ -110,6 +111,10 @@ class GenerationSettings with SettingsBase {
 
   String get systemPrompt => _systemPrompt;
   String get additionalSystemPrompt => _additionalSystemPrompt;
+
+  /// Base prompt for every group chat; empty uses the built-in one. A
+  /// group's own prompt overrides it.
+  String get groupSystemPrompt => _groupSystemPrompt;
   String get additionalPostHistoryInstructions =>
       _additionalPostHistoryInstructions;
 
@@ -174,6 +179,7 @@ class GenerationSettings with SettingsBase {
   void load() {
     _additionalSystemPrompt =
         prefs?.getString(k('additional_system_prompt')) ?? '';
+    _groupSystemPrompt = prefs?.getString(k('group_system_prompt')) ?? '';
     _additionalPostHistoryInstructions =
         prefs?.getString(k('additional_post_history_instructions')) ?? '';
     final pickerJson = prefs?.getString(k('prompt_picker_choices'));
@@ -256,6 +262,12 @@ class GenerationSettings with SettingsBase {
   Future<void> setAdditionalPostHistoryInstructions(String value) async {
     await prefs?.setString(k('additional_post_history_instructions'), value);
     _additionalPostHistoryInstructions = value;
+    notify();
+  }
+
+  Future<void> setGroupSystemPrompt(String value) async {
+    _groupSystemPrompt = value;
+    await prefs?.setString(k('group_system_prompt'), value);
     notify();
   }
 

@@ -63,8 +63,8 @@ void showSavePromptDialog(BuildContext context, StorageService storageService) {
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-                AppColors.presetColors[2], // amber without hardcode/shade
+            backgroundColor: AppColors.formAccentOf(context),
+            foregroundColor: AppColors.onAccentOf(context),
           ),
           onPressed: () {
             if (controller.text.trim().isNotEmpty) {
