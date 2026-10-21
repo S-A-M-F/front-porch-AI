@@ -8463,6 +8463,17 @@ class $WorldsTable extends Worlds with TableInfo<$WorldsTable, World> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _parentWorldIdMeta = const VerificationMeta(
+    'parentWorldId',
+  );
+  @override
+  late final GeneratedColumn<String> parentWorldId = GeneratedColumn<String>(
+    'parent_world_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -8502,6 +8513,7 @@ class $WorldsTable extends Worlds with TableInfo<$WorldsTable, World> {
     injectDescription,
     climateEnabled,
     placeTraits,
+    parentWorldId,
     updatedAt,
     deletedAt,
   ];
@@ -8623,6 +8635,15 @@ class $WorldsTable extends Worlds with TableInfo<$WorldsTable, World> {
         ),
       );
     }
+    if (data.containsKey('parent_world_id')) {
+      context.handle(
+        _parentWorldIdMeta,
+        parentWorldId.isAcceptableOrUnknown(
+          data['parent_world_id']!,
+          _parentWorldIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -8700,6 +8721,10 @@ class $WorldsTable extends Worlds with TableInfo<$WorldsTable, World> {
         DriftSqlType.string,
         data['${effectivePrefix}place_traits'],
       ),
+      parentWorldId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_world_id'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -8745,6 +8770,10 @@ class World extends DataClass implements Insertable<World> {
   /// v41 — place traits JSON (atmosphere/gravity enums + future trait keys;
   /// one flexible column so new traits never need another migration).
   final String? placeTraits;
+
+  /// v61 — Locations within Worlds: parent world id when this row is a
+  /// location inside another; null = root. docs/design/locations-within-worlds.md.
+  final String? parentWorldId;
   final DateTime updatedAt;
   final DateTime? deletedAt;
   const World({
@@ -8762,6 +8791,7 @@ class World extends DataClass implements Insertable<World> {
     required this.injectDescription,
     required this.climateEnabled,
     this.placeTraits,
+    this.parentWorldId,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -8797,6 +8827,9 @@ class World extends DataClass implements Insertable<World> {
     map['climate_enabled'] = Variable<bool>(climateEnabled);
     if (!nullToAbsent || placeTraits != null) {
       map['place_traits'] = Variable<String>(placeTraits);
+    }
+    if (!nullToAbsent || parentWorldId != null) {
+      map['parent_world_id'] = Variable<String>(parentWorldId);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -8837,6 +8870,9 @@ class World extends DataClass implements Insertable<World> {
       placeTraits: placeTraits == null && nullToAbsent
           ? const Value.absent()
           : Value(placeTraits),
+      parentWorldId: parentWorldId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentWorldId),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
@@ -8868,6 +8904,7 @@ class World extends DataClass implements Insertable<World> {
       injectDescription: serializer.fromJson<bool>(json['injectDescription']),
       climateEnabled: serializer.fromJson<bool>(json['climateEnabled']),
       placeTraits: serializer.fromJson<String?>(json['placeTraits']),
+      parentWorldId: serializer.fromJson<String?>(json['parentWorldId']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
@@ -8890,6 +8927,7 @@ class World extends DataClass implements Insertable<World> {
       'injectDescription': serializer.toJson<bool>(injectDescription),
       'climateEnabled': serializer.toJson<bool>(climateEnabled),
       'placeTraits': serializer.toJson<String?>(placeTraits),
+      'parentWorldId': serializer.toJson<String?>(parentWorldId),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
@@ -8910,6 +8948,7 @@ class World extends DataClass implements Insertable<World> {
     bool? injectDescription,
     bool? climateEnabled,
     Value<String?> placeTraits = const Value.absent(),
+    Value<String?> parentWorldId = const Value.absent(),
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
   }) => World(
@@ -8931,6 +8970,9 @@ class World extends DataClass implements Insertable<World> {
     injectDescription: injectDescription ?? this.injectDescription,
     climateEnabled: climateEnabled ?? this.climateEnabled,
     placeTraits: placeTraits.present ? placeTraits.value : this.placeTraits,
+    parentWorldId: parentWorldId.present
+        ? parentWorldId.value
+        : this.parentWorldId,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
@@ -8966,6 +9008,9 @@ class World extends DataClass implements Insertable<World> {
       placeTraits: data.placeTraits.present
           ? data.placeTraits.value
           : this.placeTraits,
+      parentWorldId: data.parentWorldId.present
+          ? data.parentWorldId.value
+          : this.parentWorldId,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
@@ -8988,6 +9033,7 @@ class World extends DataClass implements Insertable<World> {
           ..write('injectDescription: $injectDescription, ')
           ..write('climateEnabled: $climateEnabled, ')
           ..write('placeTraits: $placeTraits, ')
+          ..write('parentWorldId: $parentWorldId, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
           ..write(')'))
@@ -9010,6 +9056,7 @@ class World extends DataClass implements Insertable<World> {
     injectDescription,
     climateEnabled,
     placeTraits,
+    parentWorldId,
     updatedAt,
     deletedAt,
   );
@@ -9031,6 +9078,7 @@ class World extends DataClass implements Insertable<World> {
           other.injectDescription == this.injectDescription &&
           other.climateEnabled == this.climateEnabled &&
           other.placeTraits == this.placeTraits &&
+          other.parentWorldId == this.parentWorldId &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
 }
@@ -9050,6 +9098,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
   final Value<bool> injectDescription;
   final Value<bool> climateEnabled;
   final Value<String?> placeTraits;
+  final Value<String?> parentWorldId;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<int> rowid;
@@ -9068,6 +9117,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
     this.injectDescription = const Value.absent(),
     this.climateEnabled = const Value.absent(),
     this.placeTraits = const Value.absent(),
+    this.parentWorldId = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -9087,6 +9137,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
     this.injectDescription = const Value.absent(),
     this.climateEnabled = const Value.absent(),
     this.placeTraits = const Value.absent(),
+    this.parentWorldId = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -9107,6 +9158,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
     Expression<bool>? injectDescription,
     Expression<bool>? climateEnabled,
     Expression<String>? placeTraits,
+    Expression<String>? parentWorldId,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<int>? rowid,
@@ -9127,6 +9179,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
       if (injectDescription != null) 'inject_description': injectDescription,
       if (climateEnabled != null) 'climate_enabled': climateEnabled,
       if (placeTraits != null) 'place_traits': placeTraits,
+      if (parentWorldId != null) 'parent_world_id': parentWorldId,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (rowid != null) 'rowid': rowid,
@@ -9148,6 +9201,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
     Value<bool>? injectDescription,
     Value<bool>? climateEnabled,
     Value<String?>? placeTraits,
+    Value<String?>? parentWorldId,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<int>? rowid,
@@ -9167,6 +9221,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
       injectDescription: injectDescription ?? this.injectDescription,
       climateEnabled: climateEnabled ?? this.climateEnabled,
       placeTraits: placeTraits ?? this.placeTraits,
+      parentWorldId: parentWorldId ?? this.parentWorldId,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
@@ -9220,6 +9275,9 @@ class WorldsCompanion extends UpdateCompanion<World> {
     if (placeTraits.present) {
       map['place_traits'] = Variable<String>(placeTraits.value);
     }
+    if (parentWorldId.present) {
+      map['parent_world_id'] = Variable<String>(parentWorldId.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -9249,6 +9307,7 @@ class WorldsCompanion extends UpdateCompanion<World> {
           ..write('injectDescription: $injectDescription, ')
           ..write('climateEnabled: $climateEnabled, ')
           ..write('placeTraits: $placeTraits, ')
+          ..write('parentWorldId: $parentWorldId, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')

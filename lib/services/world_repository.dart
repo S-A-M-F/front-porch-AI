@@ -21,6 +21,7 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/services/world_store/world_store.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -144,6 +145,7 @@ class WorldRepository extends ChangeNotifier {
       biomeJson: row.biomeJson,
       injectDescription: row.injectDescription,
       climateEnabled: row.climateEnabled,
+      parentWorldId: row.parentWorldId,
       placeTraits: _tryDecodeMap(row.placeTraits),
     );
   }
@@ -174,6 +176,7 @@ class WorldRepository extends ChangeNotifier {
       biomeJson: Value(world.biomeJson),
       injectDescription: Value(world.injectDescription),
       climateEnabled: Value(world.climateEnabled),
+      parentWorldId: Value(world.parentWorldId),
       placeTraits: Value(
         world.placeTraits.isEmpty ? null : jsonEncode(world.placeTraits),
       ),
@@ -243,6 +246,21 @@ class WorldRepository extends ChangeNotifier {
     )) {
       world.description = '';
     }
+    // Locations: the parent must exist and must not be the world itself or
+    // one of its descendants. Checked against the database, not the cache —
+    // the cache can still be loading, and a swallowed bad parent would
+    // strand every room under it.
+    if (world.parentWorldId == null || world.parentWorldId!.isEmpty) {
+      world.parentWorldId = null;
+    } else {
+      final rows = await _db.getAllWorlds();
+      final rejection = parentRejection(
+        worldId: world.id,
+        parentId: world.parentWorldId,
+        parents: {for (final r in rows) r.id: r.parentWorldId},
+      );
+      if (rejection != null) throw StateError(rejection);
+    }
     final existing = await _db.getWorldById(world.id);
     if (existing != null) {
       await _db.updateWorld(_toCompanion(world));
@@ -270,12 +288,36 @@ class WorldRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteWorld(model.World world) async {
+  /// Deleting a place re-roots its children (parent cleared, climate left
+  /// exactly as it was) and removes the chat attachments of its own row.
+  /// Lore the user wrote under the children is never cascade-deleted.
+  /// Returns how many children moved to root, so the UI can say so.
+  Future<int> deleteWorld(model.World world) async {
+    final reRooted = await _db.reRootWorldChildren(world.id);
     await _db.deleteWorldById(world.id);
     await _db.deleteChatWorldLinksForWorld(world.id);
+    for (final w in _worlds) {
+      if (w.parentWorldId == world.id) w.parentWorldId = null;
+    }
     _worlds.removeWhere((w) => w.id == world.id);
     notifyListeners();
+    return reRooted;
   }
+
+  /// Location chain leaf-first (`[self, parent, … root]`) through the
+  /// loaded cache; empty for an unknown ref. Roots return themselves alone,
+  /// so every pre-v61 chat resolves exactly as before.
+  List<model.World> chainFor(String idOrName) {
+    final leaf = resolveWorld(idOrName);
+    if (leaf == null) return const [];
+    return worldChain(leaf, worldById);
+  }
+
+  /// The nearest climate-enabled ancestor (or the place itself) — the one
+  /// whose weather, biome and traits the chain reads. Null ⇒ the whole
+  /// chain is lore-only and this chat's weather stays off.
+  model.World? climateAuthorFor(String idOrName) =>
+      climateAuthorOf(chainFor(idOrName));
 
   /// Import .fpworld or bare lorebook from a file. See [importWorldJson].
   Future<model.World> importWorld(File file) async {
@@ -297,6 +339,9 @@ class WorldRepository extends ChangeNotifier {
     // Fresh local identity; remember provenance.
     world.sourceId ??= world.id.isNotEmpty ? world.id : null;
     world.id = _uuid.v4();
+    // A parent id from the sender's library means nothing here: until
+    // locations ride the envelope (slice 5), an imported place is a root.
+    world.parentWorldId = null;
     // A file with no name imports as "Imported World" (uniqueWorldName), so
     // saveWorld's blank-name refusal never blocks an import.
     world.name = uniqueWorldName(

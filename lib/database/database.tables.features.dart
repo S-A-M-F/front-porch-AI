@@ -39,6 +39,10 @@ class Worlds extends Table {
   /// v41 — place traits JSON (atmosphere/gravity enums + future trait keys;
   /// one flexible column so new traits never need another migration).
   TextColumn get placeTraits => text().nullable()();
+
+  /// v61 — Locations within Worlds: parent world id when this row is a
+  /// location inside another; null = root. docs/design/locations-within-worlds.md.
+  TextColumn get parentWorldId => text().nullable()();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
 

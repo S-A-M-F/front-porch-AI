@@ -32,6 +32,17 @@ extension AppDatabaseWorldQueries on AppDatabase {
     return count;
   }
 
+  /// Delete re-root (docs/design/locations-within-worlds.md §3): clear
+  /// [worldId] from its children's parent column so they become roots.
+  /// Climate flags stay exactly as they were. Returns how many moved.
+  Future<int> reRootWorldChildren(String worldId) async {
+    final count =
+        await (update(worlds)..where((w) => w.parentWorldId.equals(worldId)))
+            .write(const WorldsCompanion(parentWorldId: Value(null)));
+    if (count > 0) await bumpSyncVersion();
+    return count;
+  }
+
   Future<World?> getWorldByName(String name) =>
       (select(worlds)..where((w) => w.name.equals(name) & w.deletedAt.isNull()))
           .getSingleOrNull();
