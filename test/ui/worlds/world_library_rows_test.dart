@@ -65,8 +65,6 @@ void main() {
       expect(plan.flat.map((f) => f.id), ['Red Dust Station', 'Ghost Room']);
       // Three places under the town — the ghost's dangling parent is flat
       // cargo, not anyone's child.
-      expect(plan.locationCount, 3);
-      expect(plan.isFlatLibrary, isFalse);
     });
 
     test(
@@ -102,7 +100,6 @@ void main() {
         worlds: [station],
         filter: WorldLibraryFilter.all,
       );
-      expect(plan.isFlatLibrary, isTrue);
       expect(plan.sections, isEmpty);
       expect(plan.flat.map((f) => f.id), ['Red Dust Station']);
     });

@@ -29,6 +29,11 @@ class WorldPlaceCard extends StatelessWidget {
   // Multi-select ("Move into…"): the checkbox only renders when onSelected
   // is set, so untouched call sites keep today's exact card.
   final bool? selected;
+  // Parent NAME for the "inside X" tag. Separate from [parent] because
+  // the mockup marks depth only where it is not already obvious: section
+  // children sit under their parent already (no tag), while flat/model-made
+  // cards float free and need one.
+  final String? insideName;
   final ValueChanged<bool>? onSelected;
 
   const WorldPlaceCard({
@@ -40,6 +45,7 @@ class WorldPlaceCard extends StatelessWidget {
     this.placeCount = 0,
     this.onNewInside,
     this.parent,
+    this.insideName,
     this.selected,
     this.onSelected,
   });
@@ -65,9 +71,6 @@ class WorldPlaceCard extends StatelessWidget {
     final ownBiomeName = (parent != null && world.climateEnabled)
         ? Biome.builtInById(world.biomeId)?.displayName
         : null;
-    final parentName = parent?.name;
-    final insideTag = parentName == null ? null : 'inside $parentName';
-    final toggle = onSelected;
 
     return Card(
       margin: EdgeInsets.zero,
@@ -81,10 +84,11 @@ class WorldPlaceCard extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        // With multi-select on, a tap toggles selection; Edit/Export/Delete
-        // stay reachable through the card's menu.
-        onTap: toggle == null ? onEdit : () => toggle(!(selected ?? false)),
-        onLongPress: () => toggle?.call(true),
+        // Tap always opens the editor (pinned by world_blank_name_test);
+        // long-press enters "Move into…" selection, and the badge's own
+        // tap steps out of it.
+        onTap: onEdit,
+        onLongPress: () => onSelected?.call(true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -117,23 +121,22 @@ class WorldPlaceCard extends StatelessWidget {
                   Positioned(
                     left: 6,
                     top: 6,
-                    child: onSelected == null
-                        ? const SizedBox.shrink()
-                        : DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: InkColors.dim(0.35),
-                              shape: BoxShape.circle,
+                    child: selected == true
+                        ? GestureDetector(
+                            onTap: () => onSelected?.call(false),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: InkColors.dim(0.35),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.check_circle,
+                                size: 20,
+                                color: accent,
+                              ),
                             ),
-                            child: Icon(
-                              selected == true
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
-                              size: 20,
-                              color: selected == true
-                                  ? accent
-                                  : InkColors.onImage.withValues(alpha: 0.9),
-                            ),
-                          ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                   Positioned(
                     top: 4,
@@ -270,7 +273,8 @@ class WorldPlaceCard extends StatelessWidget {
                                 : '$weatherTag · $ownBiomeName',
                             muted: !world.climateEnabled,
                           ),
-                        if (parent != null) _tag(context, insideTag!),
+                        if (insideName != null)
+                          _tag(context, 'inside $insideName', muted: true),
                         if (world.isModelMade) _tag(context, 'model-made'),
                         if (placeCount > 0)
                           _tag(

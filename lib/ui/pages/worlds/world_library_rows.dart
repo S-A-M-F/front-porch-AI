@@ -20,25 +20,14 @@ class WorldLibrarySection {
 }
 
 class WorldLibraryPlan {
-  /// Sections: roots with children, in repo order. Children are ordered by
-  /// name — the author picks places up by reading them, not by sort keys.
+  /// Sections: roots with children (subtree, DFS), in repo order.
   final List<WorldLibrarySection> sections;
 
-  /// Flat grid cards: childless roots, and — only when [WorldLibraryFilter
-  /// .modelMade] is active — model-made worlds at any depth.
+  /// Flat grid cards: childless roots, dangling-parent cargo, and — only
+  /// under [WorldLibraryFilter.modelMade] — model-made worlds at any depth.
   final List<World> flat;
 
-  /// Total places inside any root (drives the "N places" chips and the
-  /// section count the empty-state copy quotes).
-  final int locationCount;
-
-  const WorldLibraryPlan({
-    required this.sections,
-    required this.flat,
-    required this.locationCount,
-  });
-
-  bool get isFlatLibrary => sections.isEmpty;
+  const WorldLibraryPlan({required this.sections, required this.flat});
 }
 
 /// A world is a location iff its parent id is set AND that parent resolves
@@ -70,7 +59,6 @@ WorldLibraryPlan planWorldLibrary({
     return WorldLibraryPlan(
       sections: const [],
       flat: worlds.where((w) => w.isModelMade).toList(),
-      locationCount: locations.length,
     );
   }
 
@@ -89,10 +77,21 @@ WorldLibraryPlan planWorldLibrary({
       flat.add(w);
     }
   }
+  final placed = {
+    for (final s in sections) s.root.id,
+    for (final p in sections.expand((s) => s.places)) p.id,
+  };
   return WorldLibraryPlan(
     sections: sections,
-    flat: flat,
-    locationCount: locations.length,
+    // Ring members (a direct-DB ring the save path now refuses) are each
+    // other's parents: `_isLocation` is true for all of them and no root
+    // walk reaches them, so without this they vanish from the library
+    // while still emitting lore. Show them flat, like dangling cargo.
+    flat: [
+      ...flat,
+      for (final w in worlds)
+        if (_isLocation(w, byId) && !placed.contains(w.id)) w,
+    ],
   );
 }
 

@@ -56,6 +56,7 @@ import 'package:front_porch_ai/services/chat/time_service.dart';
 import 'package:front_porch_ai/services/folder_service.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/models/world.dart' as world_model;
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/services/llm_provider.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/memory_service.dart';
@@ -726,6 +727,32 @@ class FakeWorldRepository extends ChangeNotifier implements WorldRepository {
   @override
   List<world_model.World> get placeWorlds =>
       List.unmodifiable(_worlds.where((w) => !isCharacterLinkedWorld(w)));
+
+  // Locations slice 3: the editor's Part-of picker, the prose preview and
+  // the library's inside-labels read these. Mirror the real lookups so a
+  // golden that opens the dialog builds the same chain the app would.
+  @override
+  world_model.World? worldById(String id) {
+    for (final w in _worlds) {
+      if (w.id == id) return w;
+    }
+    return null;
+  }
+
+  @override
+  world_model.World? worldByName(String name) {
+    for (final w in _worlds) {
+      if (w.name == name) return w;
+    }
+    return null;
+  }
+
+  @override
+  List<world_model.World> chainFor(String idOrName) {
+    final leaf = worldById(idOrName) ?? worldByName(idOrName);
+    if (leaf == null) return const [];
+    return worldChain(leaf, worldById);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

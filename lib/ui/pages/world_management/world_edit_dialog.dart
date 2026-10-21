@@ -42,6 +42,12 @@ void showWorldEditDialog(
   final draft = WorldEditDraft(world);
   if (world == null && presetParentId != null) {
     draft.parentWorldId = presetParentId;
+    // Design §7: inheritance is the DEFAULT for a new place — the whole
+    // point of "Add a place inside" is a child that takes the town's
+    // weather unless the author opts to own one. (Re-parenting an
+    // EXISTING climate-on world never flips the flag — §8 — that path
+    // comes through WorldEditDraft(world) above.)
+    draft.climateEnabled = false;
     draft.resetCleanBaseline();
   }
   // A second Create World tap while the first save is in flight would build

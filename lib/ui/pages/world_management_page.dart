@@ -117,7 +117,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                           modelMadeCount > 0)
                         _pill(
                           context,
-                          'Delete $modelMadeCount model-made',
+                          'Delete $modelMadeCount model-made places',
                           true,
                           () => _confirmDeleteModelMade(context, repo),
                         ),
@@ -167,6 +167,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                 SliverToBoxAdapter(
                   child: WorldLibraryRootCard(
                     section: section,
+                    directCount: placesUnder(section.root.id, repo.placeWorlds),
                     collapsed: _collapsed.contains(section.root.id),
                     onToggleCollapsed: () => setState(() {
                       if (!_collapsed.remove(section.root.id)) {
@@ -198,9 +199,22 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                           ),
                       delegate: SliverChildBuilderDelegate((context, index) {
                         final w = section.places[index];
+                        final parentId = w.parentWorldId;
+                        final parentWorld = parentId == null
+                            ? null
+                            : repo.worldById(parentId);
                         return WorldPlaceCard(
                           world: w,
-                          parent: repo.worldById(w.parentWorldId ?? ''),
+                          parent: parentWorld,
+                          // Depth-2+ cards float far from their building
+                          // in a wrapped grid — name the parent. Direct
+                          // children are visually under it already (no
+                          // tag in mockup p1).
+                          insideName:
+                              parentWorld == null ||
+                                  parentWorld.id == section.root.id
+                              ? null
+                              : parentWorld.name,
                           placeCount: placesUnder(w.id, repo.placeWorlds),
                           selected: _selected.contains(w.id),
                           onSelected: (on) => setState(() {
@@ -234,10 +248,24 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     final w = plan.flat[index];
                     return WorldPlaceCard(
                       world: w,
+                      parent: w.parentWorldId == null
+                          ? null
+                          : repo.worldById(w.parentWorldId!),
+                      insideName: w.parentWorldId == null
+                          ? null
+                          : repo.worldById(w.parentWorldId!)?.name,
                       placeCount: placesUnder(w.id, repo.placeWorlds),
-                      // Any root can take a place — the mockup shows the
-                      // action on childless roots too; that is how you
-                      // make the first one.
+                      selected: _selected.contains(w.id),
+                      onSelected: (on) => setState(() {
+                        if (on) {
+                          _selected.add(w.id);
+                        } else {
+                          _selected.remove(w.id);
+                        }
+                      }),
+                      // Every root can take a place — childless ones most
+                      // of all, since that is the first move of the
+                      // adoption flow (§8).
                       onNewInside: _filter == WorldLibraryFilter.modelMade
                           ? null
                           : () => _showWorldDialog(
@@ -343,10 +371,15 @@ class _WorldManagementPageState extends State<WorldManagementPage>
     );
     if (targetId == null) return;
     for (final w in selectedWorlds) {
+      final priorParent = w.parentWorldId;
       try {
         w.parentWorldId = targetId;
         await repo.saveWorld(w);
       } on StateError catch (e) {
+        // saveWorld re-seats the cache only on success; put the parent
+        // back so a refused move never leaves the card sitting under the
+        // target while the DB says otherwise.
+        w.parentWorldId = priorParent;
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,

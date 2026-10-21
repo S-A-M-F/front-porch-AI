@@ -7,6 +7,7 @@
 // verb the grouped library exists for.
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/ui/pages/worlds/world_library_rows.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/utils/world_colors.dart';
@@ -15,6 +16,7 @@ class WorldLibraryRootCard extends StatelessWidget {
   const WorldLibraryRootCard({
     super.key,
     required this.section,
+    required this.directCount,
     required this.collapsed,
     required this.onToggleCollapsed,
     required this.onNewInside,
@@ -24,6 +26,10 @@ class WorldLibraryRootCard extends StatelessWidget {
   });
 
   final WorldLibrarySection section;
+  // Direct children for the chip — the mockup's Earth says "3 places"
+  // while each continent's own chip counts deeper; the subtree is not
+  // summed into the root's number.
+  final int directCount;
   final bool collapsed;
   final VoidCallback onToggleCollapsed;
   final VoidCallback onNewInside;
@@ -37,7 +43,7 @@ class WorldLibraryRootCard extends StatelessWidget {
     final accent = AppColors.formAccentOf(context);
     final worldColor = WorldColors.getColorForWorld(root.name);
     final entries = root.lorebook.entries.length;
-    final total = section.places.length;
+    final total = directCount;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
       child: Container(
@@ -179,8 +185,10 @@ class WorldLibraryRootCard extends StatelessWidget {
                       ),
                       const Spacer(),
                       Text(
-                        '${root.biomeId ?? 'temperate'} · $entries '
-                        '${entries == 1 ? 'entry' : 'entries'}',
+                        root.climateEnabled
+                            ? '${Biome.builtInById(root.biomeId)?.displayName ?? root.biomeId ?? 'temperate'} · $entries ${entries == 1 ? 'entry' : 'entries'}'
+                            : 'No climate of its own · $entries '
+                                  '${entries == 1 ? 'entry' : 'entries'}',
                         style: TextStyle(
                           fontSize: 10.5,
                           color: AppColors.textTertiary(context),

@@ -197,12 +197,17 @@ void main() {
       () => 'the Attach place dialog to open',
       timeout: const Duration(seconds: 30),
     );
-    // The picker shows the place indented under its town ("inside
-    // Bletchport" in the subtitle) — the tree reads as a tree.
+    // The picker itself, not the library underneath, must mark depth.
     expect(
-      find.textContaining('inside Bletchport', findRichText: true),
-      findsWidgets,
-      reason: 'the attach picker must mark depth',
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('The Lighthouse'),
+          matching: find.byType(ListTile),
+        ),
+        matching: find.textContaining('inside Bletchport'),
+      ),
+      findsOneWidget,
+      reason: 'the attach picker must label the place\'s parent',
     );
     await tester.tap(
       find

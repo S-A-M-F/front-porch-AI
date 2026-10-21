@@ -123,7 +123,7 @@ class WorldParentSection extends StatelessWidget {
         if (parent != null) ...[
           const SizedBox(height: 12),
           _climatePair(context, parent),
-          if (draft.willReparent) ...[
+          if (draft.willReparent && draftEditingId.isNotEmpty) ...[
             const SizedBox(height: 12),
             _impactNote(context, parent),
           ],
@@ -167,9 +167,11 @@ class WorldParentSection extends StatelessWidget {
                 context,
                 selected: !own,
                 title: 'Inherit from ${parent.name}',
-                body:
-                    '${parentBiome.displayName} · Weather, atmosphere and '
-                    'gravity come from the parent.',
+                body: parent.climateEnabled
+                    ? '${parentBiome.displayName} · Weather, atmosphere and '
+                          'gravity come from the parent.'
+                    : 'Nothing above this place authors a climate yet — '
+                          'weather stays off until one does.',
                 onTap: () => setDialogState(() => draft.climateEnabled = false),
               ),
             ),
