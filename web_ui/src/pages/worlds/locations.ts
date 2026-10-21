@@ -131,7 +131,6 @@ export function planWorldLibrary(
 /** Roots first with subtrees beneath; dangling parents last — the order
  *  attach pickers list in (desktop libraryDisplayOrder twin). */
 export function libraryDisplayOrder(worlds: TreeWorld[]): TreeWorld[] {
-  const byId = indexById(worlds);
   const plan = planWorldLibrary(worlds, 'all');
   const out: TreeWorld[] = [];
   for (const s of plan.sections) out.push(s.root, ...s.children);

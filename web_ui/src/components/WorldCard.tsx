@@ -21,6 +21,10 @@ export interface WorldSummary {
   hasCover?: boolean;
   linkedCharacterName?: string | null;
   linkedCharacterId?: string | null;
+  // Locations slice 4 (web twin of 3): the tree. The relay added these
+  // additive fields; old payloads without them render today's card.
+  parentWorldId?: string | null;
+  isModelMade?: boolean;
 }
 
 /** Deterministic hue (0-359) from a world name, so a given world always renders
@@ -37,12 +41,24 @@ export function WorldCard({
   onEdit,
   onExport,
   onDelete,
+  parentName,
+  hasWeatherToInherit = true,
+  placeCount,
+  onNewInside,
+  selected,
+  onSelected,
 }: {
   world: WorldSummary;
   busy: boolean;
   onEdit: () => void;
   onExport: () => void;
   onDelete: () => void;
+  parentName?: string | null;
+  hasWeatherToInherit?: boolean;
+  placeCount?: number;
+  onNewInside?: () => void;
+  selected?: boolean;
+  onSelected?: (on: boolean) => void;
 }) {
   const h = hueFromName(world.name);
   const accent: CSSProperties = {
@@ -79,6 +95,15 @@ export function WorldCard({
           ) : null}
         </div>
         <div className="wsg-world-title">
+          {onSelected && (
+            <input
+              type="checkbox"
+              className="wsg-world-select"
+              aria-label={`Select ${world.name} for move`}
+              checked={selected === true}
+              onChange={(e) => onSelected(e.target.checked)}
+            />
+          )}
           <span className="wsg-world-name" title={world.name}>
             {world.name}
           </span>
@@ -89,8 +114,38 @@ export function WorldCard({
               🌡️ <span>{world.biomeId}</span>
             </span>
           )}
+          {/* Locations slice 4 tags (mockup p1): the weather story every
+              location carries, the depth line where the tree is not
+              visually obvious, and the model-made provenance chip. */}
+          {parentName && world.climateEnabled === false && (
+            <span className="wsg-weather-tag wsg-weather-tag--inherit">
+              {hasWeatherToInherit ? 'Inherits weather' : 'Weather off'}
+            </span>
+          )}
+          {parentName && world.climateEnabled === true && (
+            <span className="wsg-weather-tag wsg-weather-tag--own">
+              Own climate
+            </span>
+          )}
+          {parentName && (
+            <span className="wsg-inside-tag">inside {parentName}</span>
+          )}
+          {world.isModelMade === true && (
+            <span className="wsg-inside-tag">model-made</span>
+          )}
         </div>
         <div className="wsg-world-actions">
+          {onNewInside && (
+            <button
+              className="icon-btn"
+              title="Add a place inside"
+              aria-label="Add a place inside"
+              disabled={busy}
+              onClick={onNewInside}
+            >
+              📍＋
+            </button>
+          )}
           <button className="icon-btn" title="Edit" onClick={onEdit}>
             ✎
           </button>
@@ -111,6 +166,11 @@ export function WorldCard({
         <span className="wsg-entry-chip">
           {count} {count === 1 ? 'entry' : 'entries'}
         </span>
+        {placeCount != null && placeCount > 0 && (
+          <span className="wsg-entry-chip wsg-place-chip" title="Direct places inside">
+            {placeCount} place{placeCount === 1 ? '' : 's'}
+          </span>
+        )}
       </div>
     </div>
   );
