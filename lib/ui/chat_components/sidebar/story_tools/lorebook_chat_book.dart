@@ -66,9 +66,7 @@ class ChatLorebookSection extends StatelessWidget {
             children: [
               InkWell(
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ImportLorebookPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const ImportLorebookPage()),
                 ),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(

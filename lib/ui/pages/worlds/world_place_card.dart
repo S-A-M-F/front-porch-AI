@@ -18,6 +18,17 @@ class WorldPlaceCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onExport;
   final VoidCallback onDelete;
+  // Locations slice 3. When set, a "placeCount places inside" chip and an
+  // "Add a place inside" action render (root cards with children).
+  final int placeCount;
+  final VoidCallback? onNewInside;
+  // Present when this world is a location: drives the "Inherits weather"
+  // / "Owns its weather" tag the author needs to tell cards apart.
+  final World? parent;
+  // Multi-select ("Move into…"): the checkbox only renders when onSelected
+  // is set, so untouched call sites keep today's exact card.
+  final bool? selected;
+  final ValueChanged<bool>? onSelected;
 
   const WorldPlaceCard({
     super.key,
@@ -25,6 +36,11 @@ class WorldPlaceCard extends StatelessWidget {
     required this.onEdit,
     required this.onExport,
     required this.onDelete,
+    this.placeCount = 0,
+    this.onNewInside,
+    this.parent,
+    this.selected,
+    this.onSelected,
   });
 
   @override
@@ -36,6 +52,14 @@ class WorldPlaceCard extends StatelessWidget {
         (climate != null && climate.isNotEmpty && climate != 'temperate')
         ? climate
         : null;
+    // Inherit/own tag: only locations get one — a root's climate story is
+    // its own dropdown chip above.
+    final weatherTag = parent == null
+        ? null
+        : (world.climateEnabled ? 'Owns its weather' : 'Inherits weather');
+    final parentName = parent?.name;
+    final insideTag = parentName == null ? null : 'inside $parentName';
+    final toggle = onSelected;
 
     return Card(
       margin: EdgeInsets.zero,
@@ -49,7 +73,10 @@ class WorldPlaceCard extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        onTap: onEdit,
+        // With multi-select on, a tap toggles selection; Edit/Export/Delete
+        // stay reachable through the card's menu.
+        onTap: toggle == null ? onEdit : () => toggle(!(selected ?? false)),
+        onLongPress: () => toggle?.call(true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -78,6 +105,27 @@ class WorldPlaceCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: onSelected == null
+                        ? const SizedBox.shrink()
+                        : DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: InkColors.dim(0.35),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              selected == true
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              size: 20,
+                              color: selected == true
+                                  ? accent
+                                  : InkColors.onImage.withValues(alpha: 0.9),
+                            ),
+                          ),
                   ),
                   Positioned(
                     top: 4,
@@ -154,7 +202,34 @@ class WorldPlaceCard extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    Row(
+                    if (onNewInside != null) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          key: const Key('place-add-inside'),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            foregroundColor: accent,
+                          ),
+                          icon: const Icon(
+                            Icons.add_location_alt_outlined,
+                            size: 15,
+                          ),
+                          label: const Text(
+                            'Add a place inside',
+                            style: TextStyle(fontSize: 11.5),
+                          ),
+                          onPressed: onNewInside,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (climateLabel != null) ...[
                           Container(
@@ -178,8 +253,16 @@ class WorldPlaceCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
                         ],
+                        if (weatherTag != null)
+                          _tag(context, weatherTag, muted: true),
+                        if (parent != null) _tag(context, insideTag!),
+                        if (world.isModelMade) _tag(context, 'model-made'),
+                        if (placeCount > 0)
+                          _tag(
+                            context,
+                            '$placeCount place${placeCount == 1 ? '' : 's'} inside',
+                          ),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -205,6 +288,32 @@ class WorldPlaceCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tag(BuildContext context, String label, {bool muted = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: muted
+            ? AppColors.surfaceContainerOf(context)
+            : AppColors.formAccentOf(context).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: muted
+              ? AppColors.borderOf(context).withValues(alpha: 0.5)
+              : AppColors.formAccentOf(context).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          color: muted
+              ? AppColors.textTertiary(context)
+              : AppColors.formAccentOf(context),
         ),
       ),
     );

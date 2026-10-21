@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:front_porch_ai/ui/pages/worlds/world_library_rows.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
@@ -44,7 +45,7 @@ Future<void> showAttachPlacePicker(
 }) async {
   final attachedIds = {?primaryId, ...loreIds};
   final available = [
-    for (final w in places)
+    for (final w in libraryDisplayOrder(places))
       if (!attachedIds.contains(w.id) && !attachedIds.contains(w.name)) w,
   ];
   if (available.isEmpty) {
@@ -97,24 +98,44 @@ Future<void> showAttachPlacePicker(
                 itemCount: available.length,
                 itemBuilder: (context, i) {
                   final w = available[i];
+                  final byId = {for (final p in places) p.id: p};
+                  final parent = w.parentWorldId == null
+                      ? null
+                      : byId[w.parentWorldId];
+                  var depth = 0;
+                  World? walk = w;
+                  while (walk != null && depth < 4) {
+                    final p = walk.parentWorldId;
+                    walk = (p == null || p.isEmpty) ? null : byId[p];
+                    if (walk != null) depth++;
+                  }
                   return ListTile(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    leading: Icon(
-                      Icons.public,
-                      color: AppColors.formAccentOf(context),
+                    // Locations indent under their parent — the picker
+                    // reads town › building › room like the library does.
+                    leading: Padding(
+                      padding: EdgeInsets.only(left: 20.0 * depth),
+                      child: Icon(
+                        depth > 0 ? Icons.place_outlined : Icons.public,
+                        color: AppColors.formAccentOf(context),
+                      ),
                     ),
                     title: Text(
                       w.name,
                       style: TextStyle(color: AppColors.textPrimary(ctx)),
                     ),
                     subtitle: Text(
-                      w.description.trim().isEmpty
-                          ? (primaryId == null
-                                ? 'Will be used as setting'
-                                : 'Will be added as lore')
-                          : w.description,
+                      [
+                        if (parent != null) 'inside ${parent.name}',
+                        if (w.description.trim().isNotEmpty)
+                          w.description
+                        else if (parent == null)
+                          primaryId == null
+                              ? 'Will be used as setting'
+                              : 'Will be added as lore',
+                      ].join(' — '),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

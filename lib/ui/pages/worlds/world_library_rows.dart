@@ -78,13 +78,13 @@ WorldLibraryPlan planWorldLibrary({
   final flat = <World>[];
   for (final w in worlds) {
     if (_isLocation(w, byId)) continue; // children render inside sections
-    final children = filter == WorldLibraryFilter.rootsOnly
+    final subtree = filter == WorldLibraryFilter.rootsOnly
         ? const <World>[]
-        : (byParent[w.id] ?? const []);
+        : _subtreeOf(w.id, byParent);
     // The root itself always renders through its section when it has
     // children — never also in the flat grid (no duplicate cards).
     if (byParent.containsKey(w.id)) {
-      sections.add(WorldLibrarySection(root: w, places: children));
+      sections.add(WorldLibrarySection(root: w, places: subtree));
     } else {
       flat.add(w);
     }
@@ -94,6 +94,53 @@ WorldLibraryPlan planWorldLibrary({
     flat: flat,
     locationCount: locations.length,
   );
+}
+
+/// Every descendant of [rootId] in library order: each child followed
+/// immediately by its own children (depth-first), so a room never appears
+/// before the building that holds it.
+List<World> _subtreeOf(String rootId, Map<String, List<World>> byParent) {
+  final out = <World>[];
+  void walk(String id) {
+    for (final child in byParent[id] ?? const <World>[]) {
+      out.add(child);
+      walk(child.id);
+    }
+  }
+
+  walk(rootId);
+  return out;
+}
+
+/// Library display order for pickers: every root followed immediately by
+/// its subtree (depth-first), dangling-parent locations last among
+/// themselves. Mirrors what the grouped library renders.
+List<World> libraryDisplayOrder(List<World> worlds) {
+  final byId = {for (final w in worlds) w.id: w};
+  final byParent = <String, List<World>>{};
+  final roots = <World>[];
+  for (final w in worlds) {
+    if (_isLocation(w, byId)) {
+      byParent.putIfAbsent(w.parentWorldId!, () => []).add(w);
+    } else {
+      roots.add(w);
+    }
+  }
+  for (final list in byParent.values) {
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+  final out = <World>[];
+  for (final r in roots) {
+    out.add(r);
+    out.addAll(_subtreeOf(r.id, byParent));
+  }
+  // Dangling-parent places (their parent row is gone) still need a slot.
+  final seen = {for (final w in out) w.id};
+  out.addAll([
+    for (final w in worlds)
+      if (!seen.contains(w.id)) w,
+  ]);
+  return out;
 }
 
 /// Children count for a root card's "N places" chip.

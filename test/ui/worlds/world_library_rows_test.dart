@@ -114,6 +114,36 @@ void main() {
     });
   });
 
+  group('libraryDisplayOrder', () {
+    test('roots first with subtrees beneath, dangling parents last', () {
+      final town = w('Bletchfield');
+      final hall = w('Town Hall', parent: 'Bletchfield');
+      final room = w('Room', parent: 'Town Hall');
+      final cafe = w('Cafe', parent: 'Bletchfield');
+      final lone = w('Red Dust Station');
+      final ghost = w('Ghost Room', parent: 'gone');
+      final order = libraryDisplayOrder([
+        room,
+        lone,
+        cafe,
+        ghost,
+        hall,
+        town,
+      ]).map((x) => x.id).toList();
+      // Roots come in library order; each root is immediately followed by
+      // its subtree, children by name. The dangling "Ghost Room" reads as
+      // a root (its parent row is gone) — never hidden, never orphaned.
+      expect(order, [
+        'Red Dust Station',
+        'Ghost Room',
+        'Bletchfield',
+        'Cafe',
+        'Town Hall',
+        'Room',
+      ]);
+    });
+  });
+
   group('parentPickCandidates', () {
     test(
       'excludes self and descendants; a childless root can adopt a depth-1',

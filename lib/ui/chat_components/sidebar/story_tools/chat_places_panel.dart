@@ -120,6 +120,7 @@ class ChatPlacesPanel extends StatelessWidget {
                 chat: chat,
                 world: primary,
                 loreIds: loreIds,
+                worlds: worlds,
               ),
 
             const SizedBox(height: 12),
@@ -152,6 +153,32 @@ class ChatPlacesPanel extends StatelessWidget {
                   color: AppColors.textSecondary(context),
                 ),
               ),
+              // Name the author when the Setting itself does not own one
+              // (locations slice 3, mockup p3: "Weather from Bletchfield").
+              if (climateAuthor.id != primary.id) ...[
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_outlined,
+                      size: 13,
+                      color: AppColors.textTertiary(context),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Weather from ${climateAuthor.name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: AppColors.textTertiary(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
                 // ignore: deprecated_member_use
