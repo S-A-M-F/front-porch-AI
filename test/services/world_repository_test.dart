@@ -512,4 +512,189 @@ void main() {
       expect(ids, [byName.id, byId.id]);
     });
   });
+
+  group('WorldRepository locations (v61 parent chain)', () {
+    late AppDatabase db;
+    late WorldRepository repo;
+
+    setUp(() async {
+      _setupPathProviderMock();
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.initialized;
+      db = AppDatabase.forTesting();
+      repo = WorldRepository(storage, db);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    model.World place(String name, {String? parent, bool climate = true}) =>
+        model.World(
+          name: name,
+          lorebook: Lorebook(entries: []),
+          parentWorldId: parent,
+          climateEnabled: climate,
+        );
+
+    test(
+      'chainFor walks leaf-first to the root; a root is itself alone',
+      () async {
+        final town = place('Bletchfield');
+        await repo.saveWorld(town);
+        final academy = place('Bletchmore Academy', parent: town.id);
+        await repo.saveWorld(academy);
+        final room = place('Library', parent: academy.id);
+        await repo.saveWorld(room);
+
+        expect(repo.chainFor(room.id).map((w) => w.id).toList(), [
+          room.id,
+          academy.id,
+          town.id,
+        ]);
+        expect(repo.chainFor(town.id).map((w) => w.id).toList(), [town.id]);
+        expect(repo.chainFor('no-such-world'), isEmpty);
+      },
+    );
+
+    test(
+      'a ring in the library terminates the walk and dedupes by id',
+      () async {
+        // The save check refuses new rings; this pins that a ring from a direct
+        // DB write (dual-version library, repair tool) never spins the walker.
+        final a = place('Root A');
+        await repo.saveWorld(a);
+        final b = place('Room B', parent: a.id);
+        await repo.saveWorld(b);
+        // Raw SQL on purpose: this is exactly the write the save check
+        // refuses, done behind the repository's back (dual-version library).
+        await db.customStatement(
+          'UPDATE worlds SET parent_world_id = ? WHERE id = ?',
+          [b.id, a.id],
+        );
+        await repo.loadWorlds();
+
+        final chain = repo.chainFor(b.id).map((w) => w.id).toList();
+        expect(chain, [b.id, a.id]); // stops at the repeat visit, no hang
+        expect(chain.toSet().length, chain.length);
+      },
+    );
+
+    test('climateAuthorFor is the nearest climate-on ancestor', () async {
+      final town = place('Bletchfield');
+      await repo.saveWorld(town);
+      final cafe = place('Tea Rooms', parent: town.id, climate: false);
+      await repo.saveWorld(cafe);
+      final table = place('Back corner table', parent: cafe.id, climate: false);
+      await repo.saveWorld(table);
+
+      expect(repo.climateAuthorFor(table.id)?.id, town.id);
+      expect(repo.climateAuthorFor(cafe.id)?.id, town.id);
+
+      // A location that owns its climate is the author for itself and
+      // everything inside it.
+      final cavern = place('Cavern', parent: town.id);
+      await repo.saveWorld(cavern);
+      final pool = place('Hot pool', parent: cavern.id, climate: false);
+      await repo.saveWorld(pool);
+      expect(repo.climateAuthorFor(pool.id)?.id, cavern.id);
+    });
+
+    test(
+      'an all-climate-off chain has no author (weather stays off)',
+      () async {
+        final root = place('Earth', climate: false);
+        await repo.saveWorld(root);
+        final city = place('City', parent: root.id, climate: false);
+        await repo.saveWorld(city);
+        expect(repo.climateAuthorFor(city.id), isNull);
+      },
+    );
+
+    test(
+      'save refuses a parent that is the world itself or a descendant',
+      () async {
+        final town = place('Bletchfield');
+        await repo.saveWorld(town);
+        final academy = place('Bletchmore Academy', parent: town.id);
+        await repo.saveWorld(academy);
+        final room = place('Library', parent: academy.id);
+        await repo.saveWorld(room);
+
+        await expectLater(
+          () => repo.saveWorld(
+            place('Bletchfield', parent: 'self')
+              ..id = town.id
+              ..parentWorldId = town.id,
+          ),
+          throwsStateError,
+        );
+        // Grandchild as parent of the town: a ring through existing links.
+        town.parentWorldId = room.id;
+        await expectLater(() => repo.saveWorld(town), throwsStateError);
+
+        // Refused means not written: the DB keeps the pre-edit chain.
+        await repo.loadWorlds();
+        final rows = {for (final r in await db.getAllWorlds()) r.id: r};
+        expect(rows[town.id]!.parentWorldId, isNull);
+        expect(rows[academy.id]!.parentWorldId, town.id);
+        expect(rows[room.id]!.parentWorldId, academy.id);
+      },
+    );
+
+    test(
+      'save refuses an unknown parent; plain saves are unaffected',
+      () async {
+        final ghost = place('Nowhere Kid', parent: 'no-such-parent');
+        await expectLater(() => repo.saveWorld(ghost), throwsStateError);
+        expect(repo.worldByName('Nowhere Kid'), isNull);
+
+        final root = place('Root');
+        await repo.saveWorld(root); // null parent — no extra rules apply
+        expect(repo.chainFor(root.id).single.id, root.id);
+      },
+    );
+
+    test(
+      'deleting a place re-roots its children and reports how many',
+      () async {
+        final town = place('Bletchfield');
+        await repo.saveWorld(town);
+        final academy = place('Bletchmore Academy', parent: town.id);
+        await repo.saveWorld(academy);
+        final cafe = place('Tea Rooms', parent: town.id, climate: false);
+        await repo.saveWorld(cafe);
+
+        final reRooted = await repo.deleteWorld(town);
+        expect(reRooted, 2);
+
+        final rows = {for (final r in await db.getAllWorlds()) r.id: r};
+        expect(rows[academy.id]!.parentWorldId, isNull);
+        expect(rows[cafe.id]!.parentWorldId, isNull);
+        // Climate left exactly as it was — the re-root only clears parents.
+        expect(rows[cafe.id]!.climateEnabled, isFalse);
+        // The cache agrees without a reload.
+        expect(repo.worldById(academy.id)!.parentWorldId, isNull);
+        expect(repo.worldById(cafe.id)!.parentWorldId, isNull);
+        // A root with no children reports zero, not an error.
+        expect(await repo.deleteWorld(academy), 0);
+      },
+    );
+
+    test('import drops a parent id from the sender library', () async {
+      // Until locations ride the envelope (slice 5), an imported place
+      // arrives as a root: the sender's parent id is meaningless here.
+      final json = <String, dynamic>{
+        'name': 'Imported Room',
+        'parent_world_id': 'sender-side-parent',
+        'entries': [],
+      };
+      final imported = await repo.importWorldJson(json);
+      expect(imported.parentWorldId, isNull);
+      final row = await db.getWorldById(imported.id);
+      expect(row!.parentWorldId, isNull);
+    });
+  });
 }

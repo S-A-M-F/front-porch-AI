@@ -364,6 +364,21 @@ extension _AppDatabaseMigrationLate on AppDatabase {
         }
       }
     }
+    if (from < 61) {
+      // v60→v61: Locations within Worlds (docs/design/locations-within-worlds.md).
+      // A location is a world with a parent. NULL for every existing row is
+      // right — it reads as a root whose chain is itself alone, so upgrading
+      // changes nothing until an author sets a parent. Additive, so a
+      // downgrade to v60 keeps reading worlds; the column is ignored.
+      try {
+        await customStatement(
+          'ALTER TABLE worlds ADD COLUMN parent_world_id TEXT',
+        );
+        debugPrint('[DB] v61: added worlds.parent_world_id');
+      } catch (_) {
+        // already present (re-run / dual-version)
+      }
+    }
   }
 
   /// True only when this pass actually created `chat_worlds.is_primary`.
