@@ -210,4 +210,60 @@ void main() {
       expect(forged.isModelMade, isFalse);
     });
   });
+
+  // Hostile review #592: the ring-flat and cycle-safe-walk fixes shipped
+  // without a guard. Each test below goes red when its fix is reverted.
+  group('direct-DB rings (review #592)', () {
+    test('parentPickCandidates does not stack-overflow on a cycle', () {
+      // two worlds that are each other's parent — the state the save path
+      // now refuses but a hand-edited DB already holds. Earth is the
+      // candidate that forces the height walk of self's subtree: without
+      // the seen set A→B→A recursed until the stack died.
+      final earth = w('Earth');
+      final a = w('A');
+      final b = w('B');
+      a.parentWorldId = 'B';
+      b.parentWorldId = 'A';
+      final all = [earth, a, b];
+      final candidates = parentPickCandidates(a, all, index(all));
+      // The ring inflates A's height past the cap, so even the clean
+      // root is conservatively refused — and we got here at all.
+      expect(candidates, isEmpty);
+      // Self-parented editing world: same walk, same promise.
+      final self = w('Self');
+      self.parentWorldId = 'Self';
+      expect(
+        () => parentPickCandidates(self, [self, earth], index([self, earth])),
+        returnsNormally,
+      );
+    });
+
+    test('planWorldLibrary renders ring members flat, never drops them', () {
+      final a = w('A');
+      final b = w('B');
+      a.parentWorldId = 'B';
+      b.parentWorldId = 'A';
+      final plan = planWorldLibrary(
+        worlds: [a, b],
+        filter: WorldLibraryFilter.all,
+      );
+      // No root can host them (each is a location); they surface in flat
+      // so the author can still fix them.
+      expect(plan.sections, isEmpty);
+      expect(plan.flat.map((f) => f.id).toSet(), {'A', 'B'});
+    });
+
+    test('reachablePlaces lists the setting once on a self-parented row', () {
+      final s = w('Loop');
+      s.parentWorldId = 'Loop';
+      final reach = reachablePlaces(s, [s], index([s]));
+      // Exact list: the pre-fix walk listed the Setting twice (once as
+      // self, once as its own resolved parent).
+      expect(reach.map((r) => r.id), ['Loop']);
+      // And its child does not double through the coincident sibling loop.
+      final kid = w('Kid', parent: 'Loop');
+      final withKid = reachablePlaces(s, [s, kid], index([s, kid]));
+      expect(withKid.where((r) => r.id == 'Kid').length, 1);
+    });
+  });
 }

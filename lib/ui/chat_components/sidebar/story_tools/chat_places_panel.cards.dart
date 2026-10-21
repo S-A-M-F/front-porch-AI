@@ -74,6 +74,12 @@ class ChatPlaceSettingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = worlds;
+    // Live view of the slots: a widget built one frame ago still holds the
+    // pre-move [loreIds]/[world], so every write below re-reads actual chat
+    // state rather than the closure capture. Two quick scene moves must
+    // not drop a place out of both slots (hostile review #592 M7).
+    List<String> liveLore() => chat.chatLoreWorldIds;
+    String? livePrimary() => chat.chatPrimaryWorldId;
     final parentId = world.parentWorldId;
     final parentWorld = (repo == null || parentId == null || parentId.isEmpty)
         ? null
@@ -129,7 +135,11 @@ class ChatPlaceSettingCard extends StatelessWidget {
                         if (!ok) return;
                         await chat.setChatPlaceSlots(
                           primaryId: null,
-                          loreIds: [world.id, ...loreIds],
+                          loreIds: [
+                            world.id,
+                            for (final l in liveLore())
+                              if (l != world.id) l,
+                          ],
                         );
                       },
               ),
@@ -146,7 +156,7 @@ class ChatPlaceSettingCard extends StatelessWidget {
                     : () async {
                         await chat.setChatPlaceSlots(
                           primaryId: null,
-                          loreIds: loreIds,
+                          loreIds: liveLore(),
                         );
                       },
               ),
@@ -208,7 +218,13 @@ class ChatPlaceSettingCard extends StatelessWidget {
                 onChanged: chat.isGenerating
                     ? null
                     : (id) async {
-                        if (id == null || id == world.id) return;
+                        if (id == null) return;
+                        // Demote whatever the Setting is NOW (live), not the
+                        // world this widget was built for: after a fast A→B,
+                        // a stale closure demoting A would drop B from both
+                        // slots entirely.
+                        final old = livePrimary() ?? world.id;
+                        if (id == old) return;
                         final target = repo.worldById(id);
                         if (target == null) return;
                         // Demote-on-replace, today's rule: the old place goes
@@ -216,9 +232,9 @@ class ChatPlaceSettingCard extends StatelessWidget {
                         await chat.setChatPlaceSlots(
                           primaryId: target.id,
                           loreIds: [
-                            world.id,
-                            for (final l in loreIds)
-                              if (l != target.id && l != world.id) l,
+                            old,
+                            for (final l in liveLore())
+                              if (l != target.id && l != old) l,
                           ],
                         );
                       },
@@ -328,12 +344,16 @@ class ChatPlaceLoreTile extends StatelessWidget {
               onPressed: chat.isGenerating
                   ? null
                   : () async {
+                      // Live slots: promoting B right after promoting A
+                      // must not drop A out of Lore with the stale capture
+                      // this tile was built with (review #592, M7 class).
+                      final livePrimary = chat.chatPrimaryWorldId;
                       final nextLore = [
-                        ?primaryId,
-                        for (final id in loreIds)
+                        ?livePrimary,
+                        for (final id in chat.chatLoreWorldIds)
                           if (id != world.id) id,
                       ];
-                      if (primaryId != null) {
+                      if (livePrimary != null) {
                         final ok = await confirmChatPlaceChange(
                           context,
                           title: 'Replace setting?',
@@ -360,9 +380,12 @@ class ChatPlaceLoreTile extends StatelessWidget {
                   ? null
                   : () async {
                       await chat.setChatPlaceSlots(
-                        primaryId: primaryId,
+                        // Re-read the Setting too: writing a stale
+                        // primaryId here would undo a scene move made
+                        // while this tile was on screen.
+                        primaryId: chat.chatPrimaryWorldId,
                         loreIds: [
-                          for (final id in loreIds)
+                          for (final id in chat.chatLoreWorldIds)
                             if (id != world.id) id,
                         ],
                       );

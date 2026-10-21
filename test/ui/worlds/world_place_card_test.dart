@@ -14,6 +14,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/world.dart' as model;
 import 'package:front_porch_ai/ui/pages/worlds/world_place_card.dart';
+import 'package:front_porch_ai/ui/pages/worlds/world_place_moves.dart';
+
+import '../../golden/support/fakes.dart';
 
 model.World place(String name, {bool climate = false, String? biomeId}) =>
     model.World(
@@ -33,6 +36,7 @@ Future<void> pumpCard(
   bool? selected,
   model.World? parent,
   String? insideName,
+  bool hasWeatherToInherit = true,
 }) async {
   bool toggled = false;
   await tester.pumpWidget(
@@ -47,6 +51,7 @@ Future<void> pumpCard(
               parent: parent,
               insideName: insideName,
               selected: selected,
+              hasWeatherToInherit: hasWeatherToInherit,
               onSelected: onSelectedToggle == null
                   ? null
                   : (on) {
@@ -65,6 +70,19 @@ Future<void> pumpCard(
   );
   // Expose the toggle recorder through a closure the tests re-check.
   expect(toggled, isFalse, reason: 'build alone must not fire callbacks');
+}
+
+/// The batch flow's repository: records saves and refuses one world, so
+/// a half-committed move must put the refused card back where it was.
+class _BatchRepo extends FakeWorldRepository {
+  _BatchRepo(super.worlds, {required this.failOn});
+
+  final String failOn;
+
+  @override
+  Future<void> saveWorld(model.World world) async {
+    if (world.name == failOn) throw StateError('depth cap says no');
+  }
 }
 
 void main() {
@@ -170,5 +188,73 @@ void main() {
       reason: 'the mockup names the biome in the tag',
     );
     expect(find.text('inside Earth'), findsOneWidget);
+  });
+
+  testWidgets(
+    'a child with no climate author in its chain reads "Weather off"',
+    (tester) async {
+      await pumpCard(
+        tester,
+        world: place('Town Hall'),
+        parent: place('Bletchfield'),
+        hasWeatherToInherit: false,
+      );
+      expect(
+        find.text('Weather off'),
+        findsOneWidget,
+        reason: 'a lore-only chain must not promise weather to inherit (§7)',
+      );
+      expect(find.text('Inherits weather'), findsNothing);
+    },
+  );
+
+  testWidgets('a refused batch move restores the prior parent and repaints', (
+    tester,
+  ) async {
+    final earth = place('Earth', climate: true);
+    final harbor = place('Harbor');
+    final town = place('Town');
+    final repo = _BatchRepo([earth, harbor, town], failOn: 'Town');
+    var repaints = 0;
+    final selected = {'Harbor', 'Town'};
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => TextButton(
+              onPressed: () =>
+                  movePlacesInto(ctx, repo, selected, () => repaints++),
+              child: const Text('move'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('move'));
+    await tester.pumpAndSettle();
+    // The target dialog offers Earth (valid for both selections).
+    await tester.tap(find.text('Earth').last);
+    // Harbor commits, Town's save throws — settle without letting the
+    // snackbar auto-hide burn the assertion.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(harbor.parentWorldId, 'Earth', reason: 'the committed move stands');
+    expect(
+      town.parentWorldId,
+      isNull,
+      reason:
+          'the refused move is put back in the cache, not left on the '
+          'target the DB refused',
+    );
+    expect(
+      repaints,
+      greaterThan(0),
+      reason: 'the grid repaints the moment the cache would otherwise lie',
+    );
+    expect(
+      find.textContaining('Moved 1 of 2'),
+      findsOneWidget,
+      reason: 'the partial batch names what already moved',
+    );
   });
 }

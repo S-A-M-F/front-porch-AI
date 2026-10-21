@@ -68,7 +68,9 @@ List<World> parentPickCandidates(
     // Depth after the move: candidate's depth must leave room for self's
     // subtree under the two-level cap.
     final candidateDepth = worldChain(candidate, lookup).length - 1;
-    final selfHeight = self == null ? 1 : _subtreeHeight(self, all, lookup);
+    final selfHeight = self == null
+        ? 1
+        : _subtreeHeight(self, all, lookup, <String>{});
     return candidateDepth + selfHeight > 2;
   }
 
@@ -79,21 +81,29 @@ List<World> parentPickCandidates(
 }
 
 /// Longest leaf-first chain below (and including) [world] — 1 for a world
-/// with no children.
+/// with no children. [path] carries the ids on the current descent, undone
+/// on the way back up so siblings still measure: a hand-edited ring
+/// (A→B→A in the DB) would otherwise make the child walk spin until the
+/// stack dies, exactly the case [worldChain] promises never to spin.
 int _subtreeHeight(
   World world,
   List<World> all,
   World? Function(String id) lookup,
+  Set<String> path,
 ) {
+  if (!path.add(world.id)) return 1; // ring: stop, count this node only.
   final children = all.where((w) {
     final p = w.parentWorldId;
     return p != null && p.isNotEmpty && lookup(p)?.id == world.id;
   }).toList();
-  if (children.isEmpty) return 1;
-  return 1 +
-      children
-          .map((c) => _subtreeHeight(c, all, lookup))
-          .reduce((a, b) => a > b ? a : b);
+  final height = children.isEmpty
+      ? 1
+      : 1 +
+            children
+                .map((c) => _subtreeHeight(c, all, lookup, path))
+                .reduce((a, b) => a > b ? a : b);
+  path.remove(world.id);
+  return height;
 }
 
 /// Places a chat may move to in one step from the current Setting: the
@@ -109,20 +119,22 @@ List<World> reachablePlaces(
   final resolvedParent = (parent == null || parent.isEmpty)
       ? null
       : lookup(parent);
+  // Dedupe by id: a self-parented row (direct DB edit) would otherwise
+  // list the Setting twice, and the children/sibling loops coincide when
+  // the parent resolves to the setting itself.
+  final seen = <String>{setting.id};
+  bool isUnder(World w, World p) =>
+      w.id != setting.id &&
+      w.parentWorldId != null &&
+      lookup(w.parentWorldId!)?.id == p.id;
   return [
     setting,
-    ?resolvedParent,
+    if (resolvedParent != null && seen.add(resolvedParent.id)) resolvedParent,
     for (final w in all)
-      if (w.id != setting.id &&
-          w.parentWorldId != null &&
-          lookup(w.parentWorldId!)?.id == setting.id)
-        w, // children
+      if (isUnder(w, setting) && seen.add(w.id)) w, // children
     if (resolvedParent != null)
       for (final w in all)
-        if (w.id != setting.id &&
-            w.parentWorldId != null &&
-            lookup(w.parentWorldId!)?.id == resolvedParent.id)
-          w, // siblings
+        if (isUnder(w, resolvedParent) && seen.add(w.id)) w, // siblings
   ];
 }
 

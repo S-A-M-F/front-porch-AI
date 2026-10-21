@@ -156,9 +156,18 @@ Future<void> showAttachPlacePicker(
 
   if (chosen == null) return;
 
-  if (primaryId == null) {
+  // A scene move or lore edit in the panel can land while these dialogs
+  // are open; write against the live slots, never the captured ones, or
+  // the concurrent edit is silently reverted (review #592, M7 class).
+  final livePrimary = chat.chatPrimaryWorldId;
+  final liveLore = [
+    for (final id in chat.chatLoreWorldIds)
+      if (id != chosen.id) id,
+  ];
+
+  if (livePrimary == null) {
     // Empty Setting defaults to Use as setting.
-    await chat.setChatPlaceSlots(primaryId: chosen.id, loreIds: loreIds);
+    await chat.setChatPlaceSlots(primaryId: chosen.id, loreIds: liveLore);
     return;
   }
 
@@ -188,8 +197,8 @@ Future<void> showAttachPlacePicker(
   if (action == null || action == 'cancel') return;
   if (action == 'lore') {
     await chat.setChatPlaceSlots(
-      primaryId: primaryId,
-      loreIds: [...loreIds, chosen.id],
+      primaryId: livePrimary,
+      loreIds: [...liveLore, chosen.id],
     );
     return;
   }
@@ -202,6 +211,6 @@ Future<void> showAttachPlacePicker(
   if (!ok) return;
   await chat.setChatPlaceSlots(
     primaryId: chosen.id,
-    loreIds: [primaryId, ...loreIds],
+    loreIds: [livePrimary, ...liveLore],
   );
 }

@@ -303,6 +303,21 @@ void showWorldEditDialog(
                                         );
                                       }
                                       return;
+                                    } catch (e) {
+                                      // Anything else the save raises (DB
+                                      // busy, disk) must reach the author,
+                                      // not vanish into the async handler:
+                                      // report it and keep the dialog with
+                                      // the edit intact (hostile review #592).
+                                      debugPrint('world save failed: $e');
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Could not save: $e'),
+                                          ),
+                                        );
+                                      }
+                                      return;
                                     } finally {
                                       if (ctx.mounted) {
                                         setDialogState(() => saving = false);

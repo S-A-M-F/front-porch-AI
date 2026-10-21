@@ -20,7 +20,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
-import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/ui/pages/worlds/worlds.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
@@ -126,7 +125,12 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                           context,
                           'Move ${_selected.length} into…',
                           true,
-                          () => _moveSelectedInto(context, repo),
+                          () => movePlacesInto(
+                            context,
+                            repo,
+                            _selected,
+                            () => setState(() {}),
+                          ),
                         ),
                     ],
                   ),
@@ -170,9 +174,12 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     directCount: placesUnder(section.root.id, repo.placeWorlds),
                     collapsed: _collapsed.contains(section.root.id),
                     onToggleCollapsed: () => setState(() {
-                      if (!_collapsed.remove(section.root.id)) {
-                        _collapsed.add(section.root.id);
-                      }
+                      if (_collapsed.remove(section.root.id)) return;
+                      // Collapsing hides the children: a selected card the
+                      // user can no longer see must stop counting toward
+                      // "Move N into…" or being moved unseen (review #592).
+                      _collapsed.add(section.root.id);
+                      _selected.removeAll(section.places.map((w) => w.id));
                     }),
                     onNewInside: () => _showWorldDialog(
                       context,
@@ -184,6 +191,14 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                     onExport: () =>
                         exportFpWorldFlow(context, repo, section.root),
                     onDelete: () => _confirmDelete(context, repo, section.root),
+                    selected: _selected.contains(section.root.id),
+                    onSelected: (on) => setState(() {
+                      if (on) {
+                        _selected.add(section.root.id);
+                      } else {
+                        _selected.remove(section.root.id);
+                      }
+                    }),
                   ),
                 ),
                 if (!_collapsed.contains(section.root.id))
@@ -216,6 +231,22 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                               ? null
                               : parentWorld.name,
                           placeCount: placesUnder(w.id, repo.placeWorlds),
+                          // A depth-1 child can still take rooms inside it
+                          // (town › building › room); a depth-2 one is at
+                          // the cap and gets no add-inside affordance.
+                          onNewInside:
+                              parentWorld != null &&
+                                  parentWorld.id == section.root.id
+                              ? () => _showWorldDialog(
+                                  context,
+                                  repo,
+                                  presetParentId: w.id,
+                                )
+                              : null,
+                          // Honest tag: nothing to inherit when the whole
+                          // chain is lore-only (§7).
+                          hasWeatherToInherit:
+                              repo.climateAuthorFor(w.id) != null,
                           selected: _selected.contains(w.id),
                           onSelected: (on) => setState(() {
                             if (on) {
@@ -255,6 +286,7 @@ class _WorldManagementPageState extends State<WorldManagementPage>
                           ? null
                           : repo.worldById(w.parentWorldId!)?.name,
                       placeCount: placesUnder(w.id, repo.placeWorlds),
+                      hasWeatherToInherit: repo.climateAuthorFor(w.id) != null,
                       selected: _selected.contains(w.id),
                       onSelected: (on) => setState(() {
                         if (on) {
@@ -315,92 +347,8 @@ class _WorldManagementPageState extends State<WorldManagementPage>
     );
   }
 
-  /// Bulk "Move into…": pick a target among roots/depth-1 places valid for
-  /// EVERY selected world, then re-parent them all. The repository check
-  /// still runs per save — a refusal stops the batch and names the world.
-  Future<void> _moveSelectedInto(
-    BuildContext context,
-    WorldRepository repo,
-  ) async {
-    final selectedWorlds = [for (final id in _selected) ?repo.worldById(id)];
-    if (selectedWorlds.isEmpty) return;
-    final all = repo.placeWorlds;
-    // A target qualifies only if it is a candidate for every selection.
-    final common = all.where((t) {
-      if (_selected.contains(t.id)) return false;
-      return selectedWorlds.every(
-        (s) => parentPickCandidates(
-          s,
-          all,
-          repo.worldById,
-        ).any((c) => c.id == t.id),
-      );
-    }).toList();
-    if (common.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No place can take all of these (depth cap).'),
-          ),
-        );
-      }
-      return;
-    }
-    final targetId = await showWarmDialog<String>(
-      context,
-      title:
-          'Move ${selectedWorlds.length} place${selectedWorlds.length == 1 ? '' : 's'} into…',
-      width: 380,
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 320),
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final t in common)
-              ListTile(
-                dense: true,
-                title: Text(
-                  t.name,
-                  style: TextStyle(color: AppColors.textPrimary(context)),
-                ),
-                onTap: () => Navigator.pop(context, t.id),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (targetId == null) return;
-    for (final w in selectedWorlds) {
-      final priorParent = w.parentWorldId;
-      try {
-        w.parentWorldId = targetId;
-        await repo.saveWorld(w);
-      } on StateError catch (e) {
-        // saveWorld re-seats the cache only on success; put the parent
-        // back so a refused move never leaves the card sitting under the
-        // target while the DB says otherwise.
-        w.parentWorldId = priorParent;
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('${w.name}: ${e.message}')));
-        }
-        return;
-      }
-    }
-    if (context.mounted) {
-      final target = repo.worldById(targetId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Moved ${selectedWorlds.length} places into ${target?.name ?? 'the parent'}.',
-          ),
-        ),
-      );
-    }
-    setState(_selected.clear);
-  }
-
+  /// Bulk model-made cleanup: confirm once, delete each, report failures
+  /// instead of abandoning the batch midway (review #592).
   Future<void> _confirmDeleteModelMade(
     BuildContext context,
     WorldRepository repo,
@@ -431,8 +379,28 @@ class _WorldManagementPageState extends State<WorldManagementPage>
       ],
     );
     if (go != true) return;
+    var failed = 0;
+    Object? firstError;
     for (final w in doomed) {
-      await repo.deleteWorld(w);
+      // One failing delete must not abandon the rest of the batch
+      // midway with no report (review #592).
+      try {
+        await repo.deleteWorld(w);
+      } catch (e) {
+        failed++;
+        firstError ??= e;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _selected.removeAll(doomed.map((w) => w.id)));
+    if (failed > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$failed of ${doomed.length} could not be deleted: $firstError',
+          ),
+        ),
+      );
     }
   }
 
@@ -469,16 +437,29 @@ class _WorldManagementPageState extends State<WorldManagementPage>
               backgroundColor: StatusColors.alertFill,
             ),
             onPressed: () async {
-              final moved = await repo.deleteWorld(world);
-              if (context.mounted) Navigator.pop(context);
-              if (context.mounted && moved > 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '$moved place${moved == 1 ? '' : 's'} became their own worlds.',
+              try {
+                final moved = await repo.deleteWorld(world);
+                // A deleted id must drop out of the multi-select at once,
+                // or the pill keeps counting a card that no longer exists.
+                if (mounted) setState(() => _selected.remove(world.id));
+                if (context.mounted) Navigator.pop(context);
+                if (context.mounted && moved > 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '$moved place${moved == 1 ? '' : 's'} became their '
+                        'own worlds.',
+                      ),
                     ),
-                  ),
-                );
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) Navigator.pop(context);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not delete: $e')),
+                  );
+                }
               }
             },
             child: const Text('Delete'),

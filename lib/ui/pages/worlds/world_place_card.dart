@@ -29,6 +29,11 @@ class WorldPlaceCard extends StatelessWidget {
   // Multi-select ("Move into…"): the checkbox only renders when onSelected
   // is set, so untouched call sites keep today's exact card.
   final bool? selected;
+  // False when no world in this place's chain owns a climate: the honest
+  // tag is "Weather off", not a promise of something to inherit (§7: a
+  // climate-off root as Setting means weather off). Defaults true so
+  // callers without chain access keep today's card verbatim.
+  final bool hasWeatherToInherit;
   // Parent NAME for the "inside X" tag. Separate from [parent] because
   // the mockup marks depth only where it is not already obvious: section
   // children sit under their parent already (no tag), while flat/model-made
@@ -47,6 +52,7 @@ class WorldPlaceCard extends StatelessWidget {
     this.parent,
     this.insideName,
     this.selected,
+    this.hasWeatherToInherit = true,
     this.onSelected,
   });
 
@@ -67,7 +73,9 @@ class WorldPlaceCard extends StatelessWidget {
         ? null
         : world.climateEnabled
         ? 'Own climate'
-        : 'Inherits weather';
+        : hasWeatherToInherit
+        ? 'Inherits weather'
+        : 'Weather off';
     final ownBiomeName = (parent != null && world.climateEnabled)
         ? Biome.builtInById(world.biomeId)?.displayName
         : null;

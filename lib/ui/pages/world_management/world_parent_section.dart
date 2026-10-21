@@ -33,15 +33,21 @@ class WorldParentSection extends StatelessWidget {
 
   /// The world as it would be saved right now — preview and candidate
   /// filtering both read this, so what the author sees is what Save does.
-  World _draftWorld() => World(
-    id: draftEditingId.isEmpty ? null : draftEditingId,
-    name: draft.nameController.text.trim(),
-    description: draft.descController.text.trim(),
-    lorebook: Lorebook(entries: []),
-    climateEnabled: draft.climateEnabled,
-    parentWorldId: draft.parentWorldId,
-    injectDescription: draft.injectDescription,
-  );
+  World _draftWorld() =>
+      World(
+          id: draftEditingId.isEmpty ? null : draftEditingId,
+          name: draft.nameController.text.trim(),
+          description: draft.descController.text.trim(),
+          lorebook: Lorebook(entries: []),
+          climateEnabled: draft.climateEnabled,
+          parentWorldId: draft.parentWorldId,
+          injectDescription: draft.injectDescription,
+          // Traits ride too: the editor's atmosphere/gravity pickers write the
+          // draft, and buildWorldInjection emits exactly those lines. A preview
+          // without them is not what Save does.
+        )
+        ..atmosphere = draft.atmosphere
+        ..gravity = draft.gravity;
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +101,22 @@ class WorldParentSection extends StatelessWidget {
             const DropdownMenuItem<String?>(
               child: Text('Not inside anything (its own world)'),
             ),
+            // A hand-edited library can carry a parent the law refuses
+            // (dangling id, ring member). The dropdown asserts value ∈
+            // items, so pin the current parent as its own entry — the
+            // editor then opens and shows the truth instead of dying.
+            if (draft.parentWorldId != null &&
+                !candidates.any((c) => c.id == draft.parentWorldId))
+              DropdownMenuItem<String?>(
+                value: draft.parentWorldId,
+                child: Text(
+                  parent == null
+                      ? 'Missing place (no longer in the library)'
+                      : '${_pathLabel(parent)} — invalid here, pick a new '
+                            'parent',
+                  style: TextStyle(color: AppColors.textSecondary(context)),
+                ),
+              ),
             for (final c in candidates)
               DropdownMenuItem<String?>(
                 value: c.id,

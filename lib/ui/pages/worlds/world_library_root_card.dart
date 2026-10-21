@@ -23,6 +23,8 @@ class WorldLibraryRootCard extends StatelessWidget {
     required this.onEdit,
     required this.onExport,
     required this.onDelete,
+    this.selected,
+    this.onSelected,
   });
 
   final WorldLibrarySection section;
@@ -36,6 +38,11 @@ class WorldLibraryRootCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onExport;
   final VoidCallback onDelete;
+  // Multi-select on the section header (same "Move into…" set as child
+  // cards). The header tap stays collapse-toggle; long-press selects, the
+  // badge tap steps out — mirroring WorldPlaceCard's pinned contract.
+  final bool? selected;
+  final ValueChanged<bool>? onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +64,10 @@ class WorldLibraryRootCard extends StatelessWidget {
           children: [
             InkWell(
               onTap: onToggleCollapsed,
+              // Long-press joins "Move into…" selection like every other
+              // card in the library (pinned contract: tap toggles the
+              // section here, it always opened the editor nowhere else).
+              onLongPress: onSelected == null ? null : () => onSelected!(true),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(15),
               ),
@@ -77,6 +88,20 @@ class WorldLibraryRootCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
+                    if (selected == true) ...[
+                      // Badge tap steps out of selection without touching
+                      // collapse — the child cards' contract, same here.
+                      GestureDetector(
+                        key: Key('root-select-badge-${root.id}'),
+                        onTap: () => onSelected?.call(false),
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 18,
+                          color: accent,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
                     Icon(
                       collapsed
                           ? Icons.folder_outlined
@@ -184,14 +209,20 @@ class WorldLibraryRootCard extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      Text(
-                        root.climateEnabled
-                            ? '${Biome.builtInById(root.biomeId)?.displayName ?? root.biomeId ?? 'temperate'} · $entries ${entries == 1 ? 'entry' : 'entries'}'
-                            : 'No climate of its own · $entries '
-                                  '${entries == 1 ? 'entry' : 'entries'}',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: AppColors.textTertiary(context),
+                      // A custom-biome root (biomeJson set, no built-in
+                      // id) must not read as a bland "temperate".
+                      Flexible(
+                        child: Text(
+                          root.climateEnabled
+                              ? '${root.biomeId != null && root.biomeId!.isNotEmpty ? Biome.builtInById(root.biomeId)?.displayName ?? root.biomeId : (root.biomeJson != null ? 'Custom climate' : 'temperate')} · $entries ${entries == 1 ? 'entry' : 'entries'}'
+                              : 'No climate of its own · $entries '
+                                    '${entries == 1 ? 'entry' : 'entries'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: AppColors.textTertiary(context),
+                          ),
                         ),
                       ),
                       IconButton(

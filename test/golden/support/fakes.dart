@@ -754,6 +754,15 @@ class FakeWorldRepository extends ChangeNotifier implements WorldRepository {
     return worldChain(leaf, worldById);
   }
 
+  // The library's weather tags read this; mirror the real chain-walk so a
+  // fake-backed page paints the same tag the app would.
+  @override
+  world_model.World? climateAuthorFor(String idOrName) {
+    final leaf = worldById(idOrName) ?? worldByName(idOrName);
+    if (leaf == null) return null;
+    return climateAuthorOf(worldChain(leaf, worldById));
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

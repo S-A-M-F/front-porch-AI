@@ -134,13 +134,24 @@ void main() {
       'Warm lamplight over cold rope and tar.',
     );
     await tester.pump(const Duration(milliseconds: 200));
+    // Two taps with no frame between, then exactly one world: a second
+    // submit must not mint a duplicate (CLAUDE.md, create-button law).
     await tester.tap(find.widgetWithText(ElevatedButton, 'Create World'));
+    await tester.tap(
+      find.widgetWithText(ElevatedButton, 'Create World'),
+      warnIfMissed: false,
+    );
     await d.waitFor(
       () => worldRepo.placeWorlds.any(
         (w) => w.name == 'The Lighthouse' && w.parentWorldId == town.id,
       ),
       () => 'the lighthouse to be created inside the town',
       timeout: const Duration(seconds: 30),
+    );
+    expect(
+      worldRepo.placeWorlds.where((w) => w.name == 'The Lighthouse').length,
+      1,
+      reason: 'a double tap creates exactly one place',
     );
 
     // ── 3. The library groups: section chip + child tag ─────────────────
