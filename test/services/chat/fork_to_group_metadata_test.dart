@@ -127,4 +127,56 @@ void main() {
           'too, or the whole pre-fork history becomes un-rewindable',
     );
   });
+
+  // Discord report: `/join --full` turned the user into an unrelated persona.
+  // The fork wrote the group session row without userPersonaId, and
+  // setActiveGroup re-activates the persona from that row — so it fell back
+  // to the default. Proven to fail: drop userPersonaId from the companion in
+  // chat_service_group_membership.dart and both expectations go red.
+  test(
+    'forking a 1:1 into a group keeps the chat\'s persona, not the default',
+    () async {
+      final personas = UserPersonaService(db);
+      final forkChat =
+          ChatService(
+              KoboldService(storage),
+              personas,
+              storage,
+              WorldRepository(storage, db),
+            )
+            ..setDatabase(db)
+            ..setCharacterRepository(CharacterRepository(db, storage));
+      addTearDown(forkChat.dispose);
+      while (personas.personas.isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      final defaultId = personas.defaultPersonaId;
+      // Persona ids are epoch-millis — space the new one out.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final lady = await personas.createPersona(
+        'Lady',
+        'Victoria',
+        'A polite Victorian lady.',
+        null,
+        activate: false,
+      );
+      expect(lady, isNot(defaultId));
+
+      await forkChat.setActiveCharacter(card('Maid', 'char-persona-host'));
+      await personas.setActivePersona(lady);
+
+      final group = await forkChat.forkToGroupChat([
+        card('Stranger', 'char-persona-arrival'),
+      ], GroupChatRepository(storage, db));
+      expect(group, isNotNull, reason: 'the conversion itself must succeed');
+
+      expect(
+        personas.persona.id,
+        lady,
+        reason: 'the converted group must speak as the 1:1\'s persona',
+      );
+      final row = await db.getSessionById(forkChat.currentSessionId!);
+      expect(row!.userPersonaId, lady);
+    },
+  );
 }
