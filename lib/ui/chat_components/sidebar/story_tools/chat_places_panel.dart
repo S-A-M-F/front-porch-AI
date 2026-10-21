@@ -339,6 +339,9 @@ class ChatPlacesPanel extends StatelessWidget {
                     chat: chat,
                     primaryId: primaryId,
                     loreIds: loreIds,
+                    insideName: w.parentWorldId == null
+                        ? null
+                        : worlds.worldById(w.parentWorldId!)?.name,
                   );
                 },
               ),

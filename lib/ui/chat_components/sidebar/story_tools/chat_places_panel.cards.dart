@@ -249,6 +249,9 @@ class ChatPlaceLoreTile extends StatelessWidget {
   final ChatService chat;
   final String? primaryId;
   final List<String> loreIds;
+  // Parent place name (locations slice 3) — renders "inside X" under the
+  // tile name so a lore book from a tree reads as part of the tree.
+  final String? insideName;
 
   const ChatPlaceLoreTile({
     super.key,
@@ -257,6 +260,7 @@ class ChatPlaceLoreTile extends StatelessWidget {
     required this.chat,
     required this.primaryId,
     required this.loreIds,
+    this.insideName,
   });
 
   @override
@@ -285,13 +289,32 @@ class ChatPlaceLoreTile extends StatelessWidget {
             const ChatPlaceRolePill(label: 'LORE', accent: false),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                world.name,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textPrimary(context),
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    world.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textPrimary(context),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // Depth line for locations (mockup p3: "inside
+                  // Bletchfield · was the Setting"). The "was the
+                  // Setting" tail is the move flow's own state — the
+                  // breadcrumb here is the part the library owns.
+                  if (insideName != null)
+                    Text(
+                      'inside $insideName',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textTertiary(context),
+                      ),
+                    ),
+                ],
               ),
             ),
             IconButton(

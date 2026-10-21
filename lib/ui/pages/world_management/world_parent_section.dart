@@ -190,7 +190,7 @@ class WorldParentSection extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           'Pick Own climate for a continent on Earth or a greenhouse in '
-          'the tundra.',
+          'the tundra. The climate editor appears here when it is on.',
           style: TextStyle(
             color: AppColors.textTertiary(context),
             fontSize: 10.5,

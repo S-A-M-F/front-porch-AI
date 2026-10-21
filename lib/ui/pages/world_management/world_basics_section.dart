@@ -242,15 +242,19 @@ class WorldBasicsSection extends StatelessWidget {
             ),
           ),
           SizedBox(height: gap),
-          _draftSwitch(
-            context,
-            title: 'Climate, weather, and place traits',
-            subtitle:
-                'Off = lorebook and description only — no forecast, '
-                'no atmosphere or gravity',
-            value: draft.climateEnabled,
-            onChanged: (v) => setDialogState(() => draft.climateEnabled = v),
-          ),
+          // With a parent set, the Inherit / Own pair in the parent section
+          // owns this flag — showing the plain switch too would render two
+          // controls for one value (mockup p2 has only the pair).
+          if (draft.parentWorldId == null)
+            _draftSwitch(
+              context,
+              title: 'Climate, weather, and place traits',
+              subtitle:
+                  'Off = lorebook and description only — no forecast, '
+                  'no atmosphere or gravity',
+              value: draft.climateEnabled,
+              onChanged: (v) => setDialogState(() => draft.climateEnabled = v),
+            ),
           if (draft.climateEnabled) ...[
             const SizedBox(height: 8),
             WorldClimateSection(draft: draft, setDialogState: setDialogState),

@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -53,10 +54,17 @@ class WorldPlaceCard extends StatelessWidget {
         ? climate
         : null;
     // Inherit/own tag: only locations get one — a root's climate story is
-    // its own dropdown chip above.
+    // its own dropdown chip above. A place that owns reads like the
+    // editor's radio ("Own climate · <biome>"); the mockup names the
+    // biome so a continent's card tells its weather at a glance.
     final weatherTag = parent == null
         ? null
-        : (world.climateEnabled ? 'Owns its weather' : 'Inherits weather');
+        : world.climateEnabled
+        ? 'Own climate'
+        : 'Inherits weather';
+    final ownBiomeName = (parent != null && world.climateEnabled)
+        ? Biome.builtInById(world.biomeId)?.displayName
+        : null;
     final parentName = parent?.name;
     final insideTag = parentName == null ? null : 'inside $parentName';
     final toggle = onSelected;
@@ -255,7 +263,13 @@ class WorldPlaceCard extends StatelessWidget {
                           ),
                         ],
                         if (weatherTag != null)
-                          _tag(context, weatherTag, muted: true),
+                          _tag(
+                            context,
+                            ownBiomeName == null
+                                ? weatherTag
+                                : '$weatherTag · $ownBiomeName',
+                            muted: !world.climateEnabled,
+                          ),
                         if (parent != null) _tag(context, insideTag!),
                         if (world.isModelMade) _tag(context, 'model-made'),
                         if (placeCount > 0)
