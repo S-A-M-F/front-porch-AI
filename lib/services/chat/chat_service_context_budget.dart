@@ -63,19 +63,19 @@ extension ChatServiceContextBudget on ChatService {
         memberNames: [for (final c in _groupCharacters) c.name],
         userName: _userPersonaService.persona.name,
         observerMode: _observerMode,
+        visitorNames: {
+          for (final c in _groupCharacters)
+            if (c.isLite) c.name,
+        },
       );
       final speaker =
           _groupManager?.nextSpeaker ??
           (_groupCharacters.isNotEmpty ? _groupCharacters.first : null);
       if (speaker != null) {
-        final others = [
-          for (final c in _groupCharacters)
-            if (c.name != speaker.name) c.name,
-        ];
-        speakerCard =
-            '${(speaker.isLite ? buildLiteGroupTurnNote : buildSpeakerTurnNote)(speakerName: speaker.name, otherMemberNames: others, userName: _userPersonaService.persona.name, observerMode: _observerMode)}'
-            '${buildSpeakerPersonaLine(name: speaker.name, personality: _growthDesk.effectivePersonality(speaker))}\n'
-            '${speaker.mesExample}';
+        speakerCard = _buildGroupSpeakerCard(
+          speaker,
+          userName: _userPersonaService.persona.name,
+        );
       }
     } else if (_activeCharacter != null) {
       final c = _activeCharacter!;
@@ -97,7 +97,9 @@ extension ChatServiceContextBudget on ChatService {
         postHistory,
       );
     }
-    systemPrompt = withDirectorSceneRules(systemPrompt, directing: _directing);
+    if (_activeGroup != null) {
+      systemPrompt = withGroupSceneRules(systemPrompt, directing: _directing);
+    }
 
     // The send's own line format (think blocks stripped) and trim rules,
     // so the estimate shows what a send would carry, not the whole chat.
@@ -166,7 +168,7 @@ extension ChatServicePromptSource on ChatService {
     if (own.isNotEmpty) return own;
     final global = _storageService.generationSettings.groupSystemPrompt;
     if (global.trim().isNotEmpty) return global;
-    return _observerMode ? observerModeSystemPrompt : defaultGroupSystemPrompt;
+    return defaultGroupSystemPrompt;
   }
 
   /// The 1:1 base chain with the per-chat source applied. Shared by the

@@ -54,6 +54,53 @@ String impersonateCardFrame({
       '$char, not the writer.]\n';
 }
 
+/// Group framing: the user answers the last speaker inside a scene with
+/// others. No card is sent for them, so none is promised.
+String impersonateGroupFrame({
+  required String userName,
+  required String characterName,
+}) {
+  final user = _safeName(userName, 'the user');
+  final char = _safeName(characterName, 'the character');
+  return '[$char spoke last. $user is answering, in the scene with the '
+      'others.]\n';
+}
+
+/// Director Mode identity: the user's next line is a stage direction for
+/// the scene they direct from outside, not dialogue inside it.
+String impersonateDirectorBlock({required String userName}) {
+  final user = _safeName(userName, 'the user');
+  return '[IMPERSONATE THE DIRECTOR. Write $user\'s next stage direction '
+      'for this scene: one or two plain sentences saying what happens next '
+      'or nudging a character, continuing the "[Director:" line at the end. '
+      'Write no character\'s dialogue. Any rule elsewhere about not writing for $user is '
+      'SUSPENDED — writing this direction is the entire job.]\n';
+}
+
+/// Director Mode rule when the user already typed a start.
+String impersonateDirectorPrefixRule({required String prefix}) {
+  if (prefix.trim().isEmpty) return '';
+  return '[The text after "[Director:" is a stage direction already '
+      'started. ONLY append more of that same direction. NEVER write a '
+      'character\'s dialogue or a speaker label.]\n';
+}
+
+/// Director Mode transcript suffix: the director's own line format.
+String impersonateDirectorSuffix({required String prefix}) {
+  if (prefix.isEmpty) return '\n[Director:';
+  final body = prefix.startsWith(RegExp(r'\s')) ? prefix : ' $prefix';
+  return '\n[Director:$body';
+}
+
+/// The finished direction as the composer wants it: the model closes the
+/// `[Director: …]` bracket it was handed, so cut there; anything it ran on
+/// past the closer is another turn. The user's typed [prefix] is never cut.
+String closeDirectorNote(String text, {String prefix = ''}) {
+  final from = text.startsWith(prefix) ? prefix.length : 0;
+  final close = text.indexOf(']', from);
+  return (close < 0 ? text : text.substring(0, close)).trim();
+}
+
 /// Continue-style rule when the user already typed a start.
 String impersonatePrefixRule({
   required String userName,
@@ -71,10 +118,7 @@ String impersonatePrefixRule({
 
 /// Transcript suffix. A typed prefix is glued with one space unless it
 /// already starts with whitespace.
-String impersonateSuffix({
-  required String userName,
-  required String prefix,
-}) {
+String impersonateSuffix({required String userName, required String prefix}) {
   final name = _safeName(userName, 'User');
   if (prefix.isEmpty) return '\n$name:';
   final body = prefix.startsWith(RegExp(r'\s')) ? prefix : ' $prefix';

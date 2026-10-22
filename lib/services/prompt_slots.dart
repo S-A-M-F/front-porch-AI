@@ -50,8 +50,8 @@ const List<BuiltInPrompt> kOneToOneBuiltIns = [
   BuiltInPrompt('KoboldCpp default', defaultKoboldSystemPrompt),
 ];
 
-/// The group slot stores blank for its built-in, so Director Mode can still
-/// pick its own built-in base; [kGroupBuiltIn] is what the box shows then.
+/// The group slot stores blank for its built-in; [kGroupBuiltIn] is what the
+/// box shows then.
 const BuiltInPrompt kGroupBuiltIn = BuiltInPrompt(
   'Group default',
   defaultGroupSystemPrompt,

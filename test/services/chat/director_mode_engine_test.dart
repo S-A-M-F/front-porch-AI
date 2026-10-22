@@ -893,9 +893,114 @@ void main() {
       final seeded = systemOf(llm.replyPrompts.last);
       expect(seeded, contains('[Director Mode]'));
       final base = seeded.split('[Director Mode]').first;
-      expect(base, startsWith('You are roleplaying in a multi-character'));
+      expect(base, startsWith('- Write in collaborative roleplay style'));
       expect(base, isNot(contains('have said')));
+      expect(base, isNot(contains('{{user}}')));
       await h.storage.generationSettings.setGroupSystemPrompt('');
+    });
+  });
+
+  group('group turn layout', () {
+    String userOf(String full) => full.split('\n<START>').last;
+
+    test('the turn card starts its own line above the state notes, and '
+        'the Author\'s Note stays below them', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      h.chat.setAuthorNote('Keep it cozy.');
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Evening, Ayla.');
+      await h.settleTurn();
+      final user = userOf(llm.replyPrompts.last);
+      expect(user, contains('\n[Author\'s Note: Keep it cozy.]'));
+      expect(user, contains('\n[GROUP TURN. You are Ayla.'));
+      expect(user, isNot(matches(RegExp(r'[^\n]\[(Author|GROUP)'))));
+      expect(
+        user.indexOf('[GROUP TURN'),
+        lessThan(user.indexOf('[Story state')),
+      );
+      expect(
+        user.indexOf('[Author\'s Note'),
+        greaterThan(user.indexOf('[Story state')),
+      );
+    });
+
+    test('a directed Continue bans the cast, not the absent user', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('The porch light flickers out.');
+      await h.settleTurn();
+      await h.chat.continueGeneration();
+      await h.settleTurn();
+      final user = userOf(llm.replyPrompts.last);
+      final rule = RegExp(r'\[CRITICAL RULE[^\]]*\]').firstMatch(user)!;
+      expect(rule[0], contains('incomplete reply from Ayla only'));
+      expect(rule[0], contains('for Bram.'));
+    });
+
+    test('the director goal keeps one full stop', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      await h.chat.setDirectorGoal('Get Bram to admit he sold the truck.');
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('A truck pulls up.');
+      await h.settleTurn();
+      final user = userOf(llm.replyPrompts.last);
+      expect(user, contains('sold the truck. Let the scene'));
+      expect(user, isNot(contains('truck..')));
+      expect(
+        user.indexOf('sold the truck.'),
+        greaterThan(user.indexOf('[GROUP TURN')),
+      );
+    });
+
+    test('impersonate while directing writes a stage direction', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      llm.mouth = 'Bram finally admits it.]';
+      var draft = '';
+      await h.chat.impersonateUser(onToken: (t) => draft = t);
+      final full = llm.replyPrompts.last;
+      expect(full, contains('IMPERSONATE THE DIRECTOR'));
+      expect(full, isNot(contains('human in this scene')));
+      expect(full.trimRight(), endsWith('[Director:'));
+      expect(draft, 'Bram finally admits it.');
+    });
+
+    test('a director note that runs on is cut at its close', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      llm.mouth = 'Bram finally admits it.] Misty laughs at him.';
+      var draft = '';
+      await h.chat.impersonateUser(onToken: (t) => draft = t);
+      expect(draft, 'Bram finally admits it.');
+    });
+
+    test(
+      'group Impersonate opens the Author\'s Note on its own line',
+      () async {
+        await h.groupWithTwoReplies(aOff: const []);
+        h.chat.setAuthorNote('Keep it cozy.');
+        llm.mouth = 'Evening, all.';
+        await h.chat.impersonateUser(onToken: (_) {});
+        final full = llm.replyPrompts.last;
+        expect(full, contains('\n[Author\'s Note: Keep it cozy.]'));
+        expect(full, isNot(matches(RegExp(r"[^\n]\[Author's Note"))));
+      },
+    );
+
+    test('a typed start with a bracket survives the cut', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      llm.mouth = ' storms out.] Misty laughs.';
+      var draft = '';
+      await h.chat.impersonateUser(prefix: '[Bram]', onToken: (t) => draft = t);
+      expect(draft, '[Bram] storms out.');
     });
   });
 }

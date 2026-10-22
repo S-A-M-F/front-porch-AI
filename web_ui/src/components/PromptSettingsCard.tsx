@@ -78,7 +78,7 @@ export function PromptSettingsCard({
       <PromptSlot
         testId="group-system-prompt"
         title="Group system prompt"
-        helper="Used in every group chat, unless that group has its own prompt in Group Settings. On the built-in, Director Mode uses its own built-in instead, and it adds its rules on top either way."
+        helper="Used in every group chat, unless that group has its own prompt in Group Settings. Front Porch adds its own turn rules, and Director Mode's, on top either way."
         label="Group system prompt"
         text={groupSystemPrompt ?? ''}
         name={groupSystemPromptName}
