@@ -72,6 +72,31 @@ Future<void> pumpUntilFound(
   }
 }
 
+/// Pump until [finder] matches NOTHING — the inverse of [pumpUntilFound].
+/// Gate on this before interacting BEHIND a dialog: a closing dialog keeps
+/// its buttons mounted through the exit animation, so a plain
+/// pumpUntilFound('…button…') passes on the DYING dialog instead of the
+/// next one, and the modal barrier silently absorbs taps aimed at the
+/// page underneath (both observed only on the macOS/Windows E2E smokes;
+/// Linux closed within earlier pumps).
+Future<void> pumpUntilGone(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(minutes: 2),
+}) async {
+  timeout *= kCiTimeoutScale;
+  final deadline = DateTime.now().add(timeout);
+  while (finder.evaluate().isNotEmpty) {
+    if (DateTime.now().isAfter(deadline)) {
+      fail(
+        'Timed out after $timeout waiting for $finder to disappear; '
+        '${finder.evaluate().length} still mounted.',
+      );
+    }
+    await _pumpGuarded(tester);
+  }
+}
+
 /// One 250ms pump that CANNOT hang: if the binding stops producing frames
 /// (the classic cause: a real mouse hover over the live test window wedges
 /// the gesture binding's hit-test bookkeeping), fail with the explanation
