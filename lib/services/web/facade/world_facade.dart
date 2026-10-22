@@ -194,32 +194,10 @@ class WorldFacade {
     }
     // Review #596 cache honesty, whole-field edition: this World IS the
     // repository cache's instance. Every field written below must come
-    // back out if the save fails or the law refuses — restoring only
-    // the parent left ghost descriptions/lore on a refused move.
-    final prior = (
-      description: world.description,
-      climateEnabled: world.climateEnabled,
-      biomeId: world.biomeId,
-      biomeJson: world.biomeJson,
-      injectDescription: world.injectDescription,
-      parentWorldId: world.parentWorldId,
-      coverImage: world.coverImage,
-      atmosphere: world.atmosphere,
-      gravity: world.gravity,
-      lorebook: world.lorebook,
-    );
-    void rollBack() {
-      world.description = prior.description;
-      world.climateEnabled = prior.climateEnabled;
-      world.biomeId = prior.biomeId;
-      world.biomeJson = prior.biomeJson;
-      world.injectDescription = prior.injectDescription;
-      world.parentWorldId = prior.parentWorldId;
-      world.coverImage = prior.coverImage;
-      world.atmosphere = prior.atmosphere;
-      world.gravity = prior.gravity;
-      world.lorebook = prior.lorebook;
-    }
+    // back out if the save fails or the law refuses — the snapshot/
+    // restore pair lives in [WorldSaveSnapshot] so this file stays a
+    // coordinator, not a second god file in the making.
+    final snapshot = WorldSaveSnapshot.take(world);
 
     world.description = f['description']?.toString() ?? '';
     if (f.containsKey('climateEnabled')) {
@@ -229,7 +207,7 @@ class WorldFacade {
     if (world.climateEnabled && !_applyClimate(world, f)) {
       // Review #596: a bad climate throws its own sentence (was: false
       // -> the route's 'name is required' lie).
-      rollBack();
+      snapshot.restore();
       throw StateError(
         'The custom climate is not valid — fix overlapping or missing '
         'season data.',
@@ -271,7 +249,7 @@ class WorldFacade {
       // ANY failure — the law's StateError or a DB fault — restores the
       // complete prior state (desktop #592 discipline; the parent-only
       // rollback this replaces left every other field as a ghost).
-      rollBack();
+      snapshot.restore();
       rethrow;
     }
     return true;
