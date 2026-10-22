@@ -213,3 +213,129 @@
 @media (max-width: 560px) {
   .place-traits-row { grid-template-columns: 1fr; }
 }
+
+/* ── Locations web twin (slice 4) ───────────────────────────────────────
+   Grouped library: filter pills, section headers with indented children,
+   tree tags, selection, the move dialog, and the prose preview. Colors
+   come from the same CSS variables as the rest of the sheet. */
+
+.wsg-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 4px;
+}
+.wsg-pill {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  border-radius: var(--radius-badge, 999px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2, inherit);
+  cursor: pointer;
+}
+.wsg-pill--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.wsg-pill--danger { color: var(--danger, var(--accent)); }
+.wsg-pill--move {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.wsg-section-label {
+  margin: 8px 0 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-2, inherit);
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}
+.wsg-section { margin-bottom: 6px; }
+.wsg-child-grid {
+  margin-left: 26px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+@media (max-width: 560px) {
+  .wsg-child-grid { margin-left: 10px; }
+}
+.wsg-world-select { margin-right: 6px; accent-color: var(--accent); }
+.wsg-inside-tag,
+.wsg-weather-tag {
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: var(--radius-badge, 999px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2, inherit);
+  white-space: nowrap;
+}
+.wsg-weather-tag--inherit { color: var(--text-2, inherit); }
+.wsg-weather-tag--own {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.wsg-place-chip { margin-left: 6px; }
+.wsg-prose-preview {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 10px);
+  background: var(--surface-2);
+}
+.wsg-prose-preview-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.wsg-prose-preview-body {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-2, inherit);
+}
+.wsg-reparent-note {
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+  margin-top: 6px;
+}
+.wsg-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--scrim-ink) 55%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 16px;
+}
+.wsg-dialog { max-width: 380px; width: 100%; }
+.wsg-move-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+.wsg-move-target {
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-badge, 8px);
+  background: var(--surface-1, var(--surface-2));
+  color: inherit;
+  cursor: pointer;
+}
+.wsg-move-target:hover { border-color: var(--accent); }

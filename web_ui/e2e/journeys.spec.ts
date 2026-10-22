@@ -1498,6 +1498,96 @@ test('the theme follows the desktop, and a device can keep its own mode', { tag:
   }
 });
 
+test(
+  'locations on the phone: the library groups, the law speaks over the wire, delete re-roots in words',
+  { tag: SERIAL },
+  async ({ page, acceptConfirms }) => {
+    // ── Seed through the relay (same POST the editor saves with) ─────────
+    const list = async () =>
+      ((await (await page.request.get('/api/worlds')).json()) as {
+        worlds: { id?: string; name: string; parentWorldId?: string | null }[];
+      }).worlds;
+    for (const w of await list()) {
+      if (w.name.startsWith('Journey '))
+        await page.request.post(`/api/worlds/${encodeURIComponent(w.name)}/delete`);
+    }
+    const root = await page.request.post('/api/worlds', {
+      data: {
+        name: 'Journey Bletchport',
+        description: 'Harbour lamps and salt wind.',
+        climateEnabled: true,
+        create: true,
+      },
+    });
+    expect(root.ok(), 'create the root place').toBe(true);
+    const rootId = (await list()).find((w) => w.name === 'Journey Bletchport')!.id!;
+    const child = await page.request.post('/api/worlds', {
+      data: {
+        name: 'Journey Lighthouse',
+        description: 'Warm lamplight over cold rope and tar.',
+        climateEnabled: false,
+        parentWorldId: rootId,
+        create: true,
+      },
+    });
+    expect(child.ok(), 'create the place inside it').toBe(true);
+
+    // The law is server-side: an unknown parent answers 400 with its own
+    // sentence — the phone cannot persist what the desktop would refuse.
+    const bad = await page.request.post('/api/worlds', {
+      data: { name: 'Journey Orphan', parentWorldId: 'no-such-world', create: true },
+    });
+    expect(bad.status()).toBe(400);
+    expect(((await bad.json()) as { error: string }).error).toContain(
+      'no longer exists',
+    );
+
+    // ── The library groups ──────────────────────────────────────────────
+    await openRoute(page, '/worlds');
+    const section = page
+      .locator('.wsg-section')
+      .filter({ hasText: 'Journey Bletchport' });
+    await expect(section).toHaveCount(1);
+    await expect(section.locator('.wsg-child-grid')).toContainText(
+      'Journey Lighthouse',
+    );
+    await expect(section.locator('.wsg-place-chip')).toContainText('1 place');
+    await expect(
+      section.locator('.wsg-child-grid .wsg-weather-tag--inherit'),
+    ).toHaveText('Inherits weather');
+    await expect(
+      page.getByRole('button', { name: 'Model-made', exact: true }),
+    ).toBeVisible();
+
+    // ── The editor pre-selects the parent, offer from the law endpoint ──
+    await section.locator('.wsg-child-grid [title="Edit"]').first().click();
+    await expect(page.locator('select[aria-label="Part of"]')).toHaveValue(rootId);
+    await expect(page.getByText('Inherit from Journey Bletchport')).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // ── Delete re-roots and SAYS so ─────────────────────────────────────
+    let confirmText = '';
+    page.on('dialog', (d) => (confirmText = d.message()));
+    acceptConfirms(true);
+    await section.locator('.wsg-section-head [title="Delete"]').click();
+    await expect
+      .poll(() => list().then((ws) => ws.some((w) => w.name === 'Journey Bletchport')), {
+        message: 'the root is deleted',
+      })
+      .toBe(false);
+    expect(confirmText, 'the confirm names the re-root before it happens').toContain(
+      'become their own worlds',
+    );
+    const reRooted = (await list()).find((w) => w.name === 'Journey Lighthouse');
+    expect(reRooted, 'the child survives').toBeDefined();
+    expect(reRooted!.parentWorldId ?? null).toBeNull();
+
+    // ── Cleanup shared state for the next worker ────────────────────────
+    for (const name of ['Journey Lighthouse']) {
+      await page.request.post(`/api/worlds/${encodeURIComponent(name)}/delete`);
+    }
+  },
+);
 test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page, allowHttp, acceptConfirms }) => {
   // The taken-name refusal is a 409 on purpose.
   allowHttp((url, status) => status === 409 && /\/api\/saved-prompts(\?|$)/.test(url));

@@ -11,6 +11,16 @@ import { ClimateSeasonEditor } from '../components/ClimateSeasonEditor';
 import { ImportCharacterLoreButton } from '../components/ImportCharacterLoreButton';
 import { LoreEntriesEditor, type LoreEntry } from '../components/LoreEntriesEditor';
 import { WorldCard, type WorldSummary } from '../components/WorldCard';
+import {
+  buildWorldInjection,
+  injectionUsedChars,
+  planWorldLibrary,
+  placesUnder,
+  indexById,
+  resolveParent,
+  type LibraryFilter,
+  type TreeWorld,
+} from './worlds/locations';
 import type { BiomeDraft } from '../lib/seasonCalendar';
 import { confirmDiscard, useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import '../styles/ws-g.css';
@@ -35,6 +45,13 @@ interface WorldDetail {
   atmosphere?: string;
   gravity?: string;
   biome?: BiomeDraft | null;
+  parentWorldId?: string | null;
+}
+
+interface ParentCandidate {
+  id: string;
+  name: string;
+  parentWorldId?: string | null;
 }
 
 type EditState = {
@@ -50,6 +67,7 @@ type EditState = {
   atmosphere: string;
   gravity: string;
   biome: BiomeDraft | null;
+  parentWorldId: string | null;
 } | null;
 
 function download(url: string) {
@@ -77,6 +95,16 @@ export function WorldsPage() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [climateErrors, setClimateErrors] = useState<string[]>([]);
+  // Locations slice 4: library view, multi-select, and the Part-of
+  // picker's candidate law (served by the relay — the client renders
+  // the list, it never re-decides legality).
+  const [filter, setFilter] = useState<LibraryFilter>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [candidates, setCandidates] = useState<ParentCandidate[]>([]);
+  // Ancestor details fetched for the prose preview's chain; keyed by id.
+  const [chainDetails, setChainDetails] = useState<Record<string, WorldDetail>>({});
+  const [moveTargets, setMoveTargets] = useState<ParentCandidate[] | null>(null);
+  const [moveError, setMoveError] = useState('');
 
   const load = () =>
     api
@@ -91,6 +119,73 @@ export function WorldsPage() {
       .then((r) => setClimates(r.climates ?? []))
       .catch(() => setClimates([]));
   }, []);
+
+  // Part-of candidates follow the edited world: a create asks the create
+  // law; an edit asks excluding itself and its descendants.
+  const editingId = edit?.id ?? '';
+  const editorOpen = edit !== null;
+  useEffect(() => {
+    if (!editorOpen) {
+      setCandidates([]);
+      return;
+    }
+    let live = true;
+    api
+      .get<{ candidates: ParentCandidate[] }>(
+        `/api/worlds/parent-candidates?for=${encodeURIComponent(editingId)}`,
+      )
+      .then((r) => live && setCandidates(r.candidates ?? []))
+      .catch(() => live && setCandidates([]));
+    return () => {
+      live = false;
+    };
+  }, [editingId, editorOpen]);
+
+  const byNameOrId = (id: string): TreeWorld | null => {
+    const d = chainDetails[id];
+    if (d)
+      return {
+        ...d,
+        entryCount: d.entries?.length ?? 0,
+      } as TreeWorld;
+    return worlds.find((x) => (x.id ?? x.name) === id) ?? null;
+  };
+
+  // The prose preview walks the parent chain through detail fetches
+  // (≤2 hops by the depth cap) so ancestor trait lines show as the
+  // engine would read them; failures degrade the preview, not the
+  // editor — the same honesty-first stance as the desktop section.
+  useEffect(() => {
+    const missing: string[] = [];
+    const seen = new Set<string>();
+    let cursor = edit?.parentWorldId ?? null;
+    while (cursor != null && !seen.has(cursor)) {
+      seen.add(cursor);
+      if (!chainDetails[cursor]) missing.push(cursor);
+      const sum = worlds.find((x) => (x.id ?? x.name) === cursor);
+      cursor = sum?.parentWorldId ?? null;
+    }
+    if (missing.length === 0) return;
+    let live = true;
+    void Promise.all(
+      missing.map((id) =>
+        api
+          .get<WorldDetail>(`/api/worlds/${encodeURIComponent(id)}/detail`)
+          .catch(() => null),
+      ),
+    ).then((ds) => {
+      if (!live) return;
+      setChainDetails((m) => {
+        const next = { ...m };
+        for (const d of ds) if (d?.id) next[d.id] = d;
+        return next;
+      });
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit?.parentWorldId, worlds.length]);
 
   const apply = (p: Promise<{ worlds: WorldSummary[] }>, closeEditor = true) => {
     setBusy(true);
@@ -122,6 +217,7 @@ export function WorldsPage() {
         atmosphere: d.atmosphere ?? 'breathable',
         gravity: d.gravity ?? 'earth',
         biome: d.biome ?? null,
+        parentWorldId: d.parentWorldId ?? null,
       });
       setClimateErrors([]);
     } catch {
@@ -163,6 +259,10 @@ export function WorldsPage() {
         entries: edit.entries,
         atmosphere: edit.atmosphere,
         gravity: edit.gravity,
+        // Always sent: the relay keeps the row's parent only for absent
+        // keys, and this form knows the truth either way — a cleared
+        // Part of must detach, not silently keep yesterday's parent.
+        parentWorldId: edit.parentWorldId,
       }),
     );
   };
@@ -206,9 +306,146 @@ export function WorldsPage() {
     }
   };
 
+  const emptyDraft = (parentWorldId: string | null): NonNullable<EditState> => ({
+    id: null,
+    originalName: null,
+    name: '',
+    description: '',
+    biomeId: 'temperate',
+    injectDescription: true,
+    climateEnabled: parentWorldId == null,
+    coverImage: null,
+    entries: [],
+    atmosphere: 'breathable',
+    gravity: 'earth',
+    biome: null,
+    parentWorldId,
+  });
+
+  const toggleSelected = (id: string, on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  // Bulk "Move N into…": the relay serves each selection's candidate
+  // list (the ONE depth/cycle law); the client only intersects them.
+  const beginMove = async () => {
+    const ids = [...selected];
+    if (ids.length < 2) return;
+    setMoveError('');
+    setBusy(true);
+    try {
+      const lists = await Promise.all(
+        ids.map((id) =>
+          api
+            .get<{ candidates: ParentCandidate[] }>(
+              `/api/worlds/parent-candidates?for=${encodeURIComponent(id)}`,
+            )
+            .then((r) => r.candidates ?? []),
+        ),
+      );
+      const [head, ...rest] = lists;
+      const common = head.filter(
+        (c) =>
+          !ids.includes(c.id) &&
+          rest.every((l) => l.some((x) => x.id === c.id)),
+      );
+      setBusy(false);
+      if (common.length === 0) {
+        setMoveError('No place can take all of these (depth cap).');
+        return;
+      }
+      setMoveTargets(common);
+    } catch (e) {
+      setBusy(false);
+      setMoveError(e instanceof ApiError ? e.message : 'Could not load targets');
+    }
+  };
+
+  // Re-parent each selection through the same save form the editor
+  // posts (detail first, so no field is blanked). A 400 from the law
+  // stops the batch and reports how many already moved — parity with
+  // the desktop's "Moved N of M" honesty.
+  const moveInto = async (targetId: string) => {
+    setMoveTargets(null);
+    setBusy(true);
+    setMoveError('');
+    const ids = [...selected];
+    let done = 0;
+    for (const id of ids) {
+      const world = worlds.find((x) => (x.id ?? x.name) === id);
+      if (!world) continue;
+      try {
+        const d = await api.get<WorldDetail>(
+          `/api/worlds/${encodeURIComponent(world.name)}/detail`,
+        );
+        await api.post('/api/worlds', {
+          id,
+          name: d.name,
+          originalName: d.name,
+          description: d.description,
+          biomeId: d.biomeId,
+          biome: d.biome,
+          injectDescription: d.injectDescription,
+          climateEnabled: d.climateEnabled,
+          coverImage: d.coverImage,
+          atmosphere: d.atmosphere,
+          gravity: d.gravity,
+          // Explicit: a move carries the lore it keeps, so the facade
+          // never has to guess from an absent key (review #592's tight-
+          // coupling lesson, applied before the refactor happens).
+          entries: d.entries,
+          parentWorldId: targetId,
+        });
+        done++;
+      } catch (e) {
+        setBusy(false);
+        setMoveError(
+          `${done === 0 ? '' : `Moved ${done} of ${ids.length} — `}` +
+            (e instanceof ApiError ? e.message : 'Move failed'),
+        );
+        void load();
+        setSelected(new Set());
+        return;
+      }
+    }
+    setBusy(false);
+    setSelected(new Set());
+    void load();
+  };
+
+  const deleteModelMade = async () => {
+    const doomed = worlds.filter((x) => x.isModelMade === true);
+    if (doomed.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${doomed.length} model-made place${doomed.length === 1 ? '' : 's'}? ` +
+          'Places inside them become their own worlds; lore stays.',
+      )
+    )
+      return;
+    setBusy(true);
+    setMoveError('');
+    let failed = 0;
+    for (const x of doomed) {
+      try {
+        await api.post(`/api/worlds/${encodeURIComponent(x.name)}/delete`);
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(false);
+    setSelected(new Set());
+    if (failed > 0) setMoveError(`${failed} of ${doomed.length} could not be deleted.`);
+    void load();
+  };
+
+  const totalEntries = worlds.reduce((s, w) => s + w.entryCount, 0);
   const selectedClimate =
     climates.find((c) => c.id === edit?.biomeId) ?? climates[0];
-  const totalEntries = worlds.reduce((s, w) => s + w.entryCount, 0);
   const climateCount = worlds.filter(
     (w) => w.biomeId && w.biomeId !== 'temperate',
   ).length;
@@ -242,23 +479,7 @@ export function WorldsPage() {
           </button>
           <button
             className="primary"
-            onClick={() =>
-              confirmDiscard(dirty) &&
-              openEdit({
-                id: null,
-                originalName: null,
-                name: '',
-                description: '',
-                biomeId: 'temperate',
-                injectDescription: true,
-                climateEnabled: true,
-                coverImage: null,
-                entries: [],
-                atmosphere: 'breathable',
-                gravity: 'earth',
-                biome: null,
-              })
-            }
+            onClick={() => confirmDiscard(dirty) && openEdit(emptyDraft(null))}
           >
             ＋ New place
           </button>
@@ -306,29 +527,156 @@ export function WorldsPage() {
       )}
 
       {worlds.length > 0 && (
-        <div className="wsg-world-grid">
-          {worlds.map((w) => (
+        <>
+          <div className="wsg-pills-row" role="toolbar" aria-label="Filter places">
+            {([
+              ['all', 'All places'],
+              ['rootsOnly', 'Roots only'],
+              ['modelMade', 'Model-made'],
+            ] as [LibraryFilter, string][]).map(([f, label]) => (
+              <button
+                key={f}
+                className={`wsg-pill${filter === f ? ' wsg-pill--active' : ''}`}
+                onClick={() => {
+                  setFilter(f);
+                  setSelected(new Set());
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            {filter === 'modelMade' &&
+              worlds.filter((x) => x.isModelMade === true).length > 0 && (
+                <button className="wsg-pill wsg-pill--danger" onClick={() => void deleteModelMade()}>
+                  Delete {worlds.filter((x) => x.isModelMade === true).length}{' '}
+                  model-made place
+                  {worlds.filter((x) => x.isModelMade === true).length === 1
+                    ? ''
+                    : 's'}
+                </button>
+              )}
+            {selected.size >= 2 && (
+              <button className="wsg-pill wsg-pill--move" onClick={() => void beginMove()}>
+                Move {selected.size} into…
+              </button>
+            )}
+          </div>
+          <div className="wsg-section-label">Places ({worlds.length})</div>
+        </>
+      )}
+
+      {(() => {
+        const plan = planWorldLibrary(worlds as TreeWorld[], filter);
+        const byId = indexById(worlds as TreeWorld[]);
+        const chainAllowsClimate = (w: TreeWorld): boolean => {
+          let cursor = resolveParent(w, byId);
+          const seen = new Set<string>([w.id ?? w.name]);
+          while (cursor != null) {
+            if (cursor.climateEnabled !== false) return true;
+            const key = cursor.id ?? cursor.name;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            cursor = resolveParent(cursor, byId);
+          }
+          return false;
+        };
+        const card = (w: TreeWorld, insideRootId?: string) => {
+          const key = w.id ?? w.name;
+          const parent = resolveParent(w, byId);
+          const parentName =
+            parent == null
+              ? null
+              : insideRootId != null && parent.id === insideRootId
+                ? null // section children sit under their parent already
+                : parent.name;
+          const depth = (() => {
+            let d = 0;
+            let cursor: TreeWorld | null = w;
+            const seen = new Set<string>();
+            while (cursor != null) {
+              const ck = cursor.id ?? cursor.name;
+              if (seen.has(ck)) break;
+              seen.add(ck);
+              cursor = resolveParent(cursor, byId);
+              d++;
+            }
+            return d; // 1 = root
+          })();
+          return (
             <WorldCard
-              key={w.id ?? w.name}
-              world={w}
+              key={key}
+              world={w as WorldSummary}
               busy={busy}
+              parentName={parentName}
+              hasWeatherToInherit={chainAllowsClimate(w)}
+              placeCount={placesUnder(key, worlds as TreeWorld[], byId)}
+              onNewInside={depth < 3 ? () => confirmDiscard(dirty) && openEdit(emptyDraft(key)) : undefined}
+              selected={selected.has(key)}
+              onSelected={(on) => toggleSelected(key, on)}
               onEdit={() => beginEdit(w.name)}
               onExport={() =>
                 download(`/api/worlds/${encodeURIComponent(w.name)}/export`)
               }
               onDelete={() => {
-                if (window.confirm(`Delete place "${w.name}"?`)) {
-                  // Deleting another place keeps the open edit.
-                  apply(
-                    api.post(`/api/worlds/${encodeURIComponent(w.name)}/delete`),
-                    !edit || edit.originalName === w.name,
-                  );
+                const inside = placesUnder(key, worlds as TreeWorld[], byId);
+                const childNote =
+                  inside > 0
+                    ? ` Its ${inside} place${inside === 1 ? '' : 's'} become their own worlds — lore stays.`
+                    : '';
+                if (window.confirm(`Delete place "${w.name}"?${childNote}`)) {
+                  setBusy(true);
+                  api
+                    .post<{ worlds: WorldSummary[]; reRooted?: number }>(
+                      `/api/worlds/${encodeURIComponent(w.name)}/delete`,
+                    )
+                    .then((r) => {
+                      setWorlds(r.worlds);
+                      if (!edit || edit.originalName === w.name) setEdit(null);
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        next.delete(key);
+                        return next;
+                      });
+                      if ((r.reRooted ?? 0) > 0) {
+                        setToast(
+                          `${r.reRooted} place${r.reRooted === 1 ? '' : 's'} became their own worlds.`,
+                        );
+                      }
+                    })
+                    .catch((e) =>
+                      setError(e instanceof ApiError ? e.message : 'Delete failed'),
+                    )
+                    .finally(() => setBusy(false));
                 }
               }}
             />
-          ))}
-        </div>
-      )}
+          );
+        };
+        if (plan.sections.length === 0 && plan.flat.length === worlds.length) {
+          // No locations anywhere: the pre-locations flat grid, card for
+          // card, so existing behavior (and its positional tests) hold.
+          return (
+            <div className="wsg-world-grid">
+              {plan.flat.map((w) => card(w))}
+            </div>
+          );
+        }
+        return (
+          <>
+            {plan.sections.map((s) => (
+              <section key={s.root.id ?? s.root.name} className="wsg-section">
+                <div className="wsg-section-head">{card(s.root)}</div>
+                <div className="wsg-world-grid wsg-child-grid">
+                  {s.children.map((c) => card(c, s.root.id ?? s.root.name))}
+                </div>
+              </section>
+            ))}
+            <div className="wsg-world-grid">
+              {plan.flat.map((w) => card(w))}
+            </div>
+          </>
+        );
+      })()}
 
       {edit && (
         <div className="card world-edit">
@@ -342,6 +690,134 @@ export function WorldsPage() {
               onChange={(e) => setEdit({ ...edit, name: e.target.value })}
             />
           </label>
+          {/* Part of (mockup p2): candidate law from the relay, so the
+              depth cap and cycle exclusion are exactly the save's. */}
+          <label>
+            Part of
+            <select
+              aria-label="Part of"
+              value={edit.parentWorldId ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEdit({
+                  ...edit,
+                  parentWorldId: v === '' ? null : v,
+                  // Inheritance is the default for a place (design §7):
+                  // naming a parent turns the climate off (Inherit).
+                  climateEnabled: v === '' ? edit.climateEnabled : false,
+                });
+              }}
+            >
+              <option value="">Not inside anything (its own world)</option>
+              {edit.parentWorldId != null &&
+                !candidates.some((c) => c.id === edit.parentWorldId) && (
+                  <option value={edit.parentWorldId}>
+                    {byNameOrId(edit.parentWorldId)?.name ??
+                      'Missing place (no longer in the library)'}{' '}
+                    — invalid here, pick a new parent
+                  </option>
+                )}
+              {candidates.map((c) => {
+                const holder = c.parentWorldId
+                  ? byNameOrId(c.parentWorldId)
+                  : null;
+                return (
+                  <option key={c.id} value={c.id}>
+                    {holder ? `${c.name} · inside ${holder.name}` : c.name}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <p className="muted small">
+            A place inside another world shares its parent&apos;s lore and
+            description. Rooms can go two levels deep (town › building › room).
+          </p>
+          {edit.parentWorldId != null && (
+            <div className="wsg-climate-radios" role="radiogroup" aria-label="Weather source">
+              <label className="tool-toggle">
+                <span>
+                  Inherit from{' '}
+                  {byNameOrId(edit.parentWorldId)?.name ?? 'the parent'}
+                </span>
+                <input
+                  type="radio"
+                  name="weather-source"
+                  checked={!edit.climateEnabled}
+                  onChange={() => setEdit({ ...edit, climateEnabled: false })}
+                />
+              </label>
+              <label className="tool-toggle">
+                <span>Own climate</span>
+                <input
+                  type="radio"
+                  name="weather-source"
+                  checked={edit.climateEnabled}
+                  onChange={() => setEdit({ ...edit, climateEnabled: true })}
+                />
+              </label>
+              <p className="muted small">
+                Inherit keeps the place reading its parent&apos;s weather — one
+                flag, one control. Pick Own climate for a continent on Earth or
+                a greenhouse in orbit.
+              </p>
+              {edit.id != null &&
+                edit.parentWorldId !==
+                  (editBase ? (JSON.parse(editBase).parentWorldId ?? null) : null) && (
+                  <p className="muted small wsg-reparent-note">
+                    Chats set here will get{' '}
+                    {byNameOrId(edit.parentWorldId)?.name ?? 'the parent'}
+                    &apos;s lore and weather from the parent from now on.
+                  </p>
+                )}
+            </div>
+          )}
+          {(() => {
+            const previewChain = [
+              {
+                id: edit.id ?? undefined,
+                name: edit.name,
+                description: edit.description,
+                climateEnabled: edit.climateEnabled,
+                atmosphere: edit.atmosphere,
+                gravity: edit.gravity,
+                injectDescription: edit.injectDescription,
+                parentWorldId: edit.parentWorldId,
+              } as TreeWorld,
+              ...(function walk(pid: string | null | undefined): TreeWorld[] {
+                const seen = new Set<string>();
+                const out: TreeWorld[] = [];
+                let cursor = pid;
+                while (cursor != null && !seen.has(cursor)) {
+                  seen.add(cursor);
+                  const parent = byNameOrId(cursor);
+                  if (parent == null) break;
+                  out.push(parent as TreeWorld);
+                  cursor = parent.parentWorldId ?? null;
+                }
+                return out;
+              })(edit.parentWorldId),
+            ];
+            const text = buildWorldInjection(previewChain);
+            if (!text) return null;
+            const body = text.startsWith('Setting — where you are:\n')
+              ? text.slice('Setting — where you are:\n'.length)
+              : text;
+            return (
+              <div className="wsg-prose-preview">
+                <div className="wsg-prose-preview-head">
+                  <strong>Setting prose preview</strong>
+                  <span className="muted small">
+                    {injectionUsedChars(text)} / 600 characters
+                  </span>
+                </div>
+                <p className="wsg-prose-preview-body">{body}</p>
+                <p className="muted small">
+                  What the model reads when this place is the Setting.
+                </p>
+              </div>
+            );
+          })()}
           <div className="world-cover-row">
             <div className="world-cover-thumb" aria-hidden>
               {edit.coverImage ? (
@@ -379,20 +855,27 @@ export function WorldsPage() {
             />
           </label>
 
-          <label className="tool-toggle">
-            <span>Climate, weather, and place traits</span>
-            <input
-              type="checkbox"
-              checked={edit.climateEnabled}
-              onChange={(e) =>
-                setEdit({ ...edit, climateEnabled: e.target.checked })
-              }
-            />
-          </label>
-          <p className="muted small">
-            Off = lorebook and description only — no forecast, no atmosphere or
-            gravity.
-          </p>
+          {/* One flag, one control: with a parent, the inherit/own radios
+              above own the climate decision (parity with desktop's
+              hidden plain switch). */}
+          {edit.parentWorldId == null && (
+            <>
+              <label className="tool-toggle">
+                <span>Climate, weather, and place traits</span>
+                <input
+                  type="checkbox"
+                  checked={edit.climateEnabled}
+                  onChange={(e) =>
+                    setEdit({ ...edit, climateEnabled: e.target.checked })
+                  }
+                />
+              </label>
+              <p className="muted small">
+                Off = lorebook and description only — no forecast, no atmosphere
+                or gravity.
+              </p>
+            </>
+          )}
 
           {edit.climateEnabled && (
             <>
@@ -532,7 +1015,45 @@ export function WorldsPage() {
         </div>
       )}
 
+      {moveTargets != null && (
+        <div
+          className="wsg-dialog-backdrop"
+          role="dialog"
+          aria-label="Move places into"
+          onClick={() => setMoveTargets(null)}
+        >
+          <div className="card wsg-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              Move {selected.size} place{selected.size === 1 ? '' : 's'} into…
+            </h3>
+            <p className="muted small">
+              Only places valid for every selection are offered — the same
+              depth and cycle law the save enforces.
+            </p>
+            <div className="wsg-move-list">
+              {moveTargets.map((t) => (
+                <button
+                  key={t.id}
+                  className="wsg-move-target"
+                  onClick={() => void moveInto(t.id)}
+                >
+                  {t.parentWorldId && byNameOrId(t.parentWorldId)
+                    ? `${t.name} · inside ${byNameOrId(t.parentWorldId)?.name}`
+                    : t.name}
+                </button>
+              ))}
+            </div>
+            <div className="row-actions">
+              <button className="ghost" onClick={() => setMoveTargets(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <p className="muted small">{toast}</p>}
+      {moveError && <p className="error">{moveError}</p>}
       {error && <p className="error">{error}</p>}
     </div>
   );

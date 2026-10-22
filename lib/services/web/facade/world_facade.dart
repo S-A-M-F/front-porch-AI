@@ -20,6 +20,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
+import 'package:front_porch_ai/services/web/facade/world_facade.locations.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.import.dart';
 
@@ -66,6 +67,17 @@ class WorldFacade {
     characterIds: characterIds,
   );
 
+  // Locations-tree relay surface (slice 4): candidate law + reach set.
+  late final WorldLocationsRelay _locations = WorldLocationsRelay(_worlds);
+
+  /// See [WorldLocationsRelay.parentCandidates].
+  List<Map<String, dynamic>> parentCandidates(String forNameOrId) =>
+      _locations.parentCandidates(forNameOrId);
+
+  /// See [WorldLocationsRelay.reachable].
+  List<Map<String, dynamic>> reachable(String? primaryId) =>
+      _locations.reachable(primaryId);
+
   List<Map<String, dynamic>> list() {
     // Build a single name→dbId index so the per-world map below is O(1) and we
     // avoid a nested scan per world.
@@ -99,6 +111,11 @@ class WorldFacade {
               (w.linkedCharacterName != null
                   ? idByName[w.linkedCharacterName!]
                   : null),
+          // Locations slice 4 (web twin): the PWA groups the library,
+          // paints "inside X" tags and runs the model-made filter from
+          // these. Additive — old builds ignore them (mixed-version law).
+          'parentWorldId': w.parentWorldId,
+          'isModelMade': w.isModelMade,
         },
     ];
   }
@@ -135,6 +152,9 @@ class WorldFacade {
       'entries': lorebookEntriesToJson(w.lorebook),
       if (w.climateEnabled) 'atmosphere': w.atmosphere.name,
       if (w.climateEnabled) 'gravity': w.gravity.name,
+      // Slice 4 web twin: the editor preselects "Part of" and shows the
+      // inherit-or-own radios from this. Additive.
+      'parentWorldId': w.parentWorldId,
     };
   }
 
@@ -164,19 +184,47 @@ class WorldFacade {
       try {
         await _worlds.renameWorld(existing, name);
       } on StateError {
-        return false;
+        // Review #596: report the collision, don't let the route guess.
+        // renameWorld checks the DB before mutating, so nothing to roll
+        // back here — but the cache name must not have moved.
+        throw StateError('A world named "$name" already exists.');
       }
     } else {
       world.name = name;
     }
+    // Review #596 cache honesty, whole-field edition: this World IS the
+    // repository cache's instance. Every field written below must come
+    // back out if the save fails or the law refuses — the snapshot/
+    // restore pair lives in [WorldSaveSnapshot] so this file stays a
+    // coordinator, not a second god file in the making.
+    final snapshot = WorldSaveSnapshot.take(world);
+
     world.description = f['description']?.toString() ?? '';
     if (f.containsKey('climateEnabled')) {
       world.climateEnabled = f['climateEnabled'] == true;
     }
     // Lorebook-only worlds do not need a valid biome to save.
-    if (world.climateEnabled && !_applyClimate(world, f)) return false;
+    if (world.climateEnabled && !_applyClimate(world, f)) {
+      // Review #596: a bad climate throws its own sentence (was: false
+      // -> the route's 'name is required' lie).
+      snapshot.restore();
+      throw StateError(
+        'The custom climate is not valid — fix overlapping or missing '
+        'season data.',
+      );
+    }
     if (f.containsKey('injectDescription')) {
       world.injectDescription = f['injectDescription'] == true;
+    }
+    // Slice 4 web twin: "Part of" changes the parent. Absent key keeps
+    // the row's parent (same upsert discipline as the climate fields);
+    // an explicit null or '' detaches it to its own world. The unknown/
+    // cycle law still runs inside saveWorld and its StateError escapes
+    // to the route, which answers 400 with the law's own sentence —
+    // the PWA must never be able to persist what the desktop refuses.
+    if (f.containsKey('parentWorldId')) {
+      final parent = f['parentWorldId']?.toString().trim();
+      world.parentWorldId = (parent == null || parent.isEmpty) ? null : parent;
     }
     if (f.containsKey('coverImage')) {
       final raw = f['coverImage']?.toString();
@@ -195,14 +243,29 @@ class WorldFacade {
           buildLorebookFromJson(f['entries'], bookFields: f) ??
           Lorebook(entries: []);
     }
-    await _worlds.saveWorld(world);
+    try {
+      await _worlds.saveWorld(world);
+    } catch (e) {
+      // ANY failure — the law's StateError or a DB fault — restores the
+      // complete prior state (desktop #592 discipline; the parent-only
+      // rollback this replaces left every other field as a ghost).
+      snapshot.restore();
+      rethrow;
+    }
     return true;
   }
 
-  Future<bool> delete(String nameOrId) async {
+  /// [onReRooted] reports how many children the delete turned into their
+  /// own worlds (slice 4 web twin of desktop's re-root snack). Optional —
+  /// callers that only care about success keep the bool contract.
+  Future<bool> delete(
+    String nameOrId, {
+    void Function(int reRooted)? onReRooted,
+  }) async {
     final w = _worlds.resolveWorld(nameOrId);
     if (w == null) return false;
-    await _worlds.deleteWorld(w);
+    final moved = await _worlds.deleteWorld(w);
+    onReRooted?.call(moved);
     return true;
   }
 
@@ -224,6 +287,8 @@ class WorldFacade {
         'places': <Map<String, dynamic>>[],
         'lorePlaces': <Map<String, dynamic>>[],
         'climateAuthors': false,
+        'climateAuthorName': null,
+        'reachable': <Map<String, dynamic>>[],
         'weatherOff': 'no_setting',
         'climateId': 'temperate',
         'climateDisplayName': Biome.temperate.displayName,
@@ -237,6 +302,7 @@ class WorldFacade {
     final ids = chat.chatWorldIds;
 
     Map<String, dynamic> placeJson(World w, {required String role}) {
+      final parentId = w.parentWorldId;
       return {
         'id': w.id,
         'name': w.name,
@@ -248,6 +314,12 @@ class WorldFacade {
               : (w.biomeId ?? 'temperate'),
         'hasCustomClimate': w.climateEnabled && w.biomeJson != null,
         'description': w.description,
+        // Slice 4 web twin: "inside X" breadcrumbs on Setting and Lore
+        // tiles read these (desktop cards' parity, mockup p3).
+        'parentWorldId': parentId,
+        'parentName': parentId == null || parentId.isEmpty
+            ? null
+            : _worlds.resolveWorld(parentId)?.name,
       };
     }
 
@@ -288,6 +360,12 @@ class WorldFacade {
       'places': places,
       'lorePlaces': lorePlaces,
       'climateAuthors': climateAuthors,
+      // Slice 4 web twin: the PWA names the weather author on an
+      // inheriting Setting ("Weather from <name>", desktop parity) and
+      // fills the "Move the scene" dropdown from the ONE Dart reach law
+      // — no second TypeScript implementation of the rule.
+      'climateAuthorName': climateAuthor?.name,
+      'reachable': reachable(primaryId),
       'weatherOff': ?weatherOff,
       'climateId': climate.id,
       'climateDisplayName': climate.displayName,

@@ -4,8 +4,9 @@
 // Attach Living Worlds places to the current chat session (web parity with
 // desktop ChatPlacesPanel). One setting owns weather/room; lore is books only.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { libraryDisplayOrder, type TreeWorld } from '../pages/worlds/locations';
 
 type Place = {
   id: string;
@@ -14,6 +15,10 @@ type Place = {
   biomeId?: string;
   description?: string;
   climateEnabled?: boolean;
+  // Slice 4 web twin: the relay names the tree so the panel can show
+  // "inside X" breadcrumbs without a second lookup.
+  parentWorldId?: string | null;
+  parentName?: string | null;
 };
 
 type LibraryWorld = {
@@ -21,6 +26,8 @@ type LibraryWorld = {
   name: string;
   biomeId?: string;
   description?: string;
+  parentWorldId?: string | null;
+  isModelMade?: boolean;
 };
 
 type Climate = {
@@ -36,6 +43,8 @@ type PlacesResponse = {
   primary?: Place | null;
   lorePlaces?: Place[];
   climateAuthors?: boolean;
+  climateAuthorName?: string | null;
+  reachable?: { id: string; name: string }[];
   weatherOff?: string;
   climateId?: string;
   climateDisplayName?: string;
@@ -67,6 +76,15 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
   const [error, setError] = useState('');
   const [attachChoice, setAttachChoice] = useState<AttachChoice | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [authorName, setAuthorName] = useState<string | null>(null);
+  const [reachable, setReachable] = useState<{ id: string; name: string }[]>([]);
+  // The server's most-recent slots. Review #592 (M7 class): every write
+  // composes from THIS, never the render-captured lorePlaces/primary —
+  // two quick mutations must not silently drop a place out of both slots.
+  const slotsRef = useRef<{ primaryId: string | null; loreIds: string[] }>({
+    primaryId: null,
+    loreIds: [],
+  });
 
   const applyPlaces = (r: PlacesResponse) => {
     const p = r.primary ?? (r.primaryId
@@ -77,7 +95,13 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
       (r.places ?? []).filter((x) => x.id !== (p?.id ?? r.primaryId));
     setPrimary(p ?? null);
     setLorePlaces(lore);
+    slotsRef.current = {
+      primaryId: p?.id ?? null,
+      loreIds: lore.map((x) => x.id),
+    };
     setClimateAuthors(!!r.climateAuthors);
+    setAuthorName(r.climateAuthorName ?? null);
+    setReachable(r.reachable ?? []);
     setWeatherOff(r.weatherOff ?? (r.climateAuthors ? null : 'no_setting'));
     if (r.climateId) setClimateId(r.climateId);
     if (r.climateFeel !== undefined) setClimateFeel(r.climateFeel ?? '');
@@ -110,6 +134,12 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
   const setSlots = async (primaryId: string | null, loreIds: string[]) => {
     setBusy(true);
     setError('');
+    // Journal the intent NOW: a second write composed during this POST
+    // must see the first one's result, not the pre-write state.
+    slotsRef.current = {
+      primaryId,
+      loreIds: loreIds.filter((id) => id && id !== primaryId),
+    };
     try {
       const r = await api.post<PlacesResponse>('/api/chat/places', {
         primaryId,
@@ -118,10 +148,19 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
       applyPlaces(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not update places');
+      // The write failed — the journal would lie; re-sync from the
+      // server rather than leave the next write composed on a ghost.
+      load();
     } finally {
       setBusy(false);
     }
   };
+
+  // Compose writes from the server's latest, never from render captures:
+  // the M7 contract from review #592, held on the web side too.
+  const liveLoreExcept = (...drop: (string | null | undefined)[]) =>
+    slotsRef.current.loreIds.filter((id) => id && !drop.includes(id));
+  const livePrimary = () => slotsRef.current.primaryId;
 
   const setClimate = async (biomeId: string) => {
     if (biomeId === climateId) return;
@@ -141,7 +180,23 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
     ...(primary ? [primary.id] : []),
     ...lorePlaces.map((p) => p.id),
   ]);
-  const available = library.filter((w) => !attached.has(w.id));
+  // Attach picker lists in tree order with the depth label, matching the
+  // desktop attach picker (child places read "X · inside Y").
+  const parentNameOf = (w: LibraryWorld): string | null => {
+    const pid = w.parentWorldId;
+    if (!pid) return null;
+    return library.find((x) => x.id === pid)?.name ?? null;
+  };
+  const available = libraryDisplayOrder(
+    library.map((w) => ({
+      id: w.id,
+      name: w.name,
+      description: w.description,
+      parentWorldId: w.parentWorldId,
+    })) as TreeWorld[],
+  )
+    .filter((w) => !attached.has(w.id as string))
+    .map((w) => w as unknown as LibraryWorld);
 
   const baseOptions =
     serverOptions && serverOptions.length > 0
@@ -160,9 +215,9 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
     if (!id) return;
     const place = library.find((w) => w.id === id);
     const name = place?.name ?? 'this place';
-    if (!primary) {
+    if (livePrimary() == null) {
       // Empty Setting defaults to Use as setting.
-      await setSlots(id, lorePlaces.map((p) => p.id));
+      await setSlots(id, liveLoreExcept(id));
       return;
     }
     // Filled Setting: offer Add as lore (default) AND Use as setting / replace.
@@ -173,7 +228,7 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
     if (!attachChoice || !primary) return;
     const { id } = attachChoice;
     setAttachChoice(null);
-    await setSlots(primary.id, [...lorePlaces.map((p) => p.id), id]);
+    await setSlots(livePrimary(), [...liveLoreExcept(id), id]);
   };
 
   const finishAttachAsSetting = async () => {
@@ -187,7 +242,10 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
       return;
     }
     setAttachChoice(null);
-    await setSlots(id, [primary.id, ...lorePlaces.map((p) => p.id)]);
+    // Demote whatever the Setting is NOW to Lore top (M7 contract).
+    const old = livePrimary();
+    const lore = liveLoreExcept(id, old);
+    await setSlots(id, old && old !== id ? [old, ...lore] : lore);
   };
 
   const reorderLore = async (from: number, to: number) => {
@@ -197,7 +255,7 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
     next.splice(to, 0, moved);
     // Optimistic local order so the list doesn't jump while the POST runs.
     setLorePlaces(next.map((id) => lorePlaces.find((p) => p.id === id)!));
-    await setSlots(primary?.id ?? null, next);
+    await setSlots(livePrimary(), next);
   };
 
   return (
@@ -236,7 +294,10 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
                 ) {
                   return;
                 }
-                void setSlots(null, [primary.id, ...lorePlaces.map((p) => p.id)]);
+                void (() => {
+                  const old = livePrimary() ?? primary.id;
+                  void setSlots(null, [old, ...liveLoreExcept(old)]);
+                })();
               }}
             >
               ↓
@@ -246,11 +307,50 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
               className="icon-btn"
               title="Remove setting"
               disabled={busy}
-              onClick={() => void setSlots(null, lorePlaces.map((p) => p.id))}
+              onClick={() => void setSlots(null, liveLoreExcept())}
             >
               ✕
             </button>
           </div>
+        )}
+        {primary?.parentName && (
+          <p className="muted small chat-place-inside">inside {primary.parentName}</p>
+        )}
+        {primary &&
+          primary.climateEnabled === false &&
+          authorName &&
+          weatherOff !== 'setting_lore_only' && (
+            <p className="muted small chat-place-weather-from">
+              Weather from {authorName}
+            </p>
+          )}
+        {/* Move the scene (mockup p3): one-step reachable places from the
+            ONE Dart law; choosing demotes the old Setting to Lore top. */}
+        {reachable.length > 1 && (
+          <label className="cg-field" style={{ marginTop: 6 }}>
+            <span className="muted small">Move the scene</span>
+            <select
+              disabled={busy}
+              value=""
+              onChange={(e) => {
+                const target = e.target.value;
+                if (!target) return;
+                const old = livePrimary();
+                if (target === old) return;
+                void setSlots(target, old ? [old, ...liveLoreExcept(target, old)] : liveLoreExcept(target));
+              }}
+            >
+              <option value="">Choose a nearby place…</option>
+              {reachable.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.id === primary?.id ? `${r.name} (here)` : r.name}
+                </option>
+              ))}
+            </select>
+            <span className="muted small">
+              The old place stays as a lore place for the rest of the scene.
+            </span>
+          </label>
         )}
       </div>
 
@@ -332,6 +432,11 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
                 </span>
                 <span className="chat-place-pill lore">LORE</span>
                 <span className="chat-place-lore-name">{p.name}</span>
+                {p.parentName && (
+                  <span className="muted small chat-place-inside">
+                    inside {p.parentName}
+                  </span>
+                )}
                 <button
                   type="button"
                   className="icon-btn"
@@ -364,15 +469,10 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
                       ) {
                         return;
                       }
-                      void setSlots(p.id, [
-                        primary.id,
-                        ...lorePlaces.filter((x) => x.id !== p.id).map((x) => x.id),
-                      ]);
+                      const old = livePrimary();
+                      void setSlots(p.id, old && old !== p.id ? [old, ...liveLoreExcept(p.id, old)] : liveLoreExcept(p.id));
                     } else {
-                      void setSlots(
-                        p.id,
-                        lorePlaces.filter((x) => x.id !== p.id).map((x) => x.id),
-                      );
+                      void setSlots(p.id, liveLoreExcept(p.id));
                     }
                   }}
                 >
@@ -384,10 +484,7 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
                   title="Detach"
                   disabled={busy}
                   onClick={() =>
-                    void setSlots(
-                      primary?.id ?? null,
-                      lorePlaces.filter((x) => x.id !== p.id).map((x) => x.id),
-                    )
+                    void setSlots(livePrimary(), liveLoreExcept(p.id))
                   }
                 >
                   ✕
@@ -412,13 +509,15 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
             }}
           >
             <option value="">Choose…</option>
-            {available.map((w) => (
-              <option key={w.id} value={w.id}>
-                {primary
-                  ? `${w.name}`
-                  : `${w.name} (as setting)`}
-              </option>
-            ))}
+            {available.map((w) => {
+              const pn = parentNameOf(w);
+              const label = pn ? `${w.name} · inside ${pn}` : w.name;
+              return (
+                <option key={w.id} value={w.id}>
+                  {primary ? label : `${label} (as setting)`}
+                </option>
+              );
+            })}
           </select>
         </label>
       )}
