@@ -893,9 +893,73 @@ void main() {
       final seeded = systemOf(llm.replyPrompts.last);
       expect(seeded, contains('[Director Mode]'));
       final base = seeded.split('[Director Mode]').first;
-      expect(base, startsWith('You are roleplaying in a multi-character'));
+      expect(base, startsWith('- Write in collaborative roleplay style'));
       expect(base, isNot(contains('have said')));
+      expect(base, isNot(contains('{{user}}')));
       await h.storage.generationSettings.setGroupSystemPrompt('');
+    });
+  });
+
+  group('group turn layout', () {
+    String userOf(String full) => full.split('\n<START>').last;
+
+    test('the turn card starts its own line and sits right above the '
+        'state notes', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      h.chat.setAuthorNote('Keep it cozy.');
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('Evening, Ayla.');
+      await h.settleTurn();
+      final user = userOf(llm.replyPrompts.last);
+      expect(user, contains('\n[Author\'s Note: Keep it cozy.]'));
+      expect(user, contains('\n[GROUP TURN. You are Ayla.'));
+      expect(user, isNot(matches(RegExp(r'[^\n]\[(Author|GROUP)'))));
+      expect(
+        user.indexOf('[GROUP TURN'),
+        lessThan(user.indexOf('[Story state')),
+      );
+    });
+
+    test('a directed Continue bans the cast, not the absent user', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      h.chat.setNextCharacter(member('Ayla'));
+      await h.chat.sendMessage('The porch light flickers out.');
+      await h.settleTurn();
+      await h.chat.continueGeneration();
+      await h.settleTurn();
+      final user = userOf(llm.replyPrompts.last);
+      final rule = RegExp(r'\[CRITICAL RULE[^\]]*\]').firstMatch(user)!;
+      expect(rule[0], contains('incomplete reply from Ayla only'));
+      expect(rule[0], contains('for Bram.'));
+    });
+
+    test('the director goal keeps one full stop', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      await h.chat.setDirectorGoal('Get Bram to admit he sold the truck.');
+      h.chat.setNextCharacter(member('Bram'));
+      await h.chat.sendMessage('A truck pulls up.');
+      await h.settleTurn();
+      final user = userOf(llm.replyPrompts.last);
+      expect(user, contains('sold the truck. Let the scene'));
+      expect(user, isNot(contains('truck..')));
+    });
+
+    test('impersonate while directing writes a stage direction', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      llm.mouth = 'Bram finally admits it.]';
+      var draft = '';
+      await h.chat.impersonateUser(onToken: (t) => draft = t);
+      final full = llm.replyPrompts.last;
+      expect(full, contains('IMPERSONATE THE DIRECTOR'));
+      expect(full, isNot(contains('human in this scene')));
+      expect(full.trimRight(), endsWith('[Director:'));
+      expect(draft, 'Bram finally admits it.');
     });
   });
 }

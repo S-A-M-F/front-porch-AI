@@ -52,8 +52,7 @@ void main() {
       userName: 'Alex',
     );
     expect(note, contains('You are Senjumaru'));
-    expect(note, contains('You are not Zinna'));
-    expect(note, contains('You are not Alex'));
+    expect(note, isNot(contains('You are not')));
     expect(note, contains('Reply ONLY as Senjumaru'));
     expect(note, contains('dialogue, actions, and thoughts'));
     expect(note, contains('Do NOT write, speak, or narrate anything for'));
@@ -67,8 +66,7 @@ void main() {
       userName: 'Al[ex]',
     );
     expect(note, contains('You are Senj(umaru)'));
-    expect(note, contains('You are not Zin(na)'));
-    expect(note, contains('You are not Al(ex)'));
+    expect(note, contains('for Zin(na) or Al(ex)'));
     expect(note, isNot(contains('Senj[umaru]')));
     expect(note, isNot(contains('Zin[na]')));
     expect(note, isNot(contains('Al[ex]')));
@@ -82,7 +80,7 @@ void main() {
       observerMode: true,
     );
     expect(note, contains('You are Senjumaru'));
-    expect(note, contains('You are not Zinna'));
+    expect(note, contains('anything for Zinna.'));
     expect(note, isNot(contains('Alex')));
   });
 

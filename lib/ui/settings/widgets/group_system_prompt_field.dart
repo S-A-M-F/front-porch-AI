@@ -62,9 +62,10 @@ class _GroupSystemPromptFieldState extends State<GroupSystemPromptField> {
         const SectionHeader('Group system prompt'),
         const SizedBox(height: 8),
         Text(
-          'Used in every group chat, unless that group has its own prompt '
-          'in Group Settings. Leave blank for the built-in group prompt. '
-          'Director Mode adds its own rules on top either way.',
+          'Sets the writing style for every group chat, unless that group '
+          'has its own prompt in Group Settings. Leave blank for the '
+          'built-in style. Front Porch adds its own turn rules, and Director '
+          'Mode\'s, on top either way.',
           style: TextStyle(color: AppColors.textSecondary(context)),
         ),
         const SizedBox(height: 8),

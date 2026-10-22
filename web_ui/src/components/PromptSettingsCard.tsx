@@ -53,7 +53,7 @@ export function PromptSettingsCard({
         )}
       <div className="prompt-additions" data-testid="group-system-prompt">
         <h4>Group system prompt</h4>
-        <p className="muted small">Used in every group chat, unless that group has its own prompt in Group Settings. Leave blank for the built-in group prompt. Director Mode adds its own rules on top either way.</p>
+        <p className="muted small">Sets the writing style for every group chat, unless that group has its own prompt in Group Settings. Leave blank for the built-in style. Front Porch adds its own turn rules, and Director Mode&apos;s, on top either way.</p>
         <label>Group system prompt
           <textarea rows={5} value={groupSystemPrompt ?? ''}
             placeholder="Blank uses the built-in group prompt"

@@ -125,6 +125,13 @@ extension ChatServiceGenerationPlanRegister on ChatService {
     // that move was chasing is bought in words by the state_frame section
     // below. Full numbers: the kStateZoneSectionIds doc and §6.1/§8d of
     // docs/design/prompt-state-injection.md.
+    // Group only (empty in 1:1): this turn's notes and the speaker's card,
+    // ahead of the state zone so the frame sits right above its notes.
+    plan.add(
+      id: 'speaker_card',
+      label: 'Speaker Card',
+      text: t.speakerCardBlock,
+    );
     plan.add(id: 'state_frame', label: 'State Frame', text: '');
     plan.add(id: 'summary', label: 'Summary', text: t.summaryBlock);
     plan.add(id: 'journal', label: 'Journal', text: t.journalBlock);
@@ -138,11 +145,6 @@ extension ChatServiceGenerationPlanRegister on ChatService {
       id: 'author_note',
       label: 'Author\'s Note',
       text: t.authorNoteBlock,
-    );
-    plan.add(
-      id: 'speaker_card',
-      label: 'Speaker Card',
-      text: t.speakerCardBlock,
     );
     plan.add(id: 'lore.an_bottom', label: 'Lorebook', text: t.loreAnBottom);
     plan.add(
