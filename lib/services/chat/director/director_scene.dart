@@ -70,7 +70,8 @@ class DirectorScene {
     final b = StringBuffer();
     if (_goal.isNotEmpty) {
       b.writeln(
-        '[Scene goal from the director (hidden — do NOT quote it): $_goal. '
+        '[Scene goal from the director (hidden — do NOT quote it): '
+        '${_withStop(_goal)} '
         'Let the scene move toward it naturally over the coming turns; do '
         'not jump straight to it.]',
       );
@@ -113,3 +114,8 @@ class DirectorScene {
     }
   }
 }
+
+/// [text] ending in sentence punctuation, so a goal the user typed with a
+/// full stop does not render as "truck..".
+String _withStop(String text) =>
+    RegExp(r'[.!?…]$').hasMatch(text) ? text : '$text.';

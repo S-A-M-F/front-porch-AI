@@ -33,3 +33,5 @@ export 'tools_folder_note.dart';
 export 'skills_folder_note.dart';
 
 export 'global_prompt_additions.dart';
+export 'group_system_prompt_field.dart';
+export 'prompt_slot_card.dart';

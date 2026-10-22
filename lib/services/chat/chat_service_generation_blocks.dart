@@ -29,16 +29,13 @@ extension ChatServiceGenerationBlocks on ChatService {
     // Days lived off-screen land before any prompt reads a body.
     if (t.mode == GenerationMode.normal) _needsPass.landLivedBeatBeforeReply();
     // ── System prompt selection (Path B clean hierarchy) ──
-    // 1. Group-level system prompt (if set) — base for the whole group.
+    // 1. Group base: the group's own prompt, else Settings' Group system
+    //    prompt, else the built-in one for the mode (`_groupBasePrompt`).
     // 2. Per-character group override (if set for the speaker in this group) — appended.
     // 3. Character's normal card system prompt (fallback if no group override for them).
     // 4. (Later) Per-character Author's Note is injected separately with its own strength.
-    if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-      t.systemPrompt = _activeGroup!.systemPrompt;
-    } else if (_activeGroup != null) {
-      t.systemPrompt = _observerMode
-          ? observerModeSystemPrompt
-          : defaultGroupSystemPrompt;
+    if (_activeGroup != null) {
+      t.systemPrompt = _groupBasePrompt;
     } else {
       // Every backend now speaks the OpenAI chat protocol (local KoboldCpp
       // via its /v1/chat/completions door), so the server applies the model's
@@ -49,6 +46,12 @@ extension ChatServiceGenerationBlocks on ChatService {
     if (_amendmentsAllowed) {
       t.systemPrompt = _storageService.generationSettings
           .withSystemPromptAddition(t.systemPrompt);
+    }
+    if (_activeGroup != null) {
+      t.systemPrompt = withGroupSceneRules(
+        t.systemPrompt,
+        directing: _directing,
+      );
     }
 
     // Per-character group overlay used to append here and churn the system
@@ -116,6 +119,10 @@ extension ChatServiceGenerationBlocks on ChatService {
         memberNames: [for (final ch in _groupCharacters) ch.name],
         userName: t.userName,
         observerMode: _observerMode,
+        visitorNames: {
+          for (final ch in _groupCharacters)
+            if (ch.isLite) ch.name,
+        },
       );
     } else {
       t.personaBlock =
@@ -127,7 +134,11 @@ extension ChatServiceGenerationBlocks on ChatService {
     );
 
     // User persona — inject user's self-description + learned facts
-    t.userPersonaBlock = await _buildUserPersonaBlock(t.userName);
+    // A directed scene has no user in it: "the human you are talking with"
+    // would overrule kDirectorSceneRules, so the block is left out.
+    t.userPersonaBlock = _directing
+        ? ''
+        : await _buildUserPersonaBlock(t.userName);
 
     // Scenario — the group scene is SHARED across the whole cast (one identical
     // scenario), so a group never uses a per-character EVOLVED scenario (that
@@ -149,7 +160,8 @@ extension ChatServiceGenerationBlocks on ChatService {
     // mutated, so a /join'd full character keeps its real scenario for when it
     // is the host). This also self-heals legacy guests minted with the host's
     // scenario baked in (the "model thinks the guest IS the host" bug).
-    if (_isLiteTurn(t)) t.scenario = '';
+    // A soft GROUP member keeps it: there the scenario is the shared scene.
+    if (_activeGroup == null && _isLiteTurn(t)) t.scenario = '';
 
     t.suffix = "";
 
@@ -162,10 +174,10 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.suffix = "";
     }
 
-    // Build example dialogues block. Group examples ride the speaker card.
+    // Build example dialogues block. Group examples ride the speaker card
+    // (built below).
     if (_activeGroup != null) {
       t.mesExampleBlock = '';
-      t.speakerCardBlock = _buildGroupSpeakerCard(t);
     } else if (t.speakingCharacter.mesExample.isNotEmpty) {
       t.mesExampleBlock = '${t.speakingCharacter.mesExample}\n';
     }
@@ -299,6 +311,16 @@ extension ChatServiceGenerationBlocks on ChatService {
           '${AwayPulse.returnSpeakHint(t.speakingCharacter.name)}\n';
     }
 
+    // Group: the speaker's card rides after the transcript. This turn's
+    // notes keep the author-note seat near the end, as in 1:1: further up,
+    // some models ignore the Author's Note and the Director goal.
+    if (_activeGroup != null) {
+      t.speakerCardBlock = _buildGroupSpeakerCard(
+        t.speakingCharacter,
+        userName: t.userName,
+      );
+    }
+
     // Build summary block if available. Role frame (spec §6): the recap is
     // the plot spine; the journal carries feelings; RAG carries exact lines.
     // The text lives in buildRecapBlock (prompt_injection/recap_injection.dart)
@@ -392,54 +414,50 @@ extension ChatServiceGenerationBlocks on ChatService {
     }
   }
 
-  /// Slap + speaker-only persona/examples + the per-char overlay that used
-  /// to append onto the system head (and bust the prefix every turn).
-  String _buildGroupSpeakerCard(_GenTurn t) {
-    final speaker = t.speakingCharacter;
+  /// The identity line and the speaker's persona, examples and
+  /// instructions (group override or card prompt, then the card's
+  /// post-history).
+  /// Shared by generation and the Context Viewer estimate.
+  String _buildGroupSpeakerCard(
+    CharacterCard speaker, {
+    required String userName,
+  }) {
     final others = [
       for (final ch in _groupCharacters)
         if (ch.name != speaker.name) ch.name,
     ];
-    final slap = speaker.isLite
-        ? buildLiteGroupTurnNote(
-            speakerName: speaker.name,
-            otherMemberNames: others,
-            userName: t.userName,
-            observerMode: _observerMode,
-          )
-        : buildSpeakerTurnNote(
-            speakerName: speaker.name,
-            otherMemberNames: others,
-            userName: t.userName,
-            observerMode: _observerMode,
-          );
-    final persona = buildSpeakerPersonaLine(
-      name: speaker.name,
-      personality: _growthDesk.resolvedCardPersonality(speaker, t.userName),
+    final turnNote =
+        (speaker.isLite ? buildLiteGroupTurnNote : buildSpeakerTurnNote)(
+          speakerName: speaker.name,
+          otherMemberNames: others,
+          userName: userName,
+          observerMode: _observerMode,
+        );
+    final macros = MacroContext(
+      userName: userName,
+      characterName: speaker.name,
     );
-    var example = '';
-    if (speaker.mesExample.isNotEmpty) {
-      example = _macroResolver.resolve(
-        speaker.mesExample,
-        MacroContext(userName: t.userName, characterName: speaker.name),
-        section: 'mesExample',
-      );
-      if (!example.endsWith('\n')) example = '$example\n';
-    }
+    String resolve(String text, String section) => text.isEmpty
+        ? text
+        : _macroResolver.resolve(text, macros, section: section);
     final groupCharPrompt = getSystemPromptForGroupCharacter(speaker).trim();
-    var overlay = '';
-    if (groupCharPrompt.isNotEmpty) {
-      overlay =
-          '[Group-specific instructions for ${speaker.name}]\n$groupCharPrompt';
-    } else if (speaker.systemPrompt.isNotEmpty) {
-      overlay =
-          '[Specific instructions for ${speaker.name}]\n${speaker.systemPrompt.trim()}';
-    }
-    final buf = StringBuffer()
-      ..write(slap)
-      ..writeln(persona)
-      ..write(example);
-    if (overlay.isNotEmpty) buf.writeln(overlay);
-    return buf.toString();
+    return buildGroupTurnCard(
+      turnNote: turnNote,
+      personaLine: buildSpeakerPersonaLine(
+        name: speaker.name,
+        personality: _growthDesk.resolvedCardPersonality(speaker, userName),
+      ),
+      examplesBlock: buildSpeakerExamplesBlock(
+        name: speaker.name,
+        examples: resolve(speaker.mesExample, 'mesExample'),
+      ),
+      instructionsBlock: buildSpeakerInstructionsBlock(
+        name: speaker.name,
+        instructions: groupCharPrompt.isNotEmpty
+            ? groupCharPrompt
+            : speaker.systemPrompt,
+        postHistory: resolve(speaker.postHistoryInstructions, 'postHistory'),
+      ),
+    );
   }
 }

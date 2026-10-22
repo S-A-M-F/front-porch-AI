@@ -1588,3 +1588,80 @@ test(
     }
   },
 );
+test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page, allowHttp, acceptConfirms }) => {
+  // The taken-name refusal is a 409 on purpose.
+  allowHttp((url, status) => status === 409 && /\/api\/saved-prompts(\?|$)/.test(url));
+  type Saved = { name: string; content: string };
+  type S = {
+    systemPrompt?: string; groupSystemPrompt?: string;
+    systemPromptName?: string | null; groupSystemPromptName?: string | null;
+    savedPrompts?: Saved[];
+  };
+  const read = async () => (await (await page.request.get('/api/settings')).json()) as S;
+  const original = await read();
+  const name = 'E2E Porch Novel';
+  try {
+    await openRoute(page, '/settings');
+    const one = page.locator('[data-section="general"] [data-testid="fallback-system-prompt"]');
+    const group = page.locator('[data-section="general"] [data-testid="group-system-prompt"]');
+    await one.getByRole('textbox', { name: 'Fallback system prompt', exact: true }).fill('E2E novel style.');
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText('Not saved');
+    await one.getByRole('button', { name: 'Save as new…', exact: true }).click();
+    await one.getByRole('textbox', { name: 'New prompt name', exact: true }).fill(name);
+    await one.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(name);
+
+    // The group slot loads the same prompt; the built-ins are not in the list.
+    const pick = group.locator('select');
+    await expect(pick.locator('option', { hasText: 'Group default' })).toHaveCount(0);
+    await pick.selectOption({ label: name });
+    const groupBox = group.getByRole('textbox', { name: 'Group system prompt', exact: true });
+    await expect(groupBox).toHaveValue('E2E novel style.');
+    await groupBox.fill('E2E novel style, for a crowd.');
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(`${name} (edited)`);
+    await group.getByRole('button', { name: `Save to “${name}”`, exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(`${name} (edited)`);
+
+    // Save as new never overwrites.
+    await group.getByRole('button', { name: 'Save as new…', exact: true }).click();
+    await group.getByRole('textbox', { name: 'New prompt name', exact: true }).fill(name);
+    await group.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(group.getByRole('alert')).toContainText('already have a prompt called');
+
+    // Reset to built-in, then Undo, keeps the pick.
+    await group.getByRole('button', { name: 'Reset to built-in', exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText('Built-in: Group default');
+    await group.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPromptName).toBe(name);
+    const after = await read();
+    expect(after.systemPromptName).toBe(name);
+    expect(after.groupSystemPrompt).toBe('E2E novel style, for a crowd.');
+    expect(after.savedPrompts?.find((p) => p.name === name)?.content).toBe('E2E novel style, for a crowd.');
+
+    await page.reload();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+
+    // Deleting from one slot lets go of both slots' picks, on screen and saved.
+    await one.locator('select').selectOption({ label: name });
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(name);
+    acceptConfirms(true);
+    await group.getByRole('button', { name: `Delete “${name}”`, exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText('Not saved');
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText('Not saved');
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPromptName ?? null).toBeNull();
+    expect((await read()).systemPromptName ?? null).toBeNull();
+  } finally {
+    await page.request.post('/api/saved-prompts/delete', { data: { name } });
+    expect((await page.request.post('/api/settings', { data: {
+      systemPrompt: original.systemPrompt ?? '',
+      groupSystemPrompt: original.groupSystemPrompt ?? '',
+      systemPromptName: original.systemPromptName ?? null,
+      groupSystemPromptName: original.groupSystemPromptName ?? null,
+    }})).ok()).toBe(true);
+  }
+});

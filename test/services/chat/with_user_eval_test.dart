@@ -59,4 +59,21 @@ void main() {
       isNull,
     );
   });
+
+  test('the prompt breaks into real lines, never a literal backslash-n', () {
+    for (final directing in [false, true]) {
+      final p = WithUserEval.buildPrompt(
+        charName: 'Misty',
+        userName: 'Ben',
+        reply: 'She waves from the porch.',
+        recentExchange: 'Ben: Hi.\nMisty: Hey.',
+        stance: 'on the porch',
+        toolsMode: false,
+        directing: directing,
+      );
+      expect(p, isNot(contains(r'\n')));
+      expect(p, contains('\n\nLast known position of Misty'));
+      expect(p, contains('The reply that just happened:\nShe waves'));
+    }
+  });
 }

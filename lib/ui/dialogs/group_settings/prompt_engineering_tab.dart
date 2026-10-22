@@ -228,7 +228,7 @@ class _GroupPromptEngineeringTabState extends State<GroupPromptEngineeringTab> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Overrides the default group system prompt when non-empty.',
+                  'Overrides the Group system prompt in Settings → General for this group only. Leave blank to use it.',
                   style: TextStyle(
                     color: AppColors.textTertiary(context),
                     fontSize: 11,

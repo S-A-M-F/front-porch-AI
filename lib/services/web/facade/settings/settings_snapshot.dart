@@ -135,6 +135,14 @@ class SettingsSnapshot {
       // General-tab extras the Generation card on web also hosts.
       'systemPrompt': g.systemPrompt,
       'additionalSystemPrompt': g.additionalSystemPrompt,
+      'groupSystemPrompt': g.groupSystemPrompt,
+      'builtInGroupSystemPrompt': defaultGroupSystemPrompt,
+      // The Settings prompt slots' picks and the shared pool (built-ins kept
+      // out, as on the desktop). Additive.
+      'systemPromptName': _storage.presetSettings.oneToOneSlotName,
+      'groupSystemPromptName': _storage.presetSettings.groupSlotName,
+      'savedPrompts': userSavedPrompts(_storage.presetSettings.savedPrompts),
+      'builtInSystemPrompts': [for (final b in kOneToOneBuiltIns) b.toJson()],
       'additionalPostHistoryInstructions': g.additionalPostHistoryInstructions,
       'bannedPhrases': _storage.realismSettings.bannedPhrases,
       // Ambitions + the promise ledger. Both work with the Realism Engine off,

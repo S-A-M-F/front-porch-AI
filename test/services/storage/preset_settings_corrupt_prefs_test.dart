@@ -86,4 +86,28 @@ void main() {
     // And the boot really did continue past the bad value.
     expect(service.rootPath, isNotNull);
   });
+
+  test('each prompt slot keeps its own saved-prompt pick across a reload, '
+      'and deleting a prompt lets go of it', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final settings = PresetSettings()..initializeBase(prefs, () {});
+    settings.load();
+    await settings.savePrompt('Novel', 'Write like a novel.');
+    await settings.savePrompt('Banter', 'Quick banter.');
+    await settings.setOneToOneSlotName('Novel');
+    await settings.setGroupSlotName('Banter');
+
+    final reloaded = PresetSettings()..initializeBase(prefs, () {});
+    reloaded.load();
+    expect(reloaded.oneToOneSlotName, 'Novel');
+    expect(reloaded.groupSlotName, 'Banter');
+
+    await reloaded.deleteSavedPrompt('Banter');
+    expect(reloaded.groupSlotName, isNull);
+    expect(reloaded.oneToOneSlotName, 'Novel');
+    final again = PresetSettings()..initializeBase(prefs, () {});
+    again.load();
+    expect(again.groupSlotName, isNull);
+  });
 }

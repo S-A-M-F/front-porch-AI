@@ -53,11 +53,7 @@ extension ChatServiceContextBudget on ChatService {
     var speakerCard = '';
     if (_activeGroup != null) {
       final g = _activeGroup!;
-      systemPrompt = g.systemPrompt.isNotEmpty
-          ? g.systemPrompt
-          : _observerMode
-          ? observerModeSystemPrompt
-          : defaultGroupSystemPrompt;
+      systemPrompt = _groupBasePrompt;
       scenario = g.scenario.isNotEmpty
           ? g.scenario
           : (_groupCharacters.isNotEmpty
@@ -67,19 +63,19 @@ extension ChatServiceContextBudget on ChatService {
         memberNames: [for (final c in _groupCharacters) c.name],
         userName: _userPersonaService.persona.name,
         observerMode: _observerMode,
+        visitorNames: {
+          for (final c in _groupCharacters)
+            if (c.isLite) c.name,
+        },
       );
       final speaker =
           _groupManager?.nextSpeaker ??
           (_groupCharacters.isNotEmpty ? _groupCharacters.first : null);
       if (speaker != null) {
-        final others = [
-          for (final c in _groupCharacters)
-            if (c.name != speaker.name) c.name,
-        ];
-        speakerCard =
-            '${(speaker.isLite ? buildLiteGroupTurnNote : buildSpeakerTurnNote)(speakerName: speaker.name, otherMemberNames: others, userName: _userPersonaService.persona.name, observerMode: _observerMode)}'
-            '${buildSpeakerPersonaLine(name: speaker.name, personality: _growthDesk.effectivePersonality(speaker))}\n'
-            '${speaker.mesExample}';
+        speakerCard = _buildGroupSpeakerCard(
+          speaker,
+          userName: _userPersonaService.persona.name,
+        );
       }
     } else if (_activeCharacter != null) {
       final c = _activeCharacter!;
@@ -101,6 +97,9 @@ extension ChatServiceContextBudget on ChatService {
         postHistory,
       );
     }
+    if (_activeGroup != null) {
+      systemPrompt = withGroupSceneRules(systemPrompt, directing: _directing);
+    }
 
     // The send's own line format (think blocks stripped) and trim rules,
     // so the estimate shows what a send would carry, not the whole chat.
@@ -109,7 +108,7 @@ extension ChatServiceContextBudget on ChatService {
     final snap = buildContextBudgetEstimate(
       ContextBudgetEstimateInput(
         userName: _userPersonaService.persona.name,
-        userPersonaText: _userPersonaService.persona.persona,
+        userPersonaText: _directing ? '' : _userPersonaService.persona.persona,
         systemPrompt: systemPrompt,
         identityBlock: identity.toString(),
         personaBlock: personaBlock,
@@ -160,6 +159,17 @@ extension ChatServicePromptSource on ChatService {
   bool get _amendmentsAllowed =>
       !(_activeGroup == null &&
           _sessionGenSettings.promptAmendmentsEnabled == false);
+
+  /// The group base chain: the group's own prompt, else Settings' Group
+  /// system prompt, else the built-in one for the mode. Shared by the
+  /// generation, impersonation, and budget-estimate paths.
+  String get _groupBasePrompt {
+    final own = _activeGroup?.systemPrompt ?? '';
+    if (own.isNotEmpty) return own;
+    final global = _storageService.generationSettings.groupSystemPrompt;
+    if (global.trim().isNotEmpty) return global;
+    return defaultGroupSystemPrompt;
+  }
 
   /// The 1:1 base chain with the per-chat source applied. Shared by the
   /// generation, impersonation, and budget-estimate paths so the live

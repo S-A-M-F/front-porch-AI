@@ -26,6 +26,9 @@ void showDeletePromptDialog(
   BuildContext context,
   StorageService storageService,
 ) {
+  // The untouched seed is the built-in by another name; it is not the
+  // user's to delete, the same as the slot pickers hide it.
+  final saved = userSavedPrompts(storageService.presetSettings.savedPrompts);
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -36,14 +39,14 @@ void showDeletePromptDialog(
       ),
       content: SizedBox(
         width: 300,
-        child: storageService.presetSettings.savedPrompts.isEmpty
+        child: saved.isEmpty
             ? Text(
                 'No saved prompts.',
                 style: TextStyle(color: AppColors.textSecondary(context)),
               )
             : Column(
                 mainAxisSize: MainAxisSize.min,
-                children: storageService.presetSettings.savedPrompts
+                children: saved
                     .map(
                       (p) => ListTile(
                         title: Text(

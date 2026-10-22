@@ -71,94 +71,98 @@ void main() {
     },
   );
 
-  test('real chat assembly adds instructions once for send, regen, Continue and impersonation', () async {
-    HttpOverrides.global = null;
-    final backend = await FakeBackendServer.start(
-      replyPieces: ['The garden is peaceful.'],
-    );
-    final db = AppDatabase.forTesting();
-    final storage = StorageService();
-    await storage.initialized;
-    final chat =
-        ChatService(
-            KoboldService(storage)..setBaseUrl(backend.baseUrl),
-            UserPersonaService(db),
-            storage,
-            WorldRepository(storage, db),
-          )
-          ..setDatabase(db)
-          ..testLlmServiceOverride = OpenRouterService(
-            apiUrl: '${backend.baseUrl}/v1',
-            modelName: 'smoke-model',
-          );
-    addTearDown(() async {
-      await disposeChatThenCloseDb(chat, db);
-      await backend.close();
-    });
-    await storage.generationSettings.setAdditionalSystemPrompt(
-      'GLOBAL_SYSTEM for {{char}}',
-    );
-    await storage.generationSettings.setAdditionalPostHistoryInstructions(
-      'GLOBAL_PHI for {{char}}',
-    );
-    final card = CharacterCard(
-      name: 'Wren',
-      firstMessage: 'Welcome.',
-      systemPrompt: 'CARD_SYSTEM',
-      postHistoryInstructions: 'CARD_PHI',
-      frontPorchExtensions: FrontPorchExtensions(
-        realismEnabled: false,
-        needsSimEnabled: false,
-        chaosModeEnabled: false,
-      ),
-    )..dbId = 'global-test';
-    await chat.setActiveCharacter(card);
-    void assertRequest({bool impersonating = false, bool cleared = false}) {
-      final body = jsonDecode(backend.lastChatBody) as Map;
-      final messages = body['messages'] as List;
-      final system = messages
-          .where((m) => m['role'] == 'system')
-          .map((m) => m['content'])
-          .join('\n');
-      final user = messages
-          .where((m) => m['role'] == 'user')
-          .map((m) => m['content'])
-          .join('\n');
-      expect(system, contains('CARD_SYSTEM'));
-      expect(system.contains('GLOBAL_SYSTEM for Wren'), !cleared);
-      expect(user.contains('GLOBAL_PHI for Wren'), !cleared);
-      if (!cleared) {
-        expect('GLOBAL_SYSTEM'.allMatches(system).length, 1);
-        expect('GLOBAL_PHI'.allMatches(user).length, 1);
-      }
-      if (!impersonating) {
-        expect(user, contains('CARD_PHI'));
+  test(
+    'real chat assembly adds instructions once for send, regen, Continue and impersonation',
+    () async {
+      HttpOverrides.global = null;
+      final backend = await FakeBackendServer.start(
+        replyPieces: ['The garden is peaceful.'],
+      );
+      final db = AppDatabase.forTesting();
+      final storage = StorageService();
+      await storage.initialized;
+      final chat =
+          ChatService(
+              KoboldService(storage)..setBaseUrl(backend.baseUrl),
+              UserPersonaService(db),
+              storage,
+              WorldRepository(storage, db),
+            )
+            ..setDatabase(db)
+            ..testLlmServiceOverride = OpenRouterService(
+              apiUrl: '${backend.baseUrl}/v1',
+              modelName: 'smoke-model',
+            );
+      addTearDown(() async {
+        await disposeChatThenCloseDb(chat, db);
+        await backend.close();
+      });
+      await storage.generationSettings.setAdditionalSystemPrompt(
+        'GLOBAL_SYSTEM for {{char}}',
+      );
+      await storage.generationSettings.setAdditionalPostHistoryInstructions(
+        'GLOBAL_PHI for {{char}}',
+      );
+      final card = CharacterCard(
+        name: 'Wren',
+        firstMessage: 'Welcome.',
+        systemPrompt: 'CARD_SYSTEM',
+        postHistoryInstructions: 'CARD_PHI',
+        frontPorchExtensions: FrontPorchExtensions(
+          realismEnabled: false,
+          needsSimEnabled: false,
+          chaosModeEnabled: false,
+        ),
+      )..dbId = 'global-test';
+      await chat.setActiveCharacter(card);
+      void assertRequest({bool impersonating = false, bool cleared = false}) {
+        final body = jsonDecode(backend.lastChatBody) as Map;
+        final messages = body['messages'] as List;
+        final system = messages
+            .where((m) => m['role'] == 'system')
+            .map((m) => m['content'])
+            .join('\n');
+        final user = messages
+            .where((m) => m['role'] == 'user')
+            .map((m) => m['content'])
+            .join('\n');
+        expect(system, contains('CARD_SYSTEM'));
+        expect(system.contains('GLOBAL_SYSTEM for Wren'), !cleared);
+        expect(user.contains('GLOBAL_PHI for Wren'), !cleared);
         if (!cleared) {
-          expect(
-            user.indexOf('GLOBAL_PHI'),
-            greaterThan(user.indexOf('CARD_PHI')),
-          );
+          expect('GLOBAL_SYSTEM'.allMatches(system).length, 1);
+          expect('GLOBAL_PHI'.allMatches(user).length, 1);
         }
-      } else {
-        expect(system, contains('IMPERSONATE'));
+        if (!impersonating) {
+          expect(user, contains('CARD_PHI'));
+          if (!cleared) {
+            expect(
+              user.indexOf('GLOBAL_PHI'),
+              greaterThan(user.indexOf('CARD_PHI')),
+            );
+          }
+        } else {
+          expect(system, contains('IMPERSONATE'));
+        }
+        expect(card.systemPrompt, 'CARD_SYSTEM');
+        expect(card.postHistoryInstructions, 'CARD_PHI');
       }
-      expect(card.systemPrompt, 'CARD_SYSTEM');
-      expect(card.postHistoryInstructions, 'CARD_PHI');
-    }
 
-    await chat.sendMessage('Look at the garden.');
-    assertRequest();
-    await chat.regenerateLastMessage();
-    assertRequest();
-    await chat.continueGeneration();
-    assertRequest();
-    await chat.impersonateUser(prefix: 'I look', onToken: (_) {});
-    assertRequest(impersonating: true);
-    await storage.generationSettings.setAdditionalSystemPrompt('');
-    await storage.generationSettings.setAdditionalPostHistoryInstructions('');
-    await chat.sendMessage('Another look.');
-    assertRequest(cleared: true);
-  }, timeout: const Timeout(Duration(minutes: 2)));
+      await chat.sendMessage('Look at the garden.');
+      assertRequest();
+      await chat.regenerateLastMessage();
+      assertRequest();
+      await chat.continueGeneration();
+      assertRequest();
+      await chat.impersonateUser(prefix: 'I look', onToken: (_) {});
+      assertRequest(impersonating: true);
+      await storage.generationSettings.setAdditionalSystemPrompt('');
+      await storage.generationSettings.setAdditionalPostHistoryInstructions('');
+      await chat.sendMessage('Another look.');
+      assertRequest(cleared: true);
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 
   test(
     'group speakers resolve global macros without changing group overrides',
@@ -308,6 +312,79 @@ void main() {
         'Post history addition',
       );
       expect(storage.generationSettings.systemPrompt, base);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'the Group system prompt in General saves, starts from the built-in '
+    'prompt, and reloads',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 2400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final storage = (await tester.runAsync(() async {
+        final value = StorageService();
+        await value.initialized;
+        return value;
+      }))!;
+      addTearDown(storage.dispose);
+      final systemPrompt = TextEditingController(
+        text: storage.generationSettings.systemPrompt,
+      );
+      addTearDown(systemPrompt.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<StorageService>.value(
+          value: storage,
+          child: MaterialApp(
+            home: Scaffold(
+              body: GeneralTab(systemPromptController: systemPrompt),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(storage.generationSettings.groupSystemPrompt, isEmpty);
+      final base = storage.generationSettings.systemPrompt;
+      expect(
+        find.widgetWithText(ActionChip, '👥 Group Chat'),
+        findsNothing,
+        reason:
+            'the group preset lives with the Group system prompt, not '
+            'in the one-to-one fallback',
+      );
+
+      final field = find.widgetWithText(TextField, 'Group system prompt');
+      await tester.ensureVisible(field);
+      await tester.enterText(field, 'Novel style for every group.');
+      await tester.pump();
+      await tester.pump();
+      expect(
+        storage.generationSettings.groupSystemPrompt,
+        'Novel style for every group.',
+      );
+      expect(storage.generationSettings.systemPrompt, base);
+
+      // "Start from the built-in prompt" became Reset to built-in, which
+      // stores the built-in as blank so Director Mode keeps its own base;
+      // the box shows the built-in text it stands for.
+      final builtIn = find.text('Reset to built-in').last;
+      await tester.ensureVisible(builtIn);
+      await tester.tap(builtIn);
+      await tester.pump();
+      await tester.pump();
+      expect(storage.generationSettings.groupSystemPrompt, isEmpty);
+      expect(
+        tester.widget<TextField>(field).controller!.text,
+        defaultGroupSystemPrompt,
+      );
+
+      await tester.enterText(field, 'Novel style for every group.');
+      await tester.pump();
+      final prefs = await SharedPreferences.getInstance();
+      final reloaded = GenerationSettings()
+        ..initializeBase(prefs, () {})
+        ..load();
+      expect(reloaded.groupSystemPrompt, 'Novel style for every group.');
       await tester.pumpWidget(const SizedBox());
     },
   );
