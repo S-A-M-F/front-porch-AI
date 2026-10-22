@@ -116,6 +116,9 @@ class WorldFacade {
           // these. Additive — old builds ignore them (mixed-version law).
           'parentWorldId': w.parentWorldId,
           'isModelMade': w.isModelMade,
+          // Slice 5 (additive): "N places" chip and weather author for Stoop.
+          'locationCount': _locations.locationCount(w.id),
+          'climateAuthorId': _locations.climateAuthorId(w.id),
         },
     ];
   }
@@ -155,6 +158,9 @@ class WorldFacade {
       // Slice 4 web twin: the editor preselects "Part of" and shows the
       // inherit-or-own radios from this. Additive.
       'parentWorldId': w.parentWorldId,
+      // Slice 5 (additive): same keys as the list rows.
+      'locationCount': _locations.locationCount(w.id),
+      'climateAuthorId': _locations.climateAuthorId(w.id),
     };
   }
 

@@ -22,6 +22,7 @@ import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/services/world_envelopes.dart';
 import 'package:front_porch_ai/services/world_store/world_store.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -339,8 +340,9 @@ class WorldRepository extends ChangeNotifier {
     // Fresh local identity; remember provenance.
     world.sourceId ??= world.id.isNotEmpty ? world.id : null;
     world.id = _uuid.v4();
-    // A parent id from the sender's library means nothing here: until
-    // locations ride the envelope (slice 5), an imported place is a root.
+    // A parent id from the sender's library means nothing here; the
+    // envelope's ROOT is always imported as a root. Children that ride
+    // the `locations` array get re-parented by structure below.
     world.parentWorldId = null;
     // A file with no name imports as "Imported World" (uniqueWorldName), so
     // saveWorld's blank-name refusal never blocks an import.
@@ -361,21 +363,24 @@ class WorldRepository extends ChangeNotifier {
     }
 
     await saveWorld(world);
+    await _envelopes.importLocations(package.locations, world.id, 1);
     return world;
   }
+
+  /// The codec that shapes export envelopes and re-homes imported
+  /// `locations` arrays (slice 5). It reads the live cache through this
+  /// repository's public surface and never stores anything itself, so
+  /// the save law and the DB stay owned here alone.
+  late final WorldEnvelopeCodec _envelopes = WorldEnvelopeCodec(this);
 
   /// The ONE .fpworld envelope builder (file export AND Stoop upload): embeds
   /// the resolved biome so importers get climate without built-ins, plus place
   /// traits, lore, and the cover image already carried by [model.World].
-  Map<String, dynamic> fpWorldJson(model.World world) {
-    final biome = world.climateEnabled
-        ? Biome.resolve(
-            biomeId: world.biomeId,
-            biomeJson: world.biomeJson,
-          ).toJson()
-        : null;
-    return encodeFpWorld(world: world, biome: biome);
-  }
+  ///
+  /// Slice 5: the envelope is always a ROOT's and carries the tree —
+  /// exporting a location exports its root with just the branch that
+  /// reaches it. Root/branch shaping lives in [WorldEnvelopeCodec].
+  Map<String, dynamic> fpWorldJson(model.World world) => _envelopes.tree(world);
 
   /// Export as .fpworld (full place package). Prefer this over ST-only.
   Future<void> exportFpWorld(model.World world, String outputPath) async {

@@ -381,5 +381,45 @@ void main() {
       final entries = (d['entries'] as List).cast<Map>();
       expect(entries.single['name'], 'Old', reason: 'lore rolled back too');
     });
+
+    // Slice 5 (envelope ride-along): the Stoop card shows "N places"
+    // and the chat panel names the weather's author. Additive keys —
+    // red until the DTOs carry them.
+    test('list and detail carry locationCount and climateAuthorId', () async {
+      final rootId = await createWorld({
+        'name': 'Calderis',
+        'climateEnabled': true,
+        'biomeId': 'temperate',
+      });
+      await createWorld({
+        'name': 'Salt Docks',
+        'climateEnabled': false,
+        'parentWorldId': rootId,
+      });
+      await createWorld({
+        'name': 'Gull Cage',
+        'climateEnabled': false,
+        'parentWorldId': rootId,
+      });
+      await createWorld({'name': 'Quiet Attic', 'climateEnabled': false});
+
+      final rows = {for (final m in facade.list()) m['name'] as String: m};
+      expect(rows['Calderis']!['locationCount'], 2);
+      expect(
+        rows['Calderis']!['climateAuthorId'],
+        rootId,
+        reason: 'a climate root authors its own weather',
+      );
+      expect(rows['Salt Docks']!['locationCount'], 0);
+      expect(
+        rows['Quiet Attic']!['climateAuthorId'],
+        isNull,
+        reason: 'a lore-only chain has no climate author',
+      );
+
+      final d = facade.detail('Salt Docks')!;
+      expect(d['climateAuthorId'], rootId, reason: 'inherited upstream');
+      expect(d['locationCount'], 0);
+    });
   });
 }

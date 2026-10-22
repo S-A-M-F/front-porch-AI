@@ -272,6 +272,24 @@ class _StoopUploadPageState extends State<StoopUploadPage> {
     return null;
   }
 
+  /// Review #599: what the WORLD card really carries once locations ride
+  /// the envelope — computed from the same builder the publish path
+  /// uses, so the note and the upload can never disagree. Null for
+  /// cards/groups and for plain worlds with no tree.
+  String? _worldShareNote() {
+    final world = _selectedWorld;
+    if (world == null) return null;
+    try {
+      final envelope = context.read<WorldRepository>().fpWorldJson(world);
+      return stoopWorldShareNote(
+        envelope,
+        ridesUpstream: world.parentWorldId != null,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// True when the pick carries intimate preferences, which force the 18+ flag
   /// on. Banner and locked switch read THIS one getter — a second copy of the
   /// rule would drift. A place has no cast, so never.
@@ -417,6 +435,7 @@ class _StoopUploadPageState extends State<StoopUploadPage> {
           selectedCard: _selected,
           selectedGroup: _selectedGroup,
           selectedWorld: _selectedWorld,
+          shareNote: _worldShareNote(),
           completeness: _selectedCompleteness(),
           name: _name.text.trim(),
           summary: _summary.text.trim(),
