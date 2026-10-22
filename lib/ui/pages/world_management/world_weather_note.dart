@@ -66,7 +66,7 @@ class WorldWeatherNote extends StatelessWidget {
                   Text(
                     body,
                     style: TextStyle(
-                      color: AppColors.textSecondary(context),
+                      color: AppColors.textPrimary(context),
                       fontSize: 12,
                       height: 1.4,
                     ),

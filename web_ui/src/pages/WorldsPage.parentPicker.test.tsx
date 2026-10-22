@@ -416,3 +416,37 @@ describe('a world with weather off', () => {
     confirmSpy.mockRestore();
   });
 });
+
+describe('weather-off wording in light themes', () => {
+  it('keeps the Paused tag and the notes at full ink, outside the dimmed editor', async () => {
+    act(() => root.unmount());
+    root = createRoot(container);
+    const rows = [{ ...WORLD_ROWS[0], climateEnabled: false }];
+    get.mockImplementation((url: string) => {
+      if (url === '/api/worlds/climates') return Promise.resolve({ climates: [] });
+      if (url.startsWith('/api/worlds/parent-candidates'))
+        return Promise.resolve({
+          candidates: [{ id: 'earth-1', name: 'Earth', parentWorldId: null }],
+        });
+      return Promise.resolve({ worlds: rows });
+    });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(WorldsPage)));
+    });
+    await act(async () => button('＋ New place').click());
+    setValue(partOfSelect(), 'earth-1');
+    await act(async () => {});
+    const radios = container.querySelector('.wsg-climate-radios')!;
+    const ownRadio = radios.querySelectorAll('input[type="radio"]')[1] as HTMLInputElement;
+    act(() => ownRadio.click());
+
+    const paused = container.querySelector('[data-testid="climate-paused"]')!;
+    const tag = paused.querySelector('.wsg-paused-tag')!;
+    expect(tag.closest('.wsg-climate-dim')).toBeNull();
+    expect(paused.querySelector('.wsg-climate-dim')).not.toBeNull();
+    const note = container.querySelector('[data-testid="weather-off-note"]')!;
+    expect(note.querySelector('.muted')).toBeNull();
+    expect(radios.querySelectorAll('.wsg-weather-off-line')).toHaveLength(2);
+  });
+});
+

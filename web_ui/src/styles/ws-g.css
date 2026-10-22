@@ -313,7 +313,8 @@
   background: color-mix(in srgb, var(--text-2, currentColor) 6%, transparent);
 }
 .wsg-weather-off strong { display: block; font-size: 0.85rem; margin-bottom: 4px; }
-.wsg-weather-off p { margin: 0; }
+.wsg-weather-off p { margin: 0; color: var(--text); }
+.wsg-weather-off-line { display: block; color: var(--text); }
 .wsg-paused-tag {
   display: inline-block;
   padding: 2px 8px;
@@ -321,9 +322,9 @@
   font-weight: 600;
   border-radius: var(--radius-badge, 999px);
   border: 1px solid var(--border);
-  color: var(--text-2, inherit);
+  color: var(--text);
 }
-.wsg-climate-paused { opacity: 0.72; }
+.wsg-climate-dim { opacity: 0.72; margin-top: 8px; }
 .wsg-reparent-note {
   border-left: 3px solid var(--accent);
   padding-left: 8px;
