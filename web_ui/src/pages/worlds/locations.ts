@@ -191,9 +191,12 @@ function traitLine(w: TreeWorld): string {
 export function buildWorldInjection(chain: TreeWorld[]): string {
   const parts: string[] = [];
   let used = 0;
+  // A top-level world with weather off silences every place inside it.
+  const root = chain[chain.length - 1];
+  const traitsLive = root === undefined || root.climateEnabled !== false;
   for (const w of chain) {
     const desc = w.injectDescription === false ? '' : (w.description ?? '').trim();
-    const traits = w.climateEnabled === false ? '' : traitLine(w);
+    const traits = !traitsLive || w.climateEnabled === false ? '' : traitLine(w);
     if (!desc && !traits) continue;
     const header = w.name.trim() === '' ? 'This place' : w.name.trim();
     const body = [desc, traits].filter(Boolean).join(' ');

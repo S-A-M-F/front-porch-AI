@@ -42,13 +42,18 @@ String? gravityLine(WorldGravity g) => switch (g) {
 /// traits. Empty when nothing should inject. Trait lines are behavioral
 /// instructions, so they ride even when the description is empty or its
 /// injection is toggled off — the author picked them explicitly.
+///
+/// [worlds] is a leaf-first chain ending at its top-level world. When that
+/// world's climate is off, no place inside it has atmosphere or gravity
+/// either, matching `climateAuthorOf`.
 String buildWorldInjection(List<World> worlds) {
   final parts = <String>[];
   var used = 0;
+  final traitsLive = worlds.isEmpty || worlds.last.climateEnabled;
   for (final w in worlds) {
     final desc = w.injectDescription ? w.description.trim() : '';
     // Lorebook-only worlds carry no physical-world traits.
-    final traits = w.climateEnabled
+    final traits = traitsLive && w.climateEnabled
         ? [
             atmosphereLine(w.atmosphere),
             gravityLine(w.gravity),
