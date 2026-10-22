@@ -1498,7 +1498,9 @@ test('the theme follows the desktop, and a device can keep its own mode', { tag:
   }
 });
 
-test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page }) => {
+test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page, allowHttp }) => {
+  // The taken-name refusal is a 409 on purpose.
+  allowHttp((url, status) => status === 409 && /\/api\/saved-prompts(\?|$)/.test(url));
   type Saved = { name: string; content: string };
   type S = {
     systemPrompt?: string; groupSystemPrompt?: string;
@@ -1520,7 +1522,7 @@ test('both Settings prompt slots pick from one pool of saved prompts, never a bu
     await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(name);
 
     // The group slot loads the same prompt; the built-ins are not in the list.
-    const pick = group.getByRole('combobox', { name: 'Load a saved prompt', exact: true });
+    const pick = group.locator('select');
     await expect(pick.locator('option', { hasText: 'Group default' })).toHaveCount(0);
     await pick.selectOption({ label: name });
     const groupBox = group.getByRole('textbox', { name: 'Group system prompt', exact: true });
