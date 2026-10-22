@@ -109,6 +109,13 @@ void main() {
     final town = worldRepo.placeWorlds.firstWhere(
       (w) => w.name == 'Bletchport',
     );
+    // The create dialog is still animating shut behind the success
+    // SnackBar. Until it is GONE, its modal barrier absorbs the next
+    // tap (the Windows smoke lost it: 'Add a place inside' hit-tested
+    // onto the dying dialog) and its 'Create World' button false-matches
+    // the next pumpUntilFound (the macOS smoke read the DYING dialog's
+    // empty Part-of picker). Real users never race their own dialogs.
+    await pumpUntilGone(tester, find.text('Create World'));
 
     // ── 2. "Add a place inside" from the library card ───────────────────
     await d.waitForWidget(find.text('Add a place inside'));
@@ -153,6 +160,10 @@ void main() {
       1,
       reason: 'a double tap creates exactly one place',
     );
+    // Same gate as step 1: the second dialog must finish closing before
+    // the library card is read, or its exit animation can shadow the
+    // grouping widgets the next block waits for.
+    await pumpUntilGone(tester, find.text('Create World'));
 
     // ── 3. The library groups: section chip + child tag ─────────────────
     await d.waitForWidget(find.text('1 place'));
