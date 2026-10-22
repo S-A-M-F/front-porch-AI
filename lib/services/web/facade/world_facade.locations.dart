@@ -69,6 +69,16 @@ class WorldLocationsRelay {
         {'id': r.id, 'name': r.name},
     ];
   }
+
+  /// Direct children of [id] — the "N places" chip count. Direct only,
+  /// per the desktop card law (grandchildren belong to their own chip).
+  int locationCount(String id) =>
+      _worlds.placeWorlds.where((c) => c.parentWorldId == id).length;
+
+  /// The place whose climate this one reads (self if it authors, the
+  /// nearest enabled ancestor if it inherits, null on a lore-only
+  /// chain). Same walk the chat clock uses — the UI never re-decides.
+  String? climateAuthorId(String id) => _worlds.climateAuthorFor(id)?.id;
 }
 
 /// Review #596 cache honesty, extracted so the facade stays a coordinator:

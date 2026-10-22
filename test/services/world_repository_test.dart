@@ -697,4 +697,136 @@ void main() {
       expect(row!.parentWorldId, isNull);
     });
   });
+
+  // Slice 5: locations ride the envelope. Guard per design §6: round-trip
+  // keeps children; the old envelope still imports. Each red until the
+  // codec carries `locations`.
+  group('WorldRepository locations envelope (slice 5)', () {
+    late AppDatabase db;
+    late WorldRepository repo;
+
+    setUp(() async {
+      _setupPathProviderMock();
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.initialized;
+      db = AppDatabase.forTesting();
+      repo = WorldRepository(storage, db);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    Future<model.World> seed(String name, {String? parent}) async {
+      final w = model.World(
+        name: name,
+        description: '$name prose.',
+        lorebook: Lorebook(entries: []),
+        climateEnabled: parent == null,
+        parentWorldId: parent,
+      );
+      await repo.saveWorld(w);
+      return w;
+    }
+
+    test('root export carries the subtree; import recreates it with fresh '
+        'ids and sourceId provenance', () async {
+      final root = await seed('Bletchport');
+      final town = await seed('Town Quarter', parent: root.id);
+      final room = await seed('Back Room', parent: town.id);
+
+      final envelope = repo.fpWorldJson(root);
+      final locs = (envelope['locations'] as List).cast<Map>();
+      expect(locs, hasLength(1));
+      expect(locs.first['name'], 'Town Quarter');
+      // Each item is a full world envelope with its own climate flag.
+      expect(locs.first['climate_enabled'], false);
+      final nested = (locs.first['locations'] as List).cast<Map>();
+      expect(nested.single['name'], 'Back Room');
+
+      // Import into the same library: fresh ids, structure preserved.
+      // Name collision re-homes the copies ("Town Quarter (2)"), so
+      // find them by the provenance law itself, not by name.
+      final imported = await repo.importWorldJson(envelope);
+      expect(imported.id, isNot(root.id));
+      final rows = repo.worlds;
+      final newTown = rows.firstWhere((w) => w.sourceId == town.id);
+      final newRoom = rows.firstWhere((w) => w.sourceId == room.id);
+      expect(newTown.parentWorldId, imported.id);
+      expect(newRoom.parentWorldId, newTown.id);
+      expect(newTown.id, isNot(town.id));
+      expect(newRoom.id, isNot(room.id));
+      expect(newTown.sourceId, town.id, reason: 'provenance per child');
+      expect(newRoom.sourceId, room.id);
+      expect(newTown.climateEnabled, isFalse, reason: 'inherit survives');
+    });
+
+    test('an old envelope without locations imports exactly as before', () async {
+      final old = <String, dynamic>{
+        'formatVersion': 1,
+        'id': 'legacy-1',
+        'name': 'Old Hat',
+        'description': 'No locations key.',
+        'lorebook': {'entries': []},
+        'climate_enabled': true,
+        'meta': {'createdAt': '2025-01-01T00:00:00.000Z'},
+      };
+      final imported = await repo.importWorldJson(old);
+      expect(imported.parentWorldId, isNull);
+      expect(
+        repo.worlds.where((w) => w.parentWorldId != null),
+        isEmpty,
+        reason: 'no phantom children',
+      );
+    });
+
+    test('exporting a location exports its root with that branch only', () async {
+      final root = await seed('Earth');
+      final asia = await seed('Asia', parent: root.id);
+      await seed('Europe', parent: root.id); // sibling — must NOT ride
+      final room = await seed('Tea House', parent: asia.id);
+
+      final envelope = repo.fpWorldJson(room);
+      expect(envelope['name'], 'Earth', reason: 'root envelope, not the leaf');
+      final locs = (envelope['locations'] as List).cast<Map>();
+      expect(locs.map((l) => l['name']), ['Asia']);
+      final nested = (locs.first['locations'] as List).cast<Map>();
+      expect(nested.map((l) => l['name']), ['Tea House']);
+    });
+
+    test('nesting past town > building > room imports to the cap, not '
+        'past it', () async {
+      model.World deepAt(int level) => model.World(
+        name: 'Deep $level',
+        lorebook: Lorebook(entries: []),
+        climateEnabled: false,
+      );
+
+      // Levels below the imported root: 2 is the cap (building > room).
+      // Deep 4 sits at level 3 — a hand-edited or future file; the
+      // importer must skip it, not throw saveWorld's law at the caller.
+      final room = deepAt(2);
+      final tooDeep = deepAt(3);
+      final roomEnv = {
+        ...encodeFpWorld(world: room),
+        'locations': [encodeFpWorld(world: tooDeep)],
+      };
+      final building = deepAt(1);
+      final buildingEnv = {...encodeFpWorld(world: building), 'locations': [
+        roomEnv,
+      ]};
+      final town = deepAt(0);
+      final env = {...encodeFpWorld(world: town), 'locations': [
+        buildingEnv,
+      ]};
+
+      final imported = await repo.importWorldJson(env);
+      expect(imported.name, 'Deep 0');
+      final names = repo.worlds.map((w) => w.name).toList();
+      expect(names, containsAll(['Deep 0', 'Deep 1', 'Deep 2']));
+      expect(names, isNot(contains('Deep 3')), reason: 'cap, not crash');
+    });
+  });
 }
