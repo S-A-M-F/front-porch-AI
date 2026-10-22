@@ -155,7 +155,10 @@ void main() {
       final prompt = await runTurn(t, '{"minutes_elapsed": 5}');
       expect(prompt, contains('"p-tea" (Tea Rooms)'));
       expect(prompt, contains('"p-gate" (Harbour Gate · inside Bletchport)'));
-      expect(prompt, contains('6. "scene_place"'));
+      // Review #605: rules stay sequentially numbered. The planner is
+      // off in this harness, so scene_place is rule 5.
+      expect(prompt, contains('5. "scene_place"'));
+      expect(prompt, isNot(contains('4. "days"')));
     });
   });
 

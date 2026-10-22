@@ -26,7 +26,12 @@ Future<shelf.Response> handlePlaceMove(
   ChatFacade facade,
   shelf.Request request,
 ) async {
-  final body = await RequestBody.readJsonMap(request);
+  final Map<String, dynamic> body;
+  try {
+    body = await RequestBody.readJsonMap(request);
+  } catch (_) {
+    return JsonResponse.badRequest('Invalid JSON body');
+  }
   await facade.answerPlaceMove(body['accept'] == true);
   return JsonResponse.ok({'ok': true});
 }

@@ -32,7 +32,8 @@ void main() {
     expect(prompt.consequence, contains('weather and lore take over'));
   });
 
-  testWidgets('the copy renders inside a warm dialog shell', (tester) async {
+  testWidgets('the copy body renders (chrome + title come from the '
+    'warm shell at open time, asserted by the shell suite)', (tester) async {
     final prompt = PlaceMoveDialog(move: move, setting: earth);
     await tester.pumpWidget(
       MaterialApp(

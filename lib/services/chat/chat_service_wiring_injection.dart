@@ -348,6 +348,16 @@ extension ChatServiceWiringInjection on ChatService {
     );
   }
 
+  /// The judge's arrival answer, routed from the clock call (design: the
+  /// service only FLAGS). Ignores an id equal to the current Setting —
+  /// you are already there, and a stale tool model may say so.
+  void flagSuggestedPlaceMove(String id) {
+    if (id.isEmpty || id == chatPrimaryWorldId) return;
+    final name = _worldRepository.worldById(id)?.name ?? id;
+    _sceneMoves.pending = PendingPlaceMove(id: id, name: name);
+    notifyListeners();
+  }
+
   /// The move the clock judge suggested and the author has not answered
   /// yet — the chat page shows the confirm dialog while this is non-null.
   PendingPlaceMove? get pendingPlaceMove => _sceneMoves.pending;

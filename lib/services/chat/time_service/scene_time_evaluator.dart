@@ -342,6 +342,22 @@ class SceneTimeEvaluator {
 
     // One minutes_elapsed / new_day rubric, engine on or off.
     final plannerToday = getPlannerEnabled?.call() ?? false;
+    // Rules stay 1-5-6 in order whichever optional ones are on.
+    final sceneRuleNumber = plannerToday ? 6 : 5;
+    // Built out-of-line: Dart forbids nesting single-quoted strings inside
+    // a single-quoted interpolation, and this rule carries both quote
+    // kinds (a numbered rule wrapping double-quoted place ids).
+    var sceneRule = '';
+    if (scenePlaceOn) {
+      final ids =
+          sceneOffer.map((p) => '"${p.id}" (${p.label})').join(', ');
+      sceneRule =
+          '$sceneRuleNumber. "scene_place": where the reply LEAVES the '
+          'scene. Answer "same" unless the narration actually ARRIVES at '
+          'one of these places: $ids. A plan to go somewhere, or a '
+          'mention of it, is "same". The characters must BE there by the '
+          'end of the reply.\n';
+    }
     final timeRules =
         '1. "minutes_elapsed": how many in-story minutes passed during the completed reply that was JUST written (integer, 1-${StoryClock.maxMinutesPerTurn} for a finished spoken exchange). '
         'This sets the clock the NEXT speaker will be told. '
@@ -352,9 +368,9 @@ class SceneTimeEvaluator {
         '3. "new_day": true ONLY if the conversation explicitly transitioned to the next day (slept, woke up, scene break). false otherwise. '
         'Merely MENTIONING yesterday, tomorrow, or another day does NOT count — the characters must actually cross a night.\n'
         '4. "days_elapsed": ONLY when the reply just written explicitly narrates a jump of one or more whole days ("a week later", "three days passed"), the number of days skipped (1-365). Otherwise 0. Mentioning a date or a plan is not a jump.\n'
-        '${scenePlaceOn ? '6. "scene_place": where the reply LEAVES the scene. Answer "same" unless the narration actually ARRIVES at one of these places: ${sceneOffer.map((p) => '"' + p.id + '" (' + p.label + ')').join(', ')}. A plan to go somewhere, or a mention of it, is "same". The characters must BE there by the end of the reply.\n' : ''}'
         '${plannerToday ? '5. "today_sentence": one sentence of what they are doing or planning today. '
-                  'Empty or "none" abandons the current hold. Omit to keep it.\n' : ''}';
+                  'Empty or "none" abandons the current hold. Omit to keep it.\n' : ''}'
+        '$sceneRule';
 
     // One time prompt. Engine-on adds scene framing; timeOnly asks bare.
     String buildPrompt({required bool toolsMode}) =>

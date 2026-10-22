@@ -16,7 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart'
-    show TimeService, slotClockAfter, slotClockBefore;
+    show TimeService, SceneTimeEvaluator, slotClockAfter, slotClockBefore;
 import 'package:front_porch_ai/services/services.dart';
 import '../../helpers/chat_db_teardown.dart';
 
@@ -132,7 +132,7 @@ void main() {
     expect(chat!.timeService.clock, _at0730, reason: reason);
     expect(chat!.timeService.displayClock, '7:30 AM', reason: reason);
     expect(
-      TimeService.postureQuestion(charName: 'Nia', displayClock: '7:30 AM'),
+      SceneTimeEvaluator.postureQuestion(charName: 'Nia', displayClock: '7:30 AM'),
       contains('Current time: 7:30 AM'),
     );
     final before = slotClockBefore(lastBot().activeMetadata);

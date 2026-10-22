@@ -180,11 +180,11 @@ class ChatScenePrompts {
       barrierDismissible: false,
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.pop(context, false),
           child: const Text('Stay'),
         ),
         ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: () => Navigator.pop(context, true),
           child: const Text('Move there'),
         ),
       ],

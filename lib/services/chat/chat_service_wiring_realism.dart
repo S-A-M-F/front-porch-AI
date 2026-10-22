@@ -74,10 +74,8 @@ extension ChatServiceWiringRealism on ChatService {
         isDeclined: _sceneMoves.isDeclined,
       ),
       onScenePlace: (id) {
-        final name = _worldRepository.worldById(id)?.name ?? id;
-        _sceneMoves.pending = PendingPlaceMove(id: id, name: name);
-        debugPrint('[Realism:Scene] suggested move pending: $name ($id)');
-        notifyListeners();
+        debugPrint('[Realism:Scene] suggested move pending: $id');
+        flagSuggestedPlaceMove(id);
       },
       onTodayEval: (line) {
         _recordTodayPointerOp();
