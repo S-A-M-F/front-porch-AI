@@ -35,13 +35,27 @@ import 'package:front_porch_ai/utils/utils.dart';
 /// the public repository surface, so there is still ONE source of truth
 /// per law (design §2).
 class WorldEnvelopeCodec {
-  WorldEnvelopeCodec(this._repo);
+  /// [totalCap] bounds how many location rows ONE import may create in
+  /// total (review #599: a hand-edited or hostile envelope could carry
+  /// thousands of children; each saveWorld is DB + cache + notify, so an
+  /// unbounded loop is a UI freeze). Overridable for tests only.
+  WorldEnvelopeCodec(this._repo, {int totalCap = kImportTotalCap})
+    : _totalCap = totalCap;
 
   final WorldRepository _repo;
+  final int _totalCap;
+
+  /// Hard ceiling on location rows created by one import, any depth.
+  /// Generous for real libraries; a runaway tree trips it and the rest
+  /// is skipped with a log.
+  static const int kImportTotalCap = 500;
 
   /// Levels of nesting the importer accepts below an imported root:
-  /// town > building > room. Deeper is corrupt or a hand-edited file —
-  /// skipped with a log, never thrown at the caller mid-import.
+  /// town > building > room. This cap is EDITOR policy (as stated in
+  /// world_chain.dart) — saveWorld itself enforces parent existence and
+  /// cycles but not depth, so a DB edited outside the app can hold
+  /// deeper chains; re-importing such a tree truncates it here rather
+  /// than throwing at a caller whose root already landed.
   static const int kImportDepthCap = 2;
 
   /// Build the export envelope for [world]: always a ROOT's envelope.
@@ -68,16 +82,34 @@ class WorldEnvelopeCodec {
     String parentId,
     int depth,
   ) async {
-    if (envelopes.isEmpty) return;
+    await _importWithBudget(envelopes, parentId, depth, _totalCap);
+  }
+
+  Future<int> _importWithBudget(
+    List<Map<String, dynamic>> envelopes,
+    String parentId,
+    int depth,
+    int left,
+  ) async {
+    if (envelopes.isEmpty) return left;
     if (depth > kImportDepthCap) {
       debugPrint(
         'world import: skipped ${envelopes.length} location(s) below '
         'the depth cap ($kImportDepthCap)',
       );
-      return;
+      return left;
     }
     const uuid = Uuid();
-    for (final raw in envelopes) {
+    for (var i = 0; i < envelopes.length; i++) {
+      if (left <= 0) {
+        debugPrint(
+          'world import: skipped ${envelopes.length - i} location(s) at '
+          'depth $depth past the total import cap ($_totalCap)',
+        );
+        // The skipped siblings' subtrees die with them: no partial limb.
+        break;
+      }
+      final raw = envelopes[i];
       try {
         final pkg = decodeFpWorld(raw);
         final child = pkg.world;
@@ -96,11 +128,18 @@ class WorldEnvelopeCodec {
               : biome.toJsonString();
         }
         await _repo.saveWorld(child);
-        await importLocations(pkg.locations, child.id, depth + 1);
+        left = await _importWithBudget(
+          pkg.locations,
+          child.id,
+          depth + 1,
+          left - 1,
+        );
       } catch (e) {
-        debugPrint('world import: skipped location "${raw['name']}": $e');
+        // Names are user prose; log the frame, not the content.
+        debugPrint('world import: skipped 1 location at depth $depth: $e');
       }
     }
+    return left;
   }
 
   Map<String, dynamic>? biomeFor(model.World world) => world.climateEnabled
@@ -152,7 +191,13 @@ class WorldEnvelopeCodec {
     model.World target,
   ) {
     final hop = childOnPath(ancestor, target);
-    if (hop == null) return subtreeEnvelopes(ancestor);
+    if (hop == null) {
+      // Corrupt parent chain between root and target (the walks agree on
+      // healthy data). Export the root alone rather than silently
+      // dragging the whole library into the user's single-place share.
+      debugPrint('world export: branch to target unresolved; root alone');
+      return const [];
+    }
     return [
       encodeFpWorld(
         world: hop,

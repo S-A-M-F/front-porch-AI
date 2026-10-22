@@ -20,6 +20,7 @@ import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/world.dart' as model;
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_envelopes.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 
 void _setupPathProviderMock() {
@@ -763,38 +764,48 @@ void main() {
       expect(newTown.climateEnabled, isFalse, reason: 'inherit survives');
     });
 
-    test('an old envelope without locations imports exactly as before', () async {
-      final old = <String, dynamic>{
-        'formatVersion': 1,
-        'id': 'legacy-1',
-        'name': 'Old Hat',
-        'description': 'No locations key.',
-        'lorebook': {'entries': []},
-        'climate_enabled': true,
-        'meta': {'createdAt': '2025-01-01T00:00:00.000Z'},
-      };
-      final imported = await repo.importWorldJson(old);
-      expect(imported.parentWorldId, isNull);
-      expect(
-        repo.worlds.where((w) => w.parentWorldId != null),
-        isEmpty,
-        reason: 'no phantom children',
-      );
-    });
+    test(
+      'an old envelope without locations imports exactly as before',
+      () async {
+        final old = <String, dynamic>{
+          'formatVersion': 1,
+          'id': 'legacy-1',
+          'name': 'Old Hat',
+          'description': 'No locations key.',
+          'lorebook': {'entries': []},
+          'climate_enabled': true,
+          'meta': {'createdAt': '2025-01-01T00:00:00.000Z'},
+        };
+        final imported = await repo.importWorldJson(old);
+        expect(imported.parentWorldId, isNull);
+        expect(
+          repo.worlds.where((w) => w.parentWorldId != null),
+          isEmpty,
+          reason: 'no phantom children',
+        );
+      },
+    );
 
-    test('exporting a location exports its root with that branch only', () async {
-      final root = await seed('Earth');
-      final asia = await seed('Asia', parent: root.id);
-      await seed('Europe', parent: root.id); // sibling — must NOT ride
-      final room = await seed('Tea House', parent: asia.id);
+    test(
+      'exporting a location exports its root with that branch only',
+      () async {
+        final root = await seed('Earth');
+        final asia = await seed('Asia', parent: root.id);
+        await seed('Europe', parent: root.id); // sibling — must NOT ride
+        final room = await seed('Tea House', parent: asia.id);
 
-      final envelope = repo.fpWorldJson(room);
-      expect(envelope['name'], 'Earth', reason: 'root envelope, not the leaf');
-      final locs = (envelope['locations'] as List).cast<Map>();
-      expect(locs.map((l) => l['name']), ['Asia']);
-      final nested = (locs.first['locations'] as List).cast<Map>();
-      expect(nested.map((l) => l['name']), ['Tea House']);
-    });
+        final envelope = repo.fpWorldJson(room);
+        expect(
+          envelope['name'],
+          'Earth',
+          reason: 'root envelope, not the leaf',
+        );
+        final locs = (envelope['locations'] as List).cast<Map>();
+        expect(locs.map((l) => l['name']), ['Asia']);
+        final nested = (locs.first['locations'] as List).cast<Map>();
+        expect(nested.map((l) => l['name']), ['Tea House']);
+      },
+    );
 
     test('nesting past town > building > room imports to the cap, not '
         'past it', () async {
@@ -814,13 +825,15 @@ void main() {
         'locations': [encodeFpWorld(world: tooDeep)],
       };
       final building = deepAt(1);
-      final buildingEnv = {...encodeFpWorld(world: building), 'locations': [
-        roomEnv,
-      ]};
+      final buildingEnv = {
+        ...encodeFpWorld(world: building),
+        'locations': [roomEnv],
+      };
       final town = deepAt(0);
-      final env = {...encodeFpWorld(world: town), 'locations': [
-        buildingEnv,
-      ]};
+      final env = {
+        ...encodeFpWorld(world: town),
+        'locations': [buildingEnv],
+      };
 
       final imported = await repo.importWorldJson(env);
       expect(imported.name, 'Deep 0');
@@ -828,5 +841,86 @@ void main() {
       expect(names, containsAll(['Deep 0', 'Deep 1', 'Deep 2']));
       expect(names, isNot(contains('Deep 3')), reason: 'cap, not crash');
     });
+
+    // Review #599 guards: sibling collisions inside one envelope,
+    // malformed locations values, and the runaway-tree budget.
+    test(
+      'duplicate child names inside one envelope both land, renamed',
+      () async {
+        final root = await seed('Harbor');
+        model.World dock(String prose) => model.World(
+          name: 'Dock',
+          description: prose,
+          lorebook: Lorebook(entries: []),
+          climateEnabled: false,
+        );
+        final env = {
+          ...encodeFpWorld(world: root),
+          'locations': [
+            encodeFpWorld(world: dock('East side.')),
+            encodeFpWorld(world: dock('West side.')),
+          ],
+        };
+        final imported = await repo.importWorldJson(env);
+        final kids = repo.worlds
+            .where((w) => w.parentWorldId == imported.id)
+            .toList();
+        expect(kids, hasLength(2));
+        expect(kids.map((w) => w.name).toSet(), {
+          'Dock',
+          'Dock (2)',
+        }, reason: 'uniqueWorldName runs against the live list per child');
+      },
+    );
+
+    test(
+      'a malformed locations value imports the root and nothing else',
+      () async {
+        final root = await seed('Paperweight');
+        for (final bad in [
+          {},
+          'nope',
+          ['a string', 42],
+        ]) {
+          final env = {...encodeFpWorld(world: root), 'locations': bad};
+          final imported = await repo.importWorldJson(env);
+          expect(
+            repo.worlds.where((w) => w.parentWorldId == imported.id),
+            isEmpty,
+            reason: 'junk locations must not fabricate or throw',
+          );
+        }
+      },
+    );
+
+    test(
+      'the total import budget stops a runaway tree without throwing',
+      () async {
+        final codec = WorldEnvelopeCodec(repo, totalCap: 3);
+        final root = await seed('Metropolis');
+        model.World kid(String name) => model.World(
+          name: name,
+          lorebook: Lorebook(entries: []),
+          climateEnabled: false,
+        );
+        List<Map<String, dynamic>> branch(int n) => [
+          for (var i = 0; i < n; i++)
+            encodeFpWorld(
+              world: kid('Satellite ${root.id.substring(0, 4)}-$i'),
+            ),
+        ];
+        final envs = [
+          {...encodeFpWorld(world: kid('Alpha')), 'locations': branch(3)},
+          {...encodeFpWorld(world: kid('Beta')), 'locations': branch(3)},
+        ];
+        await codec.importLocations(envs, root.id, 1);
+        // Budget of 3: Alpha, Alpha/0, Alpha/1 land and the budget is spent —
+        // even the second top-level child is skipped, with a log, not thrown.
+        final names = repo.worlds.map((w) => w.name).toList();
+        expect(names, contains('Alpha'));
+        expect(names.where((n) => n.startsWith('Satellite')).length, 2);
+        expect(names, isNot(contains('Beta')), reason: 'budget dies honestly');
+      },
+    );
   });
 }
