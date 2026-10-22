@@ -23,6 +23,7 @@ import 'package:front_porch_ai/ui/pages/worlds/worlds.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/utils/world_cover.dart';
 import 'world_climate_section.dart';
+import 'world_dialog_wording.dart';
 import 'world_edit_draft.dart';
 
 /// Basic Information card for the create/edit World dialog: cover
@@ -42,12 +43,14 @@ class WorldBasicsSection extends StatelessWidget {
     required this.draft,
     required this.setDialogState,
     this.compact = false,
+    this.wording = const WorldDialogWording(isCreate: true),
   });
 
   final BuildContext pageContext;
   final BuildContext pickerContext;
   final WorldEditDraft draft;
   final StateSetter setDialogState;
+  final WorldDialogWording wording;
   final bool compact;
 
   @override
@@ -185,10 +188,10 @@ class WorldBasicsSection extends StatelessWidget {
               }
             },
             decoration: InputDecoration(
-              labelText: 'World Name',
+              labelText: wording.nameLabel,
               errorText: draft.nameError,
               labelStyle: TextStyle(color: AppColors.textSecondary(context)),
-              hintText: 'Enter a name for this world',
+              hintText: wording.nameHint,
               hintStyle: TextStyle(color: AppColors.textTertiary(context)),
               filled: true,
               fillColor: AppColors.surfaceContainerOf(context),
@@ -216,10 +219,9 @@ class WorldBasicsSection extends StatelessWidget {
             style: TextStyle(color: AppColors.textPrimary(context)),
             maxLines: compact ? 2 : 3,
             decoration: InputDecoration(
-              labelText: 'Description (place prose)',
+              labelText: wording.descriptionLabel,
               labelStyle: TextStyle(color: AppColors.textSecondary(context)),
-              hintText:
-                  'What it feels like to be here — reaches the story when enabled',
+              hintText: wording.descriptionHint,
               hintStyle: TextStyle(color: AppColors.textTertiary(context)),
               filled: true,
               fillColor: AppColors.surfaceContainerOf(context),
@@ -255,7 +257,9 @@ class WorldBasicsSection extends StatelessWidget {
               value: draft.climateEnabled,
               onChanged: (v) => setDialogState(() => draft.climateEnabled = v),
             ),
-          if (draft.climateEnabled) ...[
+          // A place's climate editor opens under its Inherit / Own pair in
+          // the parent section instead, next to the choice that opened it.
+          if (draft.climateEnabled && !wording.isPlace) ...[
             const SizedBox(height: 8),
             WorldClimateSection(draft: draft, setDialogState: setDialogState),
           ],
@@ -267,7 +271,7 @@ class WorldBasicsSection extends StatelessWidget {
             value: draft.injectDescription,
             onChanged: (v) => setDialogState(() => draft.injectDescription = v),
           ),
-          if (draft.climateEnabled) ...[
+          if (draft.climateEnabled && !wording.isPlace) ...[
             const SizedBox(height: 16),
             PlaceTraitsEditor(
               atmosphere: draft.atmosphere,

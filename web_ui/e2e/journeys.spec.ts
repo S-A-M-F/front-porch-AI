@@ -1565,6 +1565,12 @@ test(
     await expect(page.getByText('Inherit from Journey Bletchport')).toBeVisible();
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 
+    // ── Add a place inside: the editor speaks of a place in its parent ──
+    await section.locator('.wsg-section-head [title="Add a place inside"]').click();
+    await expect(page.locator('.world-edit h3')).toHaveText('Add a place to Journey Bletchport');
+    await expect(page.getByRole('button', { name: 'Add place', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
     // ── Delete re-roots and SAYS so ─────────────────────────────────────
     let confirmText = '';
     page.on('dialog', (d) => (confirmText = d.message()));

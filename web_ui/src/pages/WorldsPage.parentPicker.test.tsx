@@ -25,7 +25,15 @@ vi.mock('../api/client', () => ({
   ApiError: class extends Error {},
 }));
 vi.mock('../components/ClimateSeasonEditor', () => ({ ClimateSeasonEditor: () => null }));
-vi.mock('../components/LoreEntriesEditor', () => ({ LoreEntriesEditor: () => null }));
+const { loreProps } = vi.hoisted(() => ({
+  loreProps: { current: null as null | { title?: string; note?: string | null } },
+}));
+vi.mock('../components/LoreEntriesEditor', () => ({
+  LoreEntriesEditor: (p: { title?: string; note?: string | null }) => {
+    loreProps.current = p;
+    return null;
+  },
+}));
 vi.mock('../components/ImportCharacterLoreButton', () => ({
   ImportCharacterLoreButton: () => null,
 }));
@@ -60,6 +68,7 @@ const WORLD_ROWS = [
     name: 'Earth',
     description: 'A world',
     entryCount: 2,
+    enabledEntryCount: 1,
     climateEnabled: true,
     biomeId: 'temperate',
   },
@@ -91,7 +100,10 @@ beforeEach(async () => {
         id: 'earth-1',
         name: 'Earth',
         description: 'A world',
-        entries: [],
+        entries: [
+          { name: 'Sea', key: 'sea', content: 'Salt water.', enabled: true },
+          { name: 'Old law', key: 'law', content: 'Repealed.', enabled: false },
+        ],
         climateEnabled: true,
         atmosphere: 'breathable',
         gravity: 'earth',
@@ -137,7 +149,7 @@ describe('the Part of picker', () => {
       nameInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
     post.mockResolvedValue({ worlds: WORLD_ROWS });
-    await act(async () => button('Save place').click());
+    await act(async () => button('Add place').click());
     expect(post).toHaveBeenCalledWith(
       '/api/worlds',
       expect.objectContaining({
@@ -200,6 +212,73 @@ describe('the Part of picker', () => {
     expect(Array.from(sel.querySelectorAll('option')).some((o) =>
       (o.textContent ?? '').includes('invalid here'),
     )).toBe(true);
+  });
+});
+
+describe('the editor wording follows Part of', () => {
+  const heading = () => container.querySelector('.world-edit h3')?.textContent;
+  const labelTexts = () =>
+    Array.from(container.querySelectorAll('.world-edit label')).map((l) =>
+      l.textContent?.trim(),
+    );
+
+  it('a place inside a parent names the parent, and detaching goes back', async () => {
+    await act(async () => button('＋ New place').click());
+    expect(heading()).toBe('New place');
+    expect(button('Save place')).toBeDefined();
+
+    setValue(partOfSelect(), 'earth-1');
+    // Let the parent's detail fetch land: the count must agree either way.
+    await act(async () => {});
+    expect(heading()).toBe('Add a place to Earth');
+    expect(container.textContent).toContain("It shares Earth's lore and climate");
+    expect(labelTexts().some((t) => t?.startsWith('Place name'))).toBe(true);
+    expect(labelTexts().some((t) => t?.startsWith('Description (place prose)'))).toBe(false);
+    expect(button('Add place')).toBeDefined();
+    expect(button('Save place')).toBeUndefined();
+    // The place's own book, plus the lore its parent chain brings in.
+    expect(loreProps.current?.title).toBe("This place's lore");
+    expect(loreProps.current?.note).toContain('Also active here: 1 lore entry from Earth.');
+
+    // Own climate opens the climate editor under the Inherit / Own pair.
+    const radios = container.querySelector('.wsg-climate-radios')!;
+    const ownRadio = radios.querySelectorAll('input[type="radio"]')[1] as HTMLInputElement;
+    act(() => ownRadio.click());
+    const climateLabel = Array.from(radios.querySelectorAll('label')).find((l) =>
+      l.textContent?.trim().startsWith('Climate'),
+    );
+    expect(climateLabel?.querySelector('select')).not.toBeNull();
+    expect(radios.textContent).toContain('Atmosphere');
+
+    setValue(partOfSelect(), '');
+    expect(heading()).toBe('New place');
+    expect(button('Save place')).toBeDefined();
+  });
+});
+
+describe('the inherited-lore count', () => {
+  it('trusts the fresh list row over a lagging parent detail', async () => {
+    // The detail still lists both entries as on (fetched before the parent
+    // was edited); the list row, refreshed by that save, says one is on.
+    const base = get.getMockImplementation()!;
+    get.mockImplementation((url: string) =>
+      url.includes('/detail')
+        ? Promise.resolve({
+            id: 'earth-1',
+            name: 'Earth',
+            description: 'A world',
+            entries: [
+              { name: 'Sea', key: 'sea', content: 'Salt water.', enabled: true },
+              { name: 'Moon', key: 'moon', content: 'One moon.', enabled: true },
+            ],
+            climateEnabled: true,
+          })
+        : base(url),
+    );
+    await act(async () => button('＋ New place').click());
+    setValue(partOfSelect(), 'earth-1');
+    await act(async () => {});
+    expect(loreProps.current?.note).toContain('Also active here: 1 lore entry from Earth.');
   });
 });
 

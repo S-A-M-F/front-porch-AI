@@ -14,6 +14,8 @@ export interface WorldSummary {
   name: string;
   description: string;
   entryCount: number;
+  /** Switched-on entries only; what a child place inherits. */
+  enabledEntryCount?: number;
   biomeId?: string | null;
   injectDescription?: boolean;
   climateEnabled?: boolean;
