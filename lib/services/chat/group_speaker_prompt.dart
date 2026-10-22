@@ -194,18 +194,16 @@ String buildSpeakerInstructionsBlock({
   return '[Instructions for ${_safeName(name)}]\n${parts.join('\n')}\n';
 }
 
-/// One group turn card, after the transcript: this turn's hidden notes,
-/// then who speaks and how. Starts on its own line so it never glues onto
-/// the last message.
+/// One group turn card, after the transcript: who speaks and how. Starts
+/// on its own line so it never glues onto the last message. This turn's
+/// notes are not in it; they keep the author-note seat near the end.
 String buildGroupTurnCard({
-  required String notes,
   required String turnNote,
   required String personaLine,
   String examplesBlock = '',
   String instructionsBlock = '',
 }) {
   final buf = StringBuffer('\n')
-    ..write(notes)
     ..write(turnNote)
     ..writeln(personaLine)
     ..write(examplesBlock)

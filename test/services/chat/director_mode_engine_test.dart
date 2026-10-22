@@ -903,8 +903,8 @@ void main() {
   group('group turn layout', () {
     String userOf(String full) => full.split('\n<START>').last;
 
-    test('the turn card starts its own line and sits right above the '
-        'state notes', () async {
+    test('the turn card starts its own line above the state notes, and '
+        'the Author\'s Note stays below them', () async {
       await h.groupWithTwoReplies(aOff: const []);
       h.chat.setAuthorNote('Keep it cozy.');
       h.chat.setNextCharacter(member('Ayla'));
@@ -917,6 +917,10 @@ void main() {
       expect(
         user.indexOf('[GROUP TURN'),
         lessThan(user.indexOf('[Story state')),
+      );
+      expect(
+        user.indexOf('[Author\'s Note'),
+        greaterThan(user.indexOf('[Story state')),
       );
     });
 
@@ -946,6 +950,10 @@ void main() {
       final user = userOf(llm.replyPrompts.last);
       expect(user, contains('sold the truck. Let the scene'));
       expect(user, isNot(contains('truck..')));
+      expect(
+        user.indexOf('sold the truck.'),
+        greaterThan(user.indexOf('[GROUP TURN')),
+      );
     });
 
     test('impersonate while directing writes a stage direction', () async {

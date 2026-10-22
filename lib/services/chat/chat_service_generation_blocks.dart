@@ -174,8 +174,8 @@ extension ChatServiceGenerationBlocks on ChatService {
       t.suffix = "";
     }
 
-    // Build example dialogues block. Group examples ride the speaker card,
-    // built once this turn's notes are in (below).
+    // Build example dialogues block. Group examples ride the speaker card
+    // (built below).
     if (_activeGroup != null) {
       t.mesExampleBlock = '';
     } else if (t.speakingCharacter.mesExample.isNotEmpty) {
@@ -311,15 +311,14 @@ extension ChatServiceGenerationBlocks on ChatService {
           '${AwayPulse.returnSpeakHint(t.speakingCharacter.name)}\n';
     }
 
-    // Group: this turn's notes lead the speaker's card, one block after
-    // the transcript, so the author-note seat stays empty.
+    // Group: the speaker's card rides after the transcript. This turn's
+    // notes keep the author-note seat near the end, as in 1:1: further up,
+    // some models ignore the Author's Note and the Director goal.
     if (_activeGroup != null) {
       t.speakerCardBlock = _buildGroupSpeakerCard(
         t.speakingCharacter,
         userName: t.userName,
-        notes: t.authorNoteBlock,
       );
-      t.authorNoteBlock = '';
     }
 
     // Build summary block if available. Role frame (spec §6): the recap is
@@ -415,14 +414,13 @@ extension ChatServiceGenerationBlocks on ChatService {
     }
   }
 
-  /// This turn's notes, the identity line, and the speaker's persona,
-  /// examples and instructions (group override or card prompt, then the
-  /// card's post-history).
+  /// The identity line and the speaker's persona, examples and
+  /// instructions (group override or card prompt, then the card's
+  /// post-history).
   /// Shared by generation and the Context Viewer estimate.
   String _buildGroupSpeakerCard(
     CharacterCard speaker, {
     required String userName,
-    String notes = '',
   }) {
     final others = [
       for (final ch in _groupCharacters)
@@ -444,7 +442,6 @@ extension ChatServiceGenerationBlocks on ChatService {
         : _macroResolver.resolve(text, macros, section: section);
     final groupCharPrompt = getSystemPromptForGroupCharacter(speaker).trim();
     return buildGroupTurnCard(
-      notes: notes,
       turnNote: turnNote,
       personaLine: buildSpeakerPersonaLine(
         name: speaker.name,

@@ -125,8 +125,8 @@ extension ChatServiceGenerationPlanRegister on ChatService {
     // that move was chasing is bought in words by the state_frame section
     // below. Full numbers: the kStateZoneSectionIds doc and §6.1/§8d of
     // docs/design/prompt-state-injection.md.
-    // Group only (empty in 1:1): this turn's notes and the speaker's card,
-    // ahead of the state zone so the frame sits right above its notes.
+    // Group only (empty in 1:1): the speaker's card, ahead of the state
+    // zone. The turn's notes stay at the author_note seat below.
     plan.add(
       id: 'speaker_card',
       label: 'Speaker Card',
