@@ -203,6 +203,11 @@ class SettingsWriter {
       if (guests is bool) {
         await _storage.realismSettings.setSceneGuestDetectionEnabled(guests);
       }
+      // Slice 6: 'sceneSuggestionsEnabled' from the PWA Porch Life row.
+      final sceneSug = realism['sceneSuggestionsEnabled'];
+      if (sceneSug is bool) {
+        await _storage.realismSettings.setSceneSuggestionsEnabled(sceneSug);
+      }
       final objs = realism['objectivesEnabled'];
       if (objs is bool) {
         await _storage.realismSettings.setObjectivesEnabled(objs);

@@ -272,6 +272,19 @@ final Map<String, Map<String, dynamic>> _sceneTimeFields = {
     'Whole days skipped ONLY when the reply explicitly narrates a jump of '
     'days or more ("a week later"). 0 otherwise.',
   ),
+  // Slice 6 (unconditional like serves_ambition above — a schema is a fixed
+  // contract per backend identity, not per turn): where the reply leaves
+  // the scene. The PROMPT lists the legal ids ONLY when Scene suggestions
+  // is on and the Setting has relatives; when it is not asked for, models
+  // simply omit it, and the parse treats absent, "same" and "" identically
+  // — never a move. It is in NO required list on purpose: tool models skip
+  // optional fields, and skipping here is the safe answer.
+  'scene_place': _strField(
+    'Where the reply leaves the scene: "same", or one of the place ids '
+    'listed in the prompt. Report a move ONLY when the narration actually '
+    'arrives there; a plan or a mention is "same". Only asked for when '
+    'the setting has connected places.',
+  ),
 };
 
 /// The POST-generation posture pass (TimeService's `postureOnly` mode). It
@@ -302,6 +315,9 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalTools = [
       'continuous_instant': _sceneTimeFields['continuous_instant']!,
       'new_day': _sceneTimeFields['new_day']!,
       'days_elapsed': _sceneTimeFields['days_elapsed']!,
+      // Slice 6: in the schema always (fixed contract); asked for in the
+      // prompt only when Scene suggestions is on. Absent = 'same'.
+      'scene_place': _sceneTimeFields['scene_place']!,
     },
     const ['minutes_elapsed'],
   ),
@@ -322,6 +338,7 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalToolsWithToday = [
       'continuous_instant': _sceneTimeFields['continuous_instant']!,
       'new_day': _sceneTimeFields['new_day']!,
       'days_elapsed': _sceneTimeFields['days_elapsed']!,
+      'scene_place': _sceneTimeFields['scene_place']!,
       'today_sentence': _todaySentenceField,
     },
     const ['minutes_elapsed', 'today_sentence'],

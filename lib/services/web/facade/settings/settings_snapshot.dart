@@ -177,6 +177,9 @@ class SettingsSnapshot {
         'wikiSavedUrls': _storage.webSearchSettings.savedWikiUrls,
         'sceneGuestDetectionEnabled':
             _storage.realismSettings.sceneGuestDetectionEnabled,
+        // Slice 6 (additive): the PWA mirrors the Porch Life switch.
+        'sceneSuggestionsEnabled':
+            _storage.realismSettings.sceneSuggestionsEnabled,
         'adultThemesEnabled': _storage.realismSettings.adultThemesEnabled,
         'weatherEnabled': _storage.realismSettings.weatherEnabled,
         'weatherFahrenheit': _storage.realismSettings.weatherFahrenheit,

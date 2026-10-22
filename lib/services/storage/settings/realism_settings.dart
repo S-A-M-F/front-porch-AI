@@ -121,6 +121,14 @@ class RealismSettings with SettingsBase, TimeSkipBridgeSetting {
   /// existing mint/enter flow, doing zero Realism or Needs work.
   bool _sceneGuestDetectionEnabled = true;
 
+  /// Slice 6: the ONE global switch for suggested scene transitions — the
+  /// clock judge may propose "the scene moved to X" (and, in slice 7, a
+  /// named new place to mint) only when this is on. Default OFF: a new
+  /// model-driven suggestion earns its place by opt-in, never by
+  /// appearing unasked in someone's chat. Passage of Time is the hard
+  /// precondition — with the clock off the judge never runs at all.
+  bool _sceneSuggestionsEnabled = false;
+
   /// Global Chaos Mode default. Chaos had NO global switch at all — it was
   /// per-chat only, seeded from the card — so Porch Life could only apologise
   /// for it in a footer instead of offering it.
@@ -219,6 +227,10 @@ class RealismSettings with SettingsBase, TimeSkipBridgeSetting {
   /// See [_sceneGuestDetectionEnabled]. Depends on nothing; default ON.
   bool get sceneGuestDetectionEnabled => _sceneGuestDetectionEnabled;
 
+  /// See [_sceneSuggestionsEnabled]. Rides the Passage of Time clock;
+  /// default OFF.
+  bool get sceneSuggestionsEnabled => _sceneSuggestionsEnabled;
+
   /// See [_pocketTransfersEnabled]. Costs nothing extra — it rides the Pockets
   /// pass that is already running.
   bool get pocketTransfersEnabled => _pocketTransfersEnabled;
@@ -303,6 +315,7 @@ class RealismSettings with SettingsBase, TimeSkipBridgeSetting {
     _chaosModeDefault = s.chaosModeDefault;
     _chaosFrequency = s.chaosFrequency;
     _sceneGuestDetectionEnabled = s.sceneGuestDetectionEnabled;
+    _sceneSuggestionsEnabled = s.sceneSuggestionsEnabled;
     _pocketTransfersEnabled = s.pocketTransfersEnabled;
     _adultThemesExplicit = s.adultThemesExplicit;
     _oneShotMode = s.oneShotMode;
@@ -456,6 +469,11 @@ class RealismSettings with SettingsBase, TimeSkipBridgeSetting {
   Future<void> setSceneGuestDetectionEnabled(bool value) {
     _sceneGuestDetectionEnabled = value;
     return _saveBool('scene_guest_detection_enabled', value);
+  }
+
+  Future<void> setSceneSuggestionsEnabled(bool value) {
+    _sceneSuggestionsEnabled = value;
+    return _saveBool('scene_suggestions_enabled', value);
   }
 
   Future<void> setPocketTransfersEnabled(bool value) {

@@ -52,6 +52,7 @@ interface PorchLifeState {
   wikiBaseUrl?: string;
   wikiSavedUrls?: string[];
   sceneGuestDetectionEnabled: boolean;
+  sceneSuggestionsEnabled: boolean;
   adultThemesEnabled: boolean;
   dreamsEnabled: boolean;
   promiseLedgerEnabled: boolean;
@@ -88,6 +89,7 @@ const DEFAULTS: PorchLifeState = {
   wikiBaseUrl: '',
   wikiSavedUrls: [],
   sceneGuestDetectionEnabled: true,
+  sceneSuggestionsEnabled: false,
   adultThemesEnabled: false,
   dreamsEnabled: true,
   promiseLedgerEnabled: true,
@@ -474,6 +476,16 @@ export function PorchLifeSettings() {
           blurb={'When a message skips a day or more ("two weeks later"), a short narrator card fills in how those days went before the character replies. One short AI call, only on a turn that skips that far. Off, the skip still happens, just without the card.'}
           value={st.timeSkipBridgeEnabled}
           onChange={(v) => set('timeSkipBridgeEnabled', v)}
+        />
+        <FeatureRow
+          icon="🧭"
+          label="Scene suggestions"
+          need="needs"
+          dependsOn="Passage of Time"
+          satisfied={timeOn}
+          blurb={'When the clock is running, the same turn read that moves time also watches the story\'s PLACE. If a reply clearly arrives somewhere in your world — up the stairs into the Tea Rooms, out through the gate — the app offers to move the scene there. You confirm or stay; it never moves the scene by itself, and a plan or a passing mention is never a move. Later updates add one more offer under this same switch: saving a newly-named place the story walks into. Off by default — offers in the middle of a scene are welcome to some authors and noise to others.'}
+          value={st.sceneSuggestionsEnabled}
+          onChange={(v) => set('sceneSuggestionsEnabled', v)}
         />
         <FeatureRow
           icon="☁️"

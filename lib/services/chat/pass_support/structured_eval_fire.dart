@@ -90,7 +90,13 @@ bool _matchesEvalSchema(
             'false',
           }.contains(value.toString().trim().toLowerCase());
     case 'string':
-      return value is String && (value.isNotEmpty || field == 'today_sentence');
+      // 'today_sentence' (its "empty abandons" law) and 'scene_place'
+      // (slice 6: absent or empty means "same", never a move) accept the
+      // empty string; every other field must carry a non-empty value.
+      return value is String &&
+          (value.isNotEmpty ||
+              field == 'today_sentence' ||
+              field == 'scene_place');
     default:
       return false;
   }
