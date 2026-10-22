@@ -961,5 +961,15 @@ void main() {
       expect(full.trimRight(), endsWith('[Director:'));
       expect(draft, 'Bram finally admits it.');
     });
+
+    test('a director note that runs on is cut at its close', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      llm.mouth = 'Bram finally admits it.] Misty laughs at him.';
+      var draft = '';
+      await h.chat.impersonateUser(onToken: (t) => draft = t);
+      expect(draft, 'Bram finally admits it.');
+    });
   });
 }

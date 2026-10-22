@@ -93,10 +93,12 @@ String impersonateDirectorSuffix({required String prefix}) {
 }
 
 /// The finished direction as the composer wants it: the model closes the
-/// `[Director: …]` bracket it was handed, so drop that closer.
+/// `[Director: …]` bracket it was handed, so cut there; anything it ran on
+/// past the closer is another turn.
 String closeDirectorNote(String text) {
   final t = text.trim();
-  return t.endsWith(']') ? t.substring(0, t.length - 1).trimRight() : t;
+  final close = t.indexOf(']');
+  return close < 0 ? t : t.substring(0, close).trimRight();
 }
 
 /// Continue-style rule when the user already typed a start.
