@@ -21,7 +21,6 @@ import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
-import 'package:front_porch_ai/ui/theme/download_status_colors.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 /// Glassmorphic card displaying a locally installed model.
