@@ -195,3 +195,24 @@ describe('buildWorldInjection (Dart twin)', () => {
     expect(injectionUsedChars(text)).toBe(body.length + 1);
   });
 });
+
+describe('buildWorldInjection under a weather-off top-level world', () => {
+  const greenhouse = w('The Greenhouse', {
+    description: 'Warm glass rooms.',
+    atmosphere: 'thin',
+    climateEnabled: true,
+    parentWorldId: 'Earth',
+  });
+
+  it('silences the traits of a place that owns a climate', () => {
+    const earth = w('Earth', { climateEnabled: false });
+    const text = buildWorldInjection([greenhouse, earth]);
+    expect(text).toContain('Warm glass rooms.');
+    expect(text).not.toContain('air is thin');
+  });
+
+  it('the same place speaks its traits once the root is on', () => {
+    const earth = w('Earth', { climateEnabled: true });
+    expect(buildWorldInjection([greenhouse, earth])).toContain('air is thin');
+  });
+});

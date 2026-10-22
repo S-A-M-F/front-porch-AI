@@ -113,4 +113,26 @@ void main() {
       expect(envelope.containsKey('place_traits'), isFalse);
     });
   });
+
+  group('a weather-off top-level world', () {
+    World place() => World(
+      name: 'The Greenhouse',
+      description: 'Warm glass rooms.',
+      lorebook: Lorebook(entries: []),
+      parentWorldId: 'earth',
+    )..atmosphere = WorldAtmosphere.thin;
+
+    test('silences the traits of a place that owns a climate', () {
+      final earth = _world()..climateEnabled = false;
+      final out = buildWorldInjection([place(), earth]);
+      expect(out, contains('Warm glass rooms.'));
+      expect(out, isNot(contains('air is thin')));
+    });
+
+    test('the same place speaks its traits once the root is on', () {
+      final earth = _world();
+      final out = buildWorldInjection([place(), earth]);
+      expect(out, contains('air is thin'));
+    });
+  });
 }

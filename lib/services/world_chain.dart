@@ -35,8 +35,11 @@ List<World> worldChain(World leaf, World? Function(String id) lookup) {
 
 /// The first climate-enabled world in a [worldChain] — the place whose
 /// biome, weather and traits the leaf reads. Null when the whole chain is
-/// lore-only (a climate-off root as Setting ⇒ weather off, as today).
+/// lore-only, and null when the root has weather off: a top-level world's
+/// switch covers every place inside it, so a place that owns a climate
+/// under a weather-off world keeps it saved but paused.
 World? climateAuthorOf(List<World> chain) {
+  if (chain.isEmpty || !chain.last.climateEnabled) return null;
   for (final w in chain) {
     if (w.climateEnabled) return w;
   }
@@ -47,6 +50,11 @@ World? climateAuthorOf(List<World> chain) {
 /// For a root alone this is exactly the old `primaryWorldAllowsClimate`
 /// answer — the gate just widened from "the Primary" to "the chain".
 bool chainAllowsClimate(List<World> chain) => climateAuthorOf(chain) != null;
+
+/// The top-level world of a place whose weather that world switched off,
+/// or null for a root (its own switch says it) or a weather-on world.
+World? weatherOffRootOf(List<World> chain) =>
+    chain.length > 1 && !chain.last.climateEnabled ? chain.last : null;
 
 /// Worlds the editor may offer as the parent of [self] (null = a create):
 /// every root and every depth-1 world, minus [self] and minus its own
@@ -162,3 +170,19 @@ String? parentRejection({
   }
   return null;
 }
+
+/// The places under [rootId] that own a climate — the ones a weather-off
+/// switch on that world pauses. Walks each place's chain, so a room two
+/// levels down counts too.
+List<World> climateOwnersInside(
+  String rootId,
+  Iterable<World> all,
+  World? Function(String id) lookup,
+) => [
+  for (final w in all)
+    if (w.id != rootId &&
+        w.climateEnabled &&
+        w.parentWorldId != null &&
+        worldChain(w, lookup).last.id == rootId)
+      w,
+];

@@ -29,10 +29,10 @@ class WorldPlaceCard extends StatelessWidget {
   // Multi-select ("Move into…"): the checkbox only renders when onSelected
   // is set, so untouched call sites keep today's exact card.
   final bool? selected;
-  // False when no world in this place's chain owns a climate: the honest
-  // tag is "Weather off", not a promise of something to inherit (§7: a
-  // climate-off root as Setting means weather off). Defaults true so
-  // callers without chain access keep today's card verbatim.
+  // False when the chain has no climate author — none owns one, or the
+  // top-level world has weather off: the honest tag is "Weather off" (or
+  // "Own climate · paused"), not a promise of something to inherit.
+  // Defaults true so callers without chain access keep today's card.
   final bool hasWeatherToInherit;
   // Parent NAME for the "inside X" tag. Separate from [parent] because
   // the mockup marks depth only where it is not already obvious: section
@@ -62,21 +62,28 @@ class WorldPlaceCard extends StatelessWidget {
     final worldColor = WorldColors.getColorForWorld(world.name);
     final climate = world.biomeId;
     final climateLabel =
-        (climate != null && climate.isNotEmpty && climate != 'temperate')
+        (world.climateEnabled &&
+            hasWeatherToInherit &&
+            climate != null &&
+            climate.isNotEmpty &&
+            climate != 'temperate')
         ? climate
         : null;
     // Inherit/own tag: only locations get one — a root's climate story is
     // its own dropdown chip above. A place that owns reads like the
     // editor's radio ("Own climate · <biome>"); the mockup names the
     // biome so a continent's card tells its weather at a glance.
+    // hasWeatherToInherit is false under a weather-off top-level world, so
+    // a place that owns a climate there reads as paused, not active.
     final weatherTag = parent == null
         ? null
         : world.climateEnabled
-        ? 'Own climate'
+        ? (hasWeatherToInherit ? 'Own climate' : 'Own climate · paused')
         : hasWeatherToInherit
         ? 'Inherits weather'
         : 'Weather off';
-    final ownBiomeName = (parent != null && world.climateEnabled)
+    final ownBiomeName =
+        (parent != null && world.climateEnabled && hasWeatherToInherit)
         ? Biome.builtInById(world.biomeId)?.displayName
         : null;
 
@@ -279,7 +286,8 @@ class WorldPlaceCard extends StatelessWidget {
                             ownBiomeName == null
                                 ? weatherTag
                                 : '$weatherTag · $ownBiomeName',
-                            muted: !world.climateEnabled,
+                            muted:
+                                !world.climateEnabled || !hasWeatherToInherit,
                           ),
                         if (insideName != null)
                           _tag(context, 'inside $insideName', muted: true),

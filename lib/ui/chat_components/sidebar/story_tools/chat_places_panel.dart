@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 import '../../widgets/chat_turn_builder.dart';
@@ -48,6 +49,9 @@ class ChatPlacesPanel extends StatelessWidget {
             ? null
             : worlds.climateAuthorFor(primary.id);
         final climateAuthors = climateAuthor != null;
+        final weatherOffRoot = primary == null
+            ? null
+            : weatherOffRootOf(worlds.chainFor(primary.id));
         final activeClimate = chat.activeChatBiome;
         final customOptions = <(String, World, Biome)>[
           if (climateAuthors &&
@@ -137,7 +141,10 @@ class ChatPlacesPanel extends StatelessWidget {
               ),
             ] else if (!climateAuthors) ...[
               Text(
-                'This setting is lore-only — no weather.',
+                weatherOffRoot == null
+                    ? 'This setting is lore-only — no weather.'
+                    : 'Weather is off for ${weatherOffRoot.name}, so this '
+                          'place has none.',
                 style: TextStyle(
                   fontSize: 11,
                   color: AppColors.textTertiary(context),

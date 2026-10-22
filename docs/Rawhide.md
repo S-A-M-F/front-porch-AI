@@ -11,6 +11,7 @@ Last shipped nightly: `nightly-rawhide.20261020.601968c`
 
 ## Unreleased
 
+- 🌦️ **A world's weather switch covers its places** — turning a top-level world's climate off now means no weather anywhere inside it. Adding or editing a place there says "Weather is off for <world>", a place that already has its own climate keeps it but shows it as paused (in the editor, on its card and in the chat's Places panel), and the world's editor lists which places are paused. Turn the world's weather back on and they pick up where they were. On the desktop and the web app.
 - 📍 **Adding a place reads like adding a place** — "Add a place inside" now opens a dialog titled "Add a place to <world>" with a Place name field, a plain Description and an Add place button, instead of the new-world wording. The lorebook is labelled as the place's own and says how many entries it already gets from the world around it, and picking Own climate opens the climate editor right under that choice rather than further up the form. On the desktop and the web app.
 - 🗺️ **Places travel together** — exporting a world (or one place inside it) now packs its location tree into the .fpworld file, and importing rebuilds the nested places with fresh ids and keeps where each came from; exporting a single place carries its world and the branch down to it, so nothing orphaned rides along. Stoop WORLD cards share the same envelope, so a card you post carries its places too, and older files without a tree still import exactly as before. On the desktop and the web app.
 

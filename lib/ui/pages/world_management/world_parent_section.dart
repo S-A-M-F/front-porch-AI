@@ -15,7 +15,9 @@ import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/ui/pages/worlds/worlds.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'world_climate_section.dart';
+import 'world_dialog_wording.dart';
 import 'world_edit_draft.dart';
+import 'world_weather_note.dart';
 
 class WorldParentSection extends StatelessWidget {
   const WorldParentSection({
@@ -24,9 +26,11 @@ class WorldParentSection extends StatelessWidget {
     required this.draft,
     required this.draftEditingId,
     required this.setDialogState,
+    required this.wording,
   });
 
   final WorldRepository repo;
+  final WorldDialogWording wording;
   final WorldEditDraft draft;
   // The row id being edited ('' while creating) — the world a preview
   // and candidate filter pretend the draft currently is.
@@ -184,6 +188,14 @@ class WorldParentSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
+        if (wording.isWeatherOff) ...[
+          WorldWeatherNote(
+            key: const Key('world-weather-off-note'),
+            title: wording.weatherOffTitle,
+            body: wording.weatherOffBody(ownsClimate: own),
+          ),
+          const SizedBox(height: 8),
+        ],
         Row(
           children: [
             Expanded(
@@ -191,7 +203,9 @@ class WorldParentSection extends StatelessWidget {
                 context,
                 selected: !own,
                 title: 'Inherit from ${parent.name}',
-                body: parent.climateEnabled
+                body: wording.isWeatherOff
+                    ? wording.inheritWeatherOffBody
+                    : parent.climateEnabled
                     ? '${parentBiome.displayName} · Weather, atmosphere and '
                           'gravity come from the parent.'
                     : 'Nothing above this place authors a climate yet — '
@@ -208,6 +222,9 @@ class WorldParentSection extends StatelessWidget {
                 body:
                     'This place authors its own weather, for itself and the '
                     'places inside it.',
+                tag: wording.isWeatherOff
+                    ? wording.ownWeatherOffTag(ownsClimate: own)
+                    : null,
                 onTap: () => setDialogState(() => draft.climateEnabled = true),
               ),
             ),
@@ -228,13 +245,31 @@ class WorldParentSection extends StatelessWidget {
         ),
         if (own) ...[
           const SizedBox(height: 10),
-          WorldClimateSection(draft: draft, setDialogState: setDialogState),
-          const SizedBox(height: 16),
-          PlaceTraitsEditor(
-            atmosphere: draft.atmosphere,
-            gravity: draft.gravity,
-            onAtmosphere: (v) => setDialogState(() => draft.atmosphere = v),
-            onGravity: (v) => setDialogState(() => draft.gravity = v),
+          // Still editable while paused, so the author can set it up before
+          // turning the world's weather on; dimmed so it reads as inactive.
+          Opacity(
+            opacity: wording.isWeatherOff ? 0.72 : 1,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (wording.isWeatherOff) ...[
+                  _tag(context, 'Paused'),
+                  const SizedBox(height: 8),
+                ],
+                WorldClimateSection(
+                  draft: draft,
+                  setDialogState: setDialogState,
+                ),
+                const SizedBox(height: 16),
+                PlaceTraitsEditor(
+                  atmosphere: draft.atmosphere,
+                  gravity: draft.gravity,
+                  onAtmosphere: (v) =>
+                      setDialogState(() => draft.atmosphere = v),
+                  onGravity: (v) => setDialogState(() => draft.gravity = v),
+                ),
+              ],
+            ),
           ),
         ],
       ],
@@ -247,6 +282,7 @@ class WorldParentSection extends StatelessWidget {
     required String title,
     required String body,
     required VoidCallback onTap,
+    String? tag,
   }) {
     return InkWell(
       key: Key(
@@ -304,11 +340,28 @@ class WorldParentSection extends StatelessWidget {
                 height: 1.35,
               ),
             ),
+            if (tag != null) ...[const SizedBox(height: 6), _tag(context, tag)],
           ],
         ),
       ),
     );
   }
+
+  Widget _tag(BuildContext context, String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: AppColors.surfaceContainerOf(context),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: AppColors.textSecondary(context),
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 
   Widget _impactNote(BuildContext context, World parent) {
     final inheritClause = draft.climateEnabled

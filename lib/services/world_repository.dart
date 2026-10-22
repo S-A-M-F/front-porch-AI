@@ -316,7 +316,8 @@ class WorldRepository extends ChangeNotifier {
 
   /// The nearest climate-enabled ancestor (or the place itself) — the one
   /// whose weather, biome and traits the chain reads. Null ⇒ the whole
-  /// chain is lore-only and this chat's weather stays off.
+  /// chain is lore-only, or its top-level world has weather off, and this
+  /// chat's weather stays off.
   model.World? climateAuthorFor(String idOrName) =>
       climateAuthorOf(chainFor(idOrName));
 

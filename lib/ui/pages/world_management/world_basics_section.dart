@@ -25,6 +25,7 @@ import 'package:front_porch_ai/utils/world_cover.dart';
 import 'world_climate_section.dart';
 import 'world_dialog_wording.dart';
 import 'world_edit_draft.dart';
+import 'world_weather_note.dart';
 
 /// Basic Information card for the create/edit World dialog: cover
 /// image (picker + thumbnail), name/description fields, the climate
@@ -251,12 +252,20 @@ class WorldBasicsSection extends StatelessWidget {
             _draftSwitch(
               context,
               title: 'Climate, weather, and place traits',
-              subtitle:
-                  'Off = lorebook and description only — no forecast, '
-                  'no atmosphere or gravity',
+              subtitle: wording.climateSwitchSubtitle,
               value: draft.climateEnabled,
               onChanged: (v) => setDialogState(() => draft.climateEnabled = v),
             ),
+          if (draft.parentWorldId == null &&
+              !draft.climateEnabled &&
+              wording.pausedPlacesTitle != null) ...[
+            const SizedBox(height: 8),
+            WorldWeatherNote(
+              key: const Key('world-paused-places-note'),
+              title: wording.pausedPlacesTitle!,
+              body: wording.pausedPlacesBody,
+            ),
+          ],
           // A place's climate editor opens under its Inherit / Own pair in
           // the parent section instead, next to the choice that opened it.
           if (draft.climateEnabled && !wording.isPlace) ...[

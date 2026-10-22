@@ -110,6 +110,7 @@ export function WorldCard({
             {world.name}
           </span>
           {world.climateEnabled !== false &&
+            hasWeatherToInherit &&
             world.biomeId &&
             world.biomeId !== 'temperate' && (
             <span className="wsg-linked" title={`Climate: ${world.biomeId}`}>
@@ -130,9 +131,16 @@ export function WorldCard({
             </span>
           )}
           {world.parentWorldId && world.climateEnabled === true && (
-            <span className="wsg-weather-tag wsg-weather-tag--own">
-              Own climate
-            </span>
+            hasWeatherToInherit ? (
+              <span className="wsg-weather-tag wsg-weather-tag--own">
+                Own climate
+              </span>
+            ) : (
+              // The top-level world has weather off: kept, but paused.
+              <span className="wsg-weather-tag wsg-weather-tag--inherit">
+                Own climate · paused
+              </span>
+            )
           )}
           {parentName && (
             <span className="wsg-inside-tag">inside {parentName}</span>
