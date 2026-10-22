@@ -30,12 +30,22 @@ class PresetSettings with SettingsBase {
       "You are an immersive roleplay partner. Embody {{char}} completely — personality, appearance, thought processes, emotions, behaviors, and speech patterns. You may also roleplay as any side characters introduced.\n\nEngage with {{user}} by depicting {{char}}'s actions, emotions, and dialogue. Develop the plot slowly and organically while driving the scenario forward. Never write {{user}}'s speech, actions, or decisions — allow them full control of their character.\n\nWrite in a vivid, creative, varied, and descriptive style. Use rich sensory detail for the environment, people, and events. Make each reply unique and end with an action or dialogue to keep momentum.\n\nMaintain consistency with established details — clothing, time of day, location, and prior events. Stay in character at all times.";
 
   List<Map<String, String>> _savedPrompts = [];
+  String? _oneToOneSlotName;
+  String? _groupSlotName;
   Map<String, String> _modelPresetMap = {};
   Map<String, String> _modelMmprojMap = {};
 
   List<Map<String, String>> get savedPrompts =>
       List.unmodifiable(_savedPrompts);
   Map<String, String> get modelPresetMap => Map.unmodifiable(_modelPresetMap);
+
+  /// The saved prompt the one-to-one Fallback system prompt was last loaded
+  /// from or saved as, or null. Each Settings prompt slot keeps its own.
+  String? get oneToOneSlotName => _oneToOneSlotName;
+
+  /// The saved prompt the Group system prompt was last loaded from or saved
+  /// as, or null.
+  String? get groupSlotName => _groupSlotName;
 
   /// Per-local-model mmproj (vision projector) file overrides. Keyed by the
   /// model's GGUF path → the mmproj file to pass to KoboldCpp so a
@@ -64,6 +74,9 @@ class PresetSettings with SettingsBase {
         _savedPrompts = [];
       }
     }
+    _oneToOneSlotName = _nonEmpty(prefs?.getString(k('system_prompt_name')));
+    _groupSlotName = _nonEmpty(prefs?.getString(k('group_system_prompt_name')));
+
     // Default "Immersive Roleplay" ensure/persist now handled in thin god _init (after load of persisted list)
     // so that first-run case always persists (was mem-only insert here causing god any() on unmodifiable to skip savePrompt).
 
@@ -97,11 +110,30 @@ class PresetSettings with SettingsBase {
     notify();
   }
 
+  /// Deleting a prompt also lets go of it in any slot that named it, so a
+  /// slot never offers to overwrite a prompt that is gone.
   Future<void> deleteSavedPrompt(String name) async {
     _savedPrompts.removeWhere((p) => p['name'] == name);
     await _persistPrompts();
+    if (_oneToOneSlotName == name) await setOneToOneSlotName(null);
+    if (_groupSlotName == name) await setGroupSlotName(null);
     notify();
   }
+
+  Future<void> setOneToOneSlotName(String? name) async {
+    _oneToOneSlotName = _nonEmpty(name);
+    await prefs?.setString(k('system_prompt_name'), _oneToOneSlotName ?? '');
+    notify();
+  }
+
+  Future<void> setGroupSlotName(String? name) async {
+    _groupSlotName = _nonEmpty(name);
+    await prefs?.setString(k('group_system_prompt_name'), _groupSlotName ?? '');
+    notify();
+  }
+
+  static String? _nonEmpty(String? value) =>
+      value == null || value.isEmpty ? null : value;
 
   void loadSavedPrompt(String name, void Function(String) setSystemPromptCb) {
     final prompt = _savedPrompts.firstWhere(
