@@ -113,7 +113,7 @@ void main() {
     // ── 2. "Add a place inside" from the library card ───────────────────
     await d.waitForWidget(find.text('Add a place inside'));
     await tester.tap(find.text('Add a place inside').first);
-    await pumpUntilFound(tester, find.text('Create World'));
+    await pumpUntilFound(tester, find.text('Add a place to Bletchport'));
     // The dialog opens pre-parented: the Part of picker already names the
     // town, which is the entire point of the entry point.
     await d.waitForWidget(find.text('Part of'));
@@ -126,19 +126,19 @@ void main() {
       reason: 'Add-a-place-inside must pre-select the town as parent',
     );
     await tester.enterText(
-      find.widgetWithText(TextField, 'World Name').first,
+      find.widgetWithText(TextField, 'Place name').first,
       'The Lighthouse',
     );
     await tester.enterText(
-      find.widgetWithText(TextField, 'Description (place prose)').first,
+      find.widgetWithText(TextField, 'Description').first,
       'Warm lamplight over cold rope and tar.',
     );
     await tester.pump(const Duration(milliseconds: 200));
     // Two taps with no frame between, then exactly one world: a second
     // submit must not mint a duplicate (CLAUDE.md, create-button law).
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Create World'));
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Add place'));
     await tester.tap(
-      find.widgetWithText(ElevatedButton, 'Create World'),
+      find.widgetWithText(ElevatedButton, 'Add place'),
       warnIfMissed: false,
     );
     await d.waitFor(

@@ -21,6 +21,7 @@
 
 export 'world_basics_section.dart';
 export 'world_climate_section.dart';
+export 'world_dialog_wording.dart';
 export 'world_edit_dialog.dart';
 export 'world_edit_draft.dart';
 export 'world_lorebook_section.dart';

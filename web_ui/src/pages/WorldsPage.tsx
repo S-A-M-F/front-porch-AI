@@ -22,6 +22,7 @@ import {
   type TreeWorld,
 } from './worlds/locations';
 import type { BiomeDraft } from '../lib/seasonCalendar';
+import { placeEditorWording, type AncestorLore } from '../lib/placeEditorWording';
 import { confirmDiscard, useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import '../styles/ws-g.css';
 
@@ -450,6 +451,111 @@ export function WorldsPage() {
     (w) => w.biomeId && w.biomeId !== 'temperate',
   ).length;
 
+  // One climate editor, two homes: a top-level world shows it under the
+  // climate switch, a place opens it right under its Inherit / Own pair.
+  const climateEditor =
+    edit && edit.climateEnabled ? (
+      <>
+        <label>
+          Climate
+          <select
+            value={edit.biomeId}
+            onChange={(e) => {
+              const id = e.target.value;
+              if (id !== 'custom') {
+                setEdit({ ...edit, biomeId: id, biome: null });
+                setClimateErrors([]);
+                return;
+              }
+              const starter =
+                edit.biome ??
+                climates.find((c) => c.id === 'temperate')?.template ??
+                climates[0]?.template ??
+                null;
+              setEdit({
+                ...edit,
+                biomeId: 'custom',
+                biome: starter
+                  ? { ...starter, id: 'custom', displayName: edit.name || 'Custom climate' }
+                  : null,
+              });
+            }}
+          >
+            {(climates.length
+              ? climates
+              : [{ id: 'temperate', displayName: 'Temperate', description: '', feel: '' }]
+            ).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.displayName}
+              </option>
+            ))}
+            <option value="custom">Custom climate…</option>
+          </select>
+        </label>
+        {edit.biomeId === 'custom' && edit.biome && (
+          <ClimateSeasonEditor
+            biome={edit.biome}
+            enabled={edit.climateEnabled}
+            errors={climateErrors}
+            onChange={(biome) => {
+              setEdit({ ...edit, biome });
+              setClimateErrors([]);
+              setError('');
+            }}
+          />
+        )}
+        {selectedClimate && edit.biomeId !== 'custom' && (
+          <div className="climate-feel-card">
+            <strong>What it feels like</strong>
+            <p>{selectedClimate.description}</p>
+            {selectedClimate.feel && <p className="muted">{selectedClimate.feel}</p>}
+          </div>
+        )}
+
+        {/* Place traits — standing facts; defaults are silent (zero tokens). */}
+        <div className="place-traits-row">
+          <label>
+            Atmosphere
+            <select
+              value={edit.atmosphere}
+              onChange={(e) => setEdit({ ...edit, atmosphere: e.target.value })}
+            >
+              <option value="breathable">Breathable (normal)</option>
+              <option value="thin">Thin — masks for exertion</option>
+              <option value="unbreathable">Unbreathable — sealed suits</option>
+              <option value="hostile">Hostile — damages skin and gear</option>
+            </select>
+          </label>
+          <label>
+            Gravity
+            <select
+              value={edit.gravity}
+              onChange={(e) => setEdit({ ...edit, gravity: e.target.value })}
+            >
+              <option value="earth">Earth (normal)</option>
+              <option value="low">Low — bounding strides</option>
+              <option value="high">High — heavy limbs</option>
+              <option value="micro">Micro — everything floats</option>
+            </select>
+          </label>
+        </div>
+      </>
+    ) : null;
+  const ancestorLore = (): AncestorLore[] => {
+    const out: AncestorLore[] = [];
+    const seen = new Set<string>();
+    let cursor = edit?.parentWorldId ?? null;
+    while (cursor != null && !seen.has(cursor)) {
+      seen.add(cursor);
+      const w = byNameOrId(cursor);
+      if (!w) break;
+      out.push({ name: w.name, entryCount: w.entryCount ?? 0 });
+      cursor = w.parentWorldId ?? null;
+    }
+    return out;
+  };
+  const wording = edit ? placeEditorWording(edit.originalName == null, ancestorLore()) : null;
+
   return (
     <div className="page">
       {prompt}
@@ -678,13 +784,13 @@ export function WorldsPage() {
         );
       })()}
 
-      {edit && (
+      {edit && wording && (
         <div className="card world-edit">
-          <h3 className="section-label">
-            {edit.originalName ? 'Edit place' : 'New place'}
-          </h3>
+          <h3 className="section-label">{wording.title}</h3>
+          {wording.subtitle && <p className="muted small">{wording.subtitle}</p>}
           <label>
-            Name<span className="req"> *</span>
+            {wording.nameLabel}
+            <span className="req"> *</span>
             <input
               value={edit.name}
               onChange={(e) => setEdit({ ...edit, name: e.target.value })}
@@ -757,10 +863,11 @@ export function WorldsPage() {
                 />
               </label>
               <p className="muted small">
-                Inherit keeps the place reading its parent&apos;s weather — one
-                flag, one control. Pick Own climate for a continent on Earth or
-                a greenhouse in orbit.
+                {edit.climateEnabled
+                  ? 'This place’s climate also reaches the places inside it.'
+                  : 'Pick Own climate for a continent on Earth or a greenhouse in the tundra. The climate editor opens right here when it is on.'}
               </p>
+              {climateEditor}
               {edit.id != null &&
                 edit.parentWorldId !==
                   (editBase ? (JSON.parse(editBase).parentWorldId ?? null) : null) && (
@@ -846,12 +953,12 @@ export function WorldsPage() {
             </div>
           </div>
           <label>
-            Description (place prose)
+            {wording.descriptionLabel}
             <textarea
               rows={3}
               value={edit.description}
               onChange={(e) => setEdit({ ...edit, description: e.target.value })}
-              placeholder="What it feels like to be here — can reach the story when inject is on"
+              placeholder={wording.descriptionHint}
             />
           </label>
 
@@ -877,93 +984,7 @@ export function WorldsPage() {
             </>
           )}
 
-          {edit.climateEnabled && (
-            <>
-              <label>
-                Climate
-                <select
-                  value={edit.biomeId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    if (id !== 'custom') {
-                      setEdit({ ...edit, biomeId: id, biome: null });
-                      setClimateErrors([]);
-                      return;
-                    }
-                    const starter =
-                      edit.biome ??
-                      climates.find((c) => c.id === 'temperate')?.template ??
-                      climates[0]?.template ??
-                      null;
-                    setEdit({
-                      ...edit,
-                      biomeId: 'custom',
-                      biome: starter
-                        ? { ...starter, id: 'custom', displayName: edit.name || 'Custom climate' }
-                        : null,
-                    });
-                  }}
-                >
-                  {(climates.length
-                    ? climates
-                    : [{ id: 'temperate', displayName: 'Temperate', description: '', feel: '' }]
-                  ).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.displayName}
-                    </option>
-                  ))}
-                  <option value="custom">Custom climate…</option>
-                </select>
-              </label>
-              {edit.biomeId === 'custom' && edit.biome && (
-                <ClimateSeasonEditor
-                  biome={edit.biome}
-                  enabled={edit.climateEnabled}
-                  errors={climateErrors}
-                  onChange={(biome) => {
-                    setEdit({ ...edit, biome });
-                    setClimateErrors([]);
-                    setError('');
-                  }}
-                />
-              )}
-              {selectedClimate && edit.biomeId !== 'custom' && (
-                <div className="climate-feel-card">
-                  <strong>What it feels like</strong>
-                  <p>{selectedClimate.description}</p>
-                  {selectedClimate.feel && <p className="muted">{selectedClimate.feel}</p>}
-                </div>
-              )}
-
-              {/* Place traits — standing facts; defaults are silent (zero tokens). */}
-              <div className="place-traits-row">
-                <label>
-                  Atmosphere
-                  <select
-                    value={edit.atmosphere}
-                    onChange={(e) => setEdit({ ...edit, atmosphere: e.target.value })}
-                  >
-                    <option value="breathable">Breathable (normal)</option>
-                    <option value="thin">Thin — masks for exertion</option>
-                    <option value="unbreathable">Unbreathable — sealed suits</option>
-                    <option value="hostile">Hostile — damages skin and gear</option>
-                  </select>
-                </label>
-                <label>
-                  Gravity
-                  <select
-                    value={edit.gravity}
-                    onChange={(e) => setEdit({ ...edit, gravity: e.target.value })}
-                  >
-                    <option value="earth">Earth (normal)</option>
-                    <option value="low">Low — bounding strides</option>
-                    <option value="high">High — heavy limbs</option>
-                    <option value="micro">Micro — everything floats</option>
-                  </select>
-                </label>
-              </div>
-            </>
-          )}
+          {edit.parentWorldId == null && climateEditor}
 
           <label className="tool-toggle">
             <span>Inject description into story</span>
@@ -986,6 +1007,9 @@ export function WorldsPage() {
           <LoreEntriesEditor
             entries={edit.entries}
             onChange={(entries) => setEdit({ ...edit, entries })}
+            title={wording.loreTitle}
+            emptyText={wording.loreEmptyText}
+            note={wording.inheritedLoreLine}
           />
           {!edit.name.trim() && (
             <p className="muted small" data-testid="place-name-hint">
@@ -1009,7 +1033,7 @@ export function WorldsPage() {
               }
               onClick={save}
             >
-              {busy ? 'Saving…' : 'Save place'}
+              {busy ? 'Saving…' : wording.saveLabel}
             </button>
           </div>
         </div>

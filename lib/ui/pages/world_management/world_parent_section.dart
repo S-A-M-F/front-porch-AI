@@ -12,7 +12,9 @@ import 'package:front_porch_ai/services/chat/prompt_injection/prompt_injection.d
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/ui/pages/worlds/worlds.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'world_climate_section.dart';
 import 'world_edit_draft.dart';
 
 class WorldParentSection extends StatelessWidget {
@@ -213,14 +215,28 @@ class WorldParentSection extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Pick Own climate for a continent on Earth or a greenhouse in '
-          'the tundra. The climate editor appears here when it is on.',
+          own
+              ? "This place's climate also reaches the places inside it."
+              : 'Pick Own climate for a continent on Earth or a greenhouse in '
+                    'the tundra. The climate editor opens right here when it '
+                    'is on.',
           style: TextStyle(
             color: AppColors.textTertiary(context),
             fontSize: 10.5,
             height: 1.35,
           ),
         ),
+        if (own) ...[
+          const SizedBox(height: 10),
+          WorldClimateSection(draft: draft, setDialogState: setDialogState),
+          const SizedBox(height: 16),
+          PlaceTraitsEditor(
+            atmosphere: draft.atmosphere,
+            gravity: draft.gravity,
+            onAtmosphere: (v) => setDialogState(() => draft.atmosphere = v),
+            onGravity: (v) => setDialogState(() => draft.gravity = v),
+          ),
+        ],
       ],
     );
   }

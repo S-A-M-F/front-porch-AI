@@ -25,7 +25,15 @@ vi.mock('../api/client', () => ({
   ApiError: class extends Error {},
 }));
 vi.mock('../components/ClimateSeasonEditor', () => ({ ClimateSeasonEditor: () => null }));
-vi.mock('../components/LoreEntriesEditor', () => ({ LoreEntriesEditor: () => null }));
+const { loreProps } = vi.hoisted(() => ({
+  loreProps: { current: null as null | { title?: string; note?: string | null } },
+}));
+vi.mock('../components/LoreEntriesEditor', () => ({
+  LoreEntriesEditor: (p: { title?: string; note?: string | null }) => {
+    loreProps.current = p;
+    return null;
+  },
+}));
 vi.mock('../components/ImportCharacterLoreButton', () => ({
   ImportCharacterLoreButton: () => null,
 }));
@@ -137,7 +145,7 @@ describe('the Part of picker', () => {
       nameInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
     post.mockResolvedValue({ worlds: WORLD_ROWS });
-    await act(async () => button('Save place').click());
+    await act(async () => button('Add place').click());
     expect(post).toHaveBeenCalledWith(
       '/api/worlds',
       expect.objectContaining({
@@ -200,6 +208,45 @@ describe('the Part of picker', () => {
     expect(Array.from(sel.querySelectorAll('option')).some((o) =>
       (o.textContent ?? '').includes('invalid here'),
     )).toBe(true);
+  });
+});
+
+describe('the editor wording follows Part of', () => {
+  const heading = () => container.querySelector('.world-edit h3')?.textContent;
+  const labelTexts = () =>
+    Array.from(container.querySelectorAll('.world-edit label')).map((l) =>
+      l.textContent?.trim(),
+    );
+
+  it('a place inside a parent names the parent, and detaching goes back', async () => {
+    await act(async () => button('＋ New place').click());
+    expect(heading()).toBe('New place');
+    expect(button('Save place')).toBeDefined();
+
+    setValue(partOfSelect(), 'earth-1');
+    expect(heading()).toBe('Add a place to Earth');
+    expect(container.textContent).toContain("It shares Earth's lore and climate");
+    expect(labelTexts().some((t) => t?.startsWith('Place name'))).toBe(true);
+    expect(labelTexts().some((t) => t?.startsWith('Description (place prose)'))).toBe(false);
+    expect(button('Add place')).toBeDefined();
+    expect(button('Save place')).toBeUndefined();
+    // The place's own book, plus the lore its parent chain brings in.
+    expect(loreProps.current?.title).toBe("This place's lore");
+    expect(loreProps.current?.note).toContain('Also active here: 2 lore entries from Earth.');
+
+    // Own climate opens the climate editor under the Inherit / Own pair.
+    const radios = container.querySelector('.wsg-climate-radios')!;
+    const ownRadio = radios.querySelectorAll('input[type="radio"]')[1] as HTMLInputElement;
+    act(() => ownRadio.click());
+    const climateLabel = Array.from(radios.querySelectorAll('label')).find((l) =>
+      l.textContent?.trim().startsWith('Climate'),
+    );
+    expect(climateLabel?.querySelector('select')).not.toBeNull();
+    expect(radios.textContent).toContain('Atmosphere');
+
+    setValue(partOfSelect(), '');
+    expect(heading()).toBe('New place');
+    expect(button('Save place')).toBeDefined();
   });
 });
 

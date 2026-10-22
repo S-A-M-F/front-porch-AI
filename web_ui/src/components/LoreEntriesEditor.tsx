@@ -90,9 +90,16 @@ export const LORE_POSITIONS: Record<number, string> = {
 export function LoreEntriesEditor({
   entries,
   onChange,
+  title = 'Lorebook entries',
+  emptyText = 'No entries. Lore is injected when its keywords appear in the chat.',
+  note,
 }: {
   entries: LoreEntry[];
   onChange: (entries: LoreEntry[]) => void;
+  title?: string;
+  emptyText?: string;
+  /** One line under the header, e.g. lore a place inherits. */
+  note?: string | null;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [advancedOpen, setAdvancedOpen] = useState<Record<number, boolean>>({});
@@ -118,7 +125,7 @@ export function LoreEntriesEditor({
   return (
     <>
       <div className="row-label">
-        <span>Lorebook entries</span>
+        <span>{title}</span>
         <div className="row-actions">
           <button className="ghost" onClick={() => fileRef.current?.click()}>
             Import JSON
@@ -139,9 +146,12 @@ export function LoreEntriesEditor({
           e.target.value = '';
         }}
       />
-      {entries.length === 0 && (
-        <p className="muted">No entries. Lore is injected when its keywords appear in the chat.</p>
+      {note && (
+        <p className="muted small" data-testid="lore-note">
+          {note}
+        </p>
       )}
+      {entries.length === 0 && <p className="muted">{emptyText}</p>}
       {entries.map((entry, i) => (
         <div className="card lore-edit" key={i}>
           <input

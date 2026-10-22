@@ -18,6 +18,8 @@ import 'package:front_porch_ai/models/world.dart' as model;
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/pages/world_management_page.dart';
 
+import '../../helpers/double_tap.dart';
+
 import '../../golden/support/fakes.dart';
 
 /// Records what the dialog asks to save or rename.
@@ -146,5 +148,69 @@ void main() {
     await _bounded(tester);
     expect(create, findsNothing);
     expect(worlds.saved.single.name, 'The Cinder Wastes');
+  });
+
+  testWidgets('Add a place inside words the dialog as a place in its parent', (
+    tester,
+  ) async {
+    final earth = model.World(
+      id: 'earth-1',
+      name: 'Earth',
+      lorebook: Lorebook(
+        entries: [
+          LorebookEntry(key: 'sea', content: 'Salt water.'),
+          LorebookEntry(key: 'moon', content: 'One moon.'),
+        ],
+      ),
+    );
+    final town = model.World(
+      name: 'Harbor Town',
+      lorebook: Lorebook(entries: []),
+      parentWorldId: 'earth-1',
+      climateEnabled: false,
+    );
+    final worlds = _RecordingWorlds([earth, town]);
+    await _pumpPage(tester, worlds);
+    await tester.tap(find.byKey(const Key('place-add-inside')).first);
+    await _bounded(tester);
+
+    // Names the parent everywhere a top-level create would say "World".
+    expect(find.text('Add a place to Earth'), findsOneWidget);
+    expect(find.text('Create World'), findsNothing);
+    expect(find.widgetWithText(TextField, 'World Name'), findsNothing);
+    expect(find.widgetWithText(TextField, 'Place name'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Description'), findsOneWidget);
+    expect(find.text("This place's lore (0)"), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('world-inherited-lore')),
+        matching: find.textContaining('2 lore entries from Earth'),
+      ),
+      findsOneWidget,
+    );
+
+    // Own climate opens the climate editor under the Inherit / Own pair,
+    // not back up in Basic Information.
+    expect(find.text('Atmosphere'), findsNothing);
+    await tester.ensureVisible(find.text('Own climate'));
+    await tester.tap(find.text('Own climate'));
+    await _bounded(tester);
+    expect(find.text('Atmosphere'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Climate')).dy,
+      greaterThan(tester.getTopLeft(find.text('Own climate')).dy),
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Place name'),
+      'The Lighthouse',
+    );
+    final add = find.widgetWithText(ElevatedButton, 'Add place');
+    await tester.ensureVisible(add);
+    await doubleTapNoFrame(tester, add);
+    await _bounded(tester);
+    expect(worlds.saved, hasLength(1));
+    expect(worlds.saved.single.parentWorldId, 'earth-1');
+    expect(find.text('Place added'), findsOneWidget);
   });
 }
