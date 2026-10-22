@@ -108,6 +108,8 @@ mixin ChatServiceFieldBag {
   // state lives here either (the growth pass includes 1:1 guests who spoke in
   // the window via resolvePassOwners).
   final SceneGuestState _sceneGuest = SceneGuestState();
+  // Slice 6: suggested scene move + per-setting decline memory.
+  final SceneMoveState _sceneMoves = SceneMoveState();
   final AwayPulseState _awayPulse = AwayPulseState();
 
   bool _photoTurnInFlight = false;

@@ -11,6 +11,7 @@ Last shipped nightly: `nightly-rawhide.20261020.601968c`
 
 ## Unreleased
 
+- 🧭 **The scene can move when the story arrives** — with a new Porch Life switch, Scene suggestions (off until you turn it on, needs Passage of Time), the turn read that already moves time also notices when the narration walks into another place in your world: the app asks "The story reads as arriving at the Tea Rooms — move the scene there?" and only moves it if you say yes. Staying is remembered for that spot until the scene next moves; plans and mentions never trigger an offer. On the desktop and the web app.
 - 📍 **Adding a place reads like adding a place** — "Add a place inside" now opens a dialog titled "Add a place to <world>" with a Place name field, a plain Description and an Add place button, instead of the new-world wording. The lorebook is labelled as the place's own and says how many entries it already gets from the world around it, and picking Own climate opens the climate editor right under that choice rather than further up the form. On the desktop and the web app.
 - 🗺️ **Places travel together** — exporting a world (or one place inside it) now packs its location tree into the .fpworld file, and importing rebuilds the nested places with fresh ids and keeps where each came from; exporting a single place carries its world and the branch down to it, so nothing orphaned rides along. Stoop WORLD cards share the same envelope, so a card you post carries its places too, and older files without a tree still import exactly as before. On the desktop and the web app.
 

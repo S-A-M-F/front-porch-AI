@@ -65,6 +65,43 @@ extension ChatServiceWiringRealism on ChatService {
       getPorchLifePassageOfTime: () =>
           _storageService.realismSettings.passageOfTimeDefault,
       getPlannerEnabled: () => _storageService.realismSettings.plannerEnabled,
+      // Slice 6: the scene-move offer for THIS turn's clock call. Off by
+      // the global switch, off with no Setting, and declined places do
+      // not reappear until the Setting changes (decline memory below).
+      // Labels and reach come from the ONE law file (world_chain); the
+      // current setting itself is never offered — you are already there.
+      getScenePlaceOffer: () {
+        if (!_storageService.realismSettings.sceneSuggestionsEnabled) {
+          return null;
+        }
+        final primary = chatPrimaryWorldId;
+        if (primary == null) return null;
+        final setting = _worldRepository.worldById(primary);
+        if (setting == null) return null;
+        final reach = reachablePlaces(
+          setting,
+          _worldRepository.placeWorlds,
+          _worldRepository.worldById,
+        );
+        final offer = [
+          for (final p in reach)
+            if (p.id != setting.id && !_sceneMoves.isDeclined(p.id))
+              (
+                id: p.id,
+                label: p.parentWorldId == null
+                    ? p.name
+                    : '${p.name} · inside '
+                          '${_worldRepository.worldById(p.parentWorldId!)?.name ?? '?'}',
+              ),
+        ];
+        return offer.isEmpty ? null : offer;
+      },
+      onScenePlace: (id) {
+        final name = _worldRepository.worldById(id)?.name ?? id;
+        _sceneMoves.pending = PendingPlaceMove(id: id, name: name);
+        debugPrint('[Realism:Scene] suggested move pending: $name ($id)');
+        notifyListeners();
+      },
       onTodayEval: (line) {
         _recordTodayPointerOp();
         if (line.isEmpty) {

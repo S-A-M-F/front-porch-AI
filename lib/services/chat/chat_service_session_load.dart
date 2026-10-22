@@ -389,6 +389,7 @@ extension ChatServiceSessionLoad on ChatService {
         _sceneGuest.turnsSinceCastScan = 0;
         _sceneGuest.pendingDetection = null;
         _sceneGuest.offeredOrIgnoredNames.clear();
+        _sceneMoves.reset();  // Slice 6: stale offers die with the session too.
         // (clears + restores _sceneGuest.ids/_sceneGuest.cards + guest evolution)
         _loadSceneGuestsFromSession(session);
       } else {
