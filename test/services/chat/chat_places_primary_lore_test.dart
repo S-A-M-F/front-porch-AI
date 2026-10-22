@@ -155,8 +155,8 @@ void main() {
       expect(chainAllowsClimate(chain), isTrue);
     });
 
-    test('continents author their own weather under a climate-off root', () {
-      final earth = home('Earth', climate: false);
+    test('continents author their own weather under a climate-on root', () {
+      final earth = home('Earth', climate: true);
       final europe = home('Northern Europe', climate: true, parent: earth.id);
       final sahel = home('Sahel', climate: true, parent: earth.id);
       final all = index([earth, europe, sahel]);
@@ -170,6 +170,32 @@ void main() {
       final pool = home('Hot pool', climate: false, parent: cavern.id);
       final chain = worldChain(pool, index([town, cavern, pool]));
       expect(climateAuthorOf(chain)?.id, cavern.id);
+    });
+
+    test('a weather-off top-level world silences every place inside it', () {
+      final earth = home('Earth', climate: false);
+      final europe = home('Northern Europe', climate: true, parent: earth.id);
+      final oslo = home('Oslo', climate: false, parent: europe.id);
+      final sahel = home('Sahel', climate: true, parent: earth.id);
+      final all = index([earth, europe, oslo, sahel]);
+      for (final leaf in [europe, oslo, sahel]) {
+        final chain = worldChain(leaf, all);
+        expect(climateAuthorOf(chain), isNull, reason: leaf.name);
+        expect(chainAllowsClimate(chain), isFalse, reason: leaf.name);
+        expect(weatherOffRootOf(chain)?.id, earth.id, reason: leaf.name);
+      }
+      // The root itself says it with its own switch — no "off above" note.
+      expect(weatherOffRootOf(worldChain(earth, all)), isNull);
+      // Owned climates are kept, only paused: the switch lists them.
+      expect(
+        climateOwnersInside(earth.id, [
+          earth,
+          europe,
+          oslo,
+          sahel,
+        ], all).map((w) => w.id),
+        [europe.id, sahel.id],
+      );
     });
 
     test('an all-lore-only chain keeps weather off', () {

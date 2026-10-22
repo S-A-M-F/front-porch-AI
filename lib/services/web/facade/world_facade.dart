@@ -19,6 +19,7 @@
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.locations.dart';
 import 'package:front_porch_ai/services/web/facade/world_summary_json.dart';
@@ -353,6 +354,11 @@ class WorldFacade {
       // fills the "Move the scene" dropdown from the ONE Dart reach law
       // — no second TypeScript implementation of the rule.
       'climateAuthorName': climateAuthor?.name,
+      // Additive: the top-level world whose weather-off switch silences
+      // this Setting (weatherOff stays 'setting_lore_only' for old clients).
+      'weatherOffWorldName': primaryId == null
+          ? null
+          : weatherOffRootOf(_worlds.chainFor(primaryId))?.name,
       'reachable': reachable(primaryId),
       'weatherOff': ?weatherOff,
       'climateId': climate.id,

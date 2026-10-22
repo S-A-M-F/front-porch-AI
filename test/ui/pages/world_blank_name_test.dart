@@ -213,4 +213,61 @@ void main() {
     expect(worlds.saved.single.parentWorldId, 'earth-1');
     expect(find.text('Place added'), findsOneWidget);
   });
+
+  testWidgets('a weather-off world says so in the place editor and its own', (
+    tester,
+  ) async {
+    final earth = model.World(
+      id: 'earth-1',
+      name: 'Earth',
+      lorebook: Lorebook(entries: []),
+      climateEnabled: false,
+    );
+    final greenhouse = model.World(
+      id: 'greenhouse-1',
+      name: 'The Greenhouse',
+      lorebook: Lorebook(entries: []),
+      parentWorldId: 'earth-1',
+      climateEnabled: true,
+    );
+    final worlds = _RecordingWorlds([earth, greenhouse]);
+    await _pumpPage(tester, worlds);
+
+    // The library card: an owned climate under a weather-off world is
+    // kept but paused, and the world's card says the switch covers all.
+    expect(find.textContaining('Own climate · paused'), findsOneWidget);
+    expect(
+      find.textContaining('Weather off for the whole world'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('place-add-inside')).first);
+    await _bounded(tester);
+    expect(find.byKey(const Key('world-weather-off-note')), findsOneWidget);
+    expect(find.text('Weather is off for Earth'), findsOneWidget);
+    expect(find.text('No weather: Earth has weather off.'), findsOneWidget);
+    expect(find.text("No effect while Earth's weather is off"), findsOneWidget);
+
+    // Own climate still opens the editor, marked paused.
+    await tester.ensureVisible(find.text('Own climate'));
+    await tester.tap(find.text('Own climate'));
+    await _bounded(tester);
+    expect(find.text("Paused while Earth's weather is off"), findsOneWidget);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('Atmosphere'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await _bounded(tester);
+    final discard = find.text('Discard');
+    if (discard.evaluate().isNotEmpty) {
+      await tester.tap(discard);
+      await _bounded(tester);
+    }
+
+    // The world's own editor lists the place its switch pauses.
+    await tester.tap(find.widgetWithText(TextButton, 'Edit').first);
+    await _bounded(tester);
+    expect(find.byKey(const Key('world-paused-places-note')), findsOneWidget);
+    expect(find.text('1 place inside sets its own climate'), findsOneWidget);
+  });
 }

@@ -26,6 +26,8 @@ class WorldDialogWording {
     this.parentName,
     this.ancestorNames = const [],
     this.inheritedEntries = 0,
+    this.weatherOffRootName,
+    this.pausedPlaceNames = const [],
   });
 
   final bool isCreate;
@@ -39,7 +41,16 @@ class WorldDialogWording {
   /// Switched-on lore entries across [ancestorNames].
   final int inheritedEntries;
 
+  /// The top-level world above this place when its weather is off; every
+  /// place inside it has none, whatever its own climate says.
+  final String? weatherOffRootName;
+
+  /// Places inside this (top-level) world that own a climate.
+  final List<String> pausedPlaceNames;
+
   bool get isPlace => parentName != null;
+
+  bool get isWeatherOff => isPlace && weatherOffRootName != null;
 
   String get title {
     if (!isPlace) return isCreate ? 'Create World' : 'Edit World';
@@ -47,9 +58,14 @@ class WorldDialogWording {
   }
 
   /// One line under the title, only while adding a place.
-  String? get subtitle => isCreate && isPlace
-      ? "It shares $parentName's lore and climate unless you change it below."
-      : null;
+  String? get subtitle {
+    if (!isCreate || !isPlace) return null;
+    if (isWeatherOff) {
+      return "It shares $parentName's lore. $weatherOffRootName has weather "
+          'off, so this place has none either.';
+    }
+    return "It shares $parentName's lore and climate unless you change it below.";
+  }
 
   String get nameLabel => isPlace ? 'Place name' : 'World Name';
   String get nameHint =>
@@ -93,4 +109,53 @@ class WorldDialogWording {
         '${ancestorNames.join(' and ')}. When both books have an entry in '
         "the same group, this place's entry wins.";
   }
+
+  String get weatherOffTitle => 'Weather is off for $weatherOffRootName';
+
+  String weatherOffBody({required bool ownsClimate}) => ownsClimate
+      ? "This place's climate is saved but paused: it has no effect in chats "
+            "until $weatherOffRootName's weather is turned on in its editor."
+      : 'Nothing inside it has weather, atmosphere or gravity. A climate set '
+            "here won't do anything until $weatherOffRootName's weather is "
+            'turned on in its editor.';
+
+  String get inheritWeatherOffBody =>
+      'No weather: $weatherOffRootName has weather off.';
+
+  String ownWeatherOffTag({required bool ownsClimate}) => ownsClimate
+      ? "Paused while $weatherOffRootName's weather is off"
+      : "No effect while $weatherOffRootName's weather is off";
+
+  /// The top-level world's climate switch: off reaches every place in it.
+  String get climateSwitchSubtitle =>
+      'Off = no weather, atmosphere or gravity anywhere in this world, '
+      'including the places inside it.';
+
+  /// Heads the note under a weather-off world's switch; null when no place
+  /// inside it owns a climate.
+  String? get pausedPlacesTitle {
+    final n = pausedPlaceNames.length;
+    if (n == 0) return null;
+    return n == 1
+        ? '1 place inside sets its own climate'
+        : '$n places inside set their own climate';
+  }
+
+  String get pausedPlacesBody {
+    final names = pausedPlaceNames.length <= 3
+        ? _joinNames(pausedPlaceNames)
+        : '${pausedPlaceNames.take(2).join(', ')} and '
+              '${pausedPlaceNames.length - 2} more';
+    final verb = pausedPlaceNames.length == 1
+        ? 'keeps its climate'
+        : 'keep their climates';
+    final pronoun = pausedPlaceNames.length == 1 ? "it's" : "they're";
+    final back = pausedPlaceNames.length == 1 ? 'it comes' : 'they come';
+    return "$names $verb, but $pronoun paused while this is off. Turn it "
+        'back on and $back back as before.';
+  }
+
+  static String _joinNames(List<String> names) => names.length <= 1
+      ? names.join()
+      : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
 }

@@ -344,3 +344,75 @@ describe('the grouped library', () => {
     expect(container.querySelectorAll('.wsg-world-card')).toHaveLength(1);
   });
 });
+
+describe('a world with weather off', () => {
+  it('pauses owned climates inside it and says so in both editors', async () => {
+    act(() => root.unmount());
+    root = createRoot(container);
+    const rows = [
+      { ...WORLD_ROWS[0], climateEnabled: false },
+      {
+        id: 'greenhouse-1',
+        name: 'The Greenhouse',
+        description: 'Glass rooms',
+        entryCount: 0,
+        climateEnabled: true,
+        biomeId: 'tropical',
+        parentWorldId: 'earth-1',
+      },
+    ];
+    get.mockImplementation((url: string) => {
+      if (url === '/api/worlds/climates') return Promise.resolve({ climates: [] });
+      if (url.startsWith('/api/worlds/parent-candidates'))
+        return Promise.resolve({
+          candidates: [{ id: 'earth-1', name: 'Earth', parentWorldId: null }],
+        });
+      if (url.includes('/detail'))
+        return Promise.resolve({
+          id: 'earth-1',
+          name: 'Earth',
+          description: 'A world',
+          entries: [],
+          climateEnabled: false,
+        });
+      return Promise.resolve({ worlds: rows });
+    });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, null, createElement(WorldsPage)));
+    });
+
+    // The library: an owned climate under a weather-off world is paused.
+    const card = Array.from(container.querySelectorAll('.wsg-world-card')).find(
+      (c) => c.querySelector('.wsg-world-name')?.textContent === 'The Greenhouse',
+    )!;
+    expect(card.textContent).toContain('Own climate · paused');
+    expect(card.querySelector('.wsg-weather-tag--own')).toBeNull();
+
+    // The place creator says the world's weather is off.
+    await act(async () => button('＋ New place').click());
+    setValue(partOfSelect(), 'earth-1');
+    await act(async () => {});
+    const note = container.querySelector('[data-testid="weather-off-note"]');
+    expect(note?.textContent).toContain('Weather is off for Earth');
+    const radios = container.querySelector('.wsg-climate-radios')!;
+    expect(radios.textContent).toContain('No weather: Earth has weather off.');
+    expect(radios.textContent).toContain("No effect while Earth's weather is off");
+    const ownRadio = radios.querySelectorAll('input[type="radio"]')[1] as HTMLInputElement;
+    act(() => ownRadio.click());
+    expect(container.querySelector('[data-testid="climate-paused"]')).not.toBeNull();
+    expect(radios.textContent).toContain("Paused while Earth's weather is off");
+
+    // The world's own editor lists the place its switch pauses.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    act(() => button('Cancel')!.click());
+    const editEarth = container.querySelector(
+      '.wsg-section-head button[title="Edit"]',
+    ) as HTMLButtonElement;
+    await act(async () => editEarth.click());
+    await act(async () => {});
+    expect(
+      container.querySelector('[data-testid="paused-places-note"]')?.textContent,
+    ).toContain('1 place inside sets its own climate');
+    confirmSpy.mockRestore();
+  });
+});

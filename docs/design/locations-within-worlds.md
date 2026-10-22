@@ -98,8 +98,13 @@ column, `worlds.parent_world_id`, and everything else is derived.
   climate off takes weather, biome and place traits from the nearest
   climate-enabled ancestor. A location may switch its own climate on and
   becomes the climate author for itself and its descendants. So Earth can
-  be a climate-off root carrying shared lore, each continent a child with
+  be a climate-on root carrying shared lore, each continent a child with
   its own biome, and each city under a continent inherits that continent.
+- **The top-level world's switch covers every place in it.** With the
+  root's climate off, nothing inside has weather, atmosphere or gravity.
+  A place that owns a climate there keeps it saved but paused (the editor
+  and the library card say so) and comes back when the root's weather is
+  turned on.
 - **Depth** is capped at two levels below the root in the UI (town →
   building → room). The engine walks any chain to the root; the editor
   refuses to make a child of a depth-2 location. The schema never needs to
@@ -115,7 +120,8 @@ With world `S` in the Setting slot:
 
 1. **Chain** = `[S, parent(S), …]` up to the root, deduped by id.
 2. **Climate, weather, traits** = the first climate-enabled world in the
-   chain. None ⇒ weather off, exactly as a lore-only Setting today. The
+   chain, provided the root is climate-enabled. None, or a climate-off
+   root ⇒ weather off, exactly as a lore-only Setting today. The
    custom-climate dropdown id stays `world:<id of the climate author>`.
 3. **Setting prose** = `buildWorldInjection(chain)`, leaf first, under the
    same 600-char cap. The location's own description wins the budget and
@@ -292,7 +298,7 @@ input. Slices 6 and 7 add no per-message state because the user confirms.
 - Setting swap demotes the old place to Lore (today's behaviour).
 - A location may own its climate; inheritance is the default.
 - A climate-off root as Setting means weather off, as a lore-only world
-  does today.
+  does today, and so does any place under it (owned climates pause).
 - No implicit key shadowing in V1.
 - No automatic travel without confirmation.
 - One global switch for scene suggestions (moves and new places), in

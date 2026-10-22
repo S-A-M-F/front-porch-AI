@@ -150,3 +150,29 @@ describe('the Places panel tree twin', () => {
     expect(body.loreIds).not.toContain('lh-1');
   });
 });
+
+describe('a setting under a weather-off world', () => {
+  it('names the world whose switch turned the weather off', async () => {
+    act(() => root.unmount());
+    root = createRoot(container);
+    get.mockImplementation((url: string) => {
+      if (url === '/api/chat/places')
+        return Promise.resolve({
+          ...placesResponse({ ...LH, climateEnabled: true }, []),
+          climateAuthors: false,
+          climateAuthorName: null,
+          weatherOff: 'setting_lore_only',
+          weatherOffWorldName: 'Bletchport',
+        });
+      if (url === '/api/worlds') return Promise.resolve({ worlds: [LH, BP] });
+      return Promise.resolve({ climates: [] });
+    });
+    await act(async () => {
+      root.render(createElement(ChatPlacesSection));
+    });
+    expect(container.textContent).toContain(
+      'Weather is off for Bletchport, so this place has none.',
+    );
+    expect(container.textContent).not.toContain('This setting is lore-only');
+  });
+});
