@@ -394,6 +394,10 @@ export function WorldsPage() {
           coverImage: d.coverImage,
           atmosphere: d.atmosphere,
           gravity: d.gravity,
+          // Explicit: a move carries the lore it keeps, so the facade
+          // never has to guess from an absent key (review #592's tight-
+          // coupling lesson, applied before the refactor happens).
+          entries: d.entries,
           parentWorldId: targetId,
         });
         done++;

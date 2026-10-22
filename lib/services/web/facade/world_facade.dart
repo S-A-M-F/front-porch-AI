@@ -184,17 +184,57 @@ class WorldFacade {
       try {
         await _worlds.renameWorld(existing, name);
       } on StateError {
-        return false;
+        // Review #596: report the collision, don't let the route guess.
+        // renameWorld checks the DB before mutating, so nothing to roll
+        // back here — but the cache name must not have moved.
+        throw StateError('A world named "$name" already exists.');
       }
     } else {
       world.name = name;
     }
+    // Review #596 cache honesty, whole-field edition: this World IS the
+    // repository cache's instance. Every field written below must come
+    // back out if the save fails or the law refuses — restoring only
+    // the parent left ghost descriptions/lore on a refused move.
+    final prior = (
+      description: world.description,
+      climateEnabled: world.climateEnabled,
+      biomeId: world.biomeId,
+      biomeJson: world.biomeJson,
+      injectDescription: world.injectDescription,
+      parentWorldId: world.parentWorldId,
+      coverImage: world.coverImage,
+      atmosphere: world.atmosphere,
+      gravity: world.gravity,
+      lorebook: world.lorebook,
+    );
+    void rollBack() {
+      world.description = prior.description;
+      world.climateEnabled = prior.climateEnabled;
+      world.biomeId = prior.biomeId;
+      world.biomeJson = prior.biomeJson;
+      world.injectDescription = prior.injectDescription;
+      world.parentWorldId = prior.parentWorldId;
+      world.coverImage = prior.coverImage;
+      world.atmosphere = prior.atmosphere;
+      world.gravity = prior.gravity;
+      world.lorebook = prior.lorebook;
+    }
+
     world.description = f['description']?.toString() ?? '';
     if (f.containsKey('climateEnabled')) {
       world.climateEnabled = f['climateEnabled'] == true;
     }
     // Lorebook-only worlds do not need a valid biome to save.
-    if (world.climateEnabled && !_applyClimate(world, f)) return false;
+    if (world.climateEnabled && !_applyClimate(world, f)) {
+      // Review #596: a bad climate throws its own sentence (was: false
+      // -> the route's 'name is required' lie).
+      rollBack();
+      throw StateError(
+        'The custom climate is not valid — fix overlapping or missing '
+        'season data.',
+      );
+    }
     if (f.containsKey('injectDescription')) {
       world.injectDescription = f['injectDescription'] == true;
     }
@@ -204,10 +244,8 @@ class WorldFacade {
     // cycle law still runs inside saveWorld and its StateError escapes
     // to the route, which answers 400 with the law's own sentence —
     // the PWA must never be able to persist what the desktop refuses.
-    String? originalParent;
     if (f.containsKey('parentWorldId')) {
       final parent = f['parentWorldId']?.toString().trim();
-      originalParent = world.parentWorldId;
       world.parentWorldId = (parent == null || parent.isEmpty) ? null : parent;
     }
     if (f.containsKey('coverImage')) {
@@ -229,12 +267,11 @@ class WorldFacade {
     }
     try {
       await _worlds.saveWorld(world);
-    } on StateError {
-      // The save law (unknown parent / cycle) refused this write, but
-      // this World object IS the repository cache's instance — put the
-      // parent back so the cache never outlives the DB (review #592's
-      // cache-honesty class, one frame earlier on the relay side).
-      if (f.containsKey('parentWorldId')) world.parentWorldId = originalParent;
+    } catch (e) {
+      // ANY failure — the law's StateError or a DB fault — restores the
+      // complete prior state (desktop #592 discipline; the parent-only
+      // rollback this replaces left every other field as a ghost).
+      rollBack();
       rethrow;
     }
     return true;

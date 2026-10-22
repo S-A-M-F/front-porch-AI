@@ -193,14 +193,24 @@ void main() {
         'summer': 152,
         'autumn': 244,
       };
-      expect(
-        await facade.save({
+      // Review #596: a climate refusal must arrive as its own sentence,
+      // not the route's 'name is required' lie. Behavior change this PR
+      // intends: save now THROWS where it returned false; the message is
+      // what the author must read.
+      await expectLater(
+        facade.save({
           'name': 'Solaria',
           'originalName': 'Solaria',
           'biomeId': 'custom',
           'biome': template,
         }),
-        isFalse,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('climate'),
+          ),
+        ),
       );
       expect(
         facade.climateErrors(template).join(' '),
@@ -307,5 +317,69 @@ void main() {
         expect(townCands, contains(earthId));
       },
     );
+
+    // Review #596 BLOCKERS/MAJOR: the shared cache World must roll back
+    // EVERY field a refused write touched, and refusals must speak.
+    test('a refused save rolls back every field it touched', () async {
+      final id = await createWorld({
+        'name': 'Aurora',
+        'description': 'Original prose.',
+        'coverImage': 'data:old',
+      });
+      await expectLater(
+        facade.save({
+          'id': id,
+          'name': 'Aurora',
+          'description': 'Ghost edit.',
+          'coverImage': 'data:new',
+          'parentWorldId': 'no-such-world',
+        }),
+        throwsA(isA<StateError>()),
+      );
+      final d = facade.detail('Aurora')!;
+      expect(d['description'], 'Original prose.', reason: 'no ghost edit');
+      expect(d['coverImage'], 'data:old');
+      expect(d['parentWorldId'], isNull);
+    });
+
+    test('rename onto a taken name reports the collision sentence', () async {
+      final alphaId = await createWorld({'name': 'Alpha'});
+      await createWorld({'name': 'Beta'});
+      await expectLater(
+        facade.save({'id': alphaId, 'name': 'Beta', 'originalName': 'Alpha'}),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('already exists'),
+          ),
+        ),
+      );
+      // Alpha survives under its own name, untouched.
+      expect(facade.detail('Alpha'), isNotNull);
+    });
+
+    test('a lorebook rebuild is rolled back with the rest', () async {
+      final id = await createWorld({
+        'name': 'Keeper',
+        'entries': [
+          {'name': 'Old', 'key': 'old', 'content': 'kept'},
+        ],
+      });
+      await expectLater(
+        facade.save({
+          'id': id,
+          'name': 'Keeper',
+          'parentWorldId': 'nope',
+          'entries': [
+            {'name': 'New', 'key': 'new', 'content': 'ghost'},
+          ],
+        }),
+        throwsA(isA<StateError>()),
+      );
+      final d = facade.detail('Keeper')!;
+      final entries = (d['entries'] as List).cast<Map>();
+      expect(entries.single['name'], 'Old', reason: 'lore rolled back too');
+    });
   });
 }
