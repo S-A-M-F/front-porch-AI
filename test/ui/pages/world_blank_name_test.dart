@@ -296,11 +296,13 @@ void main() {
       of: find.byKey(const Key('world-weather-off-note')),
       matching: find.textContaining('Earth'),
     );
+    expect(body, findsWidgets);
     for (final e in body.evaluate()) {
       expect((e.widget as Text).style?.color, ink);
     }
     expect(inkOf(find.text('Paused')), ink);
     expect(inkOf(find.text("Paused while Earth's weather is off")), ink);
+    expect(inkOf(find.text('No weather: Earth has weather off.')), ink);
     expect(
       find.ancestor(of: find.text('Paused'), matching: find.byType(Opacity)),
       findsNothing,

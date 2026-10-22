@@ -203,6 +203,7 @@ class WorldParentSection extends StatelessWidget {
                 context,
                 selected: !own,
                 title: 'Inherit from ${parent.name}',
+                strongBody: wording.isWeatherOff,
                 body: wording.isWeatherOff
                     ? wording.inheritWeatherOffBody
                     : parent.climateEnabled
@@ -284,6 +285,7 @@ class WorldParentSection extends StatelessWidget {
     required String body,
     required VoidCallback onTap,
     String? tag,
+    bool strongBody = false,
   }) {
     return InkWell(
       key: Key(
@@ -336,7 +338,9 @@ class WorldParentSection extends StatelessWidget {
             Text(
               body,
               style: TextStyle(
-                color: AppColors.textSecondary(context),
+                color: strongBody
+                    ? AppColors.textPrimary(context)
+                    : AppColors.textSecondary(context),
                 fontSize: 11,
                 height: 1.35,
               ),
