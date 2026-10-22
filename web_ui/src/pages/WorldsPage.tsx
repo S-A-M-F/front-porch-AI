@@ -862,7 +862,7 @@ export function WorldsPage() {
           {edit.parentWorldId != null && wording?.weatherOff && (
             <div className="wsg-weather-off" role="note" data-testid="weather-off-note">
               <strong>{wording.weatherOff.title}</strong>
-              <p className="muted small">{wording.weatherOff.body(edit.climateEnabled)}</p>
+              <p className="small">{wording.weatherOff.body(edit.climateEnabled)}</p>
             </div>
           )}
           {edit.parentWorldId != null && (
@@ -872,7 +872,7 @@ export function WorldsPage() {
                   Inherit from{' '}
                   {byNameOrId(edit.parentWorldId)?.name ?? 'the parent'}
                   {wording?.weatherOff && (
-                    <span className="muted small" style={{ display: 'block' }}>
+                    <span className="small wsg-weather-off-line">
                       {wording.weatherOff.inheritBody}
                     </span>
                   )}
@@ -888,7 +888,7 @@ export function WorldsPage() {
                 <span>
                   Own climate
                   {wording?.weatherOff && (
-                    <span className="muted small" style={{ display: 'block' }}>
+                    <span className="small wsg-weather-off-line">
                       {wording.weatherOff.ownTag(edit.climateEnabled)}
                     </span>
                   )}
@@ -908,7 +908,7 @@ export function WorldsPage() {
               {wording?.weatherOff && edit.climateEnabled ? (
                 <div className="wsg-climate-paused" data-testid="climate-paused">
                   <span className="wsg-paused-tag">Paused</span>
-                  {climateEditor}
+                  <div className="wsg-climate-dim">{climateEditor}</div>
                 </div>
               ) : (
                 climateEditor
@@ -1026,7 +1026,7 @@ export function WorldsPage() {
               {!edit.climateEnabled && pausedNote && (
                 <div className="wsg-weather-off" role="note" data-testid="paused-places-note">
                   <strong>{pausedNote.title}</strong>
-                  <p className="muted small">{pausedNote.body}</p>
+                  <p className="small">{pausedNote.body}</p>
                 </div>
               )}
             </>

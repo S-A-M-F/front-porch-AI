@@ -245,6 +245,11 @@ class WorldParentSection extends StatelessWidget {
         ),
         if (own) ...[
           const SizedBox(height: 10),
+          // The tag stays at full strength so it reads in light themes.
+          if (wording.isWeatherOff) ...[
+            _tag(context, 'Paused'),
+            const SizedBox(height: 8),
+          ],
           // Still editable while paused, so the author can set it up before
           // turning the world's weather on; dimmed so it reads as inactive.
           Opacity(
@@ -252,10 +257,6 @@ class WorldParentSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (wording.isWeatherOff) ...[
-                  _tag(context, 'Paused'),
-                  const SizedBox(height: 8),
-                ],
                 WorldClimateSection(
                   draft: draft,
                   setDialogState: setDialogState,
@@ -356,7 +357,7 @@ class WorldParentSection extends StatelessWidget {
     child: Text(
       text,
       style: TextStyle(
-        color: AppColors.textSecondary(context),
+        color: AppColors.textPrimary(context),
         fontSize: 11,
         fontWeight: FontWeight.w600,
       ),
