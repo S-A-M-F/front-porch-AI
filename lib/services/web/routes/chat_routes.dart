@@ -22,6 +22,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'package:front_porch_ai/services/services.dart' show FeelingsRescore;
 import 'package:front_porch_ai/services/web/facade/chat_facade.dart';
 import 'package:front_porch_ai/services/web/util/util.dart';
+import 'chat_place_move_route.dart';
 
 /// Chat state + action endpoints for the rewritten server. Live tokens stream
 /// over the WebSocket hub (/api/ws); these endpoints drive and read state.
@@ -43,8 +44,12 @@ class WebChatRoutes {
     router.post('/api/chat/select-group', _selectGroup);
     router.post('/api/chat/start-fresh', _startFresh);
     router.post('/api/chat/send', _send);
-    router.post('/api/chat/guest-picker/dismiss', _dismissGuestPicker);
+    router.post(
+      '/api/chat/guest-picker/dismiss',
+      (r) => handleDismissGuestPicker(_facade),
+    );
     router.post('/api/chat/chance-time/accept', _acceptChanceTime);
+    router.post('/api/chat/place-move', (r) => handlePlaceMove(_facade, r));
     router.post('/api/chat/chance-time/spin', _spinChanceTime);
     router.post('/api/chat/stop', _stop);
     router.post('/api/chat/regenerate', _regenerate);
@@ -91,11 +96,6 @@ class WebChatRoutes {
 
   Future<shelf.Response> _refreshContextBudget(shelf.Request request) async =>
       JsonResponse.ok(await _facade.refreshContextBudget());
-
-  shelf.Response _dismissGuestPicker(shelf.Request request) {
-    _facade.dismissGuestPicker();
-    return JsonResponse.ok({'ok': true});
-  }
 
   /// Re-probe the current model's tool-calling support (web pill retest).
   Future<shelf.Response> _toolTest(shelf.Request request) async =>

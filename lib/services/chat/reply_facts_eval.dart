@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/chat/pockets.dart';
 import 'package:front_porch_ai/services/chat/pockets_eval.dart';
 import 'package:front_porch_ai/services/chat/realism_tools.dart';
 import 'package:front_porch_ai/services/chat/time_service.dart';
+import 'package:front_porch_ai/services/chat/time_service/scene_time_evaluator.dart';
 
 /// The fused reply-facts call — Afterglow's climax check, Pockets & Wardrobe,
 /// and the posture pass in ONE post-generation round trip, fired when two or
@@ -42,7 +43,7 @@ import 'package:front_porch_ai/services/chat/time_service.dart';
 ///   * PROMPT SECTIONS compose per feature, from the SAME fragment builders
 ///     the standalone prompts use ([ClimaxEval.rubric],
 ///     [PocketsEval.wardrobeContext] + [PocketsEval.opsRubric],
-///     [TimeService.postureQuestion]) — parity by construction, the
+///     [SceneTimeEvaluator.postureQuestion]) — parity by construction, the
 ///     RealismPromptBuilder pattern.
 ///   * SCHEMA `required` is computed per call from the live gates
 ///     ([kReplyFactsToolsFor]): a model fills in what the schema demands and
@@ -51,7 +52,7 @@ import 'package:front_porch_ai/services/chat/time_service.dart';
 ///     DEFINITIONS are fixed (the converter registry is a fixed contract).
 ///   * CONSUMPTION is the three features' existing key-scoped parsers
 ///     ([ClimaxEval.parseRefractory], [PocketsEval.parseOps],
-///     [TimeService.parsePosture]) reading the one canonical JSON text —
+///     [SceneTimeEvaluator.parsePosture]) reading the one canonical JSON text —
 ///     exactly how the one-shot realism eval feeds the relationship,
 ///     emotional and narrative parsers from one reply. The appliers, chips,
 ///     swipe/regen rewind and gates do not move.
@@ -120,7 +121,7 @@ class ReplyFactsEval {
         'them.\n\n'
         '${askPockets ? '${PocketsEval.wardrobeContext(charName, pockets)}${PocketsEval.opsRubric(others: others)}' : ''}'
         '${askClimax ? ClimaxEval.rubric(charName, physiology) : ''}'
-        '${askPosture ? TimeService.postureQuestion(charName: charName, emotionCtx: emotionCtx, postureCtx: postureCtx, displayClock: displayClock) : ''}'
+        '${askPosture ? SceneTimeEvaluator.postureQuestion(charName: charName, emotionCtx: emotionCtx, postureCtx: postureCtx, displayClock: displayClock) : ''}'
         'The reply:\n$reply\n\n'
         '${recentExchange.trim().isEmpty ? '' : 'Recent exchange for context:\n$recentExchange\n\n'}'
         '${toolsMode ? 'Report by calling the $kReplyFactsTool tool. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing ${keys.join(', ')}. '

@@ -488,21 +488,4 @@ class TimeService {
     _state.resetForFreshChat();
     todayLine = null;
   }
-
-  /// The posture question alone — see [SceneTimeEvaluator.postureQuestion].
-  static String postureQuestion({
-    required String charName,
-    String emotionCtx = '',
-    String postureCtx = '',
-    required String displayClock,
-  }) => SceneTimeEvaluator.postureQuestion(
-    charName: charName,
-    emotionCtx: emotionCtx,
-    postureCtx: postureCtx,
-    displayClock: displayClock,
-  );
-
-  /// The ONE posture parser — see [SceneTimeEvaluator.parsePosture].
-  static String? parsePosture(String text) =>
-      SceneTimeEvaluator.parsePosture(text);
 }

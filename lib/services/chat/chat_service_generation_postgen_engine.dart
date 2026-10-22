@@ -186,7 +186,7 @@ extension ChatServiceGenerationPostGenEngine on ChatService {
               // instead of paying a second call. An absent or unparseable
               // answer skips, exactly as a failed standalone pass does:
               // the stance keeps its last value.
-              final posture = TimeService.parsePosture(fused);
+              final posture = SceneTimeEvaluator.parsePosture(fused);
               if (posture != null) {
                 _relationshipService.setSpatialStance(posture);
               }

@@ -249,6 +249,17 @@ class ChatFacade {
     _notify();
   }
 
+  /// Answer a suggested scene move: Move runs the desktop's manual
+  /// swap (the ONE setChatPlaceSlots writer); Stay records the decline.
+  Future<void> answerPlaceMove(bool accept) async {
+    if (accept) {
+      await _chat.acceptPlaceMove();
+    } else {
+      _chat.declinePlaceMove();
+    }
+    _notify();
+  }
+
   /// Web "Accept Your Fate": resolves a parked Chance Time (chaos) event so the
   /// paused send can continue and stream its reply. No-op if nothing is parked.
   Future<void> acceptChanceTime() async {
