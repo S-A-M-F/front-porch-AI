@@ -55,6 +55,8 @@ export function ChatOverlays(props: {
   onReveal: () => void;
   onAccept: () => void | Promise<void>;
   imagePromptReview?: string;
+  placeMove?: { id: string; name: string } | null;
+  onAnswerPlaceMove?: (accept: boolean) => void | Promise<void>;
   pendingConfirm: PendingConfirm | null;
   onConfirmPending: () => void | Promise<void>;
   onCancelPending: () => void;
@@ -145,6 +147,13 @@ export function ChatOverlays(props: {
         />
       )}
 
+      {props.placeMove && (
+        <PlaceMoveModal
+          move={props.placeMove}
+          onAnswer={(accept) => void (props.onAnswerPlaceMove ?? (() => {}))(accept)}
+        />
+      )}
+
       {imagePromptReview && (
         <ImagePromptReviewModal
           prompt={imagePromptReview}
@@ -155,5 +164,27 @@ export function ChatOverlays(props: {
         />
       )}
     </>
+  );
+}
+
+/// Slice 6: the web twin of the desktop PlaceMoveDialog — same question,
+/// same two answers, straight from the snapshot flag.
+export function PlaceMoveModal(props: {
+  move: { id: string; name: string };
+  onAnswer: (accept: boolean) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-label="The scene moved">
+      <div className="fp-card w-[420px] max-w-[92vw] p-5">
+        <div className="mb-2 font-semibold">🧭 The scene moved</div>
+        <p className="fp-dim">
+          The story reads as arriving at {props.move.name}. Move the scene there?
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="fp-btn" onClick={() => props.onAnswer(false)}>Stay</button>
+          <button className="fp-btn fp-btn-accent" onClick={() => props.onAnswer(true)}>Move there</button>
+        </div>
+      </div>
+    </div>
   );
 }

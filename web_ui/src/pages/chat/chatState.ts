@@ -59,6 +59,10 @@ export interface ChatState {
   stoppedReply?: { notice: string; canRetry: boolean } | null;
   pendingDetection?: string | null;
   pendingPicker?: { filter: string; full: boolean } | null;
+  // Slice 6 (additive): a suggested scene move awaiting the author —
+  // the PWA twin of the desktop confirm dialog. Answering is one POST
+  // to /api/chat/place-move; the flag clears on the next snapshot.
+  pendingPlaceMove?: { id: string; name: string } | null;
   // Chaos "Chance Time" park state: while pending, the engine is frozen waiting
   // for the user to accept their fate (event is pre-resolved server-side).
   chanceTime?: { pending: boolean; event?: string };

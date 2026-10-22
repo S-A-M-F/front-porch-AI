@@ -151,6 +151,10 @@ class TimeService {
   /// from the eval — ChatService owns the hold via this callback.
   final FutureOr<void> Function(String line)? onTodayEval;
 
+  // Slice 6: scene-move suggestion surface, forwarded to the evaluator.
+  final List<({String id, String label})>? Function()? getScenePlaceOffer;
+  final void Function(String id)? onScenePlace;
+
   // Owned state — the whole subsystem.
   final TimeClockState _state = TimeClockState();
   late final TimeClockApplier _applier = TimeClockApplier(
@@ -172,6 +176,8 @@ class TimeService {
     fireToolEval: fireToolEval,
     probe: probe,
     getBackendIdentity: getBackendIdentity,
+    getScenePlaceOffer: getScenePlaceOffer,
+    onScenePlace: onScenePlace,
   );
 
   /// Story minutes the body wears for the beat just committed: the minutes
@@ -244,6 +250,8 @@ class TimeService {
     this.getPorchLifePassageOfTime,
     this.getPlannerEnabled,
     this.onTodayEval,
+    this.getScenePlaceOffer,
+    this.onScenePlace,
   });
 
   /// Class door so callers with only the [TimeService] type still reach eval.
@@ -269,6 +277,7 @@ class TimeService {
     bool postureOnly = false,
     bool skipClockAdvance = false,
     bool skipTodayEval = false,
+    bool sceneMovesAllowed = true,
   }) => _evaluator.evaluateTimeProgressAndPostureIfNeeded(
     charName: charName,
     recent: recent,
@@ -287,6 +296,7 @@ class TimeService {
     postureOnly: postureOnly,
     skipClockAdvance: skipClockAdvance,
     skipTodayEval: skipTodayEval,
+    sceneMovesAllowed: sceneMovesAllowed,
   );
 
   /// Class door for the calendar set. Continue still does not tick.
@@ -478,21 +488,4 @@ class TimeService {
     _state.resetForFreshChat();
     todayLine = null;
   }
-
-  /// The posture question alone — see [SceneTimeEvaluator.postureQuestion].
-  static String postureQuestion({
-    required String charName,
-    String emotionCtx = '',
-    String postureCtx = '',
-    required String displayClock,
-  }) => SceneTimeEvaluator.postureQuestion(
-    charName: charName,
-    emotionCtx: emotionCtx,
-    postureCtx: postureCtx,
-    displayClock: displayClock,
-  );
-
-  /// The ONE posture parser — see [SceneTimeEvaluator.parsePosture].
-  static String? parsePosture(String text) =>
-      SceneTimeEvaluator.parsePosture(text);
 }

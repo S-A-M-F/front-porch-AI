@@ -37,6 +37,9 @@ class RealismPrefsSnapshot {
   final bool chaosModeDefault;
   final ChaosFrequency chaosFrequency;
   final bool sceneGuestDetectionEnabled;
+  // Slice 6: one global switch for suggested scene moves (and minted
+  // places, slice 7). Default OFF — opt-in, design §7.
+  final bool sceneSuggestionsEnabled;
   final bool pocketTransfersEnabled;
   final bool? adultThemesExplicit;
   final OneShotMode oneShotMode;
@@ -76,6 +79,8 @@ class RealismPrefsSnapshot {
       ),
       sceneGuestDetectionEnabled =
           prefs?.getBool(k('scene_guest_detection_enabled')) ?? true,
+      sceneSuggestionsEnabled =
+          prefs?.getBool(k('scene_suggestions_enabled')) ?? false,
       pocketTransfersEnabled =
           prefs?.getBool(k('pocket_transfers_enabled')) ?? false,
       adultThemesExplicit = prefs?.getBool(k('adult_themes_enabled')),

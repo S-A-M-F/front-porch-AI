@@ -135,6 +135,26 @@ class PorchLifeTab extends StatelessWidget {
               onChanged: realism.setTimeSkipBridgeEnabled,
             ),
             FeatureRow(
+              icon: Icons.explore_outlined,
+              label: 'Scene suggestions',
+              need: FeatureNeed.needs,
+              dependsOn: 'Passage of Time',
+              satisfied: timeOn,
+              blurb:
+                  'When the clock is running, the same turn read that moves '
+                  'time also watches the story\'s PLACE. If a reply clearly '
+                  'arrives somewhere in your world — up the stairs into the '
+                  'Tea Rooms, out through the gate — the app offers to move '
+                  'the scene there. You confirm or stay; it never moves the '
+                  'scene by itself, and a plan or a passing mention is never '
+                  'a move. Later updates add one more offer under this same '
+                  'switch: saving a newly-named place the story walks into. '
+                  'Off by default — offers in the middle of a scene are '
+                  'welcome to some authors and noise to others.',
+              value: realism.sceneSuggestionsEnabled,
+              onChanged: realism.setSceneSuggestionsEnabled,
+            ),
+            FeatureRow(
               icon: Icons.cloud_outlined,
               label: 'Story Weather',
               need: FeatureNeed.needs,

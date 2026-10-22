@@ -65,6 +65,18 @@ extension ChatServiceWiringRealism on ChatService {
       getPorchLifePassageOfTime: () =>
           _storageService.realismSettings.passageOfTimeDefault,
       getPlannerEnabled: () => _storageService.realismSettings.plannerEnabled,
+      // Slice 6: which places the judge may suggest — the reach law and
+      // labels live in buildScenePlaceOffer (scene_place_offer.dart).
+      getScenePlaceOffer: () => buildScenePlaceOffer(
+        enabled: _storageService.realismSettings.sceneSuggestionsEnabled,
+        primaryId: chatPrimaryWorldId,
+        repo: _worldRepository,
+        isDeclined: _sceneMoves.isDeclined,
+      ),
+      onScenePlace: (id) {
+        debugPrint('[Realism:Scene] suggested move pending: $id');
+        flagSuggestedPlaceMove(id);
+      },
       onTodayEval: (line) {
         _recordTodayPointerOp();
         if (line.isEmpty) {

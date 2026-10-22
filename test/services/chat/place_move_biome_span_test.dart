@@ -255,4 +255,65 @@ void main() {
     expect(rows.first.biomeJson, contains('continental'));
     expect(rows.last.biomeJson, contains('desert'));
   });
+
+  test(
+    'accepting a suggested move runs the manual path: demote to top of '
+    'lore, pin the old weather, clear the memory',
+    () async {
+      final town = model.World(
+        id: 'town',
+        name: 'Bletchfield',
+        lorebook: Lorebook(entries: []),
+        biomeId: 'temperate',
+      );
+      final cafe = model.World(
+        id: 'cafe',
+        name: 'Tea Rooms',
+        lorebook: Lorebook(entries: []),
+        parentWorldId: 'town',
+        biomeId: 'desert',
+      );
+      await worlds.saveWorld(town);
+      await worlds.saveWorld(cafe);
+      final day = chat.timeService.dayCount;
+      await chat.setChatPlaceSlots(primaryId: town.id);
+
+      // The judge says the reply arrived at the Tea Rooms; the service
+      // only flags — nothing moves yet.
+      chat.flagSuggestedPlaceMove('cafe');
+      expect(chat.pendingPlaceMove?.id, 'cafe');
+      final before = await worlds.getChatWorldAttachments('sess-move');
+      expect(before.primaryId, 'town', reason: 'flagging never applies');
+
+      await chat.acceptPlaceMove();
+
+      final att = await worlds.getChatWorldAttachments('sess-move');
+      expect(att.primaryId, 'cafe');
+      expect(
+        att.loreIds.first,
+        'town',
+        reason: 'the old Setting demotes to the TOP of Lore, still live',
+      );
+      expect(chat.pendingPlaceMove, isNull, reason: 'the offer resolves');
+      // The climate author changed (temperate -> desert): the OLD
+      // author's weather is pinned for earlier days — the accepted path
+      // IS the manual path.
+      final rows = await spans();
+      expect(rows.map((r) => r.effectiveFromDay).toList(), [1, day]);
+      expect(rows.first.biomeJson, contains('temperate'));
+      expect(rows.last.biomeJson, contains('desert'));
+
+      // Stay stays: a decline moves nothing and remembers for THIS
+      // setting; a later Setting change revives the offer honestly.
+      await chat.setChatPlaceSlots(primaryId: town.id);
+      chat.flagSuggestedPlaceMove('cafe');
+      chat.declinePlaceMove();
+      expect(chat.pendingPlaceMove, isNull);
+      final afterStay = await worlds.getChatWorldAttachments('sess-move');
+      expect(afterStay.primaryId, 'town', reason: 'Stay stays');
+      await chat.setChatPlaceSlots(primaryId: cafe.id);
+      chat.flagSuggestedPlaceMove('town');
+      expect(chat.pendingPlaceMove?.id, 'town');
+    },
+  );
 }

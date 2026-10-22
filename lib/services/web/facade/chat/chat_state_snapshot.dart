@@ -267,6 +267,15 @@ class ChatStateSnapshot {
               'canRetry': _chat.canRetryStoppedReply,
             },
       'pendingDetection': _chat.pendingGuestDetection?.name,
+      // Slice 6 (additive): a suggested scene move awaiting the author.
+      // The PWA shows the same dialog the desktop does; answering it is
+      // one POST. Absent key on an older desktop relay = no offer.
+      'pendingPlaceMove': _chat.pendingPlaceMove == null
+          ? null
+          : {
+              'id': _chat.pendingPlaceMove!.id,
+              'name': _chat.pendingPlaceMove!.name,
+            },
       'pendingPicker': _chat.pendingGuestPickerFilter == null
           ? null
           : {

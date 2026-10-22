@@ -171,6 +171,7 @@ extension ChatServiceChatEntry on ChatService {
       _sceneGuest.turnsSinceCastScan = 0;
       _sceneGuest.pendingDetection = null;
       _sceneGuest.offeredOrIgnoredNames.clear();
+      _sceneMoves.reset();  // Slice 6: stale offers die with the session too.
 
       _activeCharacter = character;
 

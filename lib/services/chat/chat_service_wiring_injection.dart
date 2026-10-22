@@ -253,6 +253,13 @@ extension ChatServiceWiringInjection on ChatService {
     final resolvedPrimary = (primaryId != null && primaryId.isNotEmpty)
         ? primaryId
         : null;
+    // Slice 6: any Setting change — accepted suggestion, manual dropdown,
+    // attach flow — retires the decline memory and any still-open offer,
+    // both of which were written AT the old place. ("Stay at the Tea
+    // Rooms" must not mean "never move anywhere, ever".)
+    if (resolvedPrimary != _chatPlaceSlots.primaryId) {
+      _sceneMoves.settingChanged();
+    }
     _chatPlaceSlots = ChatPlaceSlots(
       primaryId: resolvedPrimary,
       loreIds: List.unmodifiable([
@@ -339,6 +346,48 @@ extension ChatServiceWiringInjection on ChatService {
       inherit: inherit,
       speaker: speaker,
     );
+  }
+
+  /// The judge's arrival answer, routed from the clock call (design: the
+  /// service only FLAGS). Ignores an id equal to the current Setting —
+  /// you are already there, and a stale tool model may say so.
+  void flagSuggestedPlaceMove(String id) {
+    if (id.isEmpty || id == chatPrimaryWorldId) return;
+    final name = _worldRepository.worldById(id)?.name ?? id;
+    _sceneMoves.pending = PendingPlaceMove(id: id, name: name);
+    notifyListeners();
+  }
+
+  /// The move the clock judge suggested and the author has not answered
+  /// yet — the chat page shows the confirm dialog while this is non-null.
+  PendingPlaceMove? get pendingPlaceMove => _sceneMoves.pending;
+
+  /// Move: run the manual path exactly as the Places dropdown does —
+  /// the old Setting demotes to the top of Lore so its book stays live
+  /// for the rest of the scene, and the biome-span machinery inside
+  /// [setChatPlaceSlots] pins the old weather for earlier days.
+  Future<void> acceptPlaceMove() async {
+    final move = _sceneMoves.pending;
+    if (move == null) return;
+    final old = chatPrimaryWorldId;
+    await setChatPlaceSlots(
+      primaryId: move.id,
+      loreIds: [
+        if (old != null && old != move.id) old,
+        for (final l in _chatPlaceSlots.loreIds)
+          if (l != move.id && l != old) l,
+      ],
+    );
+  }
+
+  /// Stay: dismiss the offer and remember the decline FOR THIS SETTING —
+  /// the same place is not re-offered until the scene moves (or the
+  /// author moves it), then arrival is honestly re-judged from there.
+  void declinePlaceMove() {
+    final move = _sceneMoves.pending;
+    if (move == null) return;
+    _sceneMoves.decline(move.id, chatPrimaryWorldId);
+    notifyListeners();
   }
 
   /// Full chat-context MacroContext for prompt builds: card fields, group

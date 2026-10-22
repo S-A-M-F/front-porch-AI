@@ -52,6 +52,7 @@ class ChatScenePrompts {
   final File? Function(ChatService chat, CharacterCard card) coverFor;
 
   bool _showingGuestDetection = false;
+  bool _showingPlaceMove = false;
   bool _showingGuestPicker = false;
   bool _showingImageReview = false;
 
@@ -74,6 +75,13 @@ class ChatScenePrompts {
       _showingGuestDetection = true;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _showGuestDetectionDialog(context, chat),
+      );
+    }
+    // Slice 6: the clock judge flagged an arrival — ask, never assume.
+    if (chat.pendingPlaceMove != null && !_showingPlaceMove) {
+      _showingPlaceMove = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showPlaceMoveDialog(context, chat),
       );
     }
     // Scene Guest `/join` picker — same pending-flag pattern.
@@ -144,6 +152,49 @@ class ChatScenePrompts {
     );
     _showingImageReview = false;
     chat.resolveImagePromptReview(result);
+  }
+
+  Future<void> _showPlaceMoveDialog(
+    BuildContext context,
+    ChatService chat,
+  ) async {
+    final move = chat.pendingPlaceMove;
+    if (move == null || !context.mounted) {
+      _showingPlaceMove = false;
+      return;
+    }
+    final prompt = PlaceMoveDialog(
+      move: move,
+      setting: chat.chatPrimaryWorldId == null
+          ? null
+          : Provider.of<WorldRepository>(
+              context,
+              listen: false,
+            ).worldById(chat.chatPrimaryWorldId!),
+    );
+    final go = await showWarmDialog<bool>(
+      context,
+      title: prompt.title,
+      icon: Icons.explore_outlined,
+      content: Builder(builder: (ctx) => prompt.build(ctx)),
+      barrierDismissible: false,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Stay'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Move there'),
+        ),
+      ],
+    );
+    _showingPlaceMove = false;
+    if (go == true) {
+      await chat.acceptPlaceMove();
+    } else {
+      chat.declinePlaceMove();
+    }
   }
 
   Future<void> _showGuestDetectionDialog(

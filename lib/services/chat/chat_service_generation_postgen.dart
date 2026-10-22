@@ -394,6 +394,11 @@ extension ChatServiceGenerationPostGen on ChatService {
       await _realismEvals.evaluatePhysicalStateCall(
         timeOnly: true,
         skipTodayEval: _isLiteTurn(t),
+        // Director and AFK turns never move the scene (design §3): the
+        // clock may still tick, but the model is not offered a move it
+        // narrated on an autopilot turn, where the author is away from
+        // the keyboard and cannot confirm one anyway.
+        sceneMovesAllowed: !_isLiteTurn(t) && !_observerMode,
       );
     } else {
       await _timeService.applyReconciledClock(named);

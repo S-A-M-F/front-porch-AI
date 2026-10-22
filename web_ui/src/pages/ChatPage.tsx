@@ -548,6 +548,10 @@ export function ChatPage() {
         chance={chance}
         onReveal={revealFate}
         onAccept={acceptFate}
+        placeMove={state.pendingPlaceMove ?? null}
+        onAnswerPlaceMove={(accept) =>
+          void api.post('/api/chat/place-move', { accept }).catch(() => {})
+        }
         imagePromptReview={state.imagePromptReview}
         pendingConfirm={pendingConfirm}
         onConfirmPending={confirmPending}

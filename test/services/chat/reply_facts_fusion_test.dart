@@ -136,7 +136,7 @@ void main() {
       expect(
         fused,
         contains(
-          TimeService.postureQuestion(charName: 'Nia', displayClock: '9:40 PM'),
+          SceneTimeEvaluator.postureQuestion(charName: 'Nia', displayClock: '9:40 PM'),
         ),
       );
     });
@@ -294,7 +294,7 @@ void main() {
     test('text lane: each parser reads its slice of the same text', () {
       expect(ClimaxEval.parseRefractory(raw), 6);
       expect(PocketsEval.parseOps(raw), hasLength(2));
-      expect(TimeService.parsePosture(raw), 'sitting on the windowsill');
+      expect(SceneTimeEvaluator.parsePosture(raw), 'sitting on the windowsill');
     });
 
     test('tools lane: the converted call round-trips the same way', () {
@@ -308,7 +308,7 @@ void main() {
       expect(json, isNotNull);
       expect(ClimaxEval.parseRefractory(json), 6);
       expect(PocketsEval.parseOps(json), hasLength(2));
-      expect(TimeService.parsePosture(json!), 'sitting on the windowsill');
+      expect(SceneTimeEvaluator.parsePosture(json!), 'sitting on the windowsill');
     });
 
     test('a fired-and-failed fused call reads as skip for every pass', () {
@@ -316,7 +316,7 @@ void main() {
       // fused call fired and came back with nothing.
       expect(ClimaxEval.parseRefractory(''), isNull);
       expect(PocketsEval.parseOps(''), isEmpty);
-      expect(TimeService.parsePosture(''), isNull);
+      expect(SceneTimeEvaluator.parsePosture(''), isNull);
     });
   });
 
