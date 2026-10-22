@@ -256,6 +256,32 @@ describe('the editor wording follows Part of', () => {
   });
 });
 
+describe('the inherited-lore count', () => {
+  it('trusts the fresh list row over a lagging parent detail', async () => {
+    // The detail still lists both entries as on (fetched before the parent
+    // was edited); the list row, refreshed by that save, says one is on.
+    const base = get.getMockImplementation()!;
+    get.mockImplementation((url: string) =>
+      url.includes('/detail')
+        ? Promise.resolve({
+            id: 'earth-1',
+            name: 'Earth',
+            description: 'A world',
+            entries: [
+              { name: 'Sea', key: 'sea', content: 'Salt water.', enabled: true },
+              { name: 'Moon', key: 'moon', content: 'One moon.', enabled: true },
+            ],
+            climateEnabled: true,
+          })
+        : base(url),
+    );
+    await act(async () => button('＋ New place').click());
+    setValue(partOfSelect(), 'earth-1');
+    await act(async () => {});
+    expect(loreProps.current?.note).toContain('Also active here: 1 lore entry from Earth.');
+  });
+});
+
 describe('the grouped library', () => {
   it('indents the child under its root, not beside it in a flat grid', () => {
     const grid = container.querySelector('.wsg-child-grid');

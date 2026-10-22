@@ -187,12 +187,14 @@ export function WorldsPage() {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edit?.parentWorldId, worlds.length]);
+  }, [edit?.parentWorldId, worlds]);
 
   const apply = (p: Promise<{ worlds: WorldSummary[] }>, closeEditor = true) => {
     setBusy(true);
     setError('');
     p.then((r) => {
+      // A save can change any ancestor; refetch the chain from fresh rows.
+      setChainDetails({});
       setWorlds(r.worlds);
       if (closeEditor) setEdit(null);
     })
@@ -550,7 +552,10 @@ export function WorldsPage() {
       seen.add(cursor);
       const w = byNameOrId(cursor);
       if (!w) break;
-      out.push({ name: w.name, entryCount: w.enabledEntryCount ?? w.entryCount ?? 0 });
+      // The list row is refreshed by every save; the detail cache may lag.
+      const row = worlds.find((x) => (x.id ?? x.name) === cursor);
+      const count = row?.enabledEntryCount ?? w.enabledEntryCount ?? w.entryCount ?? 0;
+      out.push({ name: w.name, entryCount: count });
       cursor = w.parentWorldId ?? null;
     }
     return out;
