@@ -154,6 +154,7 @@ class TimeService {
   // Slice 6: scene-move suggestion surface, forwarded to the evaluator.
   final List<({String id, String label})>? Function()? getScenePlaceOffer;
   final void Function(String id)? onScenePlace;
+  final void Function(String name, String descriptor)? onNewPlace;
 
   // Owned state — the whole subsystem.
   final TimeClockState _state = TimeClockState();
@@ -178,6 +179,7 @@ class TimeService {
     getBackendIdentity: getBackendIdentity,
     getScenePlaceOffer: getScenePlaceOffer,
     onScenePlace: onScenePlace,
+    onNewPlace: onNewPlace,
   );
 
   /// Story minutes the body wears for the beat just committed: the minutes
@@ -252,6 +254,7 @@ class TimeService {
     this.onTodayEval,
     this.getScenePlaceOffer,
     this.onScenePlace,
+    this.onNewPlace,
   });
 
   /// Class door so callers with only the [TimeService] type still reach eval.
