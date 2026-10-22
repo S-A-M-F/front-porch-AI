@@ -378,7 +378,19 @@ class SettingsWriter {
       );
     }
     if (body['groupSystemPrompt'] is String) {
-      await g.setGroupSystemPrompt(body['groupSystemPrompt'] as String);
+      await PromptSlot.group.writeText(
+        _storage,
+        body['groupSystemPrompt'] as String,
+      );
+    }
+    // A slot's saved-prompt pick; null or '' lets go of it.
+    for (final (key, slot) in const [
+      ('systemPromptName', PromptSlot.oneToOne),
+      ('groupSystemPromptName', PromptSlot.group),
+    ]) {
+      if (!body.containsKey(key)) continue;
+      final name = body[key];
+      await slot.writeSavedName(_storage, name is String ? name : null);
     }
     if (body['additionalPostHistoryInstructions'] is String) {
       await g.setAdditionalPostHistoryInstructions(

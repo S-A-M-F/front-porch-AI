@@ -12,6 +12,7 @@ import { AppearanceSettings } from '../components/AppearanceSettings';
 import { MessageSideSettings } from '../components/MessageSideSettings';
 import { PorchLifeSettings } from '../components/PorchLifeSettings';
 import { PromptSettingsCard } from '../components/PromptSettingsCard';
+import type { BuiltInPrompt, SavedPrompt } from '../components/PromptSlot';
 import { ModelTransportCard } from '../components/ModelTransportCard';
 import { IdleUnloadSettings } from '../components/IdleUnloadSettings';
 import { KeepRecentChatsSettings } from '../components/KeepRecentChatsSettings';
@@ -80,6 +81,10 @@ interface Settings {
   additionalSystemPrompt?: string;
   groupSystemPrompt?: string;
   builtInGroupSystemPrompt?: string;
+  systemPromptName?: string | null;
+  groupSystemPromptName?: string | null;
+  savedPrompts?: SavedPrompt[];
+  builtInSystemPrompts?: BuiltInPrompt[];
   additionalPostHistoryInstructions?: string;
   bannedPhrases?: string[];
   workerBackend?: string;
@@ -121,6 +126,8 @@ const savedFields = (s: Settings) =>
     s.systemPrompt,
     s.additionalSystemPrompt,
     s.groupSystemPrompt ?? '',
+    s.systemPromptName ?? null,
+    s.groupSystemPromptName ?? null,
     s.additionalPostHistoryInstructions,
     s.bannedPhrases,
     s.workerBackend ?? '',
@@ -248,6 +255,9 @@ export function SettingsPage() {
         additionalSystemPrompt: s.additionalSystemPrompt,
         additionalPostHistoryInstructions: s.additionalPostHistoryInstructions,
         ...(s.groupSystemPrompt !== undefined ? { groupSystemPrompt: s.groupSystemPrompt } : {}),
+        ...(s.savedPrompts !== undefined
+          ? { systemPromptName: s.systemPromptName ?? null, groupSystemPromptName: s.groupSystemPromptName ?? null }
+          : {}),
         bannedPhrases: s.bannedPhrases,
         workerBackend: s.workerBackend ?? '',
         workerRemoteApiUrl: s.workerRemoteApiUrl ?? '',
@@ -387,6 +397,10 @@ export function SettingsPage() {
           additionalPostHistoryInstructions={s.additionalPostHistoryInstructions}
           groupSystemPrompt={s.groupSystemPrompt}
           builtInGroupSystemPrompt={s.builtInGroupSystemPrompt}
+          systemPromptName={s.systemPromptName}
+          groupSystemPromptName={s.groupSystemPromptName}
+          savedPrompts={s.savedPrompts}
+          builtInSystemPrompts={s.builtInSystemPrompts}
           patch={(p) => patch(p as Partial<Settings>)}
         />
 
