@@ -980,6 +980,19 @@ void main() {
       expect(draft, 'Bram finally admits it.');
     });
 
+    test(
+      'group Impersonate opens the Author\'s Note on its own line',
+      () async {
+        await h.groupWithTwoReplies(aOff: const []);
+        h.chat.setAuthorNote('Keep it cozy.');
+        llm.mouth = 'Evening, all.';
+        await h.chat.impersonateUser(onToken: (_) {});
+        final full = llm.replyPrompts.last;
+        expect(full, contains('\n[Author\'s Note: Keep it cozy.]'));
+        expect(full, isNot(matches(RegExp(r"[^\n]\[Author's Note"))));
+      },
+    );
+
     test('a typed start with a bracket survives the cut', () async {
       await h.groupWithTwoReplies(aOff: const []);
       await h.chat.sendMessage('/director');

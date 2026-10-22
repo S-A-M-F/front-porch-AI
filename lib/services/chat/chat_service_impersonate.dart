@@ -238,6 +238,10 @@ extension ChatServiceImpersonate on ChatService {
         ),
         loreExTop,
         loreExBottom,
+        postHistoryBlock,
+        loreAnTop,
+        authorNoteBlock,
+        loreAnBottom,
       ]);
       plan.add(id: 'lore.before', text: afterHistory[0]);
       plan.add(id: 'growth', text: afterHistory[1]);
@@ -245,10 +249,10 @@ extension ChatServiceImpersonate on ChatService {
       plan.add(id: 'scenario', text: afterHistory[3]);
       plan.add(id: 'lore.ex_top', text: afterHistory[4]);
       plan.add(id: 'lore.ex_bottom', text: afterHistory[5]);
-      plan.add(id: 'post_history', text: postHistoryBlock);
-      plan.add(id: 'lore.an_top', text: loreAnTop);
-      plan.add(id: 'author_note', text: authorNoteBlock);
-      plan.add(id: 'lore.an_bottom', text: loreAnBottom);
+      plan.add(id: 'post_history', text: afterHistory[6]);
+      plan.add(id: 'lore.an_top', text: afterHistory[7]);
+      plan.add(id: 'author_note', text: afterHistory[8]);
+      plan.add(id: 'lore.an_bottom', text: afterHistory[9]);
       plan.add(id: 'lore.depth', text: loreDepthJoined, rendered: false);
       plan.add(id: 'impersonate', text: prefixRule);
       plan.add(id: 'suffix', text: suffix);
