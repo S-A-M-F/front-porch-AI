@@ -361,7 +361,7 @@ extension ChatServiceImpersonate on ChatService {
         }
       }
       if (directorNote) {
-        final note = closeDirectorNote(accumulated);
+        final note = closeDirectorNote(accumulated, prefix: prefix);
         if (note != accumulated) onToken(note);
       }
     } catch (e) {

@@ -94,11 +94,11 @@ String impersonateDirectorSuffix({required String prefix}) {
 
 /// The finished direction as the composer wants it: the model closes the
 /// `[Director: …]` bracket it was handed, so cut there; anything it ran on
-/// past the closer is another turn.
-String closeDirectorNote(String text) {
-  final t = text.trim();
-  final close = t.indexOf(']');
-  return close < 0 ? t : t.substring(0, close).trimRight();
+/// past the closer is another turn. The user's typed [prefix] is never cut.
+String closeDirectorNote(String text, {String prefix = ''}) {
+  final from = text.startsWith(prefix) ? prefix.length : 0;
+  final close = text.indexOf(']', from);
+  return (close < 0 ? text : text.substring(0, close)).trim();
 }
 
 /// Continue-style rule when the user already typed a start.

@@ -971,5 +971,15 @@ void main() {
       await h.chat.impersonateUser(onToken: (t) => draft = t);
       expect(draft, 'Bram finally admits it.');
     });
+
+    test('a typed start with a bracket survives the cut', () async {
+      await h.groupWithTwoReplies(aOff: const []);
+      await h.chat.sendMessage('/director');
+      await h.settleTurn();
+      llm.mouth = ' storms out.] Misty laughs.';
+      var draft = '';
+      await h.chat.impersonateUser(prefix: '[Bram]', onToken: (t) => draft = t);
+      expect(draft, '[Bram] storms out.');
+    });
   });
 }
