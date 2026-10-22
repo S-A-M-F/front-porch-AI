@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/services/chat/realism_tools/realism_tool_names.dart';
+import 'package:front_porch_ai/services/chat/realism_tools/place_mint_tool_schema.dart';
 import 'package:front_porch_ai/services/chat/realism_tools/afterglow_tool_schemas.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -471,6 +472,9 @@ final List<Map<String, dynamic>> kCastFeelingsEvalTools = [
   ),
 ];
 
+/// Slice 7: place-mint draft tool. Fields are NOT required so that text-only
+/// models can omit or blank them without breaking salvage; the factory rejects
+/// incomplete drafts downstream rather than at the schema matcher.
 /// The whitelisted keys per tool (anything else the model invents is
 /// dropped, mirroring how the regex extractors ignore unknown text keys).
 final Map<String, Map<String, Map<String, dynamic>>> realismToolFieldsByTool = {
@@ -487,4 +491,5 @@ final Map<String, Map<String, Map<String, dynamic>>> realismToolFieldsByTool = {
   kReplyFactsToolName: kReplyFactsFields,
   kWithUserToolName: kWithUserFields,
   kCastFeelingsToolName: kCastFeelingsFields,
+  kPlaceMintTool: kPlaceMintFields,
 };

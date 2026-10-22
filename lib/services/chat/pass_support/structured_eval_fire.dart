@@ -98,7 +98,8 @@ bool _matchesEvalSchema(
               field == 'today_sentence' ||
               field == 'scene_place' ||
               field == 'new_place_name' ||
-              field == 'new_place_descriptor');
+              field == 'new_place_descriptor' ||
+              field == 'short_description');
     default:
       return false;
   }
