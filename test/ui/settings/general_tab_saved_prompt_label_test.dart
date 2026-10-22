@@ -211,6 +211,20 @@ void main() {
     // Each name shows twice: its slot's dropdown and its slot's badge.
     expect(find.text('Group novel'), findsNWidgets(2));
     expect(find.text('Slow burn'), findsNWidgets(2));
+
+    // The hidden seed's name is free to take: no "already have" for a
+    // prompt the user cannot see.
+    await _tapVisible(tester, find.text('Save as new...').first);
+    await tester.enterText(find.byType(TextField).last, kSeededPromptName);
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('already have a prompt called'), findsNothing);
+    expect(
+      storage.presetSettings.savedPrompts
+          .where((p) => p['name'] == kSeededPromptName)
+          .single['content'],
+      'Take it slow.',
+    );
   });
 
   testWidgets('Save as new refuses a taken name, Save updates the loaded '

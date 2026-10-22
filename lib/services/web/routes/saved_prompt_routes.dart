@@ -51,9 +51,10 @@ class WebSavedPromptRoutes {
     if (name.isEmpty || content is! String) {
       return JsonResponse.badRequest('name and content are required');
     }
-    final taken = _storage.presetSettings.savedPrompts.any(
-      (p) => p['name'] == name,
-    );
+    // The hidden, untouched seed is not the user's, so it may be replaced.
+    final taken = userSavedPrompts(
+      _storage.presetSettings.savedPrompts,
+    ).any((p) => p['name'] == name);
     if (taken && body['overwrite'] != true) {
       return JsonResponse.error(
         409,

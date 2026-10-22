@@ -23,7 +23,7 @@ import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
 /// Asks for a name and saves [content] as a NEW saved prompt. A name already
-/// in the pool is refused, so Save as new never overwrites; updating a
+/// in the user's pool is refused, so Save as new never overwrites; updating a
 /// prompt is the slot's own Save. Calls [onSaved] with the name.
 void showSavePromptDialog(
   BuildContext context,
@@ -37,9 +37,11 @@ void showSavePromptDialog(
   void submit(BuildContext ctx) {
     final name = controller.text.trim();
     if (done || name.isEmpty) return;
-    final taken = storageService.presetSettings.savedPrompts.any(
-      (p) => p['name'] == name,
-    );
+    // Only names the user can see count: the hidden, untouched seed may be
+    // replaced.
+    final taken = userSavedPrompts(
+      storageService.presetSettings.savedPrompts,
+    ).any((p) => p['name'] == name);
     if (taken) {
       error.value =
           'You already have a prompt called "$name". Pick another name.';
