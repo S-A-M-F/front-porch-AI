@@ -70,7 +70,7 @@ void showWorldEditDialog(
             ancestorNames: [for (final a in ancestors) a.name],
             inheritedEntries: ancestors.fold(
               0,
-              (n, a) => n + a.lorebook.entries.length,
+              (n, a) => n + a.lorebook.entries.where((e) => e.enabled).length,
             ),
           );
           return Dialog(

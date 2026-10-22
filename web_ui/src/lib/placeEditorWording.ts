@@ -16,6 +16,7 @@ export interface PlaceEditorWording {
 
 export interface AncestorLore {
   name: string;
+  /** Switched-on entries only. */
   entryCount: number;
 }
 

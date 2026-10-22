@@ -68,6 +68,7 @@ const WORLD_ROWS = [
     name: 'Earth',
     description: 'A world',
     entryCount: 2,
+    enabledEntryCount: 1,
     climateEnabled: true,
     biomeId: 'temperate',
   },
@@ -99,7 +100,10 @@ beforeEach(async () => {
         id: 'earth-1',
         name: 'Earth',
         description: 'A world',
-        entries: [],
+        entries: [
+          { name: 'Sea', key: 'sea', content: 'Salt water.', enabled: true },
+          { name: 'Old law', key: 'law', content: 'Repealed.', enabled: false },
+        ],
         climateEnabled: true,
         atmosphere: 'breathable',
         gravity: 'earth',
@@ -224,6 +228,8 @@ describe('the editor wording follows Part of', () => {
     expect(button('Save place')).toBeDefined();
 
     setValue(partOfSelect(), 'earth-1');
+    // Let the parent's detail fetch land: the count must agree either way.
+    await act(async () => {});
     expect(heading()).toBe('Add a place to Earth');
     expect(container.textContent).toContain("It shares Earth's lore and climate");
     expect(labelTexts().some((t) => t?.startsWith('Place name'))).toBe(true);
@@ -232,7 +238,7 @@ describe('the editor wording follows Part of', () => {
     expect(button('Save place')).toBeUndefined();
     // The place's own book, plus the lore its parent chain brings in.
     expect(loreProps.current?.title).toBe("This place's lore");
-    expect(loreProps.current?.note).toContain('Also active here: 2 lore entries from Earth.');
+    expect(loreProps.current?.note).toContain('Also active here: 1 lore entry from Earth.');
 
     // Own climate opens the climate editor under the Inherit / Own pair.
     const radios = container.querySelector('.wsg-climate-radios')!;

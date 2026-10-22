@@ -18,6 +18,7 @@ export interface TreeWorld {
   atmosphere?: string | null;
   gravity?: string | null;
   entryCount?: number;
+  enabledEntryCount?: number;
   injectDescription?: boolean;
 }
 

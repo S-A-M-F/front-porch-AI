@@ -247,6 +247,24 @@ void main() {
       return facade.list().firstWhere((m) => m['name'] == name)['id'] as String;
     }
 
+    test('list counts switched-on entries apart from all entries', () async {
+      await createWorld({
+        'name': 'Cindermaw',
+        'entries': [
+          {'name': 'Lava', 'key': 'lava', 'content': 'Rivers of it'},
+          {
+            'name': 'Old law',
+            'key': 'law',
+            'content': 'Repealed',
+            'enabled': false,
+          },
+        ],
+      });
+      final w = facade.list().firstWhere((m) => m['name'] == 'Cindermaw');
+      expect(w['entryCount'], 2);
+      expect(w['enabledEntryCount'], 1);
+    });
+
     test('list and detail carry parentWorldId; roots are null', () async {
       final rootId = await createWorld({
         'name': 'Bletchport',

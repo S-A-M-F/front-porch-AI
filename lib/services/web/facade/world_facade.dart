@@ -97,6 +97,10 @@ class WorldFacade {
           'name': w.name,
           'description': w.description,
           'entryCount': w.lorebook.entries.length,
+          // Additive: what the place editor's inherited-lore line counts.
+          'enabledEntryCount': w.lorebook.entries
+              .where((e) => e.enabled)
+              .length,
           if (w.climateEnabled)
             'biomeId': (w.biomeJson != null && w.biomeJson!.isNotEmpty)
                 ? 'custom'

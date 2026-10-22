@@ -36,7 +36,7 @@ class WorldDialogWording {
   /// The parent chain nearest-first; their lore reaches this place's chats.
   final List<String> ancestorNames;
 
-  /// Lore entries across [ancestorNames].
+  /// Switched-on lore entries across [ancestorNames].
   final int inheritedEntries;
 
   bool get isPlace => parentName != null;

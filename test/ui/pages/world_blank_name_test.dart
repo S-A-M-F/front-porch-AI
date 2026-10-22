@@ -159,7 +159,7 @@ void main() {
       lorebook: Lorebook(
         entries: [
           LorebookEntry(key: 'sea', content: 'Salt water.'),
-          LorebookEntry(key: 'moon', content: 'One moon.'),
+          LorebookEntry(key: 'moon', content: 'One moon.')..enabled = false,
         ],
       ),
     );
@@ -184,7 +184,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('world-inherited-lore')),
-        matching: find.textContaining('2 lore entries from Earth'),
+        matching: find.textContaining('1 lore entry from Earth'),
       ),
       findsOneWidget,
     );

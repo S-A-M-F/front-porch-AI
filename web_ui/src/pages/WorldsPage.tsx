@@ -148,6 +148,7 @@ export function WorldsPage() {
       return {
         ...d,
         entryCount: d.entries?.length ?? 0,
+        enabledEntryCount: d.entries?.filter((e) => e.enabled !== false).length ?? 0,
       } as TreeWorld;
     return worlds.find((x) => (x.id ?? x.name) === id) ?? null;
   };
@@ -549,7 +550,7 @@ export function WorldsPage() {
       seen.add(cursor);
       const w = byNameOrId(cursor);
       if (!w) break;
-      out.push({ name: w.name, entryCount: w.entryCount ?? 0 });
+      out.push({ name: w.name, entryCount: w.enabledEntryCount ?? w.entryCount ?? 0 });
       cursor = w.parentWorldId ?? null;
     }
     return out;
