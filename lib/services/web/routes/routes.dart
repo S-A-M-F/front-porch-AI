@@ -19,6 +19,7 @@ export 'group_routes.dart';
 export 'persona_convert_routes.dart';
 export 'porch_routes.dart';
 export 'remote_routes.dart';
+export 'saved_prompt_routes.dart';
 export 'settings_routes.dart';
 export 'speed_test_routes.dart';
 export 'static_routes.dart';

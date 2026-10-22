@@ -20,69 +20,82 @@ import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
+import 'package:front_porch_ai/ui/widgets/widgets.dart';
 
-/// Save the current system prompt.
-void showSavePromptDialog(BuildContext context, StorageService storageService) {
+/// Asks for a name and saves [content] as a NEW saved prompt. A name already
+/// in the user's pool is refused, so Save as new never overwrites; updating a
+/// prompt is the slot's own Save. Calls [onSaved] with the name.
+void showSavePromptDialog(
+  BuildContext context,
+  StorageService storageService, {
+  required String content,
+  void Function(String name)? onSaved,
+}) {
   final controller = TextEditingController();
-  showDialog(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.surfaceOf(context),
-      title: Text(
-        'Save Prompt',
-        style: TextStyle(color: AppColors.textPrimary(context)),
-      ),
-      content: TextField(
+  final error = ValueNotifier<String?>(null);
+  var done = false;
+  void submit(BuildContext ctx) {
+    final name = controller.text.trim();
+    if (done || name.isEmpty) return;
+    // Only names the user can see count: the hidden, untouched seed may be
+    // replaced.
+    final taken = userSavedPrompts(
+      storageService.presetSettings.savedPrompts,
+    ).any((p) => p['name'] == name);
+    if (taken) {
+      error.value =
+          'You already have a prompt called "$name". Pick another name.';
+      return;
+    }
+    done = true;
+    storageService.presetSettings.savePrompt(name, content);
+    onSaved?.call(name);
+    Navigator.pop(ctx);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Prompt "$name" saved!')));
+  }
+
+  showWarmDialog<void>(
+    context,
+    title: 'Save as new prompt',
+    icon: Icons.save_outlined,
+    content: ValueListenableBuilder<String?>(
+      valueListenable: error,
+      builder: (ctx, message, _) => TextField(
         controller: controller,
         autofocus: true,
-        style: TextStyle(color: AppColors.textPrimary(context)),
+        style: TextStyle(color: AppColors.textPrimary(ctx)),
         decoration: InputDecoration(
           hintText: 'Prompt name...',
-          hintStyle: TextStyle(color: AppColors.textTertiary(context)),
+          hintStyle: TextStyle(color: AppColors.textTertiary(ctx)),
+          errorText: message,
+          errorMaxLines: 3,
         ),
-        onSubmitted: (value) {
-          if (value.trim().isNotEmpty) {
-            storageService.presetSettings.savePrompt(
-              value.trim(),
-              storageService.generationSettings.systemPrompt,
-            );
-            Navigator.pop(ctx);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Prompt "${value.trim()}" saved!')),
-            );
-          }
-        },
+        onChanged: (_) => error.value = null,
+        onSubmitted: (_) => submit(ctx),
       ),
-      actions: [
-        TextButton(
+    ),
+    actions: [
+      Builder(
+        builder: (ctx) => TextButton(
           onPressed: () => Navigator.pop(ctx),
           child: Text(
             'Cancel',
-            style: TextStyle(color: AppColors.textSecondary(context)),
+            style: TextStyle(color: AppColors.textSecondary(ctx)),
           ),
         ),
-        ElevatedButton(
+      ),
+      Builder(
+        builder: (ctx) => ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.formAccentOf(context),
-            foregroundColor: AppColors.onAccentOf(context),
+            backgroundColor: AppColors.formAccentOf(ctx),
+            foregroundColor: AppColors.onAccentOf(ctx),
           ),
-          onPressed: () {
-            if (controller.text.trim().isNotEmpty) {
-              storageService.presetSettings.savePrompt(
-                controller.text.trim(),
-                storageService.generationSettings.systemPrompt,
-              );
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Prompt "${controller.text.trim()}" saved!'),
-                ),
-              );
-            }
-          },
+          onPressed: () => submit(ctx),
           child: const Text('Save'),
         ),
-      ],
-    ),
+      ),
+    ],
   );
 }

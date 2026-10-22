@@ -364,21 +364,27 @@ void main() {
       );
       expect(storage.generationSettings.systemPrompt, base);
 
-      final builtIn = find.text('Start from the built-in prompt');
+      // "Start from the built-in prompt" became Reset to built-in, which
+      // stores the built-in as blank so Director Mode keeps its own base;
+      // the box shows the built-in text it stands for.
+      final builtIn = find.text('Reset to built-in').last;
       await tester.ensureVisible(builtIn);
       await tester.tap(builtIn);
       await tester.pump();
       await tester.pump();
+      expect(storage.generationSettings.groupSystemPrompt, isEmpty);
       expect(
-        storage.generationSettings.groupSystemPrompt,
+        tester.widget<TextField>(field).controller!.text,
         defaultGroupSystemPrompt,
       );
 
+      await tester.enterText(field, 'Novel style for every group.');
+      await tester.pump();
       final prefs = await SharedPreferences.getInstance();
       final reloaded = GenerationSettings()
         ..initializeBase(prefs, () {})
         ..load();
-      expect(reloaded.groupSystemPrompt, defaultGroupSystemPrompt);
+      expect(reloaded.groupSystemPrompt, 'Novel style for every group.');
       await tester.pumpWidget(const SizedBox());
     },
   );

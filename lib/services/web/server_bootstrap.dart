@@ -84,6 +84,7 @@ shelf.Handler buildWebHandler(WebServerDeps deps) {
   }
   if (deps.settingsFacade != null) {
     WebSettingsRoutes(deps, router);
+    WebSavedPromptRoutes(deps.storage, router);
   }
   if (deps.stoopFacade != null) WebStoopRoutes(deps.stoopFacade!, router);
   if (deps.worldFacade != null) WebWorldRoutes(deps.worldFacade!, router);

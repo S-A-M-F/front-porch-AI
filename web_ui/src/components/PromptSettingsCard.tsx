@@ -2,38 +2,62 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // The prompt family for web Settings, mirroring the desktop General tab:
-// the Fallback system prompt box with the Global prompt additions flat
+// the Fallback system prompt slot with the Global prompt additions flat
 // under it (prompt-picker SOW Phase 2 — one prompt family, one place),
-// then the Group system prompt every group chat uses.
+// then the Group system prompt slot every group chat uses. Both slots pick
+// from one shared pool of saved prompts.
+
+import { PromptSlot, type BuiltInPrompt, type SavedPrompt } from './PromptSlot';
 
 export function PromptSettingsCard({
   systemPrompt,
+  systemPromptName,
   additionalSystemPrompt,
   additionalPostHistoryInstructions,
   groupSystemPrompt,
+  groupSystemPromptName,
   builtInGroupSystemPrompt,
+  builtInSystemPrompts,
+  savedPrompts,
   patch,
 }: {
   systemPrompt?: string;
+  systemPromptName?: string | null;
   additionalSystemPrompt?: string;
   additionalPostHistoryInstructions?: string;
   groupSystemPrompt?: string;
+  groupSystemPromptName?: string | null;
   builtInGroupSystemPrompt?: string;
+  builtInSystemPrompts?: BuiltInPrompt[];
+  savedPrompts?: SavedPrompt[];
   patch: (p: Record<string, unknown>) => void;
 }) {
   if (systemPrompt === undefined) return null;
+  const pool = savedPrompts ?? [];
+  // A delete from either slot lets go of every slot that named that prompt.
+  const onPool = (next: SavedPrompt[]) => {
+    const has = (n?: string | null) => !!n && next.some((p) => p.name === n);
+    patch({
+      savedPrompts: next,
+      ...(systemPromptName && !has(systemPromptName) ? { systemPromptName: null } : {}),
+      ...(groupSystemPromptName && !has(groupSystemPromptName) ? { groupSystemPromptName: null } : {}),
+    });
+  };
   return (
     <section className="card" data-testid="prompt-settings-card">
-      <h3>Fallback system prompt</h3>
-      <p className="muted small">Used in one-to-one chats whose character card has no system prompt of its own. Group chats use the Group system prompt further down instead.</p>
-      <label data-testid="fallback-system-prompt">
-        Fallback system prompt
-        <textarea
-          rows={6}
-          value={systemPrompt}
-          onChange={(e) => patch({ systemPrompt: e.target.value })}
-        />
-      </label>
+      <h3>System prompts</h3>
+      <PromptSlot
+        testId="fallback-system-prompt"
+        title="Fallback system prompt"
+        helper="Used in one-to-one chats whose character card has no system prompt of its own. Group chats use the Group system prompt further down instead."
+        label="Fallback system prompt"
+        text={systemPrompt}
+        name={systemPromptName}
+        pool={pool}
+        builtIns={builtInSystemPrompts ?? []}
+        onChange={(text, name) => patch({ systemPrompt: text, systemPromptName: name })}
+        onPool={onPool}
+      />
       {additionalSystemPrompt !== undefined &&
         additionalPostHistoryInstructions !== undefined && (
           <div className="prompt-additions" data-testid="global-prompt-additions">
@@ -51,21 +75,19 @@ export function PromptSettingsCard({
             <p className="muted small">Appended after existing post-history instructions.</p>
           </div>
         )}
-      <div className="prompt-additions" data-testid="group-system-prompt">
-        <h4>Group system prompt</h4>
-        <p className="muted small">Used in every group chat, unless that group has its own prompt in Group Settings. Leave blank for the built-in group prompt. Director Mode adds its own rules on top either way.</p>
-        <label>Group system prompt
-          <textarea rows={5} value={groupSystemPrompt ?? ''}
-            placeholder="Blank uses the built-in group prompt"
-            onChange={(e) => patch({ groupSystemPrompt: e.target.value })} />
-        </label>
-        {builtInGroupSystemPrompt && (
-          <button type="button" className="ghost"
-            onClick={() => patch({ groupSystemPrompt: builtInGroupSystemPrompt })}>
-            Start from the built-in prompt
-          </button>
-        )}
-      </div>
+      <PromptSlot
+        testId="group-system-prompt"
+        title="Group system prompt"
+        helper="Used in every group chat, unless that group has its own prompt in Group Settings. On the built-in, Director Mode uses its own built-in instead, and it adds its rules on top either way."
+        label="Group system prompt"
+        text={groupSystemPrompt ?? ''}
+        name={groupSystemPromptName}
+        pool={pool}
+        builtIns={builtInGroupSystemPrompt ? [{ label: 'Group default', text: builtInGroupSystemPrompt }] : []}
+        blankIsBuiltIn
+        onChange={(text, name) => patch({ groupSystemPrompt: text, groupSystemPromptName: name })}
+        onPool={onPool}
+      />
     </section>
   );
 }
