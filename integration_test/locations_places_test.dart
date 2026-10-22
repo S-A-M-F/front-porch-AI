@@ -163,7 +163,7 @@ void main() {
     // Same gate as step 1: the second dialog must finish closing before
     // the library card is read, or its exit animation can shadow the
     // grouping widgets the next block waits for.
-    await pumpUntilGone(tester, find.text('Create World'));
+    await pumpUntilGone(tester, find.text('Add a place to Bletchport'));
 
     // ── 3. The library groups: section chip + child tag ─────────────────
     await d.waitForWidget(find.text('1 place'));
