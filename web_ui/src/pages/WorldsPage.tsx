@@ -18,11 +18,17 @@ import {
   placesUnder,
   indexById,
   resolveParent,
+  topOf,
   type LibraryFilter,
   type TreeWorld,
 } from './worlds/locations';
 import type { BiomeDraft } from '../lib/seasonCalendar';
-import { placeEditorWording, type AncestorLore } from '../lib/placeEditorWording';
+import {
+  CLIMATE_SWITCH_HINT,
+  pausedPlacesNote,
+  placeEditorWording,
+  type AncestorLore,
+} from '../lib/placeEditorWording';
 import { confirmDiscard, useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import '../styles/ws-g.css';
 
@@ -555,12 +561,27 @@ export function WorldsPage() {
       // The list row is refreshed by every save; the detail cache may lag.
       const row = worlds.find((x) => (x.id ?? x.name) === cursor);
       const count = row?.enabledEntryCount ?? w.enabledEntryCount ?? w.entryCount ?? 0;
-      out.push({ name: w.name, entryCount: count });
+      out.push({
+        name: w.name,
+        entryCount: count,
+        climateEnabled: row?.climateEnabled ?? w.climateEnabled,
+      });
       cursor = w.parentWorldId ?? null;
     }
     return out;
   };
   const wording = edit ? placeEditorWording(edit.originalName == null, ancestorLore()) : null;
+  // A top-level world being edited: the places inside it that own a
+  // climate, which its weather-off switch pauses.
+  const pausedNote = (() => {
+    if (!edit || edit.parentWorldId != null || edit.id == null) return null;
+    const rows = worlds as TreeWorld[];
+    const byId = indexById(rows);
+    const names = rows
+      .filter((w) => w.climateEnabled === true && w.parentWorldId && topOf(w, byId).id === edit.id)
+      .map((w) => w.name);
+    return pausedPlacesNote(names);
+  })();
 
   return (
     <div className="page">
@@ -680,18 +701,11 @@ export function WorldsPage() {
       {(() => {
         const plan = planWorldLibrary(worlds as TreeWorld[], filter);
         const byId = indexById(worlds as TreeWorld[]);
-        const chainAllowsClimate = (w: TreeWorld): boolean => {
-          let cursor = resolveParent(w, byId);
-          const seen = new Set<string>([w.id ?? w.name]);
-          while (cursor != null) {
-            if (cursor.climateEnabled !== false) return true;
-            const key = cursor.id ?? cursor.name;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            cursor = resolveParent(cursor, byId);
-          }
-          return false;
-        };
+        // A top-level world's weather switch covers every place in it:
+        // with it on, an ancestor (the top itself) authors weather; with it
+        // off, nothing inside has any, owned climates included (paused).
+        const chainAllowsClimate = (w: TreeWorld): boolean =>
+          topOf(w, byId).climateEnabled !== false;
         const card = (w: TreeWorld, insideRootId?: string) => {
           const key = w.id ?? w.name;
           const parent = resolveParent(w, byId);
@@ -845,12 +859,23 @@ export function WorldsPage() {
             A place inside another world shares its parent&apos;s lore and
             description. Rooms can go two levels deep (town › building › room).
           </p>
+          {edit.parentWorldId != null && wording?.weatherOff && (
+            <div className="wsg-weather-off" role="note" data-testid="weather-off-note">
+              <strong>{wording.weatherOff.title}</strong>
+              <p className="muted small">{wording.weatherOff.body(edit.climateEnabled)}</p>
+            </div>
+          )}
           {edit.parentWorldId != null && (
             <div className="wsg-climate-radios" role="radiogroup" aria-label="Weather source">
               <label className="tool-toggle">
                 <span>
                   Inherit from{' '}
                   {byNameOrId(edit.parentWorldId)?.name ?? 'the parent'}
+                  {wording?.weatherOff && (
+                    <span className="muted small" style={{ display: 'block' }}>
+                      {wording.weatherOff.inheritBody}
+                    </span>
+                  )}
                 </span>
                 <input
                   type="radio"
@@ -860,7 +885,14 @@ export function WorldsPage() {
                 />
               </label>
               <label className="tool-toggle">
-                <span>Own climate</span>
+                <span>
+                  Own climate
+                  {wording?.weatherOff && (
+                    <span className="muted small" style={{ display: 'block' }}>
+                      {wording.weatherOff.ownTag(edit.climateEnabled)}
+                    </span>
+                  )}
+                </span>
                 <input
                   type="radio"
                   name="weather-source"
@@ -873,7 +905,14 @@ export function WorldsPage() {
                   ? 'This place’s climate also reaches the places inside it.'
                   : 'Pick Own climate for a continent on Earth or a greenhouse in the tundra. The climate editor opens right here when it is on.'}
               </p>
-              {climateEditor}
+              {wording?.weatherOff && edit.climateEnabled ? (
+                <div className="wsg-climate-paused" data-testid="climate-paused">
+                  <span className="wsg-paused-tag">Paused</span>
+                  {climateEditor}
+                </div>
+              ) : (
+                climateEditor
+              )}
               {edit.id != null &&
                 edit.parentWorldId !==
                   (editBase ? (JSON.parse(editBase).parentWorldId ?? null) : null) && (
@@ -983,10 +1022,13 @@ export function WorldsPage() {
                   }
                 />
               </label>
-              <p className="muted small">
-                Off = lorebook and description only — no forecast, no atmosphere
-                or gravity.
-              </p>
+              <p className="muted small">{CLIMATE_SWITCH_HINT}</p>
+              {!edit.climateEnabled && pausedNote && (
+                <div className="wsg-weather-off" role="note" data-testid="paused-places-note">
+                  <strong>{pausedNote.title}</strong>
+                  <p className="muted small">{pausedNote.body}</p>
+                </div>
+              )}
             </>
           )}
 

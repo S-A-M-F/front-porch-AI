@@ -229,3 +229,18 @@ export function injectionUsedChars(text: string): number {
   const body = text.startsWith(PREFIX) ? text.slice(PREFIX.length) : text;
   return body.length + 1;
 }
+
+/** The top-level world above [w] (or [w] itself for a root); ring-safe. */
+export function topOf(w: TreeWorld, byId: Map<string, TreeWorld>): TreeWorld {
+  let top = w;
+  let cursor: TreeWorld | null = w;
+  const seen = new Set<string>();
+  while (cursor != null) {
+    const key = cursor.id ?? cursor.name;
+    if (seen.has(key)) break;
+    seen.add(key);
+    top = cursor;
+    cursor = resolveParent(cursor, byId);
+  }
+  return top;
+}

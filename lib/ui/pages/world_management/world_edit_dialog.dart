@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'world_basics_section.dart';
@@ -72,6 +73,20 @@ void showWorldEditDialog(
               0,
               (n, a) => n + a.lorebook.enabledEntryCount,
             ),
+            weatherOffRootName:
+                ancestors.isEmpty || ancestors.last.climateEnabled
+                ? null
+                : ancestors.last.name,
+            pausedPlaceNames: world == null || draft.parentWorldId != null
+                ? const []
+                : [
+                    for (final w in climateOwnersInside(
+                      world.id,
+                      repo.worlds,
+                      repo.worldById,
+                    ))
+                      w.name,
+                  ],
           );
           return Dialog(
             backgroundColor: AppColors.surfaceOf(ctx),
@@ -207,6 +222,7 @@ void showWorldEditDialog(
                                 draft: draft,
                                 draftEditingId: world?.id ?? '',
                                 setDialogState: setDialogState,
+                                wording: wording,
                               ),
 
                               const SizedBox(height: 24),

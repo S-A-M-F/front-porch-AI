@@ -305,6 +305,25 @@
   line-height: 1.45;
   color: var(--text-2, inherit);
 }
+.wsg-weather-off {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  background: color-mix(in srgb, var(--text-2, currentColor) 6%, transparent);
+}
+.wsg-weather-off strong { display: block; font-size: 0.85rem; margin-bottom: 4px; }
+.wsg-weather-off p { margin: 0; }
+.wsg-paused-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--radius-badge, 999px);
+  border: 1px solid var(--border);
+  color: var(--text-2, inherit);
+}
+.wsg-climate-paused { opacity: 0.72; }
 .wsg-reparent-note {
   border-left: 3px solid var(--accent);
   padding-left: 8px;

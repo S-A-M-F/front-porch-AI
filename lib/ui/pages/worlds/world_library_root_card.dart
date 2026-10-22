@@ -215,7 +215,7 @@ class WorldLibraryRootCard extends StatelessWidget {
                         child: Text(
                           root.climateEnabled
                               ? '${root.biomeId != null && root.biomeId!.isNotEmpty ? Biome.builtInById(root.biomeId)?.displayName ?? root.biomeId : (root.biomeJson != null ? 'Custom climate' : 'temperate')} · $entries ${entries == 1 ? 'entry' : 'entries'}'
-                              : 'No climate of its own · $entries '
+                              : 'Weather off for the whole world · $entries '
                                     '${entries == 1 ? 'entry' : 'entries'}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

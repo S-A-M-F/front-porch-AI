@@ -44,6 +44,8 @@ type PlacesResponse = {
   lorePlaces?: Place[];
   climateAuthors?: boolean;
   climateAuthorName?: string | null;
+  /** The top-level world whose weather-off switch silences this Setting. */
+  weatherOffWorldName?: string | null;
   reachable?: { id: string; name: string }[];
   weatherOff?: string;
   climateId?: string;
@@ -69,6 +71,7 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
   >(null);
   const [climateAuthors, setClimateAuthors] = useState(false);
   const [weatherOff, setWeatherOff] = useState<string | null>('no_setting');
+  const [weatherOffWorld, setWeatherOffWorld] = useState<string | null>(null);
   const [climateId, setClimateId] = useState('temperate');
   const [climateFeel, setClimateFeel] = useState('');
   const [dayCount, setDayCount] = useState(1);
@@ -101,6 +104,7 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
     };
     setClimateAuthors(!!r.climateAuthors);
     setAuthorName(r.climateAuthorName ?? null);
+    setWeatherOffWorld(r.weatherOffWorldName ?? null);
     setReachable(r.reachable ?? []);
     setWeatherOff(r.weatherOff ?? (r.climateAuthors ? null : 'no_setting'));
     if (r.climateId) setClimateId(r.climateId);
@@ -360,7 +364,9 @@ export function ChatPlacesSection({ reloadKey }: { reloadKey?: number }) {
         </p>
       ) : weatherOff === 'setting_lore_only' || !climateAuthors ? (
         <p className="muted small" style={{ marginTop: 8 }}>
-          This setting is lore-only — no weather.
+          {weatherOffWorld
+            ? `Weather is off for ${weatherOffWorld}, so this place has none.`
+            : 'This setting is lore-only — no weather.'}
         </p>
       ) : (
         <>
