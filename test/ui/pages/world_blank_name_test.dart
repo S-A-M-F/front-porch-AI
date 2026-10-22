@@ -17,6 +17,7 @@ import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/world.dart' as model;
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/pages/world_management_page.dart';
+import 'package:front_porch_ai/ui/theme/theme.dart';
 
 import '../../helpers/double_tap.dart';
 
@@ -269,5 +270,42 @@ void main() {
     await _bounded(tester);
     expect(find.byKey(const Key('world-paused-places-note')), findsOneWidget);
     expect(find.text('1 place inside sets its own climate'), findsOneWidget);
+  });
+
+  testWidgets('weather-off wording stays at full ink, outside the dimmed editor', (
+    tester,
+  ) async {
+    final earth = model.World(
+      id: 'earth-1',
+      name: 'Earth',
+      lorebook: Lorebook(entries: []),
+      climateEnabled: false,
+    );
+    final worlds = _RecordingWorlds([earth]);
+    await _pumpPage(tester, worlds);
+
+    await tester.tap(find.byKey(const Key('place-add-inside')).first);
+    await _bounded(tester);
+    await tester.ensureVisible(find.text('Own climate'));
+    await tester.tap(find.text('Own climate'));
+    await _bounded(tester);
+
+    Color? inkOf(Finder f) => tester.widget<Text>(f).style?.color;
+    final ink = AppColors.textPrimary(tester.element(find.text('Paused')));
+    final body = find.descendant(
+      of: find.byKey(const Key('world-weather-off-note')),
+      matching: find.textContaining('Earth'),
+    );
+    expect(body, findsWidgets);
+    for (final e in body.evaluate()) {
+      expect((e.widget as Text).style?.color, ink);
+    }
+    expect(inkOf(find.text('Paused')), ink);
+    expect(inkOf(find.text("Paused while Earth's weather is off")), ink);
+    expect(inkOf(find.text('No weather: Earth has weather off.')), ink);
+    expect(
+      find.ancestor(of: find.text('Paused'), matching: find.byType(Opacity)),
+      findsNothing,
+    );
   });
 }

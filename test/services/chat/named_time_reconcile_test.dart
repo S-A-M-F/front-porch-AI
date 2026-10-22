@@ -16,7 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart'
-    show TimeService, SceneTimeEvaluator, slotClockAfter, slotClockBefore;
+    show SceneTimeEvaluator, slotClockAfter, slotClockBefore;
 import 'package:front_porch_ai/services/services.dart';
 import '../../helpers/chat_db_teardown.dart';
 
