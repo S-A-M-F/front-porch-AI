@@ -21,6 +21,7 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.locations.dart';
+import 'package:front_porch_ai/services/web/facade/world_summary_json.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.import.dart';
 
@@ -92,38 +93,15 @@ class WorldFacade {
     // Places only in the authoring list (character-linked clones purged).
     return [
       for (final w in _worlds.placeWorlds)
-        {
-          'id': w.id,
-          'name': w.name,
-          'description': w.description,
-          'entryCount': w.lorebook.entries.length,
-          // Additive: what the place editor's inherited-lore line counts.
-          'enabledEntryCount': w.lorebook.entries
-              .where((e) => e.enabled)
-              .length,
-          if (w.climateEnabled)
-            'biomeId': (w.biomeJson != null && w.biomeJson!.isNotEmpty)
-                ? 'custom'
-                : (w.biomeId ?? 'temperate'),
-          'injectDescription': w.injectDescription,
-          'climateEnabled': w.climateEnabled,
-          'coverImage': w.coverImage,
-          'hasCover': w.coverImage != null && w.coverImage!.isNotEmpty,
-          'linkedCharacterName': w.linkedCharacterName,
-          'linkedCharacterId':
+        worldSummaryJson(
+          w,
+          locations: _locations,
+          linkedCharacterId:
               w.linkedCharacterId ??
               (w.linkedCharacterName != null
                   ? idByName[w.linkedCharacterName!]
                   : null),
-          // Locations slice 4 (web twin): the PWA groups the library,
-          // paints "inside X" tags and runs the model-made filter from
-          // these. Additive — old builds ignore them (mixed-version law).
-          'parentWorldId': w.parentWorldId,
-          'isModelMade': w.isModelMade,
-          // Slice 5 (additive): "N places" chip and weather author for Stoop.
-          'locationCount': _locations.locationCount(w.id),
-          'climateAuthorId': _locations.climateAuthorId(w.id),
-        },
+        ),
     ];
   }
 
