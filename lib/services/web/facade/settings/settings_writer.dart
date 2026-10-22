@@ -383,14 +383,17 @@ class SettingsWriter {
         body['groupSystemPrompt'] as String,
       );
     }
-    // A slot's saved-prompt pick; null or '' lets go of it.
+    // A slot's saved-prompt pick; null, '' or a name no longer in the pool
+    // (deleted from another slot or tab) lets go of it.
+    final pool = userSavedPrompts(_storage.presetSettings.savedPrompts);
     for (final (key, slot) in const [
       ('systemPromptName', PromptSlot.oneToOne),
       ('groupSystemPromptName', PromptSlot.group),
     ]) {
       if (!body.containsKey(key)) continue;
       final name = body[key];
-      await slot.writeSavedName(_storage, name is String ? name : null);
+      final kept = name is String && pool.any((p) => p['name'] == name);
+      await slot.writeSavedName(_storage, kept ? name : null);
     }
     if (body['additionalPostHistoryInstructions'] is String) {
       await g.setAdditionalPostHistoryInstructions(

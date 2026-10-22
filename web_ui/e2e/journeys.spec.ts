@@ -1498,7 +1498,7 @@ test('the theme follows the desktop, and a device can keep its own mode', { tag:
   }
 });
 
-test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page, allowHttp }) => {
+test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page, allowHttp, acceptConfirms }) => {
   // The taken-name refusal is a 409 on purpose.
   allowHttp((url, status) => status === 409 && /\/api\/saved-prompts(\?|$)/.test(url));
   type Saved = { name: string; content: string };
@@ -1554,6 +1554,17 @@ test('both Settings prompt slots pick from one pool of saved prompts, never a bu
 
     await page.reload();
     await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+
+    // Deleting from one slot lets go of both slots' picks, on screen and saved.
+    await one.locator('select').selectOption({ label: name });
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(name);
+    acceptConfirms(true);
+    await group.getByRole('button', { name: `Delete “${name}”`, exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText('Not saved');
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText('Not saved');
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPromptName ?? null).toBeNull();
+    expect((await read()).systemPromptName ?? null).toBeNull();
   } finally {
     await page.request.post('/api/saved-prompts/delete', { data: { name } });
     expect((await page.request.post('/api/settings', { data: {

@@ -34,7 +34,15 @@ export function PromptSettingsCard({
 }) {
   if (systemPrompt === undefined) return null;
   const pool = savedPrompts ?? [];
-  const onPool = (next: SavedPrompt[]) => patch({ savedPrompts: next });
+  // A delete from either slot lets go of every slot that named that prompt.
+  const onPool = (next: SavedPrompt[]) => {
+    const has = (n?: string | null) => !!n && next.some((p) => p.name === n);
+    patch({
+      savedPrompts: next,
+      ...(systemPromptName && !has(systemPromptName) ? { systemPromptName: null } : {}),
+      ...(groupSystemPromptName && !has(groupSystemPromptName) ? { groupSystemPromptName: null } : {}),
+    });
+  };
   return (
     <section className="card" data-testid="prompt-settings-card">
       <h3>System prompts</h3>
