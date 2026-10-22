@@ -116,6 +116,12 @@ void main() {
     // the next pumpUntilFound (the macOS smoke read the DYING dialog's
     // empty Part-of picker). Real users never race their own dialogs.
     await pumpUntilGone(tester, find.text('Create World'));
+    // And the Success SnackBar: it sits bottom-center over the library,
+    // and on the macOS/Windows window heights the 'Add a place inside'
+    // button lands INSIDE it — Rawhide run 7eeaa1a64 showed the gated
+    // tap hit-testing onto the SnackBar's AnimatedOpacity/Offstage
+    // chain at the card's center. Let it dismiss before tapping there.
+    await pumpUntilGone(tester, find.text('World created successfully'));
 
     // ── 2. "Add a place inside" from the library card ───────────────────
     await d.waitForWidget(find.text('Add a place inside'));
