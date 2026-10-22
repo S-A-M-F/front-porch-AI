@@ -57,7 +57,6 @@ import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
-import 'package:front_porch_ai/services/chat/time_service/scene_time_evaluator.dart';
 import '../../helpers/chat_db_teardown.dart';
 
 void _setupPathProviderMock() {
