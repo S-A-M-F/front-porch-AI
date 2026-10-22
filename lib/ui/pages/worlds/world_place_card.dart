@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -18,6 +19,27 @@ class WorldPlaceCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onExport;
   final VoidCallback onDelete;
+  // Locations slice 3. When set, a "placeCount places inside" chip and an
+  // "Add a place inside" action render (root cards with children).
+  final int placeCount;
+  final VoidCallback? onNewInside;
+  // Present when this world is a location: drives the "Inherits weather"
+  // / "Owns its weather" tag the author needs to tell cards apart.
+  final World? parent;
+  // Multi-select ("Move into…"): the checkbox only renders when onSelected
+  // is set, so untouched call sites keep today's exact card.
+  final bool? selected;
+  // False when no world in this place's chain owns a climate: the honest
+  // tag is "Weather off", not a promise of something to inherit (§7: a
+  // climate-off root as Setting means weather off). Defaults true so
+  // callers without chain access keep today's card verbatim.
+  final bool hasWeatherToInherit;
+  // Parent NAME for the "inside X" tag. Separate from [parent] because
+  // the mockup marks depth only where it is not already obvious: section
+  // children sit under their parent already (no tag), while flat/model-made
+  // cards float free and need one.
+  final String? insideName;
+  final ValueChanged<bool>? onSelected;
 
   const WorldPlaceCard({
     super.key,
@@ -25,6 +47,13 @@ class WorldPlaceCard extends StatelessWidget {
     required this.onEdit,
     required this.onExport,
     required this.onDelete,
+    this.placeCount = 0,
+    this.onNewInside,
+    this.parent,
+    this.insideName,
+    this.selected,
+    this.hasWeatherToInherit = true,
+    this.onSelected,
   });
 
   @override
@@ -35,6 +64,20 @@ class WorldPlaceCard extends StatelessWidget {
     final climateLabel =
         (climate != null && climate.isNotEmpty && climate != 'temperate')
         ? climate
+        : null;
+    // Inherit/own tag: only locations get one — a root's climate story is
+    // its own dropdown chip above. A place that owns reads like the
+    // editor's radio ("Own climate · <biome>"); the mockup names the
+    // biome so a continent's card tells its weather at a glance.
+    final weatherTag = parent == null
+        ? null
+        : world.climateEnabled
+        ? 'Own climate'
+        : hasWeatherToInherit
+        ? 'Inherits weather'
+        : 'Weather off';
+    final ownBiomeName = (parent != null && world.climateEnabled)
+        ? Biome.builtInById(world.biomeId)?.displayName
         : null;
 
     return Card(
@@ -49,7 +92,11 @@ class WorldPlaceCard extends StatelessWidget {
         ),
       ),
       child: InkWell(
+        // Tap always opens the editor (pinned by world_blank_name_test);
+        // long-press enters "Move into…" selection, and the badge's own
+        // tap steps out of it.
         onTap: onEdit,
+        onLongPress: () => onSelected?.call(true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -78,6 +125,26 @@ class WorldPlaceCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: selected == true
+                        ? GestureDetector(
+                            onTap: () => onSelected?.call(false),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: InkColors.dim(0.35),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.check_circle,
+                                size: 20,
+                                color: accent,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                   Positioned(
                     top: 4,
@@ -154,7 +221,34 @@ class WorldPlaceCard extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    Row(
+                    if (onNewInside != null) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          key: const Key('place-add-inside'),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            foregroundColor: accent,
+                          ),
+                          icon: const Icon(
+                            Icons.add_location_alt_outlined,
+                            size: 15,
+                          ),
+                          label: const Text(
+                            'Add a place inside',
+                            style: TextStyle(fontSize: 11.5),
+                          ),
+                          onPressed: onNewInside,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (climateLabel != null) ...[
                           Container(
@@ -178,8 +272,23 @@ class WorldPlaceCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
                         ],
+                        if (weatherTag != null)
+                          _tag(
+                            context,
+                            ownBiomeName == null
+                                ? weatherTag
+                                : '$weatherTag · $ownBiomeName',
+                            muted: !world.climateEnabled,
+                          ),
+                        if (insideName != null)
+                          _tag(context, 'inside $insideName', muted: true),
+                        if (world.isModelMade) _tag(context, 'model-made'),
+                        if (placeCount > 0)
+                          _tag(
+                            context,
+                            '$placeCount place${placeCount == 1 ? '' : 's'} inside',
+                          ),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -205,6 +314,32 @@ class WorldPlaceCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tag(BuildContext context, String label, {bool muted = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: muted
+            ? AppColors.surfaceContainerOf(context)
+            : AppColors.formAccentOf(context).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: muted
+              ? AppColors.borderOf(context).withValues(alpha: 0.5)
+              : AppColors.formAccentOf(context).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          color: muted
+              ? AppColors.textTertiary(context)
+              : AppColors.formAccentOf(context),
         ),
       ),
     );

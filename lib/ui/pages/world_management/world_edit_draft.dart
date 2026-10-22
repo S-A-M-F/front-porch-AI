@@ -34,6 +34,8 @@ class WorldEditDraft {
       injectDescription = world?.injectDescription ?? true,
       climateEnabled = world?.climateEnabled ?? true,
       coverImage = world?.coverImage,
+      parentWorldId = world?.parentWorldId,
+      startParentWorldId = world?.parentWorldId,
       atmosphere = world?.atmosphere ?? WorldAtmosphere.breathable,
       gravity = world?.gravity ?? WorldGravity.earth,
       editingEntries = world != null
@@ -46,7 +48,12 @@ class WorldEditDraft {
     _start = _fingerprint();
   }
 
-  late final String _start;
+  late String _start;
+
+  /// Re-anchor "unchanged" to the draft as it now stands — the Create-with-
+  /// a-preset-parent path uses this so a dialog nobody edited does not
+  /// trigger the unsaved-changes guard for the preset itself.
+  void resetCleanBaseline() => _start = _fingerprint();
 
   /// Everything Save copies back, so Close can tell whether anything changed.
   String _fingerprint() => jsonEncode([
@@ -57,6 +64,7 @@ class WorldEditDraft {
     injectDescription,
     climateEnabled,
     coverImage,
+    parentWorldId,
     atmosphere.name,
     gravity.name,
     [for (final e in editingEntries) e.toJson()],
@@ -74,6 +82,19 @@ class WorldEditDraft {
   bool injectDescription;
   bool climateEnabled;
   String? coverImage;
+  // Locations slice 3: the parent this place sits inside (null = root).
+  // 'Inherit from <parent>' in the climate section is simply
+  // climateEnabled=false — slice 2's chain walk finds the author; 'Own
+  // climate' is climateEnabled=true. One flag, no second source of truth.
+  String? parentWorldId;
+  // Set only when this dialog session actually reparents — the "what
+  // changes for live chats" note is about the change being made, not a
+  // fact the world has always had.
+  late final String? startParentWorldId;
+  bool get willReparent => parentWorldId != startParentWorldId;
+  // Shown under the picker when saveWorld refuses the parent (cycle,
+  // unknown, or a re-run race).
+  String? parentError;
   // Place traits (standing facts; defaults are silent).
   WorldAtmosphere atmosphere;
   WorldGravity gravity;

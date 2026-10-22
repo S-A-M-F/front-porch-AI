@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/ui/pages/worlds/world_library_rows.dart';
 import 'package:provider/provider.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/services/services.dart';
@@ -75,7 +76,7 @@ class _GroupLorebookWorldsTabState extends State<GroupLorebookWorldsTab> {
     try {
       final repo = Provider.of<WorldRepository>(context, listen: false);
       // Places only — character lore clones are purged / not shown.
-      _allWorlds = List<World>.from(repo.placeWorlds);
+      _allWorlds = libraryDisplayOrder(repo.placeWorlds);
     } catch (_) {
       _allWorlds = [];
     }

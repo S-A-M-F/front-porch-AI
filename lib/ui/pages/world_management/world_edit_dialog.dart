@@ -24,6 +24,7 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'world_basics_section.dart';
 import 'world_edit_draft.dart';
 import 'world_lorebook_section.dart';
+import 'world_parent_section.dart';
 
 /// Create (no [world]) or edit World dialog: header, Basic Information +
 /// Lorebook sections over one [WorldEditDraft], and the Cancel / Save
@@ -33,9 +34,22 @@ void showWorldEditDialog(
   BuildContext context,
   WorldRepository repo, {
   World? world,
+  // "Add a place inside" arrives here: the new card opens pre-parented, so
+  // the author names the place and writes — the parent is already right.
+  String? presetParentId,
   required BuildContext pickerContext,
 }) {
   final draft = WorldEditDraft(world);
+  if (world == null && presetParentId != null) {
+    draft.parentWorldId = presetParentId;
+    // Design §7: inheritance is the DEFAULT for a new place — the whole
+    // point of "Add a place inside" is a child that takes the town's
+    // weather unless the author opts to own one. (Re-parenting an
+    // EXISTING climate-on world never flips the flag — §8 — that path
+    // comes through WorldEditDraft(world) above.)
+    draft.climateEnabled = false;
+    draft.resetCleanBaseline();
+  }
   // A second Create World tap while the first save is in flight would build
   // a second fresh World and save it too.
   var saving = false;
@@ -139,6 +153,17 @@ void showWorldEditDialog(
                               draft: draft,
                               setDialogState: setDialogState,
                               compact: maxH < 640,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Part of / climate inheritance / prose preview
+                            // (locations slice 3).
+                            WorldParentSection(
+                              repo: repo,
+                              draft: draft,
+                              draftEditingId: world?.id ?? '',
+                              setDialogState: setDialogState,
                             ),
 
                             const SizedBox(height: 24),
@@ -257,6 +282,8 @@ void showWorldEditDialog(
                                       newWorld.injectDescription =
                                           draft.injectDescription;
                                       newWorld.coverImage = draft.coverImage;
+                                      newWorld.parentWorldId =
+                                          draft.parentWorldId;
 
                                       // Update lorebook entries
                                       newWorld.lorebook.entries.clear();
@@ -265,6 +292,32 @@ void showWorldEditDialog(
                                       );
 
                                       await repo.saveWorld(newWorld);
+                                    } on StateError catch (e) {
+                                      // The repository refused the parent
+                                      // (unknown or a ring — slice 1 save
+                                      // check). Say so under the picker and
+                                      // keep the dialog; the edit survives.
+                                      if (ctx.mounted) {
+                                        setDialogState(
+                                          () => draft.parentError = e.message,
+                                        );
+                                      }
+                                      return;
+                                    } catch (e) {
+                                      // Anything else the save raises (DB
+                                      // busy, disk) must reach the author,
+                                      // not vanish into the async handler:
+                                      // report it and keep the dialog with
+                                      // the edit intact (hostile review #592).
+                                      debugPrint('world save failed: $e');
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Could not save: $e'),
+                                          ),
+                                        );
+                                      }
+                                      return;
                                     } finally {
                                       if (ctx.mounted) {
                                         setDialogState(() => saving = false);
