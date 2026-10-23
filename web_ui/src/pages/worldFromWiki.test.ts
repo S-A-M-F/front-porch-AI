@@ -4,10 +4,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   canOpenWorldFromWikiPreview,
+  contextChoiceOptions,
   emptyScoutCopy,
+  formatContextTokens,
   jumpWorldFromWikiStep,
   parseProposedCards,
   parseProposedPlaces,
+  scoutPartsNote,
   shelfSections,
   signedCards,
 } from './worldFromWiki';
@@ -228,5 +231,38 @@ describe('empty scout copy', () => {
     expect(emptyScoutCopy(undefined)).toBe(premise);
     expect(emptyScoutCopy('')).toBe(premise);
     expect(emptyScoutCopy(42)).toBe(premise);
+  });
+});
+
+describe('wizard context pick (web twin)', () => {
+  it('names "Same as chat" with the chat size and lists every size in K', () => {
+    const opts = contextChoiceOptions(65536, 0, [16384, 32768, 65536]);
+    expect(opts.map((o) => o.label)).toEqual([
+      'Same as chat (64K)',
+      '16K tokens',
+      '32K tokens',
+      '64K tokens',
+    ]);
+    expect(opts[0].value).toBe(0);
+  });
+
+  it('keeps an odd stored value selectable and falls back to the shipped list', () => {
+    const opts = contextChoiceOptions(undefined, 20000, undefined);
+    expect(opts[0].label).toBe('Same as chat');
+    expect(opts.some((o) => o.value === 20000 && o.label === '20000 tokens')).toBe(true);
+    expect(opts.some((o) => o.value === 262144)).toBe(true);
+  });
+
+  it('formats whole K and leaves odd numbers alone', () => {
+    expect(formatContextTokens(16384)).toBe('16K');
+    expect(formatContextTokens(262144)).toBe('256K');
+    expect(formatContextTokens(20000)).toBe('20000');
+  });
+
+  it('notes a split index and cut parts, and says nothing when it fit', () => {
+    expect(scoutPartsNote(1, 0)).toBe('');
+    expect(scoutPartsNote(3, 0)).toBe('asked in 3 parts');
+    expect(scoutPartsNote(4, 1)).toBe('asked in 4 parts, 1 cut off');
+    expect(scoutPartsNote('x', null)).toBe('');
   });
 });

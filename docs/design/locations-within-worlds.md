@@ -436,3 +436,26 @@ Target output under the new system:
 
 The wizard stays tools-only (`worldFromWikiToolsGate`), so this changes
 nothing about which models can run it.
+
+### The wizard's own context (2026-10-23)
+
+The scout, the write batches, the climate call and the place profiles all
+run inside one window the user picks in the Book step — *Context for this
+wizard*: "Same as chat" (the chat's context setting) or 16K to 256K — on
+the desktop and the phone (`/api/worlds/from-wiki/context`, status carries
+`contextSize`, `chatContextSize`, `contextChoices`). Nothing in the wizard
+hardcodes a reply size any more (`world_from_wiki_budget.dart`):
+
+- The scout asks for the room the window leaves after its prompt. An index
+  whose prompt would not leave `kWorldScoutReplyWant` is asked in parts and
+  the shelves merge (dedupe by name, caps unchanged). A part the model
+  cannot finish (finish_reason=length, a dropped incomplete call, a list
+  that will not parse) is asked again in halves down to
+  `kWorldScoutMinPart` titles; only below that is a part given up, and the
+  status line says "asked in N parts, M cut off".
+- Write batches pack up to eight cards while their articles leave
+  `kWorldWriteReplyWant`; one card's articles are clipped so a card always
+  fits. The climate articles are clipped the same way.
+- A busy or unreachable server is reported, not retried on smaller parts;
+  a reply the model never gave (prose, junk, nothing) is named for what it
+  was, and only a real empty answer keeps "try a clearer premise".

@@ -12,6 +12,14 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
 
+/// The wizard's context for one run: the Book step's own pick, or chat's
+/// when the pick is "Same as chat". Read at Scout and Write time, never
+/// cached, so a changed setting is the one that runs.
+int worldWizardContextTokens(StorageService storage) => worldWikiContextTokens(
+  setting: storage.webSearchSettings.worldWikiContextSize,
+  chatContext: storage.backendSettings.contextSize,
+);
+
 /// Wizard state for World from wiki. Setup reuses [CreatorState].
 class WorldFromWikiState extends ChangeNotifier {
   int currentStep = 0;
@@ -170,6 +178,7 @@ class WorldFromWikiState extends ChangeNotifier {
   Future<void> scout({
     required LLMProvider llm,
     required CreatorState creator,
+    required int contextTokens,
   }) async {
     if (wikiUrl.trim().isEmpty) {
       error = 'Pick a wiki first.';
@@ -195,6 +204,7 @@ class WorldFromWikiState extends ChangeNotifier {
       engine = WorldFromWikiEngine(
         wiki: _wiki(),
         llm: svc,
+        contextTokens: contextTokens,
         onProgress: (msg) {
           status = msg;
           notify();
@@ -217,7 +227,8 @@ class WorldFromWikiState extends ChangeNotifier {
       status =
           '${proposed.length} cards from $catalogTitleCount pages'
           '${places.isNotEmpty ? ', ${places.length} places' : ''}'
-          '${result.catalog.skipped > 0 ? ', skipped ${result.catalog.skipped}' : ''}';
+          '${result.catalog.skipped > 0 ? ', skipped ${result.catalog.skipped}' : ''}'
+          '${worldScoutPartsNote(parts: result.parts, partsCut: result.partsCut)}';
       if (proposed.isEmpty) {
         // The engine says why when the model never answered (token limit,
         // busy server, unreadable call); the premise line is for a real
@@ -240,6 +251,7 @@ class WorldFromWikiState extends ChangeNotifier {
   Future<void> write({
     required LLMProvider llm,
     required CreatorState creator,
+    required int contextTokens,
   }) async {
     if (!toolsReady) {
       error = worldFromWikiToolsCopy(toolsGate);
@@ -267,6 +279,7 @@ class WorldFromWikiState extends ChangeNotifier {
     engine = WorldFromWikiEngine(
       wiki: _wiki(),
       llm: svc,
+      contextTokens: contextTokens,
       onProgress: (msg) {
         status = msg;
         notify();

@@ -6,9 +6,11 @@
 library;
 
 export 'world_craft_mechanics.dart';
+export 'world_from_wiki_budget.dart';
 export 'world_from_wiki_engine.dart';
 export 'world_from_wiki_ops.dart';
 export 'world_from_wiki_places_tools.dart';
+export 'world_from_wiki_scout.dart';
 export 'world_from_wiki_tools.dart';
 export 'world_from_wiki_tools_gate.dart';
 export 'world_places.dart';

@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/chat/pass_support.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/system_role_probe.dart';
 import 'package:front_porch_ai/services/web/facade/world_from_wiki_facade.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -240,5 +241,32 @@ void main() {
 
     expect(chat.toolCallSupport, ToolCallSupport.supported);
     expect(await gate(), 'notRunning');
+  });
+
+  test('the phone sees and sets the wizard\'s own context', () async {
+    final before = await facade.status();
+    expect(before['contextSize'], 0, reason: 'fresh install follows the chat');
+    expect(before['chatContextSize'], storage.backendSettings.contextSize);
+    expect(before['contextChoices'], kWorldWikiContextChoices);
+
+    final set = await facade.setContext({'contextSize': 65536});
+    expect(set['ok'], isTrue);
+    expect(set['contextSize'], 65536);
+    expect(storage.webSearchSettings.worldWikiContextSize, 65536);
+
+    final tooSmall = await facade.setContext({'contextSize': 4096});
+    expect(tooSmall['ok'], isFalse);
+    expect(tooSmall['error'], contains('$kWorldWikiContextFloor'));
+    final junk = await facade.setContext({'contextSize': 'lots'});
+    expect(junk['ok'], isFalse);
+    expect(
+      storage.webSearchSettings.worldWikiContextSize,
+      65536,
+      reason: 'a refused body changes nothing',
+    );
+
+    final back = await facade.setContext({'contextSize': 0});
+    expect(back['ok'], isTrue);
+    expect((await facade.status())['contextSize'], 0);
   });
 }

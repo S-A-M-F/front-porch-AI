@@ -34,8 +34,39 @@ class WorldFromWikiFacade {
       'toolsAdvertised': gate == WorldToolsGate.ready,
       'toolsGate': gate.name,
       'savedWikis': _storage.webSearchSettings.savedWikiUrls,
+      // The wizard's own context pick (0 = same as chat), the chat's
+      // context it would follow, and the sizes the Book step offers.
+      'contextSize': _storage.webSearchSettings.worldWikiContextSize,
+      'chatContextSize': _storage.backendSettings.contextSize,
+      'contextChoices': kWorldWikiContextChoices,
     };
   }
+
+  /// The Book step's context pick from the phone: 0 (same as chat) or a
+  /// size at or over the floor. A bad body is refused, never read as 0.
+  Future<Map<String, dynamic>> setContext(Map<String, dynamic> body) async {
+    final raw = body['contextSize'];
+    final value = raw is int
+        ? raw
+        : raw is num
+        ? raw.toInt()
+        : int.tryParse(raw?.toString() ?? '');
+    if (value == null || !worldWikiContextSettingValid(value)) {
+      return {
+        'ok': false,
+        'error':
+            'contextSize must be 0 (same as chat) or at least '
+            '$kWorldWikiContextFloor tokens',
+      };
+    }
+    await _storage.webSearchSettings.setWorldWikiContextSize(value);
+    return {'ok': true, ...await status()};
+  }
+
+  int _contextTokens() => worldWikiContextTokens(
+    setting: _storage.webSearchSettings.worldWikiContextSize,
+    chatContext: _storage.backendSettings.contextSize,
+  );
 
   /// The wizard's "Check now": ask the chat model again, then report.
   Future<Map<String, dynamic>> testTools() async {
@@ -60,7 +91,11 @@ class WorldFromWikiFacade {
       return {'ok': false, 'error': 'the LLM backend is not ready'};
     }
     final wiki = WikiSearchService(getBaseUrl: () => wikiUrl);
-    final engine = WorldFromWikiEngine(wiki: wiki, llm: svc);
+    final engine = WorldFromWikiEngine(
+      wiki: wiki,
+      llm: svc,
+      contextTokens: _contextTokens(),
+    );
     final result = await engine.scout(
       worldName: body['name']?.toString() ?? '',
       premise: body['premise']?.toString() ?? '',
@@ -79,6 +114,10 @@ class WorldFromWikiFacade {
       // (token limit, busy server, unreadable call). Absent on a real
       // empty answer; an older PWA keeps its own premise line.
       if (result.failure != null) 'failure': result.failure,
+      // Additive: how the index was asked (parts > 1 = split and merged;
+      // partsCut = parts the model could not finish at the smallest size).
+      'parts': result.parts,
+      'partsCut': result.partsCut,
     };
   }
 
@@ -115,6 +154,7 @@ class WorldFromWikiFacade {
     final engine = _live = WorldFromWikiEngine(
       wiki: wiki,
       llm: svc,
+      contextTokens: _contextTokens(),
       onProgress: (msg) {
         _hub?.broadcast({'event': 'world_wiki_status', 'data': msg});
       },

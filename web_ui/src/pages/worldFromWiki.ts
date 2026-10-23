@@ -235,3 +235,44 @@ export function emptyScoutCopy(failure: unknown): string {
   if (typeof failure === 'string' && failure.trim()) return failure.trim();
   return 'The scout returned no cards. Try a clearer premise, or another wiki.';
 }
+
+/** The Book step's context sizes besides "Same as chat" (twin of the desktop list). */
+export const WORLD_WIKI_CONTEXT_CHOICES = [16384, 32768, 65536, 131072, 262144];
+
+/** "64K" for 65536; a number that is not whole K stays as digits. */
+export function formatContextTokens(n: number): string {
+  return n > 0 && n % 1024 === 0 ? `${n / 1024}K` : String(n);
+}
+
+export type ContextChoice = { value: number; label: string };
+
+/** The context select's options: 0 = same as chat (named with the chat's size
+ * when the relay sent it), then every size, plus an odd stored value so the
+ * select never shows a value it has no option for. */
+export function contextChoiceOptions(
+  chatContextSize: number | undefined,
+  current: number | undefined,
+  choices: number[] | undefined = WORLD_WIKI_CONTEXT_CHOICES,
+): ContextChoice[] {
+  const sizes = [...(choices && choices.length ? choices : WORLD_WIKI_CONTEXT_CHOICES)];
+  if (current && current > 0 && !sizes.includes(current)) sizes.push(current);
+  sizes.sort((a, b) => a - b);
+  return [
+    {
+      value: 0,
+      label: chatContextSize ? `Same as chat (${formatContextTokens(chatContextSize)})` : 'Same as chat',
+    },
+    ...sizes.map((v) => ({ value: v, label: `${formatContextTokens(v)} tokens` })),
+  ];
+}
+
+/** "asked in 3 parts, 1 cut off" for the review header; '' when the index
+ * fit the wizard's context whole. Twin of the desktop status note. */
+export function scoutPartsNote(parts: unknown, partsCut: unknown): string {
+  const p = typeof parts === 'number' ? parts : 0;
+  const c = typeof partsCut === 'number' ? partsCut : 0;
+  const bits: string[] = [];
+  if (p > 1) bits.push(`asked in ${p} parts`);
+  if (c > 0) bits.push(`${c} cut off`);
+  return bits.join(', ');
+}

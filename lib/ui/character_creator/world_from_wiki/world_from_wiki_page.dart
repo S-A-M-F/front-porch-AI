@@ -137,6 +137,9 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                 worldState.scout(
                   llm: Provider.of<LLMProvider>(context, listen: false),
                   creator: creatorState,
+                  contextTokens: worldWizardContextTokens(
+                    Provider.of<StorageService>(context, listen: false),
+                  ),
                 );
               };
       case 2:
@@ -147,6 +150,9 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                 worldState.write(
                   llm: Provider.of<LLMProvider>(context, listen: false),
                   creator: creatorState,
+                  contextTokens: worldWizardContextTokens(
+                    Provider.of<StorageService>(context, listen: false),
+                  ),
                 );
               };
       case 3:

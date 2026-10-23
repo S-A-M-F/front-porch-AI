@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/storage/settings/web_search_settings.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
@@ -139,6 +140,28 @@ class WorldFromWikiBookStep extends StatelessWidget {
                       ),
                     ),
                   ),
+              const SizedBox(height: 20),
+              Text(
+                'Context for this wizard',
+                style: TextStyle(
+                  color: StudioColors.proseOf(context),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _ContextPicker(storage: storage),
+              const SizedBox(height: 6),
+              Text(
+                'How much the model may read and write in one go. A bigger '
+                'window lets a thinking model finish the card list in one '
+                'piece; a smaller one has the index asked in parts.',
+                style: TextStyle(
+                  color: StudioColors.mutedOf(context),
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
               SwitchListTile(
                 title: const Text('Lorebooks'),
                 subtitle: const Text(
@@ -206,6 +229,50 @@ class WorldFromWikiBookStep extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The wizard's own context: "Same as chat" or a size. Keyed on the stored
+/// value so a change made elsewhere (the phone) shows here on rebuild
+/// instead of the number the field was born with.
+class _ContextPicker extends StatelessWidget {
+  const _ContextPicker({required this.storage});
+
+  final StorageService storage;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = storage.webSearchSettings.worldWikiContextSize;
+    final chat = storage.backendSettings.contextSize;
+    final choices = [...kWorldWikiContextChoices];
+    if (value != 0 && !choices.contains(value)) choices.add(value);
+    choices.sort();
+    return DropdownButtonFormField<int>(
+      key: ValueKey<int>(value),
+      initialValue: value,
+      isExpanded: true,
+      style: TextStyle(color: StudioColors.inkOf(context)),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: StudioColors.bgOf(context),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      items: [
+        DropdownMenuItem(
+          value: 0,
+          child: Text('Same as chat (${worldWikiContextLabel(chat)})'),
+        ),
+        for (final c in choices)
+          DropdownMenuItem(
+            value: c,
+            child: Text('${worldWikiContextLabel(c)} tokens'),
+          ),
+      ],
+      onChanged: (v) {
+        if (v == null) return;
+        storage.webSearchSettings.setWorldWikiContextSize(v);
+      },
     );
   }
 }

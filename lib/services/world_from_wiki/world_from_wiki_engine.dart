@@ -7,8 +7,9 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_budget.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_ops.dart';
-import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_places_tools.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_scout.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_places.dart';
 
@@ -19,10 +20,20 @@ class WorldScoutResult {
     required this.proposed,
     this.places = const [],
     this.failure,
+    this.parts = 0,
+    this.partsCut = 0,
   });
 
   final WikiStudioCatalog catalog;
   final List<WorldProposedCard> proposed;
+
+  /// How many requests the index took: 1 when it fit the wizard's context
+  /// whole, more when it was asked in parts and merged.
+  final int parts;
+
+  /// Parts the model could not finish even at the smallest size; their
+  /// titles are missing from [proposed].
+  final int partsCut;
 
   /// Plain words for why [proposed] is empty when the model never gave
   /// its answer: the reply hit the token limit, the server was busy, the
@@ -38,11 +49,24 @@ class WorldScoutResult {
 
 /// Headless scout + write. Not ChatService. Signed-card count is the loop cap.
 class WorldFromWikiEngine {
-  WorldFromWikiEngine({required this.wiki, required this.llm, this.onProgress});
+  WorldFromWikiEngine({
+    required this.wiki,
+    required this.llm,
+    this.onProgress,
+    this.contextTokens = kWorldWikiContextFloor,
+  });
 
   final WikiSearchService wiki;
   final LLMService llm;
   final void Function(String message)? onProgress;
+
+  /// The wizard's context window (the Book step pick, or chat's). Every
+  /// request is sized from it: the scout asks the index in parts that
+  /// leave reply room, write batches pack what fits, and each reply gets
+  /// what the window leaves after its prompt.
+  final int contextTokens;
+
+  late final WorldWikiBudget budget = WorldWikiBudget(contextTokens);
 
   bool _aborted = false;
   final List<LorebookEntry> entries = [];
@@ -88,15 +112,23 @@ class WorldFromWikiEngine {
       return WorldScoutResult(catalog: catalog, proposed: const []);
     }
     onProgress?.call('Scouting ${catalog.titles.length} titles…');
-    final scouted = await _propose(
-      titles: catalog.titles,
-      worldName: worldName,
-      premise: premise,
-    );
+    final scouted =
+        await WorldScoutRunner(
+          llm: llm,
+          budget: budget,
+          onProgress: onProgress,
+          isAborted: () => _aborted,
+        ).run(
+          titles: catalog.titles,
+          tags: lastCatalogTags,
+          worldName: worldName,
+          premise: premise,
+        );
     final proposed = scouted.cards;
     debugPrint(
       '[World] scout titles=${catalog.titles.length} proposed=${proposed.length} '
-      'places=${scouted.places.length}',
+      'places=${scouted.places.length} context=$contextTokens '
+      'parts=${scouted.parts} cut=${scouted.partsCut}',
     );
     if (proposed.isNotEmpty && proposed.length < kWorldScoutCardMin) {
       debugPrint('[World] scout short proposed=${proposed.length}');
@@ -106,6 +138,8 @@ class WorldFromWikiEngine {
       proposed: proposed,
       places: resolvePlaceOrder(scouted.places),
       failure: scouted.failure,
+      parts: scouted.parts,
+      partsCut: scouted.partsCut,
     );
   }
 
@@ -128,41 +162,42 @@ class WorldFromWikiEngine {
       pending.add(card);
     }
     final k = pending.length;
-    debugPrint('[World] review signed=$k batch=$kWorldWriteBatchSize');
+    debugPrint('[World] review signed=$k context=$contextTokens');
     final drafts = <WorldCraftDraft>[];
-    for (var offset = 0; offset < k; offset += kWorldWriteBatchSize) {
+    var done = 0;
+    final batches = planWorldWriteBatches(
+      pending,
+      budget: budget,
+      headerTokens: worldWikiEstimateTokens(
+        writeHeader(
+          worldName: worldName,
+          premise: premise,
+          extraLore: extraLore,
+        ),
+      ),
+      articleFor: (card) => joinSources(card.sourceTitles),
+      onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
+      stop: () => _aborted,
+    );
+    await for (final batch in batches) {
       if (_aborted) {
         debugPrint('[World] abort');
         break;
       }
-      final end = (offset + kWorldWriteBatchSize).clamp(0, k);
-      final chunk = pending.sublist(offset, end);
+      done += batch.cards.length;
       debugPrint(
-        '[World] write batch ${offset + 1}–$end/$k '
-        'names=${chunk.map((c) => c.name).join(', ')}',
+        '[World] write batch ${done - batch.cards.length + 1}–$done/$k '
+        'names=${batch.cards.map((c) => c.name).join(', ')}',
       );
-      onProgress?.call('Writing ${chunk.length} cards ($end/$k)');
-      if (_aborted) break;
-      final ready = <WorldProposedCard>[];
-      final articles = <String>[];
-      for (final card in chunk) {
-        final article = await joinSources(card.sourceTitles);
-        if (article.isEmpty) {
-          debugPrint('[World] write miss ${card.name}');
-          continue;
-        }
-        ready.add(card);
-        articles.add(article);
-      }
-      if (ready.isEmpty) continue;
+      onProgress?.call('Writing ${batch.cards.length} cards ($done/$k)');
       final generated = await writeBatch(
-        cards: ready,
-        articles: articles,
+        cards: batch.cards,
+        articles: batch.articles,
         worldName: worldName,
         premise: premise,
         extraLore: extraLore,
       );
-      drafts.addAll(matchWorldWriteBatch(ready, generated));
+      drafts.addAll(matchWorldWriteBatch(batch.cards, generated));
     }
     if (climateEnabled && !_aborted) {
       final climate = await _writeClimate(
@@ -196,69 +231,6 @@ class WorldFromWikiEngine {
     return List<LorebookEntry>.unmodifiable(entries);
   }
 
-  Future<_Scouted> _propose({
-    required List<String> titles,
-    required String worldName,
-    required String premise,
-  }) async {
-    if (titles.isEmpty) return const _Scouted();
-    // Slice 8: the tag set rides the index line. Neokosmos keeps its
-    // nations ONLY in tags — titles alone read "Ceolwynn, Bealdric…"
-    // with nothing saying where they belong (design §9).
-    final tags = lastCatalogTags;
-    final index = titles
-        .map((t) {
-          final ts = tags[t] ?? const [];
-          final shown = [
-            for (final tag in ts)
-              if (!tag.startsWith(r'$:/')) tag,
-          ].take(4).join(', ');
-          return shown.isEmpty ? '- $t' : '- $t [$shown]';
-        })
-        .join('\n');
-    final prompt =
-        'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
-        'Premise: ${premise.trim()}\n'
-        'INDEX TITLES:\n$index\n\n'
-        '$kWorldScoutPrompt\n'
-        'Call $kWorldScoutToolName once.';
-    try {
-      final resp = await llm.generateWithTools(
-        GenerationParams(
-          prompt: prompt,
-          maxLength: kWorldScoutMaxTokens,
-          minLength: 16,
-          temperature: 0.3,
-          reasoningEnabled: true,
-          toolChoice: kWorldScoutToolName,
-        ),
-        worldScoutToolSchema(),
-      );
-      final cards = resp == null
-          ? const <WorldProposedCard>[]
-          : parseWorldScoutToolCalls(resp.calls, catalog: titles);
-      // An empty shelf must say why. The old path folded a cut-off reply,
-      // a 502 and an unreadable call into "try a clearer premise".
-      final failure = cards.isEmpty
-          ? worldScoutEmptyReason(resp, budget: kWorldScoutMaxTokens)
-          : null;
-      if (failure != null) {
-        debugPrint(
-          '[World] scout empty finish=${resp?.finishReason} '
-          'calls=${resp?.calls.length ?? 0}: $failure',
-        );
-      }
-      return _Scouted(
-        cards: cards,
-        places: resp == null ? const [] : parseWorldScoutPlaces(resp.calls),
-        failure: failure,
-      );
-    } catch (e) {
-      debugPrint('[World] scout tools miss ($e)');
-      return _Scouted(failure: worldScoutTransportCopy(e));
-    }
-  }
-
   Future<String> joinSources(List<String> titles) async {
     final buf = StringBuffer();
     for (final title in titles.take(3)) {
@@ -276,6 +248,22 @@ class WorldFromWikiEngine {
     return buf.toString().trim();
   }
 
+  /// The part of a write prompt every batch repeats: world, premise and
+  /// the attached notes. Sized once so the batcher knows the fixed cost.
+  String writeHeader({
+    required String worldName,
+    required String premise,
+    required String extraLore,
+  }) {
+    final extra = extraLore.trim();
+    final extraBlock = extra.isEmpty
+        ? ''
+        : '\nATTACHED NOTES (optional; do not override the articles):\n$extra\n';
+    return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
+        'Premise: ${premise.trim()}\n'
+        '$extraBlock';
+  }
+
   Future<List<WorldLoreWrite>> writeBatch({
     required List<WorldProposedCard> cards,
     required List<String> articles,
@@ -283,16 +271,9 @@ class WorldFromWikiEngine {
     required String premise,
     required String extraLore,
   }) async {
-    final extra = extraLore.trim();
-    final extraBlock = extra.isEmpty
-        ? ''
-        : '\nATTACHED NOTES (optional; do not override the articles):\n$extra\n';
-    final buf = StringBuffer();
-    buf.writeln(
-      'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}',
+    final buf = StringBuffer(
+      writeHeader(worldName: worldName, premise: premise, extraLore: extraLore),
     );
-    buf.writeln('Premise: ${premise.trim()}');
-    buf.write(extraBlock);
     for (var i = 0; i < cards.length; i++) {
       final card = cards[i];
       final aliases = card.keys.isEmpty ? card.name : card.keys.join(', ');
@@ -312,11 +293,12 @@ class WorldFromWikiEngine {
       'people. Do not invent climate, biomes, or facts missing from the '
       'articles.',
     );
+    final prompt = buf.toString();
     try {
       final resp = await llm.generateWithTools(
         GenerationParams(
-          prompt: buf.toString(),
-          maxLength: 4096,
+          prompt: prompt,
+          maxLength: budget.replyFor(prompt, floor: kWorldWriteReplyWant),
           minLength: 16,
           temperature: 0.4,
           reasoningEnabled: true,
@@ -346,7 +328,12 @@ class WorldFromWikiEngine {
       debugPrint('[World] climate miss no titles');
       return null;
     }
-    final article = await joinSources(titles);
+    // The four climate articles must leave the biome call its room.
+    final article = budget.clipForReply(
+      await joinSources(titles),
+      want: kWorldClimateReplyWant,
+      fixedTokens: 512,
+    );
     if (article.isEmpty) return null;
     final prompt =
         'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
@@ -360,7 +347,7 @@ class WorldFromWikiEngine {
       final resp = await llm.generateWithTools(
         GenerationParams(
           prompt: prompt,
-          maxLength: 3072,
+          maxLength: budget.replyFor(prompt, floor: kWorldClimateReplyWant),
           minLength: 16,
           temperature: 0.4,
           reasoningEnabled: true,
@@ -375,14 +362,4 @@ class WorldFromWikiEngine {
       return null;
     }
   }
-}
-
-/// One scout answer: the shelf, the places it named, and — when the shelf
-/// is empty for a reason other than the model's judgement — why.
-class _Scouted {
-  const _Scouted({this.cards = const [], this.places = const [], this.failure});
-
-  final List<WorldProposedCard> cards;
-  final List<WorldProposedPlace> places;
-  final String? failure;
 }

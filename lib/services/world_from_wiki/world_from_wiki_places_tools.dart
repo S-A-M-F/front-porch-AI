@@ -18,6 +18,9 @@ import 'world_places.dart';
 
 const String kWorldPlaceProfileToolName = 'write_place_profile';
 
+/// The most places one scout may name (design §9.2).
+const int kWorldScoutPlaceMax = 8;
+
 /// How many characters of each place source ride the profile prompt.
 /// A people chapter is ~8k; two articles plus the tag evidence fit any
 /// 8k window without squeezing the batch prompts elsewhere.
@@ -32,9 +35,7 @@ Map<String, dynamic> worldPlaceItemSchema() {
         'type': 'string',
         'description': 'Place name, verbatim from a tag or chapter.',
       },
-      'keys': {
-        'description': 'Trigger words for the place, string or array.',
-      },
+      'keys': {'description': 'Trigger words for the place, string or array.'},
       'sourceTitles': {
         'type': 'array',
         'items': {'type': 'string'},
@@ -108,9 +109,7 @@ List<Map<String, dynamic>> worldPlaceProfileToolSchema() {
 /// Places the scout named; junk entries are dropped, not fatal. The
 /// catalog check is looser than for cards — a place name is usually a
 /// tag, not a page title, so it rides verbatim.
-List<WorldProposedPlace> parseWorldScoutPlaces(
-  List<LlmToolCall> calls,
-) {
+List<WorldProposedPlace> parseWorldScoutPlaces(List<LlmToolCall> calls) {
   final out = <WorldProposedPlace>[];
   final seen = <String>{};
   for (final call in calls) {
@@ -124,7 +123,7 @@ List<WorldProposedPlace> parseWorldScoutPlaces(
       if (place == null) continue;
       if (!seen.add(place.key)) continue;
       out.add(place);
-      if (out.length >= 8) return out;
+      if (out.length >= kWorldScoutPlaceMax) return out;
     }
   }
   return out;
@@ -132,8 +131,7 @@ List<WorldProposedPlace> parseWorldScoutPlaces(
 
 /// One profile answer: description + optional validated biome (the
 /// same Biome.fromJson gate the world-level climate pass uses).
-({String description, Map<String, dynamic>? biome})?
-parseWorldPlaceProfileCall(
+({String description, Map<String, dynamic>? biome})? parseWorldPlaceProfileCall(
   List<LlmToolCall> calls, {
   required String expectTool,
 }) {

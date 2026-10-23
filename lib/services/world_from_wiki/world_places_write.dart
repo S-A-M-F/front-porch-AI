@@ -16,10 +16,10 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 
 import 'world_craft_mechanics.dart';
+import 'world_from_wiki_budget.dart';
 import 'world_from_wiki_engine.dart';
 import 'world_from_wiki_ops.dart';
 import 'world_from_wiki_places_tools.dart';
-import 'world_from_wiki_tools.dart';
 import 'world_places.dart';
 
 extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
@@ -141,7 +141,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
   }
 
   /// The batch loop from `write`, scoped to one place's cards. Same
-  /// chunk size, same join, same matcher — one prompt family.
+  /// batcher, same join, same matcher — one prompt family.
   Future<List<WorldCraftDraft>> _writeCardsForPlace(
     List<WorldProposedCard> cards, {
     required String worldName,
@@ -151,31 +151,35 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
   }) async {
     final drafts = <WorldCraftDraft>[];
     final k = cards.length;
-    for (var offset = 0; offset < k; offset += kWorldWriteBatchSize) {
+    var done = 0;
+    final batches = planWorldWriteBatches(
+      cards,
+      budget: budget,
+      headerTokens: worldWikiEstimateTokens(
+        writeHeader(
+          worldName: worldName,
+          premise: premise,
+          extraLore: extraLore,
+        ),
+      ),
+      articleFor: (card) => joinSources(card.sourceTitles),
+      onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
+      stop: () => aborted,
+    );
+    await for (final batch in batches) {
       if (aborted) break;
-      final end = (offset + kWorldWriteBatchSize).clamp(0, k);
-      final chunk = cards.sublist(offset, end);
-      onProgress?.call('Writing $label: cards ${offset + 1}–$end/$k');
-      final ready = <WorldProposedCard>[];
-      final articles = <String>[];
-      for (final card in chunk) {
-        final article = await joinSources(card.sourceTitles);
-        if (article.isEmpty) {
-          debugPrint('[World] write miss ${card.name}');
-          continue;
-        }
-        ready.add(card);
-        articles.add(article);
-      }
-      if (ready.isEmpty) continue;
+      done += batch.cards.length;
+      onProgress?.call(
+        'Writing $label: cards ${done - batch.cards.length + 1}–$done/$k',
+      );
       final generated = await writeBatch(
-        cards: ready,
-        articles: articles,
+        cards: batch.cards,
+        articles: batch.articles,
         worldName: worldName,
         premise: premise,
         extraLore: extraLore,
       );
-      drafts.addAll(matchWorldWriteBatch(ready, generated));
+      drafts.addAll(matchWorldWriteBatch(batch.cards, generated));
     }
     return drafts;
   }
@@ -215,7 +219,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       final resp = await llm.generateWithTools(
         GenerationParams(
           prompt: prompt,
-          maxLength: 1024,
+          maxLength: budget.replyFor(prompt, floor: 1024),
           minLength: 16,
           temperature: 0.3,
           reasoningEnabled: true,

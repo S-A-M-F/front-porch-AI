@@ -14,6 +14,7 @@ class WebWorldFromWikiRoutes {
     router.post('/api/worlds/from-wiki/write', _write);
     router.post('/api/worlds/from-wiki/abort', _abort);
     router.post('/api/worlds/from-wiki/tool-test', _toolTest);
+    router.post('/api/worlds/from-wiki/context', _context);
   }
 
   final WorldFromWikiFacade _facade;
@@ -23,6 +24,23 @@ class WebWorldFromWikiRoutes {
 
   Future<shelf.Response> _toolTest(shelf.Request r) async =>
       JsonResponse.ok(await _facade.testTools());
+
+  Future<shelf.Response> _context(shelf.Request r) async {
+    Map<String, dynamic> body;
+    try {
+      body = await RequestBody.readJsonMap(r);
+    } catch (_) {
+      return JsonResponse.badRequest('Invalid JSON body');
+    }
+    final result = await _facade.setContext(body);
+    if (result['ok'] != true) {
+      return JsonResponse.error(
+        400,
+        result['error']?.toString() ?? 'Bad request',
+      );
+    }
+    return JsonResponse.ok(result);
+  }
 
   Future<shelf.Response> _scout(shelf.Request r) async {
     Map<String, dynamic> body;

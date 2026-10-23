@@ -670,27 +670,38 @@ void main() {
   });
 
   group('scout failures say why', () {
-    test('the scout asks for the full reply budget', () async {
-      final llm = _OutcomeLlm(
-        response: const LlmToolResponse(
-          calls: [],
-          text: '',
-          finishReason: 'stop',
-        ),
+    // Changed 2026-10-23: the reply budget is no longer a constant. The
+    // maintainer ruled the wizard must respect a context the user picks
+    // (chat runs at 64K on oMLX; a fixed 8,192 "is not enough"), so the
+    // scout now asks for whatever the wizard's context leaves after the
+    // prompt. The old pin (budget == a constant >= 8192) is therefore false.
+    test('the scout asks for what the wizard\'s context leaves', () async {
+      final answer = const LlmToolResponse(
+        calls: [],
+        text: '',
+        finishReason: 'stop',
       );
+      final wide = _OutcomeLlm(response: answer);
       await WorldFromWikiEngine(
         wiki: _wiki(),
-        llm: llm,
+        llm: wide,
+        contextTokens: 65536,
       ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
-      expect(llm.lastMaxLength, kWorldScoutMaxTokens);
       expect(
-        kWorldScoutMaxTokens,
-        greaterThanOrEqualTo(8192),
-        reason:
-            '40 cards + 8 places is ~3.5K tokens of JSON before any '
-            'thinking; 3072 cut Qwen3.6 off mid list (oMLX finish_reason='
-            'length, incomplete_tool_call).',
+        wide.lastMaxLength,
+        const WorldWikiBudget(
+          65536,
+        ).replyFor(wide.lastPrompt, floor: kWorldScoutReplyFloor),
       );
+      expect(wide.lastMaxLength, greaterThan(50000));
+
+      final narrow = _OutcomeLlm(response: answer);
+      await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: narrow,
+      ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+      expect(narrow.lastMaxLength, lessThan(kWorldWikiContextFloor));
+      expect(narrow.lastMaxLength, greaterThanOrEqualTo(kWorldScoutReplyFloor));
     });
 
     test(
@@ -708,7 +719,10 @@ void main() {
         ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
         expect(result.proposed, isEmpty);
         expect(result.failure, contains('ran out of room'));
-        expect(result.failure, contains('$kWorldScoutMaxTokens-token'));
+        // Six titles is already under the smallest part, so the cut names
+        // the wizard's context (the floor here) as the thing to raise.
+        expect(result.failure, contains('16K'));
+        expect(result.failure, contains('Book step'));
         expect(result.failure, isNot(contains('clearer premise')));
       },
     );
@@ -773,6 +787,135 @@ void main() {
       expect(result.failure, isNull);
     });
   });
+
+  group('scout inside the wizard\'s context', () {
+    final titles = List.generate(
+      300,
+      (i) => 'Title ${i.toString().padLeft(3, '0')}',
+    );
+
+    test(
+      'a part the model cannot finish is asked again in halves and the shelf merges',
+      () async {
+        final llm = _PartsLlm(cutAbove: 100);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(16384),
+            ).run(
+              titles: titles,
+              tags: const {},
+              worldName: 'Neokosmos',
+              premise: 'A coastal republic.',
+            );
+        expect(run.partsCut, 0);
+        expect(
+          run.parts,
+          greaterThan(1),
+          reason:
+              '300 short titles fit one 16K part; the fake cuts anything over 100',
+        );
+        expect(
+          llm.partSizes.first,
+          300,
+          reason: 'the whole index is tried first',
+        );
+        expect(
+          llm.partSizes.where((n) => n <= 100).length,
+          greaterThanOrEqualTo(4),
+        );
+        // 300 → 150 + 150 → four parts of 75; each answered part gives
+        // its first two titles, so the merged shelf is exactly those eight.
+        expect(llm.partSizes, [300, 150, 75, 75, 150, 75, 75]);
+        expect(run.cards.map((c) => c.name).toList(), [
+          'Title 000',
+          'Title 001',
+          'Title 075',
+          'Title 076',
+          'Title 150',
+          'Title 151',
+          'Title 225',
+          'Title 226',
+        ]);
+        expect(run.failure, isNull);
+        for (final n in llm.partSizes) {
+          expect(n, greaterThanOrEqualTo(kWorldScoutMinPart));
+        }
+      },
+    );
+
+    test(
+      'a reply that never fits gives up at the smallest part and says so',
+      () async {
+        final llm = _PartsLlm(cutAbove: 0);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(16384),
+            ).run(
+              titles: titles,
+              tags: const {},
+              worldName: 'Neokosmos',
+              premise: 'A coastal republic.',
+            );
+        expect(run.cards, isEmpty);
+        expect(run.partsCut, greaterThan(0));
+        expect(llm.partSizes.last, lessThanOrEqualTo(kWorldScoutMinPart * 2));
+        expect(run.failure, contains('ran out of room'));
+        expect(run.failure, contains('parts'));
+        expect(run.failure, contains('16K'));
+      },
+    );
+
+    test(
+      'a 64K window asks a 300-title index whole and the prompt says nothing of parts',
+      () async {
+        final llm = _PartsLlm(cutAbove: 1000);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(65536),
+            ).run(
+              titles: titles,
+              tags: const {},
+              worldName: 'Neokosmos',
+              premise: 'A coastal republic.',
+            );
+        expect(run.parts, 1);
+        expect(llm.prompts.single, isNot(contains('part 1 of')));
+        expect(run.cards, hasLength(2));
+      },
+    );
+
+    test(
+      'a busy server stops the run with the reason, not a smaller part',
+      () async {
+        final llm = _PartsLlm(cutAbove: 100, throwOn: 2);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(16384),
+            ).run(
+              titles: titles,
+              tags: const {},
+              worldName: 'Neokosmos',
+              premise: 'A coastal republic.',
+            );
+        expect(llm.partSizes, hasLength(2), reason: 'the throw ends the run');
+        expect(run.cards, isEmpty);
+        expect(run.failure, contains('HTTP 502'));
+      },
+    );
+
+    test('the status note names the parts and the cuts', () {
+      expect(worldScoutPartsNote(parts: 1, partsCut: 0), '');
+      expect(worldScoutPartsNote(parts: 3, partsCut: 0), ', asked in 3 parts');
+      expect(
+        worldScoutPartsNote(parts: 4, partsCut: 1),
+        ', asked in 4 parts, 1 cut off',
+      );
+    });
+  });
 }
 
 /// One scripted scout answer: a fixed response, or a thrown error.
@@ -781,6 +924,7 @@ class _OutcomeLlm extends LLMService {
   final LlmToolResponse? response;
   final Object? error;
   int? lastMaxLength;
+  String lastPrompt = '';
 
   @override
   Future<LlmToolResponse?> generateWithTools(
@@ -788,9 +932,71 @@ class _OutcomeLlm extends LLMService {
     List<Map<String, dynamic>> tools,
   ) async {
     lastMaxLength = params.maxLength;
+    lastPrompt = params.prompt;
     final err = error;
     if (err != null) throw err;
     return response;
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Scout fake that cannot finish a part over [cutAbove] index lines (it
+/// answers finish_reason=length with no call) and otherwise proposes the
+/// part's first two titles. [throwOn] makes the n-th request a 502.
+class _PartsLlm extends LLMService {
+  _PartsLlm({required this.cutAbove, this.throwOn});
+  final int cutAbove;
+  final int? throwOn;
+  final List<int> partSizes = [];
+  final List<String> prompts = [];
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    prompts.add(params.prompt);
+    final lines = params.prompt
+        .split('\n')
+        .where((l) => l.startsWith('- '))
+        .map((l) => l.substring(2).split(' [').first.trim())
+        .toList();
+    partSizes.add(lines.length);
+    if (throwOn != null && partSizes.length == throwOn) {
+      throw LlmToolTransportException(
+        'tool call HTTP 502 (server busy/unavailable)',
+      );
+    }
+    if (lines.length > cutAbove) {
+      return const LlmToolResponse(calls: [], text: '', finishReason: 'length');
+    }
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldScoutToolName,
+          arguments: {
+            'cards': [
+              for (final t in lines.take(2))
+                {
+                  'name': t,
+                  'role': 'leaf',
+                  'sourceTitles': [t],
+                },
+            ],
+          },
+        ),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
   }
 
   @override

@@ -13,11 +13,13 @@ import type { LoreEntry } from '../components/LoreEntriesEditor';
 import {
   WORLD_FROM_WIKI_STEPS,
   canOpenWorldFromWikiPreview,
+  contextChoiceOptions,
   emptyScoutCopy,
   jumpWorldFromWikiStep,
   parseProposedCards,
   parseProposedPlaces,
   parseWorldToolsGate,
+  scoutPartsNote,
   shelfSections,
   signedCards,
   worldToolsCanRetest,
@@ -31,6 +33,10 @@ type Status = {
   toolsAdvertised: boolean;
   toolsGate?: string;
   savedWikis: string[];
+  /** The wizard's own context pick; 0 = same as chat. Older servers omit it. */
+  contextSize?: number;
+  chatContextSize?: number;
+  contextChoices?: number[];
 };
 
 /** How often the Setup step asks again while the tool check is not done. */
@@ -68,6 +74,7 @@ export function WorldFromWikiPage() {
   >([]);
   const [signed, setSigned] = useState<Set<number>>(new Set());
   const [titleCount, setTitleCount] = useState(0);
+  const [partsNote, setPartsNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [writeStatus, setWriteStatus] = useState('');
   const [error, setError] = useState('');
@@ -180,6 +187,18 @@ export function WorldFromWikiPage() {
     return () => socket.close();
   }, []);
 
+  const setContext = async (contextSize: number) => {
+    try {
+      const r = await api.post<Status>('/api/worlds/from-wiki/context', { contextSize });
+      setStatus((cur) => ({
+        ...(cur ?? { available: false, toolsAdvertised: false, savedWikis: [] }),
+        ...r,
+      }));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not save the context pick');
+    }
+  };
+
   const scout = async () => {
     if (!lorebooksOn) {
       setStep(3);
@@ -193,6 +212,8 @@ export function WorldFromWikiPage() {
         titles?: number;
         places?: unknown;
         failure?: unknown;
+        parts?: unknown;
+        partsCut?: unknown;
       }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise });
       const cards = parseProposedCards(r.proposed);
       setProposed(cards);
@@ -206,6 +227,7 @@ export function WorldFromWikiPage() {
       setTreePlaces([]);
       setSigned(new Set());
       setTitleCount(typeof r.titles === 'number' ? r.titles : 0);
+      setPartsNote(scoutPartsNote(r.parts, r.partsCut));
       if (!cards.length) {
         setError(emptyScoutCopy(r.failure));
         return;
@@ -428,6 +450,29 @@ export function WorldFromWikiPage() {
                 </label>
               ))}
             </fieldset>
+            <label className="cg-field">
+              <span className="cg-field-label">Context for this wizard</span>
+              <select
+                data-testid="world-wiki-context"
+                value={status?.contextSize ?? 0}
+                onChange={(e) => void setContext(Number(e.target.value))}
+              >
+                {contextChoiceOptions(
+                  status?.chatContextSize,
+                  status?.contextSize,
+                  status?.contextChoices,
+                ).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <span className="muted small">
+                How much the model may read and write in one go. A bigger window lets a
+                thinking model finish the card list in one piece; a smaller one has the
+                index asked in parts.
+              </span>
+            </label>
             <label className="cg-field cg-toggle">
               <input
                 type="checkbox"
@@ -453,6 +498,7 @@ export function WorldFromWikiPage() {
               Sign the cards they proposed. Default is off — no select-all.
               {' '}{signed.size} of {proposed.length} signed
               {titleCount > 0 ? ` (${titleCount} index pages).` : '.'}
+              {partsNote ? ` Index ${partsNote}.` : ''}
             </p>
             {shelfSections(proposed, places).map((section, si) => (
               <div key={section.place ? `place-${section.place.name}` : `root-${si}`}>
