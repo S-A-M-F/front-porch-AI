@@ -1024,6 +1024,34 @@ void main() {
     });
   });
 
+  group('chain, don\'t catalogue', () {
+    test('a write sees the whole shelf and is told to name the cards a hub '
+        'should pull; the reviewer holds it to that', () async {
+      WorldProposedCard card(String n) => WorldProposedCard(
+        name: n,
+        keys: [n],
+        role: WorldCraftRole.hub,
+        sourceTitles: const ['Ceolwynn'],
+      );
+      final llm = _FlakyWriteLlm(failFirst: 0);
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+        ..retryPause = Duration.zero;
+      await engine.write(
+        [card('Ceolwynn'), card('Alnhama')],
+        worldName: 'Neokosmos',
+        premise: 'x',
+      );
+      final prompt = llm.params.first.prompt;
+      expect(
+        prompt,
+        contains('SHELF (the other cards in this world): Ceolwynn, Alnhama'),
+      );
+      expect(prompt, contains('names one or two other cards from SHELF'));
+      expect(prompt, contains('accentless spellings'));
+      expect(worldShelfLine(const []), isEmpty);
+    });
+  });
+
   group('scout parts by cards', () {
     final titles = List.generate(
       300,

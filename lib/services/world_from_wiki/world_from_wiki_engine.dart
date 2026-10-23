@@ -17,6 +17,7 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_scout.da
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_places.dart';
 import 'world_progress_copy.dart';
+import 'world_write_rules.dart';
 
 /// Scout result: index size plus proposed cards (default unsigned).
 class WorldScoutResult {
@@ -122,6 +123,10 @@ class WorldFromWikiEngine {
 
   bool get aborted => _aborted;
 
+  /// Every signed card's name this run, so an entry can name the cards it
+  /// should pull (the recipe's "chain, don't catalogue").
+  List<String> shelfNames = const [];
+
   /// The tag sets from the newest [scan] — the scout prompt shows them
   /// so a tags-only wiki (Neokosmos) can reveal its places (slice 8).
   Map<String, List<String>> lastCatalogTags = const {};
@@ -211,6 +216,7 @@ class WorldFromWikiEngine {
   }) async {
     _aborted = false;
     biome = null;
+    shelfNames = [for (final c in signed) c.name];
     entries.clear();
     _written.clear();
     final pending = <WorldProposedCard>[];
@@ -339,6 +345,7 @@ class WorldFromWikiEngine {
     return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
         '${worldMomentLine(moment)}'
+        '${worldShelfLine(shelfNames)}'
         '$extraBlock';
   }
 
@@ -373,8 +380,9 @@ class WorldFromWikiEngine {
       'split into words. ${worldMomentRule(moment)} For a person: one '
       'clause of how they look or carry themselves, and where they are '
       'and who they are with at that moment. For a place: what a visitor '
-      'sees and hears, and who holds it. they/them for unnamed people. Do '
-      'not invent climate, biomes, or facts missing from the articles.',
+      'sees and hears, and who holds it. $kWorldWriteChainRule they/them '
+      'for unnamed people. Do not invent climate, biomes, or facts missing '
+      'from the articles.',
     );
     final prompt = buf.toString();
     final resp = await askToolsTwice(

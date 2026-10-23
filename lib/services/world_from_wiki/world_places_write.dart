@@ -38,6 +38,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
     bool climateEnabled = false,
     Set<String> climatePlaces = const {},
   }) async {
+    shelfNames = [for (final c in signed) c.name];
     if (places.isEmpty) {
       final flat = await write(
         signed,

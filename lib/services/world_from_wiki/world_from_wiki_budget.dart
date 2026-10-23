@@ -151,6 +151,17 @@ List<List<String>> splitWorldScoutIndex(
   return parts;
 }
 
+/// Characters of article one card gets: the floor that keeps a 32K
+/// window's batches sane, growing with the wizard's context to four times
+/// that from 128K on. The recipe reads the full article, not the chat clip,
+/// and the facts a Moment needs (who holds what, which invasion) sit deep
+/// in a wiki page.
+int worldWriteArticleCharsFor(int contextTokens) =>
+    (kWorldWriteArticleChars * contextTokens / 32768).round().clamp(
+      kWorldWriteArticleChars,
+      kWorldWriteArticleChars * 4,
+    );
+
 /// Two halves of a part the model could not finish; the first keeps the
 /// odd line.
 (List<String>, List<String>) halveWorldScoutPart(List<String> part) {
@@ -192,7 +203,7 @@ Stream<WorldWriteBatch> planWorldWriteBatches(
   // Characters one card's articles may take: the per-card cap, or less
   // when the window would not leave the reply room even for that.
   final articleCharCap = min(
-    kWorldWriteArticleChars,
+    worldWriteArticleCharsFor(budget.contextTokens),
     max(800, (capacity - kWorldWriteCardOverheadTokens) * 4),
   );
   var batchCards = <WorldProposedCard>[];

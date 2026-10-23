@@ -21,6 +21,7 @@ import 'world_from_wiki_tools.dart';
 import 'world_review_loop.dart';
 import 'world_review_tools.dart';
 import 'world_progress_copy.dart';
+import 'world_write_rules.dart';
 
 /// Characters of each article the reviewer sees beside its entry.
 const int kWorldEntryReviewArticleChars = 1200;
@@ -139,6 +140,7 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
       'Premise: ${premise.trim()}\n'
       '${worldMomentLine(moment)}'
+      '${worldShelfLine(shelfNames)}'
       'ENTRIES TO REVIEW, each with the article it was written from:\n',
     );
     for (final d in drafts) {
@@ -158,7 +160,8 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       'fails when it states anything after the moment, when a person has no '
       'look-or-manner clause or no whereabouts, when a place has no sights '
       'or no holder, when it is one sentence or more than two, or when it '
-      'says something the article does not. Pass the rest; name the problem '
+      'says something the article does not. $kWorldEntryChainRule Pass the '
+      'rest; name the problem '
       'in one sentence the writer can act on. Call '
       '$kWorldEntriesReviewToolName once with a verdict per entry.',
     );

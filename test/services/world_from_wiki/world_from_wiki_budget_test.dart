@@ -131,6 +131,14 @@ void main() {
       },
     );
 
+    test('one card\'s article grows with the wizard\'s context', () {
+      expect(worldWriteArticleCharsFor(16384), kWorldWriteArticleChars);
+      expect(worldWriteArticleCharsFor(32768), kWorldWriteArticleChars);
+      expect(worldWriteArticleCharsFor(65536), kWorldWriteArticleChars * 2);
+      expect(worldWriteArticleCharsFor(131072), kWorldWriteArticleChars * 4);
+      expect(worldWriteArticleCharsFor(262144), kWorldWriteArticleChars * 4);
+    });
+
     test('a 64K window asks the same index whole', () {
       final parts = splitWorldScoutIndex(
         lines,
