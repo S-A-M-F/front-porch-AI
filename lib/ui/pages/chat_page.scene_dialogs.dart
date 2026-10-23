@@ -172,18 +172,25 @@ class ChatScenePrompts {
     BuildContext context,
     ChatService chat,
   ) async {
-    await showPlaceMintFlow(context, chat);
-    // The one-shot guard must release, or a second proposal this chat
-    // never gets a dialog (review #607 blocker).
-    _showingPlaceMint = false;
+    try {
+      await showPlaceMintFlow(context, chat);
+    } finally {
+      // The one-shot guard must release even if the flow throws, or a
+      // second proposal this chat never gets a dialog (review #607
+      // blocker class).
+      _showingPlaceMint = false;
+    }
   }
 
   Future<void> _showPlaceMoveDialog(
     BuildContext context,
     ChatService chat,
   ) async {
-    await showPlaceMoveFlow(context, chat);
-    _showingPlaceMove = false;
+    try {
+      await showPlaceMoveFlow(context, chat);
+    } finally {
+      _showingPlaceMove = false;
+    }
     if (chat.pendingPlaceMint != null && !_showingPlaceMint) {
       _showingPlaceMint = true;
       await _showPlaceMintDialog(context, chat);
