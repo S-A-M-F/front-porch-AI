@@ -55,10 +55,12 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       );
     }
 
-    final groups = groupCardsByPlace(
-      liftPlaceHubCards(_dedupeByName(signed), places),
-      places,
-    );
+    final kept = _dedupeByName(signed);
+    final groups = groupCardsByPlace(liftPlaceHubCards(kept, places), places);
+    // A place's own card now sits in the book around it, so "this place
+    // has no cards" no longer means the author pruned it: a signed card
+    // bearing the place's name keeps the place, even with nothing inside.
+    final named = {for (final c in kept) c.name.trim().toLowerCase()};
     final written = <WorldPlaceWrite>[];
     final all = <LorebookEntry>[];
 
@@ -71,7 +73,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       final place = entry.$2;
       final cards = groups[bucketKey] ?? const <WorldProposedCard>[];
       final label = place?.name ?? worldName.trim();
-      if (place != null && cards.isEmpty) {
+      if (place != null && cards.isEmpty && !named.contains(bucketKey)) {
         // An unsigned place with no signed cards is dropped (design
         // §9.3) — the author pruned its cast, the shelf stays clean.
         continue;

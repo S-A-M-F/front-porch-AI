@@ -6,6 +6,8 @@
 // in halves, and the answers merge into one shelf. Size never fails the
 // wizard while a smaller part is left to try.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/services/llm_service.dart';
@@ -135,6 +137,24 @@ class WorldScoutRunner {
       final got = resp == null
           ? const <WorldProposedCard>[]
           : parseWorldScoutToolCalls(resp.calls, catalog: titles);
+      if (got.isEmpty && resp != null && resp.calls.isNotEmpty) {
+        // A list came back and nothing in it survived the parse: say what
+        // the first item looked like, or this reads as the model's choice.
+        final raw = resp.calls.first.arguments['cards'];
+        final first = raw is List && raw.isNotEmpty ? raw.first : null;
+        final shown = first == null ? 'none' : jsonEncode(first);
+        final count = raw is List ? raw.length : 0;
+        debugPrint(
+          '[World] scout answered $count raw cards, none usable; '
+          'first=${shown.length > 400 ? '${shown.substring(0, 400)}…' : shown}',
+        );
+        if (count > 0) {
+          firstFailure ??=
+              'The model answered with $count cards, but none of them named '
+              'a page from the index, so there was nothing to read. Press '
+              'Scout again, or pick a different model.';
+        }
+      }
       if (got.isEmpty && worldScoutReplyWasCut(resp)) {
         if (part.length > kWorldScoutMinPart) {
           final (a, b) = halveWorldScoutPart(part);

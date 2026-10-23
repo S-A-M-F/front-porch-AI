@@ -20,6 +20,11 @@ const int kWorldWriteBatchSize = 8;
 const int kWorldLoreContentMin = 160;
 const int kWorldLoreContentMax = 330;
 
+/// Keys an entry keeps. Past this a model is listing every noun in the
+/// article (Kimi gave Gotei 13 eleven, 'Shinigami' and 'captains' among
+/// them), and each extra key is a trigger on any sentence.
+const int kWorldLoreKeysMax = 8;
+
 const String kWorldClimateToolName = 'write_world_climate';
 
 const String kWorldScoutPrompt =
@@ -252,7 +257,7 @@ WorldLoreWrite? parseWorldLoreToolCall(Map<String, dynamic> args) {
   final content = clipLoreContent(args['content']?.toString() ?? '');
   if (content.isEmpty) return null;
   final name = args['name']?.toString().trim() ?? '';
-  final keys = _keysOf(args['keys']);
+  final keys = _keysOf(args['keys']).take(kWorldLoreKeysMax).toList();
   return WorldLoreWrite(
     name: name.isEmpty ? 'Untitled' : name,
     keys: keys,
@@ -322,6 +327,16 @@ WorldClimateWrite? parseWorldClimateCalls(List<LlmToolCall> calls) {
   return null;
 }
 
+/// A source title as the model wrote it, minus the "[tags]" the index line
+/// carried: gemma-4 copied "Quincy Blood War [Events, Fights]" back for
+/// every card and all 34 missed the catalog.
+String worldScoutBareTitle(String raw) {
+  final t = raw.trim();
+  final open = t.lastIndexOf(' [');
+  if (open > 0 && t.endsWith(']')) return t.substring(0, open).trim();
+  return t;
+}
+
 /// Parse scout tool calls into proposed cards. Drops unknown roles, empty
 /// names, and (when [catalog] is set) cards whose sources miss the index.
 /// Matched sources keep the catalog's original title casing so later
@@ -340,7 +355,9 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
     for (final item in _cardMaps(call.arguments)) {
       final parsed = WorldProposedCard.tryParse(item);
       if (parsed == null) continue;
-      var sources = parsed.sourceTitles;
+      var sources = [
+        for (final t in parsed.sourceTitles) worldScoutBareTitle(t),
+      ];
       if (byLower != null) {
         sources = [
           for (final t in sources)

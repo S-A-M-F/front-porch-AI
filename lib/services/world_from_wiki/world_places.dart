@@ -12,6 +12,7 @@
 import 'package:front_porch_ai/models/models.dart';
 
 import 'world_craft_mechanics.dart';
+import 'world_from_wiki_tools.dart';
 
 /// Deepest place nesting the wizard will build (root's children are
 /// depth 1; the World ladder caps the same way elsewhere).
@@ -55,10 +56,13 @@ class WorldProposedPlace {
   static WorldProposedPlace? tryParse(Map<String, dynamic> json) {
     final name = json['name']?.toString().trim() ?? '';
     if (name.isEmpty) return null;
-    final sources = _strings(
-      json['sourceTitles'] ?? json['source_titles'],
-      max: 4,
-    );
+    final sources = [
+      for (final t in _strings(
+        json['sourceTitles'] ?? json['source_titles'],
+        max: 4,
+      ))
+        worldScoutBareTitle(t),
+    ];
     return WorldProposedPlace(
       name: name,
       keys: _strings(json['keys'], max: 8),

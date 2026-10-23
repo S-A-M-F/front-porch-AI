@@ -553,6 +553,53 @@ void main() {
     expect(entries, isEmpty);
   });
 
+  test(
+    'a source title copied with its index tags still matches the catalog',
+    () {
+      // gemma-4 wrote "Quincy Blood War [Events, Fights]" for every card.
+      expect(
+        worldScoutBareTitle('Quincy Blood War [Events, Fights]'),
+        'Quincy Blood War',
+      );
+      expect(worldScoutBareTitle('Plain Title'), 'Plain Title');
+      expect(worldScoutBareTitle('[Bracketed] Title'), '[Bracketed] Title');
+      final cards = parseWorldScoutToolCalls(
+        [
+          LlmToolCall(
+            name: kWorldScoutToolName,
+            arguments: {
+              'cards': [
+                {
+                  'name': 'The Blood War',
+                  'role': 'era',
+                  'kind': 'event',
+                  'sourceTitles': ['Quincy Blood War [Events, Fights]'],
+                },
+              ],
+            },
+          ),
+        ],
+        catalog: ['Quincy Blood War', 'Yhwach'],
+      );
+      expect(cards.single.sourceTitles, ['Quincy Blood War']);
+      final place = WorldProposedPlace.tryParse({
+        'name': 'Seireitei',
+        'sourceTitles': ['Seireitei [Locations, Soul Society]'],
+      })!;
+      expect(place.sourceTitles, ['Seireitei']);
+    },
+  );
+
+  test('an entry keeps at most eight keys', () {
+    final parsed = parseWorldLoreToolCall({
+      'name': 'Gotei 13',
+      'keys': [for (var i = 0; i < 12; i++) 'key $i'],
+      'content': 'The thirteen divisions hold the Seireitei. ' * 5,
+    })!;
+    expect(parsed.keys, hasLength(kWorldLoreKeysMax));
+    expect(parsed.keys.first, 'key 0');
+  });
+
   test('lore content is clipped to 330; comma keys split', () {
     final long = 'Word. ' * 80;
     final parsed = parseWorldLoreToolCall({
@@ -1199,6 +1246,55 @@ void main() {
           reason: 'the batch twice, then each half twice; never a third level',
         );
         expect(entries, isEmpty);
+      },
+    );
+
+    test(
+      'a place whose only card is its own hub card is still written',
+      () async {
+        // The second live run lost four of ten places this way: the lift
+        // moved each place's card to its parent, and the empty place was
+        // then dropped as "pruned".
+        final llm = _FlakyWriteLlm(failFirst: 0);
+        final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+          ..retryPause = Duration.zero;
+        final tree = await engine.writeTree(
+          [
+            card(
+              'Soul Society',
+              place: 'Soul Society',
+              role: WorldCraftRole.hub,
+              kind: 'place',
+            ),
+            card(
+              'Karakura Town',
+              place: 'Karakura Town',
+              role: WorldCraftRole.hub,
+              kind: 'place',
+            ),
+            card('Ichigo Kurosaki', kind: 'person'),
+          ],
+          places: const [
+            WorldProposedPlace(name: 'Soul Society'),
+            WorldProposedPlace(name: 'Karakura Town'),
+            WorldProposedPlace(name: 'Pruned Place'),
+          ],
+          worldName: 'Bleach (TYBW)',
+          premise: 'x',
+        );
+        expect(tree.places.map((p) => p.name), [
+          'Soul Society',
+          'Karakura Town',
+        ], reason: 'kept by their signed card; the unsigned place is pruned');
+        expect(
+          tree.root.entries.map((e) => e.keys.first),
+          containsAll(['Soul Society', 'Karakura Town', 'Ichigo Kurosaki']),
+        );
+        expect(
+          tree.places.every((p) => p.entries.isEmpty),
+          isTrue,
+          reason: 'their own cards live in the root book',
+        );
       },
     );
 
