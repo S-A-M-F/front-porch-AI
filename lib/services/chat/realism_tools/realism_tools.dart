@@ -17,5 +17,6 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 export 'realism_tool_names.dart';
+export 'place_mint_tool_schema.dart';
 export 'realism_tool_schemas.dart';
 export 'afterglow_tool_schemas.dart';

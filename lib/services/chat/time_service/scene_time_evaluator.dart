@@ -33,6 +33,13 @@ int? _extractMinutes(String text) {
 }
 
 /// scene_place reader: absent, "same" and "" all mean NO MOVE.
+/// Flat-JSON string reader for the mint pair (same style as the
+/// scene_place reader above; missing or malformed yields null).
+String? _extractJsonField(String text, String key) {
+  final m = RegExp('"$key"\\s*:\\s*"([^"]*)"').firstMatch(text);
+  return m?.group(1);
+}
+
 String? _extractScenePlace(String text) {
   final m = RegExp(r'"scene_place"\s*:\s*"([^"]*)"').firstMatch(text);
   final v = m?.group(1)?.trim();
@@ -72,6 +79,7 @@ class SceneTimeEvaluator {
     this.getBackendIdentity,
     this.getScenePlaceOffer,
     this.onScenePlace,
+    this.onNewPlace,
   });
 
   final TimeClockState state;
@@ -97,6 +105,11 @@ class SceneTimeEvaluator {
   /// there. The evaluator NEVER moves the scene or touches the clock
   /// slots (design: the service only flags; the user confirms).
   final void Function(String id)? onScenePlace;
+
+  /// Slice 7: the scene_place == "new" flag — a NAMED place the reply
+  /// arrived at that is not in the library. (name, one-line descriptor)
+  /// out to the mint dialog; nothing mints here.
+  final void Function(String name, String descriptor)? onNewPlace;
 
   /// Fire one scene-time or posture eval through the shared tools-vs-text
   /// negotiation (or straight text when the tools door isn't wired).
@@ -266,9 +279,27 @@ class SceneTimeEvaluator {
             : null;
     final scenePlaceOn = sceneOffer != null && sceneOffer.isNotEmpty;
     void maybeOfferSceneMove(String text) {
-      if (!scenePlaceOn || onScenePlace == null) return;
+      if (!scenePlaceOn) return;
       final said = _extractScenePlace(text);
       if (said == null) return;
+      if (said.toLowerCase() == 'new') {
+        // Slice 7: only a NAMED arrival qualifies; the pair rides out
+        // to the mint dialog, which is where the tap happens.
+        final name =
+            _extractJsonField(text, 'new_place_name')?.trim() ?? '';
+        final desc =
+            _extractJsonField(text, 'new_place_descriptor')?.trim() ?? '';
+        if (name.isEmpty) {
+          debugPrint(
+            '[Realism:Scene] scene_place "new" without a name — ignored '
+            '(unnamed side streets never qualify)',
+          );
+          return;
+        }
+        onNewPlace?.call(name, desc);
+        return;
+      }
+      if (onScenePlace == null) return;
       for (final p in sceneOffer) {
         if (p.id.toLowerCase() == said.toLowerCase()) {
           onScenePlace!(p.id);
@@ -354,7 +385,10 @@ class SceneTimeEvaluator {
       sceneRule =
           '$sceneRuleNumber. "scene_place": where the reply LEAVES the '
           'scene. Answer "same" unless the narration actually ARRIVES at '
-          'one of these places: $ids. A plan to go somewhere, or a '
+          'one of these places: $ids. Answer "new" (plus "new_place_name" '
+          'with its exact name and a one-line "new_place_descriptor") '
+          'only when they arrive at a NAMED place NOT in that list — an '
+          'unnamed side street is "same". A plan to go somewhere, or a '
           'mention of it, is "same". The characters must BE there by the '
           'end of the reply.\n';
     }
@@ -381,7 +415,7 @@ class SceneTimeEvaluator {
         'Current story time: ${state.displayClock} on ${state.narrativeWeekday}, Day ${state.dayCount}.\n\n'
         '$timeRules\n'
         'Recent conversation:\n$recent\n\n'
-        '${toolsMode ? 'Report by calling the $kSceneTimeTool tool with "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}${scenePlaceOn ? ' and "scene_place"' : ''}. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}${scenePlaceOn ? ' and "scene_place"' : ''}. '
+        '${toolsMode ? 'Report by calling the $kSceneTimeTool tool with "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}${scenePlaceOn ? ', "scene_place", "new_place_name" and "new_place_descriptor"' : ''}. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}${scenePlaceOn ? ', "scene_place", "new_place_name" and "new_place_descriptor"' : ''}. '
                   'Do NOT use markdown code blocks — return raw JSON only.'}';
 
     try {

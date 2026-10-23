@@ -49,7 +49,7 @@ class WebChatRoutes {
       (r) => handleDismissGuestPicker(_facade),
     );
     router.post('/api/chat/chance-time/accept', _acceptChanceTime);
-    router.post('/api/chat/place-move', (r) => handlePlaceMove(_facade, r));
+    registerSceneLocationRoutes(router, _facade);
     router.post('/api/chat/chance-time/spin', _spinChanceTime);
     router.post('/api/chat/stop', _stop);
     router.post('/api/chat/regenerate', _regenerate);
