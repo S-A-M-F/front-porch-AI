@@ -32,6 +32,13 @@ class WorldFromWikiState extends ChangeNotifier {
   List<WorldProposedCard> proposed = [];
   final Set<int> signed = {};
   List<LorebookEntry> entries = [];
+
+  /// Slice 8 (design §9): scout-named places (empty on an untagged wiki
+  /// — the flat path), the per-place "own climate" switches (defaults
+  /// follow the scout's climate hints), and the written tree.
+  List<WorldProposedPlace> places = [];
+  final Set<String> placeClimate = {};
+  WorldWriteTree? tree;
   final List<PlatformFile> loreFiles = [];
   String extraLore = '';
 
@@ -65,6 +72,30 @@ class WorldFromWikiState extends ChangeNotifier {
     for (var i = 0; i < proposed.length; i++)
       if (signed.contains(i)) proposed[i],
   ];
+
+  void togglePlaceClimate(String placeKey, bool on) {
+    if (on) {
+      placeClimate.add(placeKey);
+    } else {
+      placeClimate.remove(placeKey);
+    }
+    notify();
+  }
+
+  /// Review shelf order: root cards first, then each place's. Cards
+  /// naming an unknown place ride the root bucket, never vanish.
+  Map<String, List<int>> get indicesByPlace {
+    final out = <String, List<int>>{'': []};
+    for (final p in places) {
+      out.putIfAbsent(p.key, () => []);
+    }
+    final known = out.keys.where((k) => k.isNotEmpty).toSet();
+    for (var i = 0; i < proposed.length; i++) {
+      final pk = proposed[i].place.trim().toLowerCase();
+      out[pk.isNotEmpty && known.contains(pk) ? pk : '']!.add(i);
+    }
+    return out;
+  }
 
   void toggleSigned(int index, bool on) {
     if (on) {
@@ -175,9 +206,17 @@ class WorldFromWikiState extends ChangeNotifier {
       );
       catalogTitleCount = result.catalog.titles.length;
       proposed = result.proposed;
+      places = result.places;
       signed.clear();
+      placeClimate
+        ..clear()
+        ..addAll([
+          for (final p in places)
+            if (p.climateHint.isNotEmpty) p.key,
+        ]);
       status =
           '${proposed.length} cards from $catalogTitleCount pages'
+          '${places.isNotEmpty ? ', ${places.length} places' : ''}'
           '${result.catalog.skipped > 0 ? ', skipped ${result.catalog.skipped}' : ''}';
       if (proposed.isEmpty) {
         error =
@@ -230,20 +269,28 @@ class WorldFromWikiState extends ChangeNotifier {
       },
     );
     try {
-      final written = await engine!.write(
+      final t = await engine!.writeTree(
         picked,
+        places: places,
         worldName: nameController.text,
         premise: premiseController.text,
         extraLore: extraLore,
         climateEnabled: climateEnabled,
+        climatePlaces: Set<String>.from(placeClimate),
       );
       if (engine!.aborted) {
         entries = [];
+        tree = null;
         status = 'Stopped.';
       } else {
-        entries = written;
+        tree = t;
+        entries = t.root.entries.followedBy([
+          for (final p in t.places) ...p.entries,
+        ]).toList();
         if (descController.text.trim().isEmpty) {
-          descController.text = premiseController.text.trim();
+          descController.text = t.root.description.isNotEmpty
+              ? t.root.description
+              : premiseController.text.trim();
         }
         currentStep = 4;
       }
@@ -257,13 +304,41 @@ class WorldFromWikiState extends ChangeNotifier {
   }
 
   World previewWorld() {
+    final t = tree;
+    if (t == null || t.isFlat) {
+      return worldFromWikiDraft(
+        name: nameController.text,
+        description: descController.text,
+        entries: entries,
+        climateEnabled: climateEnabled,
+        biome: engine?.biome,
+      );
+    }
     return worldFromWikiDraft(
       name: nameController.text,
       description: descController.text,
-      entries: entries,
+      entries: t.root.entries,
       climateEnabled: climateEnabled,
-      biome: engine?.biome,
+      biome: t.root.biome,
     );
+  }
+
+  /// Preview rows for the tree: root first, then places in build order
+  /// — what Save will create, names and depths visible.
+  List<World> previewTreeWorlds() {
+    final t = tree;
+    if (t == null || t.isFlat) return [previewWorld()];
+    return [
+      previewWorld(),
+      for (final p in t.places)
+        worldFromWikiDraft(
+          name: p.name,
+          description: p.description,
+          entries: p.entries,
+          climateEnabled: p.hasClimate,
+          biome: p.biome,
+        ),
+    ];
   }
 
   Future<bool> save(WorldRepository repo) async {
@@ -272,12 +347,53 @@ class WorldFromWikiState extends ChangeNotifier {
       notify();
       return false;
     }
-    final world = previewWorld();
+    final t = tree;
+    if (t == null || t.isFlat) {
+      try {
+        await repo.saveWorld(previewWorld());
+        return true;
+      } catch (e) {
+        error = 'Save failed: $e';
+        notify();
+        return false;
+      }
+    }
+    // Root, then places in build order (parents always precede their
+    // children), so saveWorld's cycle and parent checks hold for every
+    // row (design §9.5). One failure aborts the rest and says so —
+    // half a ladder with no note is how lost places get reported.
+    var savedCount = 0;
+    var step = 'the world ${previewWorld().name}';
     try {
-      await repo.saveWorld(world);
+      final idsByName = <String, String>{};
+      final root = previewWorld();
+      await repo.saveWorld(root);
+      savedCount++;
+      idsByName[''] = root.id;
+      for (final p in t.places) {
+        step = 'the place ${p.name}';
+        final parentId =
+            idsByName[p.parentName.trim().toLowerCase()] ?? root.id;
+        final child = worldFromWikiDraft(
+          name: p.name,
+          description: p.description,
+          entries: p.entries,
+          climateEnabled: p.hasClimate,
+          biome: p.biome,
+          parentWorldId: parentId,
+        );
+        await repo.saveWorld(child);
+        savedCount++;
+        idsByName[p.name.trim().toLowerCase()] = child.id;
+      }
       return true;
     } catch (e) {
-      error = 'Save failed: $e';
+      // A ladder can fail halfway (one place's law refuses). Say what
+      // landed — half a tree must not look like no tree (review #608).
+      error = savedCount > 0 && savedCount < t.places.length + 1
+          ? 'Saved $savedCount of ${t.places.length + 1}; failed on '
+                '$step: $e'
+          : 'Save failed: $e';
       notify();
       return false;
     }

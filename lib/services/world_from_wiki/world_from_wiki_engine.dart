@@ -8,14 +8,25 @@ import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_ops.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_places_tools.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_places.dart';
 
 /// Scout result: index size plus proposed cards (default unsigned).
 class WorldScoutResult {
-  const WorldScoutResult({required this.catalog, required this.proposed});
+  const WorldScoutResult({
+    required this.catalog,
+    required this.proposed,
+    this.places = const [],
+  });
 
   final WikiStudioCatalog catalog;
   final List<WorldProposedCard> proposed;
+
+  /// Slice 8 (design §9.2): the places the scout named from tag
+  /// evidence, already resolved into build order. Empty on an untagged
+  /// wiki — every consumer must treat that as "flat world, as before".
+  final List<WorldProposedPlace> places;
 }
 
 /// Headless scout + write. Not ChatService. Signed-card count is the loop cap.
@@ -33,6 +44,10 @@ class WorldFromWikiEngine {
 
   bool get aborted => _aborted;
 
+  /// The tag sets from the newest [scan] — the scout prompt shows them
+  /// so a tags-only wiki (Neokosmos) can reveal its places (slice 8).
+  Map<String, List<String>> lastCatalogTags = const {};
+
   void abort() {
     _aborted = true;
     llm.abortGeneration();
@@ -41,6 +56,7 @@ class WorldFromWikiEngine {
 
   Future<WikiStudioCatalog> scan({String? seedQuery}) async {
     final catalog = await wiki.listStudioTitles(seedQuery: seedQuery);
+    lastCatalogTags = catalog.tagsByTitle;
     debugPrint(
       '[World] scan backend=${catalog.backend.name} '
       'titles=${catalog.titles.length} skipped=${catalog.skipped} '
@@ -65,18 +81,24 @@ class WorldFromWikiEngine {
       return WorldScoutResult(catalog: catalog, proposed: const []);
     }
     onProgress?.call('Scouting ${catalog.titles.length} titles…');
-    final proposed = await _propose(
+    final scouted = await _propose(
       titles: catalog.titles,
       worldName: worldName,
       premise: premise,
     );
+    final proposed = scouted.cards;
     debugPrint(
-      '[World] scout titles=${catalog.titles.length} proposed=${proposed.length}',
+      '[World] scout titles=${catalog.titles.length} proposed=${proposed.length} '
+      'places=${scouted.places.length}',
     );
     if (proposed.isNotEmpty && proposed.length < kWorldScoutCardMin) {
       debugPrint('[World] scout short proposed=${proposed.length}');
     }
-    return WorldScoutResult(catalog: catalog, proposed: proposed);
+    return WorldScoutResult(
+      catalog: catalog,
+      proposed: proposed,
+      places: resolvePlaceOrder(scouted.places),
+    );
   }
 
   /// Signed cards only. One tool call per [kWorldWriteBatchSize] cards.
@@ -116,7 +138,7 @@ class WorldFromWikiEngine {
       final ready = <WorldProposedCard>[];
       final articles = <String>[];
       for (final card in chunk) {
-        final article = await _joinSources(card.sourceTitles);
+        final article = await joinSources(card.sourceTitles);
         if (article.isEmpty) {
           debugPrint('[World] write miss ${card.name}');
           continue;
@@ -125,7 +147,7 @@ class WorldFromWikiEngine {
         articles.add(article);
       }
       if (ready.isEmpty) continue;
-      final generated = await _writeBatch(
+      final generated = await writeBatch(
         cards: ready,
         articles: articles,
         worldName: worldName,
@@ -166,13 +188,25 @@ class WorldFromWikiEngine {
     return List<LorebookEntry>.unmodifiable(entries);
   }
 
-  Future<List<WorldProposedCard>> _propose({
+  Future<({List<WorldProposedCard> cards, List<WorldProposedPlace> places})>
+  _propose({
     required List<String> titles,
     required String worldName,
     required String premise,
   }) async {
-    if (titles.isEmpty) return const [];
-    final index = titles.map((t) => '- $t').join('\n');
+    if (titles.isEmpty) return (cards: const <WorldProposedCard>[], places: const <WorldProposedPlace>[]);
+    // Slice 8: the tag set rides the index line. Neokosmos keeps its
+    // nations ONLY in tags — titles alone read "Ceolwynn, Bealdric…"
+    // with nothing saying where they belong (design §9).
+    final tags = lastCatalogTags;
+    final index = titles.map((t) {
+      final ts = tags[t] ?? const [];
+      final shown = [
+        for (final tag in ts)
+          if (!tag.startsWith(r'$:/')) tag,
+      ].take(4).join(', ');
+      return shown.isEmpty ? '- $t' : '- $t [$shown]';
+    }).join('\n');
     final prompt =
         'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
@@ -191,15 +225,20 @@ class WorldFromWikiEngine {
         ),
         worldScoutToolSchema(),
       );
-      if (resp == null || resp.isUnusableNativeToolCall) return const [];
-      return parseWorldScoutToolCalls(resp.calls, catalog: titles);
+      if (resp == null || resp.isUnusableNativeToolCall) {
+      return (cards: const <WorldProposedCard>[], places: const <WorldProposedPlace>[]);
+    }
+      return (
+        cards: parseWorldScoutToolCalls(resp.calls, catalog: titles),
+        places: parseWorldScoutPlaces(resp.calls),
+      );
     } catch (e) {
       debugPrint('[World] scout tools miss ($e)');
-      return const [];
+      return (cards: const <WorldProposedCard>[], places: const <WorldProposedPlace>[]);
     }
   }
 
-  Future<String> _joinSources(List<String> titles) async {
+  Future<String> joinSources(List<String> titles) async {
     final buf = StringBuffer();
     for (final title in titles.take(3)) {
       final t = title.trim();
@@ -216,7 +255,7 @@ class WorldFromWikiEngine {
     return buf.toString().trim();
   }
 
-  Future<List<WorldLoreWrite>> _writeBatch({
+  Future<List<WorldLoreWrite>> writeBatch({
     required List<WorldProposedCard> cards,
     required List<String> articles,
     required String worldName,
@@ -286,7 +325,7 @@ class WorldFromWikiEngine {
       debugPrint('[World] climate miss no titles');
       return null;
     }
-    final article = await _joinSources(titles);
+    final article = await joinSources(titles);
     if (article.isEmpty) return null;
     final prompt =
         'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'

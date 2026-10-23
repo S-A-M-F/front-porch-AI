@@ -44,6 +44,9 @@ export type WsEvent = {
   scanDepth?: number;
   tokenBudget?: number;
   entries?: unknown;
+  // `world_wiki_done` slice 8: root book (tree save) and per-place books.
+  root?: unknown;
+  places?: unknown;
   // `processing` event (Realism + Objective engine overlay): which engine is
   // running + the live eval stream text.
   active?: boolean;

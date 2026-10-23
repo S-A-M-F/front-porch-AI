@@ -15,11 +15,14 @@ import {
   canOpenWorldFromWikiPreview,
   jumpWorldFromWikiStep,
   parseProposedCards,
+  parseProposedPlaces,
   parseWorldToolsGate,
+  shelfSections,
   signedCards,
   worldToolsCanRetest,
   worldToolsCopy,
   type ProposedWorldCard,
+  type ProposedWorldPlace,
 } from './worldFromWiki';
 
 type Status = {
@@ -43,6 +46,25 @@ export function WorldFromWikiPage() {
   const [biome, setBiome] = useState<Record<string, unknown> | null>(null);
   const [lorebooksOn, setLorebooksOn] = useState(true);
   const [proposed, setProposed] = useState<ProposedWorldCard[]>([]);
+  // Slice 8: scout places (empty on an untagged wiki = flat, as ever),
+  // the per-place "own weather" switches, and the written tree from
+  // the done event (root book + children) that turns Save into a ladder.
+  const [places, setPlaces] = useState<ProposedWorldPlace[]>([]);
+  const [placeClimate, setPlaceClimate] = useState<Set<string>>(new Set());
+  const [treeRoot, setTreeRoot] = useState<{
+    description: string;
+    entries: LoreEntry[];
+    biome?: Record<string, unknown>;
+  } | null>(null);
+  const [treePlaces, setTreePlaces] = useState<
+    {
+      name: string;
+      parentName: string;
+      description: string;
+      entries: LoreEntry[];
+      biome?: Record<string, unknown>;
+    }[]
+  >([]);
   const [signed, setSigned] = useState<Set<number>>(new Set());
   const [titleCount, setTitleCount] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -114,6 +136,28 @@ export function WorldFromWikiPage() {
           setBiome(null);
         }
         setEntries(Array.isArray(e.entries) ? (e.entries as LoreEntry[]) : []);
+        // Slice 8: the tree payload (root book + children). Absent or
+        // empty → flat save, exactly as today.
+        setTreeRoot(
+          e.root && typeof e.root === 'object'
+            ? (e.root as {
+                description: string;
+                entries: LoreEntry[];
+                biome?: Record<string, unknown>;
+              })
+            : null,
+        );
+        setTreePlaces(
+          Array.isArray(e.places)
+            ? (e.places as {
+                name: string;
+                parentName: string;
+                description: string;
+                entries: LoreEntry[];
+                biome?: Record<string, unknown>;
+              }[])
+            : [],
+        );
         setBookFields({
           recursiveScanning: e.recursiveScanning !== false,
           scanDepth: typeof e.scanDepth === 'number' ? e.scanDepth : 10,
@@ -146,9 +190,18 @@ export function WorldFromWikiPage() {
       const r = await api.post<{
         proposed?: unknown;
         titles?: number;
+        places?: unknown;
       }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise });
       const cards = parseProposedCards(r.proposed);
       setProposed(cards);
+      const rPlaces = parseProposedPlaces(r.places);
+      setPlaces(rPlaces);
+      setPlaceClimate(
+        new Set(
+          rPlaces.filter((p) => p.climateHint).map((p) => p.name.toLowerCase()),
+        ),
+      );
+      setTreePlaces([]);
       setSigned(new Set());
       setTitleCount(typeof r.titles === 'number' ? r.titles : 0);
       if (!cards.length) {
@@ -181,6 +234,10 @@ export function WorldFromWikiPage() {
         name,
         premise,
         climateEnabled,
+        // Slice 8 (additive): an older server ignores both and writes
+        // one flat world; a newer one groups the write by place.
+        places,
+        placeClimate: [...placeClimate],
       });
     } catch (e) {
       setBusy(false);
@@ -204,22 +261,93 @@ export function WorldFromWikiPage() {
     const climateOn = climateEnabled && biome != null;
     setBusy(true);
     setError('');
+    let ladderStep = '';
+    const known = new Set<string>();
     try {
-      await api.post('/api/worlds', {
+      if (treePlaces.length && !treeRoot) {
+        // A tree write whose root book went missing must not silently
+        // flat-save (review #608): the ladder would half-exist with a
+        // fat root and the author would never know.
+        setError('The written places lost their root book. Stop and Write again.');
+        return;
+      }
+      if (!treePlaces.length || !treeRoot) {
+        await api.post('/api/worlds', {
+          name,
+          create: true,
+          description: description || premise,
+          climateEnabled: climateOn,
+          injectDescription: true,
+          entries,
+          recursiveScanning: bookFields.recursiveScanning,
+          scanDepth: bookFields.scanDepth,
+          tokenBudget: bookFields.tokenBudget,
+          ...(climateOn ? { biomeId: 'custom', biome } : {}),
+        });
+        navigate('/worlds');
+        return;
+      }
+      // Slice 8 ladder: root first, then each place at its parent's id.
+      // The save response echoes the whole shelf, so a created row is
+      // found by what was NOT there before — exact even when the unique
+      // name law appended " (2)" (desktop's saveWorld does the same).
+      const shelf = await api.get<{ worlds?: { id: string }[] }>('/api/worlds');
+      for (const w of shelf.worlds ?? []) known.add(w.id);
+      const create = async (payload: Record<string, unknown>): Promise<string> => {
+        const r = await api.post<{ worlds?: { id: string; name: string }[] }>(
+          '/api/worlds',
+          payload,
+        );
+        const fresh = (r.worlds ?? []).filter((w) => !known.has(w.id));
+        const created = fresh[0];
+        if (!created) throw new Error('the library did not confirm the save');
+        known.add(created.id);
+        return created.id;
+      };
+      ladderStep = `the world ${name}`;
+      const rootId = await create({
         name,
         create: true,
-        description: description || premise,
+        description: description || treeRoot.description || premise,
         climateEnabled: climateOn,
         injectDescription: true,
-        entries,
+        entries: treeRoot.entries,
         recursiveScanning: bookFields.recursiveScanning,
         scanDepth: bookFields.scanDepth,
         tokenBudget: bookFields.tokenBudget,
         ...(climateOn ? { biomeId: 'custom', biome } : {}),
       });
+      const ids = new Map<string, string>();
+      for (const p of treePlaces) {
+        const parentId = ids.get(p.parentName.toLowerCase()) ?? rootId;
+        ladderStep = `the place ${p.name}`;
+        const createdId = await create({
+          name: p.name,
+          create: true,
+          description: p.description,
+          injectDescription: true,
+          parentWorldId: parentId,
+          entries: p.entries,
+          recursiveScanning: bookFields.recursiveScanning,
+          scanDepth: bookFields.scanDepth,
+          tokenBudget: bookFields.tokenBudget,
+          ...(p.biome
+            ? { climateEnabled: true, biomeId: 'custom', biome: p.biome }
+            : { climateEnabled: false }),
+        });
+        ids.set(p.name.toLowerCase(), createdId);
+      }
       navigate('/worlds');
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Save failed');
+      const why = e instanceof ApiError ? e.message : String(e);
+      // A ladder can fail halfway (a law refuses one place). Say what
+      // landed and what did not — half a tree must not look like none.
+      setError(
+        ladderStep && known.size > 0 && treePlaces.length
+          ? `Saved part of the ladder; failed on ${ladderStep}: ${why}. `
+            + 'The rest is in your library.'
+          : `Save failed: ${why}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -324,25 +452,64 @@ export function WorldFromWikiPage() {
               {' '}{signed.size} of {proposed.length} signed
               {titleCount > 0 ? ` (${titleCount} index pages).` : '.'}
             </p>
-            {proposed.map((c, i) => (
-              <label key={`${c.name}-${i}`} className="cg-toggle">
-                <input
-                  type="checkbox"
-                  checked={signed.has(i)}
-                  onChange={(e) => {
-                    const next = new Set(signed);
-                    if (e.target.checked) next.add(i);
-                    else next.delete(i);
-                    setSigned(next);
-                  }}
-                />
-                <span>
-                  <strong>{c.name}</strong>
-                  {' '}({c.role}{c.group ? ` · ${c.group}` : ''})
-                  <br />
-                  <span className="muted small">{c.sourceTitles.join(', ')}</span>
-                </span>
-              </label>
+            {shelfSections(proposed, places).map((section, si) => (
+              <div key={section.place ? `place-${section.place.name}` : `root-${si}`}>
+                {section.place && (
+                  <div className="cg-shelf-head" data-testid="world-place-header">
+                    <strong>
+                      {section.place.parentName
+                        ? `${section.place.name} · inside ${section.place.parentName}`
+                        : section.place.name}
+                    </strong>
+                    {section.place.climateHint && (
+                      <span className="muted small">
+                        {' '}Weather hint: {section.place.climateHint}
+                      </span>
+                    )}
+                    {climateEnabled && (
+                      <label className="cg-toggle small">
+                        <input
+                          type="checkbox"
+                          checked={placeClimate.has(
+                            section.place.name.toLowerCase(),
+                          )}
+                          onChange={(e) => {
+                            const next = new Set(placeClimate);
+                            const key = section.place!.name.toLowerCase();
+                            if (e.target.checked) next.add(key);
+                            else next.delete(key);
+                            setPlaceClimate(next);
+                          }}
+                        />
+                        <span>Own weather</span>
+                      </label>
+                    )}
+                  </div>
+                )}
+                {section.indices.map((i) => {
+                  const c = proposed[i];
+                  return (
+                    <label key={`${c.name}-${i}`} className="cg-toggle">
+                      <input
+                        type="checkbox"
+                        checked={signed.has(i)}
+                        onChange={(e) => {
+                          const next = new Set(signed);
+                          if (e.target.checked) next.add(i);
+                          else next.delete(i);
+                          setSigned(next);
+                        }}
+                      />
+                      <span>
+                        <strong>{c.name}</strong>
+                        {' '}({c.role}{c.group ? ` · ${c.group}` : ''})
+                        <br />
+                        <span className="muted small">{c.sourceTitles.join(', ')}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             ))}
           </div>
         )}
