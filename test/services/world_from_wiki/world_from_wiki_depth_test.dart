@@ -152,4 +152,12 @@ void main() {
       expect(out[1].keys, ['Seireitei', 'Court of Pure Souls']);
     });
   });
+
+  group('scout parts', () {
+    test('a scout is asked in parts of about forty cards', () {
+      expect(WorldWikiDepth.quick.scoutParts, 1);
+      expect(WorldWikiDepth.full.scoutParts, 2);
+      expect(WorldWikiDepth.deep.scoutParts, 2);
+    });
+  });
 }

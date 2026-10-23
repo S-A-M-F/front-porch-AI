@@ -8,6 +8,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -115,6 +116,7 @@ class WorldScoutRunner {
       budget: budget,
       promptFor: (part) =>
           scoutPrompt(part, worldName: worldName, premise: premise, total: 1),
+      minParts: depth.scoutParts,
     );
     var total = queue.length;
     var asked = 0;
@@ -286,28 +288,31 @@ class WorldScoutRunner {
           : '\nAnswer ONLY with the $kWorldScoutToolName tool call — no prose, '
                 'no preamble, no markdown.';
       final sent = '$prompt$nudge';
+      // Sized from what is actually sent: the nudge costs a line.
+      final want = budget.replyFor(sent, floor: kWorldScoutReplyFloor);
+      final deadline = worldToolTimeoutFor(callTimeout, want);
       try {
         resp = await llm
             .generateWithTools(
               GenerationParams(
                 prompt: sent,
-                // Sized from what is actually sent: the nudge costs a line.
-                maxLength: budget.replyFor(sent, floor: kWorldScoutReplyFloor),
+                maxLength: want,
                 minLength: 16,
                 temperature: 0.3,
                 reasoningEnabled: attempt == 1,
-                reasoningMaxTokens: attempt == 1 ? null : 0,
+                // Thinking within a budget on the first try, off on the
+                // second: unbounded thinking over a long index is what
+                // ran Kimi past the cutoff.
+                reasoningMaxTokens: attempt == 1 ? kWorldThinkTokens : 0,
                 toolChoice: kWorldScoutToolName,
               ),
               worldScoutToolSchema(),
             )
-            .timeout(callTimeout);
+            .timeout(deadline);
       } on TimeoutException {
         // A part the server never answers is asked once more, not waited
         // on for ever; a second silence is a transport failure upstream.
-        debugPrint(
-          '[World] scout part try $attempt: no answer in $callTimeout',
-        );
+        debugPrint('[World] scout part try $attempt: no answer in $deadline');
         llm.abortGeneration();
         if (attempt == 2) rethrow;
         continue;
@@ -346,7 +351,12 @@ class WorldScoutRunner {
         ? ' (part $index of $total — the parts are merged after; propose '
               'the cards these titles support)'
         : '';
-    final (lo, hi) = depth.scoutRange;
+    // Each part is asked for its share; the parts are merged after.
+    final (lo0, hi0) = depth.scoutRange;
+    final lo = total > 1
+        ? max(kWorldScoutPartCardsMin, (lo0 / total).ceil())
+        : lo0;
+    final hi = total > 1 ? max(lo + 5, (hi0 / total).ceil()) : hi0;
     return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
         '${worldMomentLine(moment)}'

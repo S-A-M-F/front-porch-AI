@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -312,6 +313,39 @@ String worldScoutShelfNote({
 /// The third Kimi run sat 30 minutes inside one profile call.
 const Duration kWorldToolCallTimeout = Duration(minutes: 6);
 
+/// The cutoff grows with the answer: the base, and the base again for every
+/// [kWorldTimeoutTokensPerBase] tokens the reply may run. Sixty cards with
+/// thinking on took Kimi K2.6 past a flat six minutes twice, and the answer
+/// was thrown away each time.
+const int kWorldTimeoutTokensPerBase = 4096;
+
+Duration worldToolTimeoutFor(Duration base, int replyTokens) => Duration(
+  microseconds:
+      base.inMicroseconds +
+      base.inMicroseconds * max(0, replyTokens) ~/ kWorldTimeoutTokensPerBase,
+);
+
+/// How much a first try may think. Unbounded thinking over a long index is
+/// what ran past the cutoff; the second try thinks not at all.
+const int kWorldThinkTokens = 4096;
+
+/// [params] with its thinking held to [kWorldThinkTokens] when it was left
+/// open-ended.
+GenerationParams worldThinkWithinBudget(GenerationParams params) {
+  if (!params.reasoningEnabled || params.reasoningMaxTokens != null) {
+    return params;
+  }
+  return GenerationParams(
+    prompt: params.prompt,
+    maxLength: params.maxLength,
+    minLength: params.minLength,
+    temperature: params.temperature,
+    reasoningEnabled: true,
+    reasoningMaxTokens: kWorldThinkTokens,
+    toolChoice: params.toolChoice,
+  );
+}
+
 /// One tool call, asked again once when the server stumbled (a thrown
 /// transport failure, a timeout) or the model never finished (no usable
 /// call). The first live run on nano-gpt lost a whole write batch to one
@@ -330,9 +364,10 @@ Future<LlmToolResponse?> askToolsTwice(
   Duration pause = const Duration(seconds: 2),
   Duration timeout = kWorldToolCallTimeout,
 }) async {
+  final deadline = worldToolTimeoutFor(timeout, params.maxLength);
   for (var attempt = 1; attempt <= 2; attempt++) {
     final sent = attempt == 1
-        ? params
+        ? worldThinkWithinBudget(params)
         : GenerationParams(
             prompt: params.prompt,
             maxLength: params.maxLength,
@@ -343,7 +378,7 @@ Future<LlmToolResponse?> askToolsTwice(
             toolChoice: params.toolChoice,
           );
     try {
-      final resp = await llm.generateWithTools(sent, tools).timeout(timeout);
+      final resp = await llm.generateWithTools(sent, tools).timeout(deadline);
       if (resp != null &&
           !resp.isUnusableNativeToolCall &&
           resp.calls.isNotEmpty) {
@@ -367,7 +402,7 @@ Future<LlmToolResponse?> askToolsTwice(
         '(finish=${resp?.finishReason})',
       );
     } on TimeoutException {
-      debugPrint('[World] $label try $attempt: no answer in $timeout');
+      debugPrint('[World] $label try $attempt: no answer in $deadline');
       llm.abortGeneration();
     } catch (e) {
       debugPrint('[World] $label try $attempt miss ($e)');

@@ -43,14 +43,18 @@ mixin WorldWizardGate on ChangeNotifier {
   }
 
   /// Setup's Next: ask the model now if nothing has, then say whether the
-  /// wizard may go on. The one place the wizard itself loads a model.
+  /// wizard may go on. The one place the wizard itself loads a model. A
+  /// "no" is asked again too, the way a tap on the pill asks: a verdict may
+  /// be kept from another run, or filed by a server still loading the
+  /// model, and the user's press is the ask that settles it.
   Future<bool> ensureToolsChecked({
     required ChatService chat,
     required LLMProvider llm,
     required CreatorState creator,
   }) async {
     refreshToolsGate(chat: chat, llm: llm, creator: creator);
-    if (toolsGate == WorldToolsGate.notChecked) {
+    if (toolsGate == WorldToolsGate.notChecked ||
+        toolsGate == WorldToolsGate.failed) {
       toolsGate = WorldToolsGate.checking;
       error = null;
       notify();

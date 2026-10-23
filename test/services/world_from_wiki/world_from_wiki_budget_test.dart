@@ -101,6 +101,36 @@ void main() {
       },
     );
 
+    test(
+      'a big ask is split by cards too, each part taking every n-th line',
+      () {
+        final parts = splitWorldScoutIndex(
+          lines,
+          budget: const WorldWikiBudget(65536),
+          promptFor: _promptFor,
+          minParts: 3,
+        );
+        expect(parts, hasLength(3));
+        expect(parts[0].take(2).toList(), [lines[0], lines[3]]);
+        expect(parts[1].first, lines[1]);
+        expect(
+          parts.expand((p) => p).toSet(),
+          lines.toSet(),
+          reason: 'every title once',
+        );
+        // A small index is not cut into parts under the minimum.
+        expect(
+          splitWorldScoutIndex(
+            lines.take(30).toList(),
+            budget: const WorldWikiBudget(65536),
+            promptFor: _promptFor,
+            minParts: 3,
+          ),
+          hasLength(1),
+        );
+      },
+    );
+
     test('a 64K window asks the same index whole', () {
       final parts = splitWorldScoutIndex(
         lines,

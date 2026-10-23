@@ -304,7 +304,9 @@ describe('no model load until Next (web twin)', () => {
     expect(worldToolsAllowNext('ready')).toBe(true);
     expect(worldToolsAllowNext('notChecked')).toBe(true);
     expect(worldToolsAllowNext('checking')).toBe(false);
-    expect(worldToolsAllowNext('failed')).toBe(false);
+    // Changed 2026-10-23: a failed verdict is asked again on Next, not
+    // trusted; the old assertion pinned the dead end.
+    expect(worldToolsAllowNext('failed')).toBe(true);
     expect(worldToolsAllowNext('notRunning')).toBe(false);
   });
 

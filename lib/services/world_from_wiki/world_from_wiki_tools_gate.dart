@@ -53,9 +53,9 @@ String? worldFromWikiToolsCopy(WorldToolsGate gate, {bool onPhone = false}) {
           'now.';
     case WorldToolsGate.failed:
       return 'This model was tested and didn\'t answer the tool-calling check '
-          'correctly, so it can\'t be used for World from Wiki. Pick a '
-          'different model (for example Qwen 3 or Gemma 4), or press Check '
-          'now to ask this one again.';
+          'correctly, so it can\'t be used for World from Wiki. Next (or '
+          'Check now) asks it again; if it still answers in words, pick a '
+          'different model (for example Qwen 3 or Gemma 4).';
   }
 }
 

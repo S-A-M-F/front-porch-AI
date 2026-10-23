@@ -118,6 +118,7 @@ List<List<String>> splitWorldScoutIndex(
   required String Function(List<String> part) promptFor,
   int want = kWorldScoutReplyWant,
   int minPart = kWorldScoutMinPart,
+  int minParts = 1,
 }) {
   if (lines.isEmpty) return const [];
   final header = worldWikiEstimateTokens(promptFor(const []));
@@ -137,6 +138,16 @@ List<List<String>> splitWorldScoutIndex(
     used += cost;
   }
   if (part.isNotEmpty) parts.add(part);
+  // Parts by cards: a big ask is split so each answer stays short. Each
+  // part takes every n-th line, so all of them see the top of the ranking.
+  final byCards = min(minParts, lines.length ~/ minPart);
+  if (byCards > parts.length) {
+    final spread = List.generate(byCards, (_) => <String>[]);
+    for (var i = 0; i < lines.length; i++) {
+      spread[i % byCards].add(lines[i]);
+    }
+    return spread;
+  }
   return parts;
 }
 

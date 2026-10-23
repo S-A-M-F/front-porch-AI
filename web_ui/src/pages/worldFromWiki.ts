@@ -41,13 +41,16 @@ export function worldToolsCopy(gate: WorldToolsGate): string | null {
     case 'notChecked':
       return "This model hasn't been checked for tools yet. Next checks it first (on a local server that loads the model), or press Check now.";
     case 'failed':
-      return "This model was tested and didn't answer the tool-calling check correctly, so it can't be used for World from Wiki. Pick a different model (for example Qwen 3 or Gemma 4), or press Check now to ask this one again.";
+      return "This model was tested and didn't answer the tool-calling check correctly, so it can't be used for World from Wiki. Next (or Check now) asks it again; if it still answers in words, pick a different model (for example Qwen 3 or Gemma 4).";
   }
 }
 
-/** Next may go: the model passed, or nothing has asked it yet (Next asks). */
+/**
+ * Next may go: the model passed, nothing has asked it yet, or it failed once
+ * (Next asks it again rather than trusting a "no").
+ */
 export function worldToolsAllowNext(gate: WorldToolsGate): boolean {
-  return gate === 'ready' || gate === 'notChecked';
+  return gate === 'ready' || gate === 'notChecked' || gate === 'failed';
 }
 
 /**

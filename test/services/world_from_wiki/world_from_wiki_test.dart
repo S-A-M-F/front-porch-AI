@@ -949,6 +949,69 @@ void main() {
     );
   });
 
+  group('scout parts by cards', () {
+    final titles = List.generate(
+      300,
+      (i) => 'Title ${i.toString().padLeft(3, '0')}',
+    );
+    test(
+      'at Full depth a 300-title index that fits 64K is still asked in two '
+      'parts, each for its share of cards and each seeing the top of the '
+      'ranking',
+      () async {
+        final llm = _PartsLlm(cutAbove: 1000);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(65536),
+              depth: WorldWikiDepth.full,
+            ).run(
+              titles: titles,
+              tags: const {},
+              worldName: 'Neokosmos',
+              premise: 'A coastal republic.',
+            );
+        expect(run.parts, 2);
+        // The review and fill loops ask after the two parts.
+        expect(llm.partSizes.take(2).toList(), [150, 150]);
+        expect(llm.prompts[0], contains('part 1 of 2'));
+        expect(llm.prompts[0], contains('20–30 cards'));
+        expect(llm.prompts[0], contains('Title 000'));
+        expect(llm.prompts[0], contains('Title 002'));
+        expect(
+          llm.prompts[0],
+          isNot(contains('Title 001')),
+          reason: 'every part takes every n-th title',
+        );
+        expect(llm.prompts[1], contains('Title 001'));
+        expect(run.cards.take(4).map((c) => c.name).toList(), [
+          'Title 000',
+          'Title 002',
+          'Title 001',
+          'Title 003',
+        ]);
+      },
+    );
+    test('the cutoff grows with the answer the call may run', () {
+      expect(
+        worldToolTimeoutFor(const Duration(minutes: 6), 8192),
+        const Duration(minutes: 18),
+      );
+      expect(
+        worldToolTimeoutFor(const Duration(minutes: 6), 2048),
+        const Duration(minutes: 9),
+      );
+      expect(
+        worldToolTimeoutFor(const Duration(milliseconds: 50), 4096),
+        const Duration(milliseconds: 100),
+      );
+      expect(
+        worldToolTimeoutFor(const Duration(minutes: 6), 0),
+        const Duration(minutes: 6),
+      );
+    });
+  });
+
   group('scout inside the wizard\'s context', () {
     final titles = List.generate(
       300,
@@ -1388,7 +1451,9 @@ void main() {
           0,
           reason: 'the second ask has thinking off',
         );
-        expect(once.params.first.reasoningMaxTokens, isNull);
+        // Changed 2026-10-23: the first ask thinks within a budget, not
+        // open-ended (that ran Kimi past the cutoff).
+        expect(once.params.first.reasoningMaxTokens, kWorldThinkTokens);
         expect(run.cards, isNotEmpty);
         expect(run.failure, isNull);
 
@@ -1787,7 +1852,13 @@ void main() {
         worldName: 'Bleach (TYBW)',
         premise: 'x',
       );
-      expect(llm.params.map((p) => p.reasoningMaxTokens).toList(), [null, 0]);
+      // Changed 2026-10-23: the first try thinks within a budget (open-ended
+      // thinking over a long index ran Kimi past the cutoff); the second
+      // still thinks not at all.
+      expect(llm.params.map((p) => p.reasoningMaxTokens).toList(), [
+        kWorldThinkTokens,
+        0,
+      ]);
     });
 
     test(

@@ -119,8 +119,9 @@ class WorldFromWikiFacade {
       return {'ok': false, 'error': 'wikiUrl is required'};
     }
     var gate = _toolsGate();
-    if (gate == WorldToolsGate.notChecked) {
-      // The phone's Next: ask the model now, the way the desktop does.
+    if (gate == WorldToolsGate.notChecked || gate == WorldToolsGate.failed) {
+      // The phone's Next: ask the model now, the way the desktop does; a
+      // "no" is asked again rather than trusted.
       await _chat.retestToolsFor();
       gate = _toolsGate();
     }

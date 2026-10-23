@@ -119,10 +119,13 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
       case 0:
         nextLabel = 'Next: Book';
         // Next is the one press that may load a model: an unchecked model
-        // is asked here, not when it was picked.
+        // is asked here, not when it was picked, and a model that failed
+        // once is asked again rather than trusted to have failed.
         final gate = worldState.toolsGate;
         onNext =
-            gate == WorldToolsGate.ready || gate == WorldToolsGate.notChecked
+            gate == WorldToolsGate.ready ||
+                gate == WorldToolsGate.notChecked ||
+                gate == WorldToolsGate.failed
             ? () async {
                 final ok = await worldState.ensureToolsChecked(
                   chat: _chat,

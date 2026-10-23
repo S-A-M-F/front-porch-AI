@@ -12,6 +12,14 @@ enum WorldWikiDepth { quick, full, deep }
 /// The Book step's default: reviews on, a hundred cards.
 const WorldWikiDepth kWorldWikiDepthDefault = WorldWikiDepth.full;
 
+/// The most cards one scout part is asked for. Sixty cards with thinking on
+/// took Kimi K2.6 past a six-minute cutoff twice, and each time the answer
+/// was thrown away; forty is what the quick runs answered in minutes.
+const int kWorldScoutCardsPerPart = 40;
+
+/// The fewest cards a part is asked for once the range is shared out.
+const int kWorldScoutPartCardsMin = 10;
+
 extension WorldWikiDepthX on WorldWikiDepth {
   static WorldWikiDepth fromIndex(int? i) => switch (i) {
     0 => WorldWikiDepth.quick,
@@ -49,6 +57,10 @@ extension WorldWikiDepthX on WorldWikiDepth {
     WorldWikiDepth.full => (40, 60),
     WorldWikiDepth.deep => (50, 80),
   };
+
+  /// How many parts the index is asked in at least, so that no one answer
+  /// runs past [kWorldScoutCardsPerPart] cards (a small index stays one).
+  int get scoutParts => (scoutRange.$2 / kWorldScoutCardsPerPart).ceil();
 
   /// A place with fewer cards than this is a gap the fill loop works.
   int get perPlaceMin => switch (this) {
