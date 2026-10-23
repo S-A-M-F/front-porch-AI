@@ -56,7 +56,7 @@ Continue keeps counting the zone it strips. That is the cache-friendly choice (s
 
 ## 5. Where it shows
 
-- The Context Viewer's budget rows already report the shrunken blocks; a one-line note in the viewer says which rungs ran ("Notes trimmed to fit: world prose, Journal to 400"), desktop and web, next to the existing dropped-messages note.
+- The Context Viewer's budget rows already report the shrunken blocks; a one-line note in the viewer says which rungs ran ("Notes trimmed to fit: Journal to 400, side goals"), desktop and web, next to the existing dropped-messages note.
 - No sidebar change. The Journal, objectives and world panels keep showing everything the engine holds; the ladder hides, it never erases.
 
 ## Open questions for the maintainer
@@ -75,4 +75,4 @@ One note in the Context Budget on both surfaces. No setting, so no parity-manife
 ## Status
 
 - 2026-10-23: draft from the prompt-assembly audit. Awaiting the maintainer's word on the open questions.
-- 2026-10-23, rulings: the floor is six pairs; the primary objective never leaves the prompt. The maintainer asked whether the chat could compact the way an agent compacts near its context limit; that is what the recap is, and the gap is its trigger, so compaction on approach (part 3) is in and the recap is no longer a rung. Two PRs: the ladder, then compaction.
+- 2026-10-23, rulings: the floor is six pairs; the primary objective never leaves the prompt; the world block never yields (the maintainer: dropping world prose to one line is not a good idea), so the ladder has four rungs. The maintainer asked whether the chat could compact the way an agent compacts near its context limit; that is what the recap is, and the gap is its trigger, so compaction on approach (part 3) is in and the recap is no longer a rung. Two PRs: the ladder, then compaction.
