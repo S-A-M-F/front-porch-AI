@@ -548,6 +548,18 @@ export function ChatPage() {
         chance={chance}
         onReveal={revealFate}
         onAccept={acceptFate}
+        placeMint={state.pendingMint ?? null}
+        onAnswerPlaceMint={async (action) => {
+          try {
+            const res = await api.post<{ ok?: boolean; error?: string }>(
+              '/api/chat/place-mint',
+              { action },
+            );
+            if (!res.ok && res.error) setImportNotice(res.error);
+          } catch (e) {
+            setImportNotice(e instanceof Error ? e.message : String(e));
+          }
+        }}
         placeMove={state.pendingPlaceMove ?? null}
         onAnswerPlaceMove={(accept) =>
           void api.post('/api/chat/place-move', { accept }).catch(() => {})

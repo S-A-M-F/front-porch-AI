@@ -270,6 +270,13 @@ class ChatStateSnapshot {
       // Slice 6 (additive): a suggested scene move awaiting the author.
       // The PWA shows the same dialog the desktop does; answering it is
       // one POST. Absent key on an older desktop relay = no offer.
+      // Slice 7 (additive): a proposed NAMED new place awaiting the tap.
+      'pendingMint': _chat.pendingPlaceMint == null
+          ? null
+          : {
+              'name': _chat.pendingPlaceMint!.name,
+              'descriptor': _chat.pendingPlaceMint!.descriptor,
+            },
       'pendingPlaceMove': _chat.pendingPlaceMove == null
           ? null
           : {

@@ -63,6 +63,9 @@ export interface ChatState {
   // the PWA twin of the desktop confirm dialog. Answering is one POST
   // to /api/chat/place-move; the flag clears on the next snapshot.
   pendingPlaceMove?: { id: string; name: string } | null;
+  // Slice 7 (additive): a proposed NAMED new place from the clock
+  // judge's 'new' answer. Answered via POST /api/chat/place-mint.
+  pendingMint?: { name: string; descriptor: string } | null;
   // Chaos "Chance Time" park state: while pending, the engine is frozen waiting
   // for the user to accept their fate (event is pre-resolved server-side).
   chanceTime?: { pending: boolean; event?: string };

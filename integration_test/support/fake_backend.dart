@@ -597,6 +597,27 @@ class FakeBackendServer {
       eval['posture'] = 'standing';
       eval['minutes_elapsed'] = 5;
       eval['new_day'] = false;
+      // Slice 7 mint journey: when the prompt OFFERS scene_place (the
+      // Scene suggestions switch is on and the setting has relatives),
+      // answer with a named arrival that is not in the offered list —
+      // the exact shape that must route to the mint dialog, not a move.
+      if (lastContent.contains('"scene_place"')) {
+        eval['scene_place'] = 'new';
+        eval['new_place_name'] = 'The Salt Garden';
+        eval['new_place_descriptor'] = 'hedged beds beside the tideline';
+      }
+    }
+    // Place-mint draft (slice 7). The PlaceFactory prompt is the only
+    // one asking for 'lore_entries'; answer with three so the cap
+    // 3-5 passes and the mint journey exercises the real save law.
+    if (lastContent.contains('"lore_entries"')) {
+      eval['short_description'] =
+          'A small courtyard of salt-bleached stone by the tideline.';
+      eval['lore_entries'] = [
+        {'name': 'Salt walls', 'keys': 'salt,wall', 'content': 'The walls weep brine.'},
+        {'name': 'Well', 'keys': 'well', 'content': 'A stone well in the centre.'},
+        {'name': 'Gate', 'keys': 'gate', 'content': 'An iron gate to the harbour.'},
+      ];
     }
     // Glance pass (21bfd8c3). Same trap as climax above: unmatched key
     // falls through to CHAT, bumps chatRequests, clobbers lastChatBody —

@@ -56,6 +56,8 @@ export function ChatOverlays(props: {
   onAccept: () => void | Promise<void>;
   imagePromptReview?: string;
   placeMove?: { id: string; name: string } | null;
+  placeMint?: { name: string; descriptor: string } | null;
+  onAnswerPlaceMint?: (action: 'add_move' | 'add' | 'ignore') => void | Promise<void>;
   onAnswerPlaceMove?: (accept: boolean) => void | Promise<void>;
   pendingConfirm: PendingConfirm | null;
   onConfirmPending: () => void | Promise<void>;
@@ -147,6 +149,15 @@ export function ChatOverlays(props: {
         />
       )}
 
+      {props.placeMint && (
+        <PlaceMintModal
+          mint={props.placeMint}
+          onAnswer={(action) =>
+            void (props.onAnswerPlaceMint ?? (() => {}))(action)
+          }
+        />
+      )}
+
       {props.placeMove && (
         <PlaceMoveModal
           move={props.placeMove}
@@ -183,6 +194,35 @@ export function PlaceMoveModal(props: {
         <div className="mt-4 flex justify-end gap-2">
           <button className="fp-btn" onClick={() => props.onAnswer(false)}>Stay</button>
           <button className="fp-btn fp-btn-accent" onClick={() => props.onAnswer(true)}>Move there</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/// Slice 7: the web twin of the desktop mint dialog. Same question,
+/// the same three honest answers, straight from the snapshot flag.
+export function PlaceMintModal(props: {
+  mint: { name: string; descriptor: string };
+  onAnswer: (action: 'add_move' | 'add' | 'ignore') => void;
+}) {
+  const { name, descriptor } = props.mint;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-label="A new place in the story">
+      <div className="fp-card w-[420px] max-w-[92vw] p-5">
+        <div className="mb-2 font-semibold">✨ A new place in the story</div>
+        <p className="fp-dim">
+          The story just described {name}
+          {descriptor ? ` — ${descriptor}` : ''}. Save it as a place?
+        </p>
+        <p className="fp-faint mt-2 text-xs">
+          It arrives with a short description and a few lore entries written
+          from what the story showed, inheriting the setting's weather.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="fp-btn" onClick={() => props.onAnswer('ignore')}>Ignore</button>
+          <button className="fp-btn" onClick={() => props.onAnswer('add')}>Just add</button>
+          <button className="fp-btn fp-btn-accent" onClick={() => props.onAnswer('add_move')}>Add and move</button>
         </div>
       </div>
     </div>
