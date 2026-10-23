@@ -34,6 +34,8 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/dialogs/dialogs.dart';
 import 'package:front_porch_ai/ui/image_studio/image_studio.dart';
 
+import 'chat_page_scene_location_dialogs.dart';
+
 /// The Chance Time wheel, over the chat.
 void showChanceTimeOverlay(BuildContext context) {
   showDialog(
@@ -53,6 +55,7 @@ class ChatScenePrompts {
 
   bool _showingGuestDetection = false;
   bool _showingPlaceMove = false;
+  bool _showingPlaceMint = false;
   bool _showingGuestPicker = false;
   bool _showingImageReview = false;
 
@@ -82,6 +85,17 @@ class ChatScenePrompts {
       _showingPlaceMove = true;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _showPlaceMoveDialog(context, chat),
+      );
+    }
+    // Slice 7: the judge heard a NAMED new place — offer the mint.
+    // The two locations asks never stack: a mint waits for the move
+    // to be answered (the move flow re-checks when it returns).
+    if (chat.pendingPlaceMove == null &&
+        chat.pendingPlaceMint != null &&
+        !_showingPlaceMint) {
+      _showingPlaceMint = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showPlaceMintDialog(context, chat),
       );
     }
     // Scene Guest `/join` picker — same pending-flag pattern.
@@ -154,46 +168,32 @@ class ChatScenePrompts {
     chat.resolveImagePromptReview(result);
   }
 
+  Future<void> _showPlaceMintDialog(
+    BuildContext context,
+    ChatService chat,
+  ) async {
+    try {
+      await showPlaceMintFlow(context, chat);
+    } finally {
+      // The one-shot guard must release even if the flow throws, or a
+      // second proposal this chat never gets a dialog (review #607
+      // blocker class).
+      _showingPlaceMint = false;
+    }
+  }
+
   Future<void> _showPlaceMoveDialog(
     BuildContext context,
     ChatService chat,
   ) async {
-    final move = chat.pendingPlaceMove;
-    if (move == null || !context.mounted) {
+    try {
+      await showPlaceMoveFlow(context, chat);
+    } finally {
       _showingPlaceMove = false;
-      return;
     }
-    final prompt = PlaceMoveDialog(
-      move: move,
-      setting: chat.chatPrimaryWorldId == null
-          ? null
-          : Provider.of<WorldRepository>(
-              context,
-              listen: false,
-            ).worldById(chat.chatPrimaryWorldId!),
-    );
-    final go = await showWarmDialog<bool>(
-      context,
-      title: prompt.title,
-      icon: Icons.explore_outlined,
-      content: Builder(builder: (ctx) => prompt.build(ctx)),
-      barrierDismissible: false,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Stay'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Move there'),
-        ),
-      ],
-    );
-    _showingPlaceMove = false;
-    if (go == true) {
-      await chat.acceptPlaceMove();
-    } else {
-      chat.declinePlaceMove();
+    if (chat.pendingPlaceMint != null && !_showingPlaceMint) {
+      _showingPlaceMint = true;
+      await _showPlaceMintDialog(context, chat);
     }
   }
 

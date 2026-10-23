@@ -118,7 +118,15 @@ String? realismToolCallToJson(String toolName, List<LlmToolCall> calls) {
           final s = v.toString().trim();
           // Empty today_sentence is abandon (same clamp as the JSON path).
           // Other string fields still treat empty as omit.
-          if (s.isNotEmpty || entry.key == 'today_sentence') {
+          // today_sentence: empty means abandon. The place-mint trio:
+          // empty is a meaningful "the narration said nothing" answer
+          // that must reach PlaceFactory, which refuses honestly rather
+          // than silently re-rolling on the text floor.
+          if (s.isNotEmpty ||
+              entry.key == 'today_sentence' ||
+              entry.key == 'short_description' ||
+              entry.key == 'new_place_name' ||
+              entry.key == 'new_place_descriptor') {
             out[entry.key] = s;
           }
       }
