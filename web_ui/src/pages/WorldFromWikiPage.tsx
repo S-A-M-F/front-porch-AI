@@ -4,7 +4,7 @@
 // World from wiki — web twin of the desktop studio wizard. Scout proposes a
 // shelf; write runs on the Dart host; save is POST /api/worlds.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { ChatSocket } from '../api/ws';
@@ -28,10 +28,14 @@ import {
   shelfSections,
   signedCards,
   worldToolsCanRetest,
+  pushWorldProgress,
+  worldElapsedLabel,
   worldToolsCopy,
   type ProposedWorldCard,
   type ProposedWorldPlace,
+  type WorldProgressLine,
 } from './worldFromWiki';
+import { WorldProgressPanel } from './WorldProgressPanel';
 
 type Status = {
   available: boolean;
@@ -87,7 +91,29 @@ export function WorldFromWikiPage() {
   const [catalogCopy, setCatalogCopy] = useState('');
   const [reviewNote, setReviewNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const [writeStatus, setWriteStatus] = useState('');
+  // What the host is doing now, the lines before it, and when the run began.
+  const [liveStatus, setLiveStatus] = useState('');
+  const [liveLog, setLiveLog] = useState<WorldProgressLine[]>([]);
+  const [liveSince, setLiveSince] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const liveSinceRef = useRef<number | null>(null);
+  const startRun = (first: string) => {
+    const now = Date.now();
+    liveSinceRef.current = now;
+    setLiveSince(now);
+    setElapsedMs(0);
+    setLiveStatus(first);
+    setLiveLog(pushWorldProgress([], first, 0));
+  };
+  const endRun = () => {
+    liveSinceRef.current = null;
+    setLiveSince(null);
+  };
+  useEffect(() => {
+    if (liveSince == null) return;
+    const tick = window.setInterval(() => setElapsedMs(Date.now() - liveSince), 1000);
+    return () => window.clearInterval(tick);
+  }, [liveSince]);
   const [error, setError] = useState('');
   const [entries, setEntries] = useState<LoreEntry[]>([]);
   const [aborted, setAborted] = useState(false);
@@ -145,9 +171,13 @@ export function WorldFromWikiPage() {
   useEffect(() => {
     const socket = new ChatSocket((e) => {
       if (e.event === 'world_wiki_status' && e.data) {
-        setWriteStatus(e.data);
+        const line = e.data;
+        const since = liveSinceRef.current;
+        setLiveStatus(line);
+        setLiveLog((log) => pushWorldProgress(log, line, since == null ? 0 : Date.now() - since));
       } else if (e.event === 'world_wiki_done') {
         setBusy(false);
+        endRun();
         if (typeof e.description === 'string' && e.description) {
           setDescription(e.description);
         }
@@ -189,11 +219,13 @@ export function WorldFromWikiPage() {
         setStep(3);
       } else if (e.event === 'world_wiki_abort') {
         setBusy(false);
+        endRun();
         setAborted(true);
         setEntries([]);
-        setWriteStatus(e.data || 'Stopped.');
+        setLiveStatus(e.data || 'Stopped.');
       } else if (e.event === 'world_wiki_error') {
         setBusy(false);
+        endRun();
         setError(e.error || 'Write failed');
       }
     });
@@ -220,6 +252,7 @@ export function WorldFromWikiPage() {
     }
     setBusy(true);
     setError('');
+    startRun('Rummaging through the wiki…');
     try {
       const r = await api.post<{
         proposed?: unknown;
@@ -257,6 +290,7 @@ export function WorldFromWikiPage() {
       setError(e instanceof ApiError ? e.message : 'Scout failed');
     } finally {
       setBusy(false);
+      endRun();
     }
   };
 
@@ -269,7 +303,7 @@ export function WorldFromWikiPage() {
     setBusy(true);
     setAborted(false);
     setError('');
-    setWriteStatus('Writing…');
+    startRun('Writing…');
     setStep(2);
     try {
       await api.post('/api/worlds/from-wiki/write', {
@@ -286,6 +320,7 @@ export function WorldFromWikiPage() {
       });
     } catch (e) {
       setBusy(false);
+      endRun();
       setError(e instanceof ApiError ? e.message : 'Could not start write');
     }
   };
@@ -395,6 +430,7 @@ export function WorldFromWikiPage() {
       );
     } finally {
       setBusy(false);
+      endRun();
     }
   };
 
@@ -540,6 +576,14 @@ export function WorldFromWikiPage() {
               />
               <span>Climate (off by default — no biome json)</span>
             </label>
+            {busy && (
+              <WorldProgressPanel
+                status={liveStatus}
+                fallback="Scouting…"
+                log={liveLog}
+                elapsed={worldElapsedLabel(elapsedMs)}
+              />
+            )}
           </div>
         )}
 
@@ -616,7 +660,12 @@ export function WorldFromWikiPage() {
 
         {step === 2 && (
           <div className="cg-config">
-            <p>{writeStatus || 'Writing lorebook cards…'}</p>
+            <WorldProgressPanel
+              status={liveStatus}
+              fallback="Writing lorebook cards…"
+              log={liveLog}
+              elapsed={worldElapsedLabel(elapsedMs)}
+            />
             <p className="muted small">Nothing is saved until Preview.</p>
             <button type="button" disabled={!busy} onClick={() => void abortWrite()}>
               Stop

@@ -16,6 +16,7 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_ops.dart
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_scout.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_places.dart';
+import 'world_progress_copy.dart';
 
 /// Scout result: index size plus proposed cards (default unsigned).
 class WorldScoutResult {
@@ -148,6 +149,7 @@ class WorldFromWikiEngine {
     required String premise,
   }) async {
     _aborted = false;
+    onProgress?.call(worldProgressRummaging());
     final catalog = await scan(
       seedQuery: [
         worldName.trim(),
@@ -157,7 +159,9 @@ class WorldFromWikiEngine {
     if (_aborted) {
       return WorldScoutResult(catalog: catalog, proposed: const []);
     }
-    onProgress?.call('Scouting ${catalog.titles.length} titles…');
+    onProgress?.call(
+      worldProgressCatalog(catalog.titles.length, ranked: catalog.ranked),
+    );
     final runner =
         WorldScoutRunner(
             llm: llm,
@@ -233,7 +237,7 @@ class WorldFromWikiEngine {
       onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
       stop: () => _aborted,
     );
-    onProgress?.call('Reading $k articles…');
+    onProgress?.call(worldProgressReading(k));
     final planned = await batches.toList();
     final written = await forEachLimited(planned, writeConcurrency, (
       i,
@@ -245,7 +249,9 @@ class WorldFromWikiEngine {
         '[World] write batch ${i + 1}/${planned.length} '
         'names=${batch.cards.map((c) => c.name).join(', ')}',
       );
-      onProgress?.call('Writing ${batch.cards.length} cards ($done/$k)');
+      onProgress?.call(
+        worldProgressWriting(done - batch.cards.length + 1, done, k),
+      );
       final generated = await writeBatch(
         cards: batch.cards,
         articles: batch.articles,
@@ -383,6 +389,7 @@ class WorldFromWikiEngine {
       ),
       tools: worldLoreBatchToolSchema(),
       label: 'write batch of ${cards.length}',
+      note: onProgress,
       toolName: kWorldLoreBatchToolName,
       floorKey: 'entries',
       pause: retryPause,
@@ -427,7 +434,7 @@ class WorldFromWikiEngine {
     required String worldName,
     required String premise,
   }) async {
-    onProgress?.call('Writing climate…');
+    onProgress?.call(worldProgressClimate());
     final catalog = await scan();
     final titles = [
       for (final t in catalog.titles)
@@ -465,6 +472,7 @@ class WorldFromWikiEngine {
         ),
         tools: worldClimateToolSchema(),
         label: 'climate',
+        note: onProgress,
         toolName: kWorldClimateToolName,
         floorKey: 'biome',
         pause: retryPause,

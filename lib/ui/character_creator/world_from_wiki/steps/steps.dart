@@ -4,4 +4,5 @@
 export 'book_step.dart';
 export 'preview_step.dart';
 export 'review_step.dart';
+export 'world_progress_panel.dart';
 export 'write_step.dart';

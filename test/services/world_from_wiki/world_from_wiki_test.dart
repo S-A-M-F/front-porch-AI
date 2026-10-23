@@ -949,6 +949,81 @@ void main() {
     );
   });
 
+  group('progress lines', () {
+    test('a scout and a write say what they are doing, with cheek', () async {
+      final lines = <String>[];
+      final llm = _ToolsLlm();
+      final engine = WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: llm,
+        onProgress: lines.add,
+      );
+      final scout = await engine.scout(worldName: 'The quay', premise: 'x');
+      expect(lines.first, 'Rummaging through the wiki…');
+      expect(lines, contains(startsWith('Found ')));
+      expect(lines.join('\n'), contains('Picking the ones that matter'));
+      lines.clear();
+      await engine.write(
+        scout.proposed.take(2).toList(),
+        worldName: 'The quay',
+        premise: 'x',
+        climateEnabled: true,
+      );
+      expect(lines, contains(startsWith('Reading up on ')));
+      expect(lines, contains(startsWith('Writing card')));
+      expect(lines, contains(startsWith('Reading 2 fresh entries')));
+      expect(lines, contains('Checking the weather…'));
+    });
+
+    test('a stumble and a hang are said, not hidden', () async {
+      WorldProposedCard card(String n) => WorldProposedCard(
+        name: n,
+        keys: [n],
+        role: WorldCraftRole.leaf,
+        sourceTitles: const ['Ceolwynn'],
+      );
+      final lines = <String>[];
+      final flaky = _FlakyWriteLlm(failFirst: 1);
+      final engine = WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: flaky,
+        onProgress: lines.add,
+      )..retryPause = Duration.zero;
+      await engine.write(
+        [card('Schrift')],
+        worldName: 'Bleach (TYBW)',
+        premise: 'x',
+      );
+      expect(lines, contains(startsWith('The server stumbled')));
+
+      lines.clear();
+      final hung = _FlakyWriteLlm(failFirst: 0, hangTimes: 1);
+      final again = WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: hung,
+        onProgress: lines.add,
+      )
+        ..retryPause = Duration.zero
+        ..callTimeout = const Duration(milliseconds: 50);
+      await again.write(
+        [card('Schrift')],
+        worldName: 'Bleach (TYBW)',
+        premise: 'x',
+      );
+      expect(lines, contains(startsWith('No answer in ')));
+    });
+
+    test('elapsed time reads as a clock face', () {
+      expect(worldElapsedLabel(Duration.zero), '0:00');
+      expect(worldElapsedLabel(const Duration(seconds: 42)), '0:42');
+      expect(worldElapsedLabel(const Duration(minutes: 12, seconds: 5)), '12:05');
+      expect(
+        worldElapsedLabel(const Duration(hours: 1, minutes: 3, seconds: 9)),
+        '1:03:09',
+      );
+    });
+  });
+
   group('scout parts by cards', () {
     final titles = List.generate(
       300,

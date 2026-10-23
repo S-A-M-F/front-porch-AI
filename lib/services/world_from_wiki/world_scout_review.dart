@@ -39,7 +39,7 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
     required String premise,
   }) async {
     final result = await runWorldLoop<WorldShelf>(
-      stage: 'Reviewing the shelf',
+      stage: 'Reading the shelf as a roleplay world',
       tries: depth.tries,
       status: (m) => onProgress?.call('$m…'),
       stop: () => isAborted?.call() ?? false,
@@ -128,6 +128,7 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
       ),
       tools: worldShelfReviewToolSchema(),
       label: 'shelf review',
+      note: onProgress,
       toolName: kWorldShelfReviewToolName,
       floorKey: 'pass',
       pause: retryPause,
@@ -179,6 +180,7 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
       ),
       tools: worldScoutToolSchema(),
       label: 'shelf revise',
+      note: onProgress,
       toolName: kWorldScoutToolName,
       floorKey: 'cards',
       pause: retryPause,

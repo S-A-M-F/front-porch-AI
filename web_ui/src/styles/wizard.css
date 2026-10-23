@@ -97,3 +97,18 @@ button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transpar
   width: 56px; height: 56px; flex: none; object-fit: cover;
   border-radius: var(--radius); border: 1px solid var(--border);
 }
+
+/* ── World from Wiki progress panel (what the host is doing, with the time taken) ── */
+.world-progress { display: flex; flex-direction: column; gap: 6px; }
+.world-progress-now { display: flex; align-items: flex-start; gap: 10px; margin: 0; }
+.world-progress-text { flex: 1; line-height: 1.35; }
+.world-progress-elapsed { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.world-progress-spin {
+  width: 14px; height: 14px; margin-top: 3px; flex-shrink: 0; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: world-progress-turn 0.9s linear infinite;
+}
+@keyframes world-progress-turn { to { transform: rotate(360deg); } }
+.world-progress-log { list-style: none; margin: 0; padding: 0 0 0 24px; display: flex; flex-direction: column; gap: 2px; }
+.world-progress-at { font-variant-numeric: tabular-nums; opacity: 0.8; margin-right: 6px; }
+@media (prefers-reduced-motion: reduce) { .world-progress-spin { animation: none; } }

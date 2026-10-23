@@ -20,6 +20,7 @@ import 'world_from_wiki_ops.dart';
 import 'world_from_wiki_tools.dart';
 import 'world_review_loop.dart';
 import 'world_review_tools.dart';
+import 'world_progress_copy.dart';
 
 /// Characters of each article the reviewer sees beside its entry.
 const int kWorldEntryReviewArticleChars = 1200;
@@ -60,11 +61,18 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
           toReview.add(d);
         }
       }
+      if (problems.isNotEmpty) {
+        onProgress?.call(
+          worldProgressThin(problems.length, problems.values.first.first),
+        );
+      }
       if (toReview.isNotEmpty) {
         onProgress?.call(
-          attempt == 1
-              ? 'Reviewing ${toReview.length} entries…'
-              : 'Reviewing ${toReview.length} revised entries (try $attempt of ${depth.tries})…',
+          worldProgressEntriesReview(
+            toReview.length,
+            attempt: attempt,
+            of: depth.tries,
+          ),
         );
         final verdicts = await _reviewEntries(
           toReview,
@@ -97,7 +105,7 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       }
       if (failingCards.isEmpty) break;
       onProgress?.call(
-        'Revising ${failingCards.length} entries (try ${attempt + 1} of ${depth.tries})…',
+        worldProgressRewrite(failingCards.length, attempt + 1, depth.tries),
       );
       final revised = await _reviseEntries(
         failingCards,
@@ -167,6 +175,7 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       ),
       tools: worldEntriesReviewToolSchema(),
       label: 'entries review',
+      note: onProgress,
       toolName: kWorldEntriesReviewToolName,
       floorKey: 'verdicts',
       pause: retryPause,
@@ -224,6 +233,7 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       ),
       tools: worldLoreBatchToolSchema(),
       label: 'entries revise',
+      note: onProgress,
       toolName: kWorldLoreBatchToolName,
       floorKey: 'entries',
       pause: retryPause,

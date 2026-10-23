@@ -142,6 +142,9 @@ class WorldFromWikiFacade {
       contextTokens: _contextTokens(),
       depth: _depth,
       moment: body['moment']?.toString() ?? '',
+      onProgress: (msg) {
+        _hub?.broadcast({'event': 'world_wiki_status', 'data': msg});
+      },
     );
     final result = await engine.scout(
       worldName: body['name']?.toString() ?? '',

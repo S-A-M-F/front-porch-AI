@@ -23,6 +23,7 @@ import 'world_from_wiki_engine.dart';
 import 'world_from_wiki_ops.dart';
 import 'world_from_wiki_places_tools.dart';
 import 'world_places.dart';
+import 'world_progress_copy.dart';
 
 extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
   /// Signed cards + scout places → one book per place, profiles per
@@ -183,7 +184,12 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       if (aborted) return const <WorldCraftDraft>[];
       done += batch.cards.length;
       onProgress?.call(
-        'Writing $label: cards ${done - batch.cards.length + 1}–$done/$k',
+        worldProgressWriting(
+          done - batch.cards.length + 1,
+          done,
+          k,
+          book: label,
+        ),
       );
       final generated = await writeBatch(
         cards: batch.cards,
@@ -219,7 +225,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
   }) async {
     if (aborted) return null;
     final name = place?.name ?? worldName.trim();
-    onProgress?.call('Profiling $name');
+    onProgress?.call(worldProgressProfile(name));
     final titles = <String>[
       ...?place?.sourceTitles,
       for (final c in cards.take(4)) ...c.sourceTitles,
@@ -251,6 +257,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         ),
         tools: worldPlaceProfileToolSchema(),
         label: 'profile $name',
+        note: onProgress,
         toolName: kWorldPlaceProfileToolName,
         floorKey: 'description',
         pause: retryPause,

@@ -23,6 +23,7 @@ import 'world_from_wiki_tools.dart';
 import 'world_places.dart';
 import 'world_scout_fill.dart';
 import 'world_scout_review.dart';
+import 'world_progress_copy.dart';
 
 /// What one scout pass produced across every part of the index.
 class WorldScoutRun {
@@ -133,9 +134,7 @@ class WorldScoutRunner {
       final part = queue.removeAt(0);
       asked++;
       if (total > 1) {
-        onProgress?.call(
-          'Scouting part $asked of $total (${part.length} titles)…',
-        );
+        onProgress?.call(worldProgressScoutPart(asked, total, part.length));
       }
       final prompt = scoutPrompt(
         part,
@@ -190,6 +189,7 @@ class WorldScoutRunner {
           final (a, b) = halveWorldScoutPart(part);
           queue.insertAll(0, [a, b]);
           total += 1;
+          onProgress?.call(worldProgressHalving(a.length, b.length));
           debugPrint(
             '[World] scout part of ${part.length} titles cut at $reply '
             'tokens — asking again as ${a.length} + ${b.length}',
@@ -315,6 +315,7 @@ class WorldScoutRunner {
         debugPrint('[World] scout part try $attempt: no answer in $deadline');
         llm.abortGeneration();
         if (attempt == 2) rethrow;
+        onProgress?.call(worldProgressTimeout(deadline));
         continue;
       }
       final prose =
@@ -329,12 +330,14 @@ class WorldScoutRunner {
       final floor = worldScoutArgsFromText(resp.text);
       if (floor != null) {
         debugPrint('[World] scout read the shelf from the prose (text floor)');
+        onProgress?.call(worldProgressProseRead());
         return LlmToolResponse(
           calls: [LlmToolCall(name: kWorldScoutToolName, arguments: floor)],
           text: '',
           finishReason: resp.finishReason,
         );
       }
+      if (attempt == 1) onProgress?.call(worldProgressAskingAgain());
     }
     return resp;
   }

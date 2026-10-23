@@ -11,6 +11,7 @@ import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_w
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/utils/utils.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/world_progress_panel.dart';
 
 class WorldFromWikiBookStep extends StatelessWidget {
   const WorldFromWikiBookStep({super.key, required this.state});
@@ -236,25 +237,7 @@ class WorldFromWikiBookStep extends StatelessWidget {
               ),
               if (state.scouting) ...[
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: StudioColors.amberOf(context),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        state.status.isEmpty ? 'Scouting…' : state.status,
-                        style: TextStyle(color: StudioColors.proseOf(context)),
-                      ),
-                    ),
-                  ],
-                ),
+                WorldProgressPanel(state: state, fallback: 'Scouting…'),
               ],
               if (state.error != null) ...[
                 const SizedBox(height: 12),

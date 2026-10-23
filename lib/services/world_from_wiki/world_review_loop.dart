@@ -7,6 +7,7 @@
 // answer so a harsh reviewer never dead-ends the run. Plain Dart.
 
 import 'package:flutter/foundation.dart';
+import 'world_progress_copy.dart';
 
 /// What a reviewer said. [parsed] false means the review could not be
 /// read, which accepts the output rather than failing it.
@@ -88,7 +89,9 @@ Future<WorldLoopResult<T>> runWorldLoop<T>({
   for (var attempt = 1; attempt <= rounds; attempt++) {
     if (stop?.call() ?? false) break;
     status?.call(
-      attempt == 1 ? stage : '$stage (revising — try $attempt of $rounds)',
+      attempt == 1
+          ? stage
+          : worldProgressRevising(stage, feedback, attempt, rounds),
     );
     final output = await generate(attempt, previous, feedback);
     if (output == null) {
@@ -142,7 +145,7 @@ Future<WorldLoopResult<T>> runWorldLoop<T>({
         bestAttempt: attempt,
       );
     }
-    status?.call('$stage — checking the result…');
+    status?.call(worldProgressReviewerReading(stage));
     final verdict = await review(output);
     if (!verdict.parsed) {
       notes.add(

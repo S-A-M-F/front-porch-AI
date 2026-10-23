@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/world_progress_panel.dart';
 
 class WorldFromWikiWriteStep extends StatelessWidget {
   const WorldFromWikiWriteStep({super.key, required this.state});
@@ -25,17 +26,22 @@ class WorldFromWikiWriteStep extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (state.writing)
-                CircularProgressIndicator(color: StudioColors.amberOf(context)),
-              const SizedBox(height: 24),
-              Text(
-                state.status.isEmpty ? 'Writing lorebook cards…' : state.status,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: StudioColors.inkOf(context),
+                WorldProgressPanel(
+                  state: state,
+                  fallback: 'Writing lorebook cards…',
+                )
+              else
+                Text(
+                  state.status.isEmpty
+                      ? 'Writing lorebook cards…'
+                      : state.status,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: StudioColors.inkOf(context),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Text(
                 '$done of $n cards. Nothing is saved until Preview.',
                 textAlign: TextAlign.center,

@@ -81,11 +81,15 @@ describe('World from Wiki tools gate on the phone', () => {
     const text = copy()?.textContent ?? '';
     expect(text).toContain("was tested and didn't answer the tool-calling check");
     expect(text).toContain("can't be used for World from Wiki");
-    expect(text).toContain('Pick a different model');
+    // Changed 2026-10-23: a failed verdict is asked again on Next (the
+    // phone's Scout) and by Check now, not trusted; the old assertions
+    // pinned a dead end on a verdict that may be kept from another run or
+    // filed while the server was still loading the model.
+    expect(text).toContain('pick a different model');
     expect(text).not.toContain('Checking');
     expect(text).not.toContain('running first');
-    expect(scout().disabled).toBe(true);
-    expect(retest()).toBeNull();
+    expect(scout().disabled).toBe(false);
+    expect(retest()).not.toBeNull();
   });
 
   it('offers Check now when the running model was never asked', async () => {

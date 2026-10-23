@@ -62,6 +62,37 @@ export function worldToolsCanRetest(gate: WorldToolsGate): boolean {
   return gate === 'notChecked' || gate === 'failed';
 }
 
+/** One line of what the host was doing, stamped with the time since the run started. */
+export type WorldProgressLine = { at: string; text: string };
+
+/** How many progress lines are kept; older ones fall off the top. */
+export const WORLD_PROGRESS_KEEP = 12;
+
+/** Clock-face elapsed time for the panel: 0:42, 12:05, 1:03:09. */
+export function worldElapsedLabel(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+/**
+ * One more line from the host (the same line twice in a row is kept once),
+ * stamped with the elapsed time, the log held to the last WORLD_PROGRESS_KEEP.
+ */
+export function pushWorldProgress(
+  log: WorldProgressLine[],
+  text: string,
+  elapsedMs: number,
+): WorldProgressLine[] {
+  const line = text.trim();
+  if (!line || (log.length > 0 && log[log.length - 1].text === line)) return log;
+  const next = [...log, { at: worldElapsedLabel(elapsedMs), text: line }];
+  return next.length > WORLD_PROGRESS_KEEP ? next.slice(next.length - WORLD_PROGRESS_KEEP) : next;
+}
+
 export type WorldCraftRole = 'era' | 'hub' | 'leaf' | 'crown';
 
 export type ProposedWorldCard = {

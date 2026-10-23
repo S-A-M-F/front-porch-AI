@@ -1,6 +1,8 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +14,7 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_wizard_gate.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_progress_log.dart';
 
 /// The wizard's context for one run: the Book step's own pick, or chat's
 /// when the pick is "Same as chat". Read at Scout and Write time, never
@@ -27,7 +30,39 @@ WorldWikiDepth worldWizardDepth(StorageService storage) =>
 
 /// Wizard state for World from wiki. Setup reuses [CreatorState].
 class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
+  WorldFromWikiState({DateTime Function()? now})
+    : progress = WorldProgressLog(now: now);
+
   int currentStep = 0;
+
+  /// What the run has been doing, line by line, with the time taken; the
+  /// panel under the spinner reads it. [status] stays the current line.
+  final WorldProgressLog progress;
+  Timer? _ticker;
+
+  /// A scout or write begins: the log restarts and a once-a-second tick
+  /// keeps the elapsed time moving.
+  void _startRun(String first) {
+    progress.start();
+    status = first;
+    progress.note(first);
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => notify());
+  }
+
+  void _endRun() {
+    _ticker?.cancel();
+    _ticker = null;
+    progress.stop();
+  }
+
+  /// One line from the engine: shown now, and kept for the panel.
+  void noteProgress(String msg) {
+    status = msg;
+    progress.note(msg);
+    notify();
+  }
+
   final nameController = TextEditingController();
   final premiseController = TextEditingController();
   final descController = TextEditingController();
@@ -134,6 +169,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
   }
 
   void disposeControllers() {
+    _ticker?.cancel();
     nameController.dispose();
     premiseController.dispose();
     descController.dispose();
@@ -174,7 +210,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     }
     scouting = true;
     error = null;
-    status = 'Scouting wiki…';
+    _startRun('Scouting wiki…');
     notify();
     try {
       engine = WorldFromWikiEngine(
@@ -183,10 +219,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
         contextTokens: contextTokens,
         depth: depth,
         moment: momentController.text,
-        onProgress: (msg) {
-          status = msg;
-          notify();
-        },
+        onProgress: noteProgress,
       );
       final result = await engine!.scout(
         worldName: nameController.text,
@@ -224,6 +257,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
       error = 'Scout failed: $e';
       debugPrint('[World] scout miss/fail reason=$e');
     } finally {
+      _endRun();
       scouting = false;
       notify();
     }
@@ -255,7 +289,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     extraLore = await _extractFiles();
     writing = true;
     error = null;
-    status = 'Writing 0/${picked.length}';
+    _startRun('Writing 0/${picked.length}');
     currentStep = 3;
     notify();
     engine = WorldFromWikiEngine(
@@ -264,10 +298,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
       contextTokens: contextTokens,
       depth: depth,
       moment: momentController.text,
-      onProgress: (msg) {
-        status = msg;
-        notify();
-      },
+      onProgress: noteProgress,
     );
     try {
       final t = await engine!.writeTree(
@@ -299,6 +330,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
       error = 'Write failed: $e';
       debugPrint('[World] write miss/fail reason=$e');
     } finally {
+      _endRun();
       writing = false;
       notify();
     }

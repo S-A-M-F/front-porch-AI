@@ -20,6 +20,7 @@ import 'world_from_wiki_scout.dart';
 import 'world_from_wiki_tools.dart';
 import 'world_places.dart';
 import 'world_shelf_audit.dart';
+import 'world_progress_copy.dart';
 
 /// Gaps worked per round at most; the rest wait for the next round.
 const int kWorldFillGapsPerRound = 6;
@@ -61,8 +62,12 @@ extension WorldScoutFillLoop on WorldScoutRunner {
         final room = depth.cardTarget - cards.length;
         if (room <= 0) break;
         onProgress?.call(
-          'Filling ${_gapLabel(gap)} (round $round of ${depth.fillRounds}): '
-          '${gap.candidates.length} candidates…',
+          worldProgressFill(
+            _gapLabel(gap),
+            round,
+            depth.fillRounds,
+            gap.candidates.length,
+          ),
         );
         final answer = await _askGap(
           gap,
@@ -179,6 +184,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
       ),
       tools: worldScoutToolSchema(),
       label: 'fill ${gap.kind} ${gap.name}',
+      note: onProgress,
       toolName: kWorldScoutToolName,
       floorKey: 'cards',
       pause: retryPause,

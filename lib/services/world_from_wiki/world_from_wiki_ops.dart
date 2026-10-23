@@ -12,6 +12,7 @@ import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_budget.dart';
+import 'world_progress_copy.dart';
 
 const int kWorldFromWikiScanDepth = 10;
 const int kWorldFromWikiTokenBudget = 2800;
@@ -363,6 +364,7 @@ Future<LlmToolResponse?> askToolsTwice(
   String? floorKey,
   Duration pause = const Duration(seconds: 2),
   Duration timeout = kWorldToolCallTimeout,
+  void Function(String line)? note,
 }) async {
   final deadline = worldToolTimeoutFor(timeout, params.maxLength);
   for (var attempt = 1; attempt <= 2; attempt++) {
@@ -390,6 +392,7 @@ Future<LlmToolResponse?> askToolsTwice(
         final floor = worldToolArgsFromText(resp.text, key: floorKey);
         if (floor != null) {
           debugPrint('[World] $label try $attempt: read from the prose');
+          note?.call(worldProgressProseRead());
           return LlmToolResponse(
             calls: [LlmToolCall(name: toolName, arguments: floor)],
             text: '',
@@ -401,11 +404,14 @@ Future<LlmToolResponse?> askToolsTwice(
         '[World] $label try $attempt: no usable call '
         '(finish=${resp?.finishReason})',
       );
+      if (attempt == 1) note?.call(worldProgressAskingAgain());
     } on TimeoutException {
       debugPrint('[World] $label try $attempt: no answer in $deadline');
       llm.abortGeneration();
+      if (attempt == 1) note?.call(worldProgressTimeout(deadline));
     } catch (e) {
       debugPrint('[World] $label try $attempt miss ($e)');
+      if (attempt == 1) note?.call(worldProgressStumble(e));
     }
     if (attempt == 1 && pause > Duration.zero) {
       await Future<void>.delayed(pause);

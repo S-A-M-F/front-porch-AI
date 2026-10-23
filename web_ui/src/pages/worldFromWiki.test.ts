@@ -17,9 +17,12 @@ import {
   shelfReviewNote,
   shelfSections,
   signedCards,
+  pushWorldProgress,
+  worldElapsedLabel,
   worldToolsAllowNext,
   worldToolsCanRetest,
   worldToolsCopy,
+  WORLD_PROGRESS_KEEP,
 } from './worldFromWiki';
 
 describe('world-from-wiki review shelf', () => {
@@ -296,6 +299,27 @@ describe('world shelf review (web twin)', () => {
     expect(shelfReviewNote(false, notes)).toBe('review: 11 of 30 cards are people');
     expect(shelfReviewNote(false, [])).toBe('');
     expect(shelfReviewNote(true, 'junk')).toBe('');
+  });
+});
+
+describe('progress panel (web twin)', () => {
+  it('stamps each line with the elapsed time and keeps the last twelve', () => {
+    let log = pushWorldProgress([], 'Rummaging through the wiki…', 0);
+    log = pushWorldProgress(log, 'Rummaging through the wiki…', 500);
+    expect(log).toHaveLength(1);
+    log = pushWorldProgress(log, 'Found 464 pages. Picking the ones that matter…', 42_000);
+    expect(log[1]).toEqual({ at: '0:42', text: 'Found 464 pages. Picking the ones that matter…' });
+    for (let i = 0; i < 20; i++) log = pushWorldProgress(log, `line ${i}`, (i + 1) * 60_000);
+    expect(log).toHaveLength(WORLD_PROGRESS_KEEP);
+    expect(log[log.length - 1].text).toBe('line 19');
+    expect(pushWorldProgress(log, '   ', 1)).toBe(log);
+  });
+
+  it('shows elapsed time as a clock face', () => {
+    expect(worldElapsedLabel(0)).toBe('0:00');
+    expect(worldElapsedLabel(42_000)).toBe('0:42');
+    expect(worldElapsedLabel(725_000)).toBe('12:05');
+    expect(worldElapsedLabel(3_789_000)).toBe('1:03:09');
   });
 });
 
