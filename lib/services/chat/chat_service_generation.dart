@@ -101,6 +101,7 @@ class _GenTurn {
   late String suffix;
   String mesExampleBlock = '';
   String speakerCardBlock = '';
+  String toolRulesBlock = ''; // after-lookup lines; seat in plan_register
 
   /// Character Growth. After the transcript, not glued onto the persona,
   /// so a ring update does not rewrite the cached prompt head. Not a state

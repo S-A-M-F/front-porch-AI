@@ -139,7 +139,19 @@ extension ChatServiceContextBudget on ChatService {
       return;
     }
 
-    _contextBudget.apply(snap);
+    // The same tokenizer the send uses, so Refresh and the last send agree
+    // (the fit above stays chars/4; only the rows are re-weighed).
+    final estimated = await _countTokens(snap.sections.values.join());
+    _contextBudget.apply(
+      ContextViewerSnapshot(
+        budget: scaleBudgetRows(snap.budget, estimated),
+        sections: snap.sections,
+        source: snap.source,
+        assembledAt: snap.assembledAt,
+        contextLimit: snap.contextLimit,
+        droppedMessages: snap.droppedMessages,
+      ),
+    );
     notifyListeners();
   }
 }

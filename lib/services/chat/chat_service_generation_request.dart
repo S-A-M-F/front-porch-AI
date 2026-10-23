@@ -62,9 +62,15 @@ extension ChatServiceGenerationRequest on ChatService {
     final prompt = t.plan.userText;
 
     // Context viewer: plan budget/sections (session-persisted on save).
+    // The rows are chars/4 shares scaled to the tokenizer's count of the
+    // same text (one count; Kobold's own tokenizer, chars/4 elsewhere), so
+    // the Total a user compares with the context size is what the send
+    // weighs, not an estimate that drifts by model (issue #550's reading).
+    final sectionMap = t.plan.sectionTexts();
+    final sentTokens = await _countTokens(sectionMap.values.join());
     _contextBudget.recordLastSend(
-      budgetMap: t.plan.budgetEstimates(),
-      sectionMap: t.plan.sectionTexts(),
+      budgetMap: scaleBudgetRows(t.plan.budgetEstimates(), sentTokens),
+      sectionMap: sectionMap,
       contextLimit: contextSize,
       droppedMessages: t.droppedMessages,
     );
