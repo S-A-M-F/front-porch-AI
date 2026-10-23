@@ -362,12 +362,16 @@ class WorldFromWikiState extends ChangeNotifier {
     // children), so saveWorld's cycle and parent checks hold for every
     // row (design §9.5). One failure aborts the rest and says so —
     // half a ladder with no note is how lost places get reported.
+    var savedCount = 0;
+    var step = 'the world ${previewWorld().name}';
     try {
       final idsByName = <String, String>{};
       final root = previewWorld();
       await repo.saveWorld(root);
+      savedCount++;
       idsByName[''] = root.id;
       for (final p in t.places) {
+        step = 'the place ${p.name}';
         final parentId =
             idsByName[p.parentName.trim().toLowerCase()] ?? root.id;
         final child = worldFromWikiDraft(
@@ -379,11 +383,17 @@ class WorldFromWikiState extends ChangeNotifier {
           parentWorldId: parentId,
         );
         await repo.saveWorld(child);
+        savedCount++;
         idsByName[p.name.trim().toLowerCase()] = child.id;
       }
       return true;
     } catch (e) {
-      error = 'Save failed: $e';
+      // A ladder can fail halfway (one place's law refuses). Say what
+      // landed — half a tree must not look like no tree (review #608).
+      error = savedCount > 0 && savedCount < t.places.length + 1
+          ? 'Saved $savedCount of ${t.places.length + 1}; failed on '
+                '$step: $e'
+          : 'Save failed: $e';
       notify();
       return false;
     }
