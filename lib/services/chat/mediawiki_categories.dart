@@ -32,6 +32,11 @@ Uri mediawikiPagesWithCategoriesUri(Uri wikiBase, {String? gapcontinue}) {
 /// Titles + per-title category names from one generator response. Pages
 /// the API returns without a `categories` array simply get no entry —
 /// an untagged wiki still yields its titles, and the wizard stays flat.
+///
+/// `query.pages` is a map keyed by page id unless the request asked for
+/// `formatversion=2`, which makes it a list. Fandom and Wikipedia answer
+/// this request with the map (verified live against yugioh.fandom.com);
+/// reading only the list shape left every MediaWiki catalog untagged.
 ({Map<String, List<String>> categoriesByTitle, String? gapcontinue})
 parseMediaWikiPagesWithCategories(String body) {
   final out = <String, List<String>>{};
@@ -40,25 +45,26 @@ parseMediaWikiPagesWithCategories(String body) {
     if (json is! Map) return (categoriesByTitle: out, gapcontinue: null);
     final query = json['query'];
     if (query is Map) {
-      final pages = query['pages'];
-      if (pages is List) {
-        for (final page in pages) {
-          if (page is! Map) continue;
-          final title = page['title']?.toString().trim() ?? '';
-          if (title.isEmpty || skipWikiStudioTitle(title)) continue;
-          // The title is kept even with no categories so callers can
-          // count it; only non-empty lists land in the map.
-          out.putIfAbsent(title, () => const []);
-          final cats = page['categories'];
-          if (cats is List && cats.isNotEmpty) {
-            out[title] = [
-              for (final c in cats)
-                if (c is Map)
-                  stripMediaWikiCategoryNamespace(
-                    c['title']?.toString() ?? '',
-                  ),
-            ];
-          }
+      final raw = query['pages'];
+      final pages = raw is List
+          ? raw
+          : raw is Map
+          ? raw.values.toList()
+          : const <dynamic>[];
+      for (final page in pages) {
+        if (page is! Map) continue;
+        final title = page['title']?.toString().trim() ?? '';
+        if (title.isEmpty || skipWikiStudioTitle(title)) continue;
+        // The title is kept even with no categories so callers can
+        // count it; only non-empty lists land in the map.
+        out.putIfAbsent(title, () => const []);
+        final cats = page['categories'];
+        if (cats is List && cats.isNotEmpty) {
+          out[title] = [
+            for (final c in cats)
+              if (c is Map)
+                stripMediaWikiCategoryNamespace(c['title']?.toString() ?? ''),
+          ];
         }
       }
     }

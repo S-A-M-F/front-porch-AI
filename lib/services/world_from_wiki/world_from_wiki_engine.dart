@@ -18,10 +18,17 @@ class WorldScoutResult {
     required this.catalog,
     required this.proposed,
     this.places = const [],
+    this.failure,
   });
 
   final WikiStudioCatalog catalog;
   final List<WorldProposedCard> proposed;
+
+  /// Plain words for why [proposed] is empty when the model never gave
+  /// its answer: the reply hit the token limit, the server was busy, the
+  /// call could not be read. Null when the model did answer — the wizard
+  /// then keeps its own "try a clearer premise" line.
+  final String? failure;
 
   /// Slice 8 (design §9.2): the places the scout named from tag
   /// evidence, already resolved into build order. Empty on an untagged
@@ -98,6 +105,7 @@ class WorldFromWikiEngine {
       catalog: catalog,
       proposed: proposed,
       places: resolvePlaceOrder(scouted.places),
+      failure: scouted.failure,
     );
   }
 
@@ -188,25 +196,26 @@ class WorldFromWikiEngine {
     return List<LorebookEntry>.unmodifiable(entries);
   }
 
-  Future<({List<WorldProposedCard> cards, List<WorldProposedPlace> places})>
-  _propose({
+  Future<_Scouted> _propose({
     required List<String> titles,
     required String worldName,
     required String premise,
   }) async {
-    if (titles.isEmpty) return (cards: const <WorldProposedCard>[], places: const <WorldProposedPlace>[]);
+    if (titles.isEmpty) return const _Scouted();
     // Slice 8: the tag set rides the index line. Neokosmos keeps its
     // nations ONLY in tags — titles alone read "Ceolwynn, Bealdric…"
     // with nothing saying where they belong (design §9).
     final tags = lastCatalogTags;
-    final index = titles.map((t) {
-      final ts = tags[t] ?? const [];
-      final shown = [
-        for (final tag in ts)
-          if (!tag.startsWith(r'$:/')) tag,
-      ].take(4).join(', ');
-      return shown.isEmpty ? '- $t' : '- $t [$shown]';
-    }).join('\n');
+    final index = titles
+        .map((t) {
+          final ts = tags[t] ?? const [];
+          final shown = [
+            for (final tag in ts)
+              if (!tag.startsWith(r'$:/')) tag,
+          ].take(4).join(', ');
+          return shown.isEmpty ? '- $t' : '- $t [$shown]';
+        })
+        .join('\n');
     final prompt =
         'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
@@ -217,7 +226,7 @@ class WorldFromWikiEngine {
       final resp = await llm.generateWithTools(
         GenerationParams(
           prompt: prompt,
-          maxLength: 3072,
+          maxLength: kWorldScoutMaxTokens,
           minLength: 16,
           temperature: 0.3,
           reasoningEnabled: true,
@@ -225,16 +234,28 @@ class WorldFromWikiEngine {
         ),
         worldScoutToolSchema(),
       );
-      if (resp == null || resp.isUnusableNativeToolCall) {
-      return (cards: const <WorldProposedCard>[], places: const <WorldProposedPlace>[]);
-    }
-      return (
-        cards: parseWorldScoutToolCalls(resp.calls, catalog: titles),
-        places: parseWorldScoutPlaces(resp.calls),
+      final cards = resp == null
+          ? const <WorldProposedCard>[]
+          : parseWorldScoutToolCalls(resp.calls, catalog: titles);
+      // An empty shelf must say why. The old path folded a cut-off reply,
+      // a 502 and an unreadable call into "try a clearer premise".
+      final failure = cards.isEmpty
+          ? worldScoutEmptyReason(resp, budget: kWorldScoutMaxTokens)
+          : null;
+      if (failure != null) {
+        debugPrint(
+          '[World] scout empty finish=${resp?.finishReason} '
+          'calls=${resp?.calls.length ?? 0}: $failure',
+        );
+      }
+      return _Scouted(
+        cards: cards,
+        places: resp == null ? const [] : parseWorldScoutPlaces(resp.calls),
+        failure: failure,
       );
     } catch (e) {
       debugPrint('[World] scout tools miss ($e)');
-      return (cards: const <WorldProposedCard>[], places: const <WorldProposedPlace>[]);
+      return _Scouted(failure: worldScoutTransportCopy(e));
     }
   }
 
@@ -354,4 +375,14 @@ class WorldFromWikiEngine {
       return null;
     }
   }
+}
+
+/// One scout answer: the shelf, the places it named, and — when the shelf
+/// is empty for a reason other than the model's judgement — why.
+class _Scouted {
+  const _Scouted({this.cards = const [], this.places = const [], this.failure});
+
+  final List<WorldProposedCard> cards;
+  final List<WorldProposedPlace> places;
+  final String? failure;
 }

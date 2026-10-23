@@ -227,3 +227,11 @@ function stringList(raw: unknown): string[] {
   }
   return [];
 }
+
+/** The relay's own words for an empty shelf when the model never answered
+ * (token limit, busy server, unreadable call); the premise line is for a
+ * real empty answer only. Twin of the desktop wizard's `result.failure`. */
+export function emptyScoutCopy(failure: unknown): string {
+  if (typeof failure === 'string' && failure.trim()) return failure.trim();
+  return 'The scout returned no cards. Try a clearer premise, or another wiki.';
+}

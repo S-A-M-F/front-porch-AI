@@ -13,6 +13,7 @@ import type { LoreEntry } from '../components/LoreEntriesEditor';
 import {
   WORLD_FROM_WIKI_STEPS,
   canOpenWorldFromWikiPreview,
+  emptyScoutCopy,
   jumpWorldFromWikiStep,
   parseProposedCards,
   parseProposedPlaces,
@@ -191,6 +192,7 @@ export function WorldFromWikiPage() {
         proposed?: unknown;
         titles?: number;
         places?: unknown;
+        failure?: unknown;
       }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise });
       const cards = parseProposedCards(r.proposed);
       setProposed(cards);
@@ -205,7 +207,7 @@ export function WorldFromWikiPage() {
       setSigned(new Set());
       setTitleCount(typeof r.titles === 'number' ? r.titles : 0);
       if (!cards.length) {
-        setError('The scout returned no cards. Try a clearer premise, or another wiki.');
+        setError(emptyScoutCopy(r.failure));
         return;
       }
       setStep(1);

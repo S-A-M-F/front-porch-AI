@@ -75,6 +75,10 @@ class WorldFromWikiFacade {
       // Slice 8 (additive): the tag-named places. An older PWA simply
       // ignores them and saves one flat world, as before.
       'places': [for (final p in result.places) p.toJson()],
+      // Additive: why the shelf is empty when the model never answered
+      // (token limit, busy server, unreadable call). Absent on a real
+      // empty answer; an older PWA keeps its own premise line.
+      if (result.failure != null) 'failure': result.failure,
     };
   }
 
@@ -136,9 +140,9 @@ class WorldFromWikiFacade {
         _hub?.broadcast({'event': 'world_wiki_abort', 'data': 'Stopped.'});
         return;
       }
-      final entries = tree.root.entries
-          .followedBy([for (final p in tree.places) ...p.entries])
-          .toList();
+      final entries = tree.root.entries.followedBy([
+        for (final p in tree.places) ...p.entries,
+      ]).toList();
       final book = Lorebook(
         entries: entries,
         recursiveScanning: true,
@@ -207,17 +211,15 @@ class WorldFromWikiFacade {
     if (raw is! List) return const [];
     return [
       for (final e in raw)
-        if (e is Map) ?WorldProposedPlace.tryParse(
-          Map<String, dynamic>.from(e),
-        ),
+        if (e is Map)
+          ?WorldProposedPlace.tryParse(Map<String, dynamic>.from(e)),
     ];
   }
 
   Set<String> _climateSetFrom(Map<String, dynamic> body) {
     final raw = body['placeClimate'];
     if (raw is! List) return const {};
-    return {for (final e in raw) e?.toString().toLowerCase() ?? ''}
-      ..remove('');
+    return {for (final e in raw) e?.toString().toLowerCase() ?? ''}..remove('');
   }
 
   WorldToolsGate _toolsGate() => worldFromWikiToolsGate(_chat.toolCheckFor());

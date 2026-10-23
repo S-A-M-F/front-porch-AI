@@ -219,7 +219,11 @@ class WorldFromWikiState extends ChangeNotifier {
           '${places.isNotEmpty ? ', ${places.length} places' : ''}'
           '${result.catalog.skipped > 0 ? ', skipped ${result.catalog.skipped}' : ''}';
       if (proposed.isEmpty) {
+        // The engine says why when the model never answered (token limit,
+        // busy server, unreadable call); the premise line is for a real
+        // empty answer only.
         error =
+            result.failure ??
             'The scout returned no cards. Try a clearer premise, or another wiki.';
       } else {
         currentStep = 2;

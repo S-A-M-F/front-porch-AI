@@ -254,8 +254,7 @@ class _PlacesLlm extends LLMService {
           LlmToolCall(
             name: kWorldPlaceProfileToolName,
             arguments: {
-              'description':
-                  'A coastal city-state of shipwrights and singers.',
+              'description': 'A coastal city-state of shipwrights and singers.',
               'biome': _biomeJson('Coastal mild'),
             },
           ),
@@ -290,7 +289,10 @@ class _PlacesLlm extends LLMService {
   /// match (the same honesty as _ToolsLlm answering the fixed shelf).
   List<String> _cardsFromPrompt(String prompt) {
     final all = _homemadeCards().map((c) => c['name']!.toString()).toList();
-    return [for (final n in all) if (prompt.contains(n)) n];
+    return [
+      for (final n in all)
+        if (prompt.contains(n)) n,
+    ];
   }
 
   @override
@@ -575,7 +577,9 @@ void main() {
         contains('Ceolwynn [Characters, Alnhama Republic]'),
       );
       expect(result.places.map((p) => p.name), contains('Alnhama Republic'));
-      final place = result.places.firstWhere((p) => p.name == 'Alnhama Republic');
+      final place = result.places.firstWhere(
+        (p) => p.name == 'Alnhama Republic',
+      );
       expect(place.climateHint, contains('coastal'));
       // Cards keep their place; an unknown one rides the root.
       final byName = {for (final c in result.proposed) c.name: c};
@@ -629,33 +633,172 @@ void main() {
       );
     });
 
-    test('an untagged wiki still yields ONE flat world exactly as today',
-        () async {
-      // Same engine, places empty (what an untagged wiki produces): the
-      // tree write must return the flat product — design §9.7's pinned
-      // unchanged path, asserted by parity with `write`.
-      final flatLlm = _ToolsLlm();
-      final flat = await WorldFromWikiEngine(
-        wiki: _wiki(),
-        llm: flatLlm,
-      ).write(_homemadeCards().map(WorldProposedCard.tryParse).nonNulls.toList(),
-          worldName: 'W', premise: 'p');
-      final treeLlm = _PlacesLlm(flatMode: true);
-      final tree = await WorldFromWikiEngine(
-        wiki: _wiki(),
-        llm: treeLlm,
-      ).writeTree(
-        _homemadeCards().map(WorldProposedCard.tryParse).nonNulls.toList(),
-        places: const [],
-        worldName: 'W',
-        premise: 'p',
-      );
-      expect(tree.isFlat, isTrue);
-      expect(
-        tree.root.entries.map((e) => e.name).toList(),
-        flat.map((e) => e.name).toList(),
-      );
-    });
+    test(
+      'an untagged wiki still yields ONE flat world exactly as today',
+      () async {
+        // Same engine, places empty (what an untagged wiki produces): the
+        // tree write must return the flat product — design §9.7's pinned
+        // unchanged path, asserted by parity with `write`.
+        final flatLlm = _ToolsLlm();
+        final flat = await WorldFromWikiEngine(wiki: _wiki(), llm: flatLlm)
+            .write(
+              _homemadeCards()
+                  .map(WorldProposedCard.tryParse)
+                  .nonNulls
+                  .toList(),
+              worldName: 'W',
+              premise: 'p',
+            );
+        final treeLlm = _PlacesLlm(flatMode: true);
+        final tree = await WorldFromWikiEngine(wiki: _wiki(), llm: treeLlm)
+            .writeTree(
+              _homemadeCards()
+                  .map(WorldProposedCard.tryParse)
+                  .nonNulls
+                  .toList(),
+              places: const [],
+              worldName: 'W',
+              premise: 'p',
+            );
+        expect(tree.isFlat, isTrue);
+        expect(
+          tree.root.entries.map((e) => e.name).toList(),
+          flat.map((e) => e.name).toList(),
+        );
+      },
+    );
   });
 
+  group('scout failures say why', () {
+    test('the scout asks for the full reply budget', () async {
+      final llm = _OutcomeLlm(
+        response: const LlmToolResponse(
+          calls: [],
+          text: '',
+          finishReason: 'stop',
+        ),
+      );
+      await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: llm,
+      ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+      expect(llm.lastMaxLength, kWorldScoutMaxTokens);
+      expect(
+        kWorldScoutMaxTokens,
+        greaterThanOrEqualTo(8192),
+        reason:
+            '40 cards + 8 places is ~3.5K tokens of JSON before any '
+            'thinking; 3072 cut Qwen3.6 off mid list (oMLX finish_reason='
+            'length, incomplete_tool_call).',
+      );
+    });
+
+    test(
+      'a reply cut at the token limit says so, not "clearer premise"',
+      () async {
+        final result = await WorldFromWikiEngine(
+          wiki: _wiki(),
+          llm: _OutcomeLlm(
+            response: const LlmToolResponse(
+              calls: [],
+              text: '',
+              finishReason: 'length',
+            ),
+          ),
+        ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+        expect(result.proposed, isEmpty);
+        expect(result.failure, contains('ran out of room'));
+        expect(result.failure, contains('$kWorldScoutMaxTokens-token'));
+        expect(result.failure, isNot(contains('clearer premise')));
+      },
+    );
+
+    test('a busy server says so and keeps the wiki out of it', () async {
+      final result = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: _OutcomeLlm(
+          error: LlmToolTransportException(
+            'tool call HTTP 502 (server busy/unavailable)',
+          ),
+        ),
+      ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+      expect(result.proposed, isEmpty);
+      expect(result.failure, contains('HTTP 502'));
+      expect(result.failure, contains('wait a moment'));
+      expect(result.failure, contains('The wiki is fine'));
+    });
+
+    test('plain text instead of a tool call says so', () async {
+      final result = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: _OutcomeLlm(
+          response: const LlmToolResponse(
+            calls: [],
+            text: 'Here are some cards: Ceolwynn, Alnhama…',
+            finishReason: 'stop',
+          ),
+        ),
+      ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+      expect(result.failure, contains('plain text'));
+    });
+
+    test('a card list that will not parse says so', () async {
+      final result = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: _OutcomeLlm(
+          response: const LlmToolResponse(
+            calls: [LlmToolCall(name: kWorldScoutToolName, arguments: {})],
+            text: '',
+            finishReason: 'tool_calls',
+          ),
+        ),
+      ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+      expect(result.failure, contains('could not be read'));
+    });
+
+    test('no answer at all says so', () async {
+      final result = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: _OutcomeLlm(),
+      ).scout(worldName: 'Neokosmos', premise: 'A coastal republic.');
+      expect(result.failure, contains('did not answer with a card list'));
+    });
+
+    test('a real card list leaves failure null', () async {
+      final result = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: _ToolsLlm(),
+      ).scout(worldName: 'The quay', premise: 'A coastal republic.');
+      expect(result.proposed, isNotEmpty);
+      expect(result.failure, isNull);
+    });
+  });
+}
+
+/// One scripted scout answer: a fixed response, or a thrown error.
+class _OutcomeLlm extends LLMService {
+  _OutcomeLlm({this.response, this.error});
+  final LlmToolResponse? response;
+  final Object? error;
+  int? lastMaxLength;
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    lastMaxLength = params.maxLength;
+    final err = error;
+    if (err != null) throw err;
+    return response;
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
 }

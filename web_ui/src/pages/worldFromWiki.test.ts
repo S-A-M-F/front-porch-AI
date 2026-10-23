@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canOpenWorldFromWikiPreview,
+  emptyScoutCopy,
   jumpWorldFromWikiStep,
   parseProposedCards,
   parseProposedPlaces,
@@ -211,5 +212,21 @@ describe('slice 8 places (web twin)', () => {
     expect(sections).toHaveLength(1);
     expect(sections[0].place).toBeNull();
     expect(sections[0].indices).toEqual([0]);
+  });
+});
+
+describe('empty scout copy', () => {
+  it('shows the relay\'s reason when the model never answered', () => {
+    const cut =
+      'The model ran out of room before it finished the card list — its reply hit the 8192-token limit. Press Scout again, or pick a different model.';
+    expect(emptyScoutCopy(cut)).toBe(cut);
+    expect(emptyScoutCopy('  padded  ')).toBe('padded');
+  });
+
+  it('keeps the premise line for a real empty answer', () => {
+    const premise = 'The scout returned no cards. Try a clearer premise, or another wiki.';
+    expect(emptyScoutCopy(undefined)).toBe(premise);
+    expect(emptyScoutCopy('')).toBe(premise);
+    expect(emptyScoutCopy(42)).toBe(premise);
   });
 });
