@@ -18,6 +18,7 @@ import {
   shelfSections,
   signedCards,
   worldToolsAllowNext,
+  worldToolsCanRetest,
   worldToolsCopy,
 } from './worldFromWiki';
 
@@ -309,6 +310,14 @@ describe('no model load until Next (web twin)', () => {
 
   it('tells the user Next does the check', () => {
     expect(worldToolsCopy('notChecked')).toContain('Next checks it first');
+  });
+
+  it('a failed verdict can be asked again, and says so', () => {
+    expect(worldToolsCanRetest('failed')).toBe(true);
+    expect(worldToolsCanRetest('notChecked')).toBe(true);
+    expect(worldToolsCanRetest('ready')).toBe(false);
+    expect(worldToolsCanRetest('checking')).toBe(false);
+    expect(worldToolsCopy('failed')).toContain('Check now');
   });
 });
 

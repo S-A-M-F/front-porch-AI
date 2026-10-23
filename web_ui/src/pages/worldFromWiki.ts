@@ -41,7 +41,7 @@ export function worldToolsCopy(gate: WorldToolsGate): string | null {
     case 'notChecked':
       return "This model hasn't been checked for tools yet. Next checks it first (on a local server that loads the model), or press Check now.";
     case 'failed':
-      return "This model was tested and didn't answer the tool-calling check correctly, so it can't be used for World from Wiki. Pick a different model (for example Qwen 3 or Gemma 4) and it will be tested again.";
+      return "This model was tested and didn't answer the tool-calling check correctly, so it can't be used for World from Wiki. Pick a different model (for example Qwen 3 or Gemma 4), or press Check now to ask this one again.";
   }
 }
 
@@ -50,9 +50,13 @@ export function worldToolsAllowNext(gate: WorldToolsGate): boolean {
   return gate === 'ready' || gate === 'notChecked';
 }
 
-/** The pill's "ask again", offered only when nothing has asked the model. */
+/**
+ * The pill's "ask again": nothing has asked the model yet, or it failed once
+ * (a prose answer mid-load, say) and should not lock the wizard until the
+ * user changes models.
+ */
 export function worldToolsCanRetest(gate: WorldToolsGate): boolean {
-  return gate === 'notChecked';
+  return gate === 'notChecked' || gate === 'failed';
 }
 
 export type WorldCraftRole = 'era' | 'hub' | 'leaf' | 'crown';

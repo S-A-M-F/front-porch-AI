@@ -185,12 +185,12 @@ class WorldFromWikiBookStep extends StatelessWidget {
                 controller: state.momentController,
                 style: TextStyle(color: StudioColors.inkOf(context)),
                 decoration: InputDecoration(
-                  labelText: 'Moment (optional)',
+                  labelText: 'Where the story stands (optional)',
                   hintText: 'the night after the first invasion',
                   helperText:
-                      'When in the story the scene starts. Every card is '
-                      'written as things stand then; what comes later stays '
-                      'unknown.',
+                      'The point in the story the world is frozen at. Cards '
+                      'are written as things are then; what happens after '
+                      'stays unwritten, so you can play it.',
                   helperMaxLines: 3,
                   filled: true,
                   fillColor: StudioColors.bgOf(context),

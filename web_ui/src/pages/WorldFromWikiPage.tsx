@@ -512,7 +512,7 @@ export function WorldFromWikiPage() {
               </span>
             </label>
             <label className="cg-field">
-              <span className="cg-field-label">Moment (optional)</span>
+              <span className="cg-field-label">Where the story stands (optional)</span>
               <input
                 data-testid="world-wiki-moment"
                 value={moment}
@@ -520,8 +520,8 @@ export function WorldFromWikiPage() {
                 onChange={(e) => setMoment(e.target.value)}
               />
               <span className="muted small">
-                When in the story the scene starts. Every card is written as things stand
-                then; what comes later stays unknown.
+                The point in the story the world is frozen at. Cards are written as things
+                are then; what happens after stays unwritten, so you can play it.
               </span>
             </label>
             <label className="cg-field cg-toggle">

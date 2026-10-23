@@ -403,7 +403,10 @@ void main() {
       expect(copy == null, g == WorldToolsGate.ready, reason: g.name);
     }
     expect(worldFromWikiToolsCanRetest(WorldToolsGate.notChecked), isTrue);
-    expect(worldFromWikiToolsCanRetest(WorldToolsGate.failed), isFalse);
+    // Changed 2026-10-23: a failed verdict offers Check now too. A model
+    // that answered in prose once (asked mid-load on oMLX) locked the wizard
+    // until the user changed models; the old assertion pinned that lock.
+    expect(worldFromWikiToolsCanRetest(WorldToolsGate.failed), isTrue);
   });
 
   test('climate off writes no biome json; recursion is on', () {
