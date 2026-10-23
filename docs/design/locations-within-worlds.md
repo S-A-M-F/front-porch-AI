@@ -506,3 +506,15 @@ halves; and every place's own hub card had landed inside that place's
 book, so `liftPlaceHubCards` moves it to the parent's (the root's for a
 top-level place) on both the shelf and the write. The harness is
 `test/live/world_from_wiki_live_test.dart` (`--tags wiki_live`).
+
+**Live results (2026-10-23, the Bleach wiki, 64K).** Kimi K2.6 via nano-gpt,
+fourth run with every fix: a 471-title ranked catalog, a 38-card shelf
+that passed the audit unrevised (8 nested places, 4 factions, 8 events,
+10 concepts/races/items, 8 people), every card written, 12:43 end to end;
+each place has its own book and a 2–4 sentence description, people are
+written as they stand in the war, keys are whole names. gemma-4-26B-A4B
+on oMLX: the same catalog and shelf shape, but it answered the scout or a
+write batch in prose two runs in four — the text floor read the JSON out
+of the prose, and the thinking-off retry settled the rest; its entries
+are thinner and less era-scoped. A hung profile call on nano-gpt (30
+minutes, no answer) is what put the six-minute timeout in.
