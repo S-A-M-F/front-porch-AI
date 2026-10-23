@@ -150,8 +150,12 @@ bool worldFromWikiCanSave({
   return entries.isNotEmpty;
 }
 
-/// Client write payload. Empty, unsigned, or ToC-sized lists are rejected.
-List<WorldProposedCard> parseSignedWorldWriteCards(dynamic raw) {
+/// Client write payload. Empty, unsigned, or ToC-sized lists are rejected;
+/// [max] is the deepest shelf the wizard can produce.
+List<WorldProposedCard> parseSignedWorldWriteCards(
+  dynamic raw, {
+  int max = kWorldScoutCardMax,
+}) {
   if (raw is! List) return const [];
   final out = <WorldProposedCard>[];
   for (final e in raw) {
@@ -161,7 +165,7 @@ List<WorldProposedCard> parseSignedWorldWriteCards(dynamic raw) {
     final card = WorldProposedCard.tryParse(map);
     if (card == null) continue;
     out.add(card);
-    if (out.length > kWorldScoutCardMax) return const [];
+    if (out.length > max) return const [];
   }
   return out;
 }
@@ -427,3 +431,17 @@ Map<String, dynamic>? worldToolArgsFromText(
   }
   return null;
 }
+
+/// The prompt line that pins when the scene stands; '' with no moment.
+String worldMomentLine(String moment) =>
+    moment.trim().isEmpty ? '' : 'Moment: ${moment.trim()}\n';
+
+/// The rule every writer and reviewer applies to time.
+String worldMomentRule(String moment) => moment.trim().isEmpty
+    ? 'Write every person and faction as they stand in the premise\'s time '
+          '— their role and fate then (alive, fallen, defected, imprisoned), '
+          'not their whole history.'
+    : 'Write everything as it stands at the Moment ("${moment.trim()}"): '
+          'each person\'s role, whereabouts and fate then. What happens after '
+          'the Moment is unknown to everyone — never state it, not even as '
+          'foreshadowing.';

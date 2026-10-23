@@ -81,4 +81,22 @@ void main() {
     await second.load();
     expect(second.worldWikiContextSize, 65536);
   });
+
+  test(
+    'the World from Wiki depth pick survives a restart and refuses junk',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final first = WebSearchSettings()..initializeBase(prefs, () {});
+      await first.load();
+      expect(first.worldWikiDepth, 1, reason: 'full is the default');
+      await first.setWorldWikiDepth(2);
+      await first.setWorldWikiDepth(9);
+      expect(first.worldWikiDepth, 2);
+      final second = WebSearchSettings()..initializeBase(prefs, () {});
+      await second.load();
+      expect(second.worldWikiDepth, 2);
+    },
+  );
 }

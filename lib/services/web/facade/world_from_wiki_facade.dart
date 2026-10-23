@@ -39,19 +39,43 @@ class WorldFromWikiFacade {
       'contextSize': _storage.webSearchSettings.worldWikiContextSize,
       'chatContextSize': _storage.backendSettings.contextSize,
       'contextChoices': kWorldWikiContextChoices,
+      // Depth: 0 quick, 1 full, 2 deep, with the labels the Book step shows.
+      'depth': _storage.webSearchSettings.worldWikiDepth,
+      'depthChoices': [
+        for (final d in WorldWikiDepth.values)
+          {
+            'value': d.index,
+            'label': d.label,
+            'cards': d.cardTarget,
+            'blurb': d.blurb,
+          },
+      ],
     };
   }
 
   /// The Book step's context pick from the phone: 0 (same as chat) or a
   /// size at or over the floor. A bad body is refused, never read as 0.
+  /// The Book step's picks from the phone: contextSize (0 = same as chat,
+  /// or at least the floor) and/or depth (0–2). A bad value is refused,
+  /// never read as 0; a missing one leaves that pick alone.
   Future<Map<String, dynamic>> setContext(Map<String, dynamic> body) async {
-    final raw = body['contextSize'];
-    final value = raw is int
-        ? raw
-        : raw is num
-        ? raw.toInt()
-        : int.tryParse(raw?.toString() ?? '');
-    if (value == null || !worldWikiContextSettingValid(value)) {
+    int? intOf(String key) {
+      final raw = body[key];
+      return raw is int
+          ? raw
+          : raw is num
+          ? raw.toInt()
+          : int.tryParse(raw?.toString() ?? '');
+    }
+
+    final hasContext = body.containsKey('contextSize');
+    final hasDepth = body.containsKey('depth');
+    if (!hasContext && !hasDepth) {
+      return {'ok': false, 'error': 'contextSize or depth is required'};
+    }
+    final context = intOf('contextSize');
+    if (hasContext &&
+        (context == null || !worldWikiContextSettingValid(context))) {
       return {
         'ok': false,
         'error':
@@ -59,9 +83,24 @@ class WorldFromWikiFacade {
             '$kWorldWikiContextFloor tokens',
       };
     }
-    await _storage.webSearchSettings.setWorldWikiContextSize(value);
+    final depth = intOf('depth');
+    if (hasDepth && (depth == null || depth < 0 || depth > 2)) {
+      return {
+        'ok': false,
+        'error': 'depth must be 0 (quick), 1 (full) or 2 (deep)',
+      };
+    }
+    if (context != null) {
+      await _storage.webSearchSettings.setWorldWikiContextSize(context);
+    }
+    if (depth != null) {
+      await _storage.webSearchSettings.setWorldWikiDepth(depth);
+    }
     return {'ok': true, ...await status()};
   }
+
+  WorldWikiDepth get _depth =>
+      WorldWikiDepthX.fromIndex(_storage.webSearchSettings.worldWikiDepth);
 
   int _contextTokens() => worldWikiContextTokens(
     setting: _storage.webSearchSettings.worldWikiContextSize,
@@ -100,6 +139,8 @@ class WorldFromWikiFacade {
       wiki: wiki,
       llm: svc,
       contextTokens: _contextTokens(),
+      depth: _depth,
+      moment: body['moment']?.toString() ?? '',
     );
     final result = await engine.scout(
       worldName: body['name']?.toString() ?? '',
@@ -139,7 +180,10 @@ class WorldFromWikiFacade {
     if (parseWikiBaseUrl(wikiUrl) == null) {
       return {'ok': false, 'error': 'wikiUrl is required'};
     }
-    final cards = parseSignedWorldWriteCards(body['cards'] ?? body['signed']);
+    final cards = parseSignedWorldWriteCards(
+      body['cards'] ?? body['signed'],
+      max: _depth.cardTarget,
+    );
     if (cards.isEmpty) {
       return {'ok': false, 'error': 'signed cards are required'};
     }
@@ -167,6 +211,8 @@ class WorldFromWikiFacade {
       wiki: wiki,
       llm: svc,
       contextTokens: _contextTokens(),
+      depth: _depth,
+      moment: body['moment']?.toString() ?? '',
       onProgress: (msg) {
         _hub?.broadcast({'event': 'world_wiki_status', 'data': msg});
       },

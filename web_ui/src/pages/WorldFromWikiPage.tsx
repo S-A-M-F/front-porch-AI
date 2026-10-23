@@ -15,6 +15,8 @@ import {
   canOpenWorldFromWikiPreview,
   catalogCountCopy,
   contextChoiceOptions,
+  depthLabel,
+  depthOptions,
   emptyScoutCopy,
   jumpWorldFromWikiStep,
   parseProposedCards,
@@ -40,6 +42,9 @@ type Status = {
   contextSize?: number;
   chatContextSize?: number;
   contextChoices?: number[];
+  /** 0 quick, 1 full, 2 deep; older servers omit it. */
+  depth?: number;
+  depthChoices?: unknown;
 };
 
 /** How often the Setup step asks again while the tool check is not done. */
@@ -51,6 +56,7 @@ export function WorldFromWikiPage() {
   const [status, setStatus] = useState<Status | null>(null);
   const [name, setName] = useState('');
   const [premise, setPremise] = useState('');
+  const [moment, setMoment] = useState('');
   const [wikiUrl, setWikiUrl] = useState('');
   const [climateEnabled, setClimateEnabled] = useState(false);
   const [biome, setBiome] = useState<Record<string, unknown> | null>(null);
@@ -195,9 +201,9 @@ export function WorldFromWikiPage() {
     return () => socket.close();
   }, []);
 
-  const setContext = async (contextSize: number) => {
+  const setContext = async (pick: { contextSize?: number; depth?: number }) => {
     try {
-      const r = await api.post<Status>('/api/worlds/from-wiki/context', { contextSize });
+      const r = await api.post<Status>('/api/worlds/from-wiki/context', pick);
       setStatus((cur) => ({
         ...(cur ?? { available: false, toolsAdvertised: false, savedWikis: [] }),
         ...r,
@@ -226,7 +232,7 @@ export function WorldFromWikiPage() {
         ranked?: unknown;
         revised?: unknown;
         auditNotes?: unknown;
-      }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise });
+      }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise, moment });
       const cards = parseProposedCards(r.proposed);
       setProposed(cards);
       const rPlaces = parseProposedPlaces(r.places);
@@ -271,6 +277,7 @@ export function WorldFromWikiPage() {
         cards: picked.map((c) => ({ ...c, signed: true })),
         name,
         premise,
+        moment,
         climateEnabled,
         // Slice 8 (additive): an older server ignores both and writes
         // one flat world; a newer one groups the write by place.
@@ -469,7 +476,7 @@ export function WorldFromWikiPage() {
               <select
                 data-testid="world-wiki-context"
                 value={status?.contextSize ?? 0}
-                onChange={(e) => void setContext(Number(e.target.value))}
+                onChange={(e) => void setContext({ contextSize: Number(e.target.value) })}
               >
                 {contextChoiceOptions(
                   status?.chatContextSize,
@@ -485,6 +492,36 @@ export function WorldFromWikiPage() {
                 How much the model may read and write in one go. A bigger window lets a
                 thinking model finish the card list in one piece; a smaller one has the
                 index asked in parts.
+              </span>
+            </label>
+            <label className="cg-field">
+              <span className="cg-field-label">Depth</span>
+              <select
+                data-testid="world-wiki-depth"
+                value={status?.depth ?? 1}
+                onChange={(e) => void setContext({ depth: Number(e.target.value) })}
+              >
+                {depthOptions(status?.depthChoices).map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {depthLabel(d)}
+                  </option>
+                ))}
+              </select>
+              <span className="muted small">
+                {depthOptions(status?.depthChoices).find((d) => d.value === (status?.depth ?? 1))?.blurb ?? ''}
+              </span>
+            </label>
+            <label className="cg-field">
+              <span className="cg-field-label">Moment (optional)</span>
+              <input
+                data-testid="world-wiki-moment"
+                value={moment}
+                placeholder="the night after the first invasion"
+                onChange={(e) => setMoment(e.target.value)}
+              />
+              <span className="muted small">
+                When in the story the scene starts. Every card is written as things stand
+                then; what comes later stays unknown.
               </span>
             </label>
             <label className="cg-field cg-toggle">

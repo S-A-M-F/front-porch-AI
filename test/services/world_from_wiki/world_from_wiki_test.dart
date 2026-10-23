@@ -836,6 +836,81 @@ void main() {
     });
   });
 
+  group('depth and moment reach the prompts', () {
+    test(
+      'the scout prompt carries the depth range, the moment and its rule',
+      () async {
+        final llm = _ProseThenCallLlm(proseTimes: 0);
+        await WorldScoutRunner(
+          llm: llm,
+          budget: const WorldWikiBudget(65536),
+          depth: WorldWikiDepth.deep,
+          moment: 'the night after the first invasion',
+        ).run(
+          titles: _ReviewLlm.titles,
+          tags: const {},
+          worldName: 'Bleach (TYBW)',
+          premise: 'The war.',
+        );
+        final prompt = llm.prompts.single;
+        expect(prompt, contains('Moment: the night after the first invasion'));
+        expect(prompt, contains('50–80 cards.'));
+        expect(prompt, contains('unknown to everyone'));
+      },
+    );
+
+    test('the write header and rule carry the moment', () {
+      final engine = WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: _ToolsLlm(),
+        moment: 'the seventeen months',
+      );
+      expect(
+        engine.writeHeader(worldName: 'B', premise: 'p', extraLore: ''),
+        contains('Moment: the seventeen months'),
+      );
+      final plain = WorldFromWikiEngine(wiki: _wiki(), llm: _ToolsLlm());
+      expect(
+        plain.writeHeader(worldName: 'B', premise: 'p', extraLore: ''),
+        isNot(contains('Moment:')),
+      );
+    });
+
+    test(
+      'the signed write payload accepts a deep shelf and still rejects a ToC',
+      () {
+        List<Map<String, dynamic>> cards(int n) => [
+          for (var i = 0; i < n; i++)
+            {
+              'name': 'C$i',
+              'role': 'leaf',
+              'sourceTitles': ['T$i'],
+              'signed': true,
+            },
+        ];
+        expect(
+          parseSignedWorldWriteCards(
+            cards(150),
+            max: WorldWikiDepth.deep.cardTarget,
+          ),
+          hasLength(150),
+        );
+        expect(
+          parseSignedWorldWriteCards(cards(150)),
+          isEmpty,
+          reason: 'the default cap is the quick shelf',
+        );
+        expect(
+          parseSignedWorldWriteCards(
+            cards(500),
+            max: WorldWikiDepth.deep.cardTarget,
+          ),
+          isEmpty,
+        );
+      },
+    );
+  });
+
   group('scout inside the wizard\'s context', () {
     final titles = List.generate(
       300,

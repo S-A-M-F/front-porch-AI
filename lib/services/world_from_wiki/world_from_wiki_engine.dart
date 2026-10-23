@@ -8,6 +8,8 @@ import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_budget.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_depth.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_entry_polish.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_ops.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_scout.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
@@ -62,7 +64,15 @@ class WorldFromWikiEngine {
     required this.llm,
     this.onProgress,
     this.contextTokens = kWorldWikiContextFloor,
+    this.depth = kWorldWikiDepthDefault,
+    this.moment = '',
   });
+
+  /// How deep this run digs (card target, fill rounds, review tries).
+  final WorldWikiDepth depth;
+
+  /// When in the story the scene starts; '' means the premise's time.
+  final String moment;
 
   final WikiSearchService wiki;
   final LLMService llm;
@@ -130,6 +140,8 @@ class WorldFromWikiEngine {
     final runner = WorldScoutRunner(
       llm: llm,
       budget: budget,
+      depth: depth,
+      moment: moment,
       onProgress: onProgress,
       isAborted: () => _aborted,
     )..callTimeout = callTimeout;
@@ -244,7 +256,11 @@ class WorldFromWikiEngine {
       entries.clear();
       return List<LorebookEntry>.unmodifiable(entries);
     }
-    entries.addAll(applyWorldCraftMechanics(drafts));
+    entries.addAll(
+      applyWorldCraftMechanics(
+        polishWorldDrafts(drafts, allNames: pending.map((c) => c.name)),
+      ),
+    );
     return List<LorebookEntry>.unmodifiable(entries);
   }
 
@@ -278,6 +294,7 @@ class WorldFromWikiEngine {
         : '\nATTACHED NOTES (optional; do not override the articles):\n$extra\n';
     return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
+        '${worldMomentLine(moment)}'
         '$extraBlock';
   }
 
@@ -309,11 +326,11 @@ class WorldFromWikiEngine {
       'same names. HARD CAP $kWorldLoreContentMax characters — two short '
       'sentences. Keys: 2–6 per entry, each a whole name or alias a chat '
       'would type ("Spiritual Pressure", "Soul Reaper"), never a name '
-      'split into words. Write every person and faction as they stand in '
-      'the premise\'s time — their role and fate then (alive, fallen, '
-      'defected, imprisoned), not their whole history. they/them for '
-      'unnamed people. Do not invent climate, biomes, or facts missing '
-      'from the articles.',
+      'split into words. ${worldMomentRule(moment)} For a person: one '
+      'clause of how they look or carry themselves, and where they are '
+      'and who they are with at that moment. For a place: what a visitor '
+      'sees and hears, and who holds it. they/them for unnamed people. Do '
+      'not invent climate, biomes, or facts missing from the articles.',
     );
     final prompt = buf.toString();
     final resp = await askToolsTwice(

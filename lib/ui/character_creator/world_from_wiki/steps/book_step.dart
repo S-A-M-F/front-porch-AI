@@ -161,6 +161,44 @@ class WorldFromWikiBookStep extends StatelessWidget {
                   height: 1.4,
                 ),
               ),
+              const SizedBox(height: 20),
+              Text(
+                'Depth',
+                style: TextStyle(
+                  color: StudioColors.proseOf(context),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _DepthPicker(storage: storage),
+              const SizedBox(height: 6),
+              Text(
+                worldWizardDepth(storage).blurb,
+                style: TextStyle(
+                  color: StudioColors.mutedOf(context),
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: state.momentController,
+                style: TextStyle(color: StudioColors.inkOf(context)),
+                decoration: InputDecoration(
+                  labelText: 'Moment (optional)',
+                  hintText: 'the night after the first invasion',
+                  helperText:
+                      'When in the story the scene starts. Every card is '
+                      'written as things stand then; what comes later stays '
+                      'unknown.',
+                  helperMaxLines: 3,
+                  filled: true,
+                  fillColor: StudioColors.bgOf(context),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
               const SizedBox(height: 8),
               SwitchListTile(
                 title: const Text('Lorebooks'),
@@ -272,6 +310,41 @@ class _ContextPicker extends StatelessWidget {
       onChanged: (v) {
         if (v == null) return;
         storage.webSearchSettings.setWorldWikiContextSize(v);
+      },
+    );
+  }
+}
+
+/// Quick, Full or Deep: how far the loops dig. Keyed on the stored value
+/// like the context picker, for the same reason.
+class _DepthPicker extends StatelessWidget {
+  const _DepthPicker({required this.storage});
+
+  final StorageService storage;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = storage.webSearchSettings.worldWikiDepth;
+    return DropdownButtonFormField<int>(
+      key: ValueKey<int>(value),
+      initialValue: value,
+      isExpanded: true,
+      style: TextStyle(color: StudioColors.inkOf(context)),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: StudioColors.bgOf(context),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      items: [
+        for (final d in WorldWikiDepth.values)
+          DropdownMenuItem(
+            value: d.index,
+            child: Text('${d.label} — about ${d.cardTarget} cards'),
+          ),
+      ],
+      onChanged: (v) {
+        if (v == null) return;
+        storage.webSearchSettings.setWorldWikiDepth(v);
       },
     );
   }

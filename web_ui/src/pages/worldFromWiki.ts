@@ -309,3 +309,37 @@ export function shelfReviewNote(revised: unknown, auditNotes: unknown): string {
   const short = first.includes(';') ? first.split(';')[0] : first;
   return revised === true ? `shelf revised: ${short}` : `review: ${short}`;
 }
+
+export type DepthChoice = { value: number; label: string; cards?: number; blurb?: string };
+
+/** The shipped depth list, for an older server that sends none. */
+export const WORLD_WIKI_DEPTHS: DepthChoice[] = [
+  { value: 0, label: 'Quick', cards: 40, blurb: 'About 40 cards, no review passes. Fast; the shelf may be thin.' },
+  { value: 1, label: 'Full', cards: 100, blurb: 'About 100 cards. Reviewers check the shelf and every entry and send weak ones back.' },
+  { value: 2, label: 'Deep', cards: 200, blurb: 'About 200 cards. Every place gets its people; slow on a local model.' },
+];
+
+/** The relay's depth choices as select options, or the shipped list. */
+export function depthOptions(raw: unknown): DepthChoice[] {
+  if (!Array.isArray(raw) || raw.length === 0) return WORLD_WIKI_DEPTHS;
+  const out: DepthChoice[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const value = typeof row.value === 'number' ? row.value : Number(row.value);
+    const label = String(row.label ?? '').trim();
+    if (!Number.isFinite(value) || !label) continue;
+    out.push({
+      value,
+      label,
+      cards: typeof row.cards === 'number' ? row.cards : undefined,
+      blurb: typeof row.blurb === 'string' ? row.blurb : undefined,
+    });
+  }
+  return out.length ? out : WORLD_WIKI_DEPTHS;
+}
+
+/** "Full — about 100 cards" for the select, and the blurb under it. */
+export function depthLabel(d: DepthChoice): string {
+  return d.cards ? `${d.label} — about ${d.cards} cards` : d.label;
+}

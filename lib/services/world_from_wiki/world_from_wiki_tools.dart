@@ -30,7 +30,7 @@ const String kWorldClimateToolName = 'write_world_climate';
 const String kWorldScoutPrompt =
     'Build a WORLD, not a cast list and not a table of contents. Merge '
     'numbered chapters / drafts / images into one card when they are the '
-    'same subject. 30–40 cards, shaped like a setting bible: ONE era card '
+    'same subject. Shaped like a setting bible: ONE era card '
     'for the premise\'s time (role era, kind event); the places (kind '
     'place: realms, cities, fortresses, districts); the factions and '
     'organizations (kind faction); the events and timeline of the premise '
@@ -344,6 +344,7 @@ String worldScoutBareTitle(String raw) {
 List<WorldProposedCard> parseWorldScoutToolCalls(
   List<LlmToolCall> calls, {
   Iterable<String>? catalog,
+  int max = kWorldScoutCardMax,
 }) {
   final byLower = catalog == null
       ? null
@@ -378,7 +379,7 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
           kind: parsed.kind,
         ),
       );
-      if (out.length >= kWorldScoutCardMax) return out;
+      if (out.length >= max) return out;
     }
   }
   return out;

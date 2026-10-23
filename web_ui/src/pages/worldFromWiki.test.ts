@@ -6,6 +6,8 @@ import {
   canOpenWorldFromWikiPreview,
   catalogCountCopy,
   contextChoiceOptions,
+  depthLabel,
+  depthOptions,
   emptyScoutCopy,
   formatContextTokens,
   jumpWorldFromWikiStep,
@@ -307,5 +309,19 @@ describe('no model load until Next (web twin)', () => {
 
   it('tells the user Next does the check', () => {
     expect(worldToolsCopy('notChecked')).toContain('Next checks it first');
+  });
+});
+
+describe('depth pick (web twin)', () => {
+  it('reads the relay list and falls back to the shipped one', () => {
+    const fromRelay = depthOptions([
+      { value: 0, label: 'Quick', cards: 40, blurb: 'fast' },
+      { value: 2, label: 'Deep', cards: 200 },
+      { value: 'x', label: '' },
+    ]);
+    expect(fromRelay.map((d) => d.value)).toEqual([0, 2]);
+    expect(depthLabel(fromRelay[0])).toBe('Quick — about 40 cards');
+    expect(depthOptions(undefined).map((d) => d.label)).toEqual(['Quick', 'Full', 'Deep']);
+    expect(depthOptions([]).length).toBe(3);
   });
 });

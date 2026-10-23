@@ -287,5 +287,16 @@ void main() {
     final back = await facade.setContext({'contextSize': 0});
     expect(back['ok'], isTrue);
     expect((await facade.status())['contextSize'], 0);
+
+    // Depth rides the same route; a bad one is refused, a missing one is
+    // left alone.
+    expect((await facade.status())['depth'], 1);
+    final deep = await facade.setContext({'depth': 2});
+    expect(deep['ok'], isTrue);
+    expect(deep['depth'], 2);
+    expect((deep['depthChoices'] as List).length, 3);
+    expect((await facade.setContext({'depth': 5}))['ok'], isFalse);
+    expect((await facade.setContext({}))['ok'], isFalse);
+    expect(storage.webSearchSettings.worldWikiDepth, 2);
   });
 }

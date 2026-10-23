@@ -518,3 +518,48 @@ write batch in prose two runs in four — the text floor read the JSON out
 of the prose, and the thinking-off retry settled the rest; its entries
 are thinner and less era-scoped. A hung profile call on nano-gpt (30
 minutes, no answer) is what put the six-minute timeout in.
+
+### The creator's loops (2026-10-23, plan)
+
+The maintainer's rule: *reviewer passes and loops in the creator; you
+can't hope it gets it right in one shot.* The shape is Porch Stories'
+`StoryAgent.run` — generate, gate in code, review with a second call,
+feed the objection back, bounded tries, keep the best valid answer so a
+harsh reviewer never dead-ends — written again for the wizard, not
+imported (`world_review_loop.dart`).
+
+Knobs on the Book step, desktop and phone:
+
+- **Depth** — Quick (~40 cards, gates only, no review calls), Full (~100,
+  reviews on; the default), Deep (~200). Stored
+  (`webSearchSettings.worldWikiDepth`), it sets the scout's card range,
+  the fill rounds, the per-place minimum, how many top characters must be
+  present, and the tries per loop (`world_from_wiki_depth.dart`).
+- **Moment** — free text ("the night after the first invasion"). Every
+  card, the era card first, is written as things stand then; what comes
+  later is unknown and never stated. The reviewers check it.
+
+Loops, in order:
+
+1. **Shelf loop.** Generate (the parts runner, then revises), gate
+   (`auditWorldShelf`: era, backbone, kinds, named places), review
+   (`review_world_shelf`: nested right, residents where they belong, the
+   Moment respected, nothing invented), feed back, tries by depth.
+2. **Fill loop.** `auditWorldCoverage` reads the catalog the scout read —
+   its most-linked pages and their categories — and names the gaps: top
+   pages tagged as places that are not places, factions whose members the
+   wiki lists but the shelf lacks, places under the per-place minimum,
+   the top-N characters absent. Each gap is one focused call with its
+   candidate titles; rounds by depth; stops at the card target.
+3. **Entry loop, per write batch.** Gate in Dart (`world_entry_polish.dart`:
+   160–330 chars, keys are this entry's names only, no single common
+   words, the name is a key), review (`review_lorebook_entries`: as of the
+   Moment, scene-usable — a person's look and manner and where they are,
+   a place's sights and who holds it — nothing not in the article), revise
+   only the failing entries with their findings; passing entries are kept
+   from whichever try produced them.
+4. **Profiles.** Gate only (2–4 sentences), the existing retry.
+
+Writes on a remote provider run two batches at a time; local stays serial.
+The run log (verdicts and notes per stage) rides the status line and the
+scout/write responses as `notes`.

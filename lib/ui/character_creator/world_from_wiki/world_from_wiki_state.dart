@@ -11,6 +11,7 @@ import 'package:front_porch_ai/services/lore_extraction_service.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_wizard_gate.dart';
 
 /// The wizard's context for one run: the Book step's own pick, or chat's
 /// when the pick is "Same as chat". Read at Scout and Write time, never
@@ -20,20 +21,30 @@ int worldWizardContextTokens(StorageService storage) => worldWikiContextTokens(
   chatContext: storage.backendSettings.contextSize,
 );
 
+/// The wizard's depth for one run, from the Book step's stored pick.
+WorldWikiDepth worldWizardDepth(StorageService storage) =>
+    WorldWikiDepthX.fromIndex(storage.webSearchSettings.worldWikiDepth);
+
 /// Wizard state for World from wiki. Setup reuses [CreatorState].
-class WorldFromWikiState extends ChangeNotifier {
+class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
   int currentStep = 0;
   final nameController = TextEditingController();
   final premiseController = TextEditingController();
   final descController = TextEditingController();
 
+  /// The Moment: when in the story the scene starts. Every card is
+  /// written as things stand then; later events are unknown.
+  final momentController = TextEditingController();
+
   String wikiUrl = '';
   bool lorebooksOn = true;
   bool climateEnabled = false;
+  @override
   WorldToolsGate toolsGate = WorldToolsGate.notRunning;
   bool scouting = false;
   bool writing = false;
   String status = '';
+  @override
   String? error;
   int catalogTitleCount = 0;
 
@@ -60,13 +71,16 @@ class WorldFromWikiState extends ChangeNotifier {
   /// Test seams.
   WikiSearchService Function(String url)? wikiFactory;
   Future<http.Response> Function(http.BaseRequest request)? sendRequest;
+  @override
   LLMService? llmOverride;
 
+  @override
   void notify() => notifyListeners();
 
   bool get busy => scouting || writing;
 
   /// Chat's tool check passed for this wizard's model.
+  @override
   bool get toolsReady => toolsGate == WorldToolsGate.ready;
 
   bool get canSave => worldFromWikiCanSave(
@@ -123,74 +137,8 @@ class WorldFromWikiState extends ChangeNotifier {
     nameController.dispose();
     premiseController.dispose();
     descController.dispose();
+    momentController.dispose();
   }
-
-  /// Read chat's tool check for the model this wizard runs on (the running
-  /// local engine, or the remote model picked on Setup). Reads only: the
-  /// check asks the model from [ensureToolsChecked] (Next) or
-  /// [retestTools] (Check now), never on its own — on oMLX or LM Studio a
-  /// ping is a model load, and picking a model is not asking for one.
-  void refreshToolsGate({
-    required ChatService chat,
-    required LLMProvider llm,
-    required CreatorState creator,
-  }) {
-    final next = worldFromWikiToolsGate(
-      chat.toolCheckFor(
-        via: _wizardLlm(llm, creator),
-        remoteModel: _wizardRemoteModel(llm, creator),
-        autoAsk: false,
-      ),
-    );
-    if (next == toolsGate) return;
-    toolsGate = next;
-    notify();
-  }
-
-  /// Setup's Next: ask the model now if nothing has, then say whether the
-  /// wizard may go on. The one place the wizard itself loads a model.
-  Future<bool> ensureToolsChecked({
-    required ChatService chat,
-    required LLMProvider llm,
-    required CreatorState creator,
-  }) async {
-    refreshToolsGate(chat: chat, llm: llm, creator: creator);
-    if (toolsGate == WorldToolsGate.notChecked) {
-      toolsGate = WorldToolsGate.checking;
-      error = null;
-      notify();
-      await retestTools(chat: chat, llm: llm, creator: creator);
-      toolsGate = WorldToolsGate.notChecked;
-      refreshToolsGate(chat: chat, llm: llm, creator: creator);
-    }
-    if (!toolsReady) {
-      error = worldFromWikiToolsCopy(toolsGate);
-      notify();
-    }
-    return toolsReady;
-  }
-
-  /// "Check now": ask the wizard's model again.
-  Future<void> retestTools({
-    required ChatService chat,
-    required LLMProvider llm,
-    required CreatorState creator,
-  }) => chat.retestToolsFor(
-    via: _wizardLlm(llm, creator),
-    remoteModel: _wizardRemoteModel(llm, creator),
-  );
-
-  /// The Setup step's own remote pick; empty when it is chat's model.
-  String _wizardRemoteModel(LLMProvider llm, CreatorState creator) {
-    if (llm.hasManagedProcess) return '';
-    final pick = creator.selectedModelId;
-    return pick == llm.openRouterService.modelName ? '' : pick;
-  }
-
-  /// The service scout and write use for that pick (see [_llm]); null for
-  /// chat's own model.
-  LLMService? _wizardLlm(LLMProvider llm, CreatorState creator) =>
-      _wizardRemoteModel(llm, creator).isEmpty ? null : _llm(llm, creator);
 
   WikiSearchService _wiki() {
     final url = wikiUrl;
@@ -202,14 +150,11 @@ class WorldFromWikiState extends ChangeNotifier {
     );
   }
 
-  LLMService? _llm(LLMProvider llm, CreatorState creator) {
-    return llmOverride ?? llm.serviceForModel(creator.selectedModelId);
-  }
-
   Future<void> scout({
     required LLMProvider llm,
     required CreatorState creator,
     required int contextTokens,
+    WorldWikiDepth depth = kWorldWikiDepthDefault,
   }) async {
     if (wikiUrl.trim().isEmpty) {
       error = 'Pick a wiki first.';
@@ -221,7 +166,7 @@ class WorldFromWikiState extends ChangeNotifier {
       notify();
       return;
     }
-    final svc = _llm(llm, creator);
+    final svc = llmFor(llm, creator);
     if (svc == null || !svc.isReady) {
       error = 'The backend is not ready.';
       notify();
@@ -236,6 +181,8 @@ class WorldFromWikiState extends ChangeNotifier {
         wiki: _wiki(),
         llm: svc,
         contextTokens: contextTokens,
+        depth: depth,
+        moment: momentController.text,
         onProgress: (msg) {
           status = msg;
           notify();
@@ -286,13 +233,14 @@ class WorldFromWikiState extends ChangeNotifier {
     required LLMProvider llm,
     required CreatorState creator,
     required int contextTokens,
+    WorldWikiDepth depth = kWorldWikiDepthDefault,
   }) async {
     if (!toolsReady) {
       error = worldFromWikiToolsCopy(toolsGate);
       notify();
       return;
     }
-    final svc = _llm(llm, creator);
+    final svc = llmFor(llm, creator);
     if (svc == null || !svc.isReady) {
       error = 'The backend is not ready.';
       notify();
@@ -314,6 +262,8 @@ class WorldFromWikiState extends ChangeNotifier {
       wiki: _wiki(),
       llm: svc,
       contextTokens: contextTokens,
+      depth: depth,
+      moment: momentController.text,
       onProgress: (msg) {
         status = msg;
         notify();

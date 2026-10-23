@@ -15,6 +15,7 @@ import 'package:front_porch_ai/services/llm_service.dart';
 
 import 'world_craft_mechanics.dart';
 import 'world_from_wiki_budget.dart';
+import 'world_from_wiki_depth.dart';
 import 'world_from_wiki_ops.dart';
 import 'world_from_wiki_places_tools.dart';
 import 'world_from_wiki_tools.dart';
@@ -60,12 +61,16 @@ class WorldScoutRunner {
   WorldScoutRunner({
     required this.llm,
     required this.budget,
+    this.depth = kWorldWikiDepthDefault,
+    this.moment = '',
     this.onProgress,
     this.isAborted,
   });
 
   final LLMService llm;
   final WorldWikiBudget budget;
+  final WorldWikiDepth depth;
+  final String moment;
   final void Function(String message)? onProgress;
   final bool Function()? isAborted;
 
@@ -130,7 +135,11 @@ class WorldScoutRunner {
       }
       final got = resp == null
           ? const <WorldProposedCard>[]
-          : parseWorldScoutToolCalls(resp.calls, catalog: titles);
+          : parseWorldScoutToolCalls(
+              resp.calls,
+              catalog: titles,
+              max: depth.cardTarget,
+            );
       if (got.isEmpty && resp != null && resp.calls.isNotEmpty) {
         // A list came back and nothing in it survived the parse: say what
         // the first item looked like, or this reads as the model's choice.
@@ -193,7 +202,7 @@ class WorldScoutRunner {
         continue;
       }
       for (final c in got) {
-        if (cards.length >= kWorldScoutCardMax) break;
+        if (cards.length >= depth.cardTarget) break;
         if (seenCards.add(c.name.toLowerCase())) cards.add(c);
       }
       for (final p in parseWorldScoutPlaces(resp!.calls)) {
@@ -278,7 +287,11 @@ class WorldScoutRunner {
       return kept;
     }
     if (resp == null) return kept;
-    final cards = parseWorldScoutToolCalls(resp.calls, catalog: titles);
+    final cards = parseWorldScoutToolCalls(
+      resp.calls,
+      catalog: titles,
+      max: depth.cardTarget,
+    );
     if (cards.length < kWorldScoutCardMin) {
       debugPrint('[World] shelf review returned ${cards.length} cards — kept');
       return kept;
@@ -413,10 +426,13 @@ class WorldScoutRunner {
         ? ' (part $index of $total — the parts are merged after; propose '
               'the cards these titles support)'
         : '';
+    final (lo, hi) = depth.scoutRange;
     return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
+        '${worldMomentLine(moment)}'
         'INDEX TITLES$partNote:\n${part.join('\n')}\n\n'
-        '$kWorldScoutPrompt\n'
+        '$lo–$hi cards. $kWorldScoutPrompt\n'
+        '${worldMomentRule(moment)}\n'
         'Call $kWorldScoutToolName once.';
   }
 }
