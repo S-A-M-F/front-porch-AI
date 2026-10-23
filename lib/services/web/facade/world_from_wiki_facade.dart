@@ -79,7 +79,12 @@ class WorldFromWikiFacade {
     if (parseWikiBaseUrl(wikiUrl) == null) {
       return {'ok': false, 'error': 'wikiUrl is required'};
     }
-    final gate = _toolsGate();
+    var gate = _toolsGate();
+    if (gate == WorldToolsGate.notChecked) {
+      // The phone's Next: ask the model now, the way the desktop does.
+      await _chat.retestToolsFor();
+      gate = _toolsGate();
+    }
     if (gate != WorldToolsGate.ready) {
       return {
         'ok': false,
@@ -118,6 +123,13 @@ class WorldFromWikiFacade {
       // partsCut = parts the model could not finish at the smallest size).
       'parts': result.parts,
       'partsCut': result.partsCut,
+      // Additive: the wiki's article count and whether the catalog is its
+      // most-linked pages; the shelf review's verdict.
+      if (result.catalog.articleCount != null)
+        'articles': result.catalog.articleCount,
+      'ranked': result.catalog.ranked,
+      'revised': result.revised,
+      'auditNotes': result.auditNotes,
     };
   }
 
@@ -262,5 +274,8 @@ class WorldFromWikiFacade {
     return {for (final e in raw) e?.toString().toLowerCase() ?? ''}..remove('');
   }
 
-  WorldToolsGate _toolsGate() => worldFromWikiToolsGate(_chat.toolCheckFor());
+  /// Reads only; the phone's Next ([scout]) and Check now ([testTools])
+  /// are the presses that ask the model, and so may load one.
+  WorldToolsGate _toolsGate() =>
+      worldFromWikiToolsGate(_chat.toolCheckFor(autoAsk: false));
 }

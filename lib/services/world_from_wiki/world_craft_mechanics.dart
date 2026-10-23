@@ -24,6 +24,19 @@ WorldCraftRole? parseWorldCraftRole(String? raw) {
   }
 }
 
+/// What a card is about. A world shelf is mostly places, factions, events
+/// and concepts; people are a minority. The scout sets one per card and
+/// the shelf review counts them.
+const List<String> kWorldCardKinds = [
+  'place',
+  'faction',
+  'event',
+  'concept',
+  'race',
+  'item',
+  'person',
+];
+
 /// One scout-proposed card. Default unsigned; the user signs a shelf.
 class WorldProposedCard {
   const WorldProposedCard({
@@ -33,6 +46,7 @@ class WorldProposedCard {
     required this.sourceTitles,
     this.group = '',
     this.place = '',
+    this.kind = '',
   });
 
   final String name;
@@ -40,6 +54,9 @@ class WorldProposedCard {
   final WorldCraftRole role;
   final List<String> sourceTitles;
   final String group;
+
+  /// One of [kWorldCardKinds], or '' from an older scout or client.
+  final String kind;
 
   /// Slice 8 (design §9.2): the scout-named place this card belongs to,
   /// empty for the root book. Additive — a card from an older scout (or
@@ -53,6 +70,7 @@ class WorldProposedCard {
     'sourceTitles': sourceTitles,
     if (group.isNotEmpty) 'group': group,
     if (place.isNotEmpty) 'place': place,
+    if (kind.isNotEmpty) 'kind': kind,
   };
 
   static WorldProposedCard? tryParse(Map<String, dynamic> json) {
@@ -72,6 +90,7 @@ class WorldProposedCard {
             ?.toString()
             .trim() ??
         '';
+    final kindRaw = json['kind']?.toString().trim().toLowerCase() ?? '';
     return WorldProposedCard(
       name: name,
       keys: keys.isEmpty ? [name] : keys,
@@ -79,6 +98,7 @@ class WorldProposedCard {
       sourceTitles: sources,
       group: group,
       place: place,
+      kind: kWorldCardKinds.contains(kindRaw) ? kindRaw : '',
     );
   }
 }

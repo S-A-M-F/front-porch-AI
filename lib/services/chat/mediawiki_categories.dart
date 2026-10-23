@@ -84,3 +84,87 @@ String stripMediaWikiCategoryNamespace(String title) {
   const ns = 'Category:';
   return title.startsWith(ns) ? title.substring(ns.length).trim() : title;
 }
+
+/// `meta=siteinfo&siprop=statistics`: how many articles the wiki has, so
+/// the catalog knows whether "all pages" can list them whole.
+Uri mediawikiStatisticsUri(Uri wikiBase) {
+  return mediawikiActionApiUri(wikiBase).replace(
+    queryParameters: {
+      'action': 'query',
+      'meta': 'siteinfo',
+      'siprop': 'statistics',
+      'format': 'json',
+    },
+  );
+}
+
+int? parseMediaWikiArticleCount(String body) {
+  try {
+    final dynamic json = jsonDecode(body);
+    if (json is! Map) return null;
+    final query = json['query'];
+    if (query is! Map) return null;
+    final stats = query['statistics'];
+    if (stats is! Map) return null;
+    final raw = stats['articles'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Special:MostLinkedPages through the API: the articles other pages
+/// point at most, which on a big wiki is its cast, its places and its
+/// terms in importance order — the opposite of an alphabetical prefix.
+Uri mediawikiMostLinkedUri(Uri wikiBase) {
+  return mediawikiActionApiUri(wikiBase).replace(
+    queryParameters: {
+      'action': 'query',
+      'list': 'querypage',
+      'qppage': 'Mostlinked',
+      'qplimit': 'max',
+      'format': 'json',
+    },
+  );
+}
+
+/// Article-namespace titles from a querypage answer, in rank order.
+List<String> parseMediaWikiQueryPageTitles(String body) {
+  final out = <String>[];
+  try {
+    final dynamic json = jsonDecode(body);
+    if (json is! Map) return out;
+    final query = json['query'];
+    if (query is! Map) return out;
+    final page = query['querypage'];
+    if (page is! Map) return out;
+    final results = page['results'];
+    if (results is! List) return out;
+    for (final r in results) {
+      if (r is! Map) continue;
+      final ns = r['ns'];
+      if (ns != 0 && ns != '0') continue;
+      final title = r['title']?.toString().trim() ?? '';
+      if (title.isEmpty || skipWikiStudioTitle(title)) continue;
+      out.add(title);
+    }
+  } catch (_) {}
+  return out;
+}
+
+/// Categories for a named batch of titles (`prop=categories&titles=`);
+/// hidden maintenance categories are left out. The answer has the same
+/// `query.pages` shape as the generator form, so one parser reads both.
+Uri mediawikiCategoriesForTitlesUri(Uri wikiBase, List<String> titles) {
+  return mediawikiActionApiUri(wikiBase).replace(
+    queryParameters: {
+      'action': 'query',
+      'prop': 'categories',
+      'clshow': '!hidden',
+      'cllimit': 'max',
+      'titles': titles.join('|'),
+      'format': 'json',
+    },
+  );
+}

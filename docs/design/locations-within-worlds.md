@@ -459,3 +459,38 @@ hardcodes a reply size any more (`world_from_wiki_budget.dart`):
 - A busy or unreachable server is reported, not retried on smaller parts;
   a reply the model never gave (prose, junk, nothing) is named for what it
   was, and only a real empty answer keeps "try a clearer premise".
+
+### A world, not a cast list (2026-10-23)
+
+The reference is the maintainer's hand-built *Bleach (TYBW)* world: one
+always-on era card, eleven places (Soul Society, Seireitei, Rukongai,
+Wandenreich, Silbern, Hueco Mundo, Karakura, the Royal Palace, Wahrwelt),
+the factions, the timeline, the powers and items, and eight people written
+as they are in that war — 34 entries of two dense sentences with alias
+keys. Three things stood between the wizard and that shape:
+
+- **The catalog.** "All pages" is alphabetical; capped at 500 it held a
+  3,005-article wiki's A and B pages. A wiki bigger than the cap is now
+  indexed by `Special:MostLinkedPages` (the API's `querypage=Mostlinked`,
+  article namespace, one request) with the premise search in front, and
+  categories fetched by title in batches of 25
+  (`wiki_studio_lister.dart`, `mediawiki_categories.dart`). The review
+  header says "top 478 of 3,005 pages by links". A small wiki keeps the
+  complete listing.
+- **The ask.** The scout prompt asked for a "cast list". It now asks for a
+  setting bible in this order — era, places (nested, every place with its
+  own hub card), factions, events, concepts/races/items, people last and at
+  most a third — and every card carries a `kind` (`kWorldCardKinds`), which
+  the review rows show instead of the engine's role word.
+- **The review.** `auditWorldShelf` (`world_shelf_audit.dart`) checks a
+  shelf of twelve or more cards: one era card, people at most a third (and
+  never fewer than six allowed), at least four place or faction cards, and
+  named places when a tagged wiki yielded place cards. A failing shelf gets
+  ONE revise call with the findings, the first shelf and as much of the
+  index as the window leaves; the result replaces the first only when it
+  has fewer problems and at least twenty cards. The status line says
+  "shelf revised: …" or "review: …" when the revise did not take.
+
+Also: the wizard's tools check reads chat's verdict and never pings on its
+own (`toolCheckFor(autoAsk: false)`); Setup's Next and Check now ask,
+because on oMLX and LM Studio a ping is a model load.

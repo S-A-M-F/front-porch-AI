@@ -150,27 +150,41 @@ void main() {
     expect(model.asked, 0);
   });
 
-  test('running: chat\'s check asks the model; a tool call opens the '
-      'wizard', () async {
+  // Changed 2026-10-23: reading the status no longer asks the model. The
+  // maintainer ruled the wizard must not load a model until Next — on oMLX
+  // and LM Studio a tool ping is a model load, and the wizard pinged the
+  // first model in the picker the moment the page opened. The phone's Next
+  // (scout) asks instead; the old pin (status → asked) is therefore false.
+  test('running: the status read asks nothing; Next (scout) asks the model '
+      'and a tool call opens the wizard', () async {
     model.ready = true;
     await facade.status();
     await _settle();
-    expect(model.asked, 1);
-    expect(await gate(), 'checking');
+    expect(model.asked, 0, reason: 'picking a model is not asking for one');
+    expect(await gate(), 'notChecked');
 
+    final pending = scout();
+    await _settle();
+    expect(model.asked, 1, reason: 'Next asks');
+    expect(await gate(), 'checking');
     model.answer.complete(_calls);
+    final result = await pending;
     await _settle();
 
     expect(chat.toolCallSupport, ToolCallSupport.supported);
     expect(await gate(), 'ready');
     expect((await facade.status())['toolsAdvertised'], isTrue);
+    // The gate opened: what refuses now is the sandbox's own backend (no
+    // real service behind the provider here), not the tools check.
+    expect(result['error'], isNot(contains('checked for tools')));
+    expect(result['error'], isNot(contains('tool-calling check')));
   });
 
+  // Changed 2026-10-23 (see above): Check now asks, the status read does not.
   test('tested and answered in words: failed, and Scout says why', () async {
     model.ready = true;
-    await facade.status();
-    await _settle();
     model.answer.complete(_prose);
+    await facade.testTools();
     await _settle();
 
     expect(chat.toolCallSupport, ToolCallSupport.unsupported);
@@ -196,11 +210,16 @@ void main() {
     await chat.testToolCalling();
     expect(chat.toolCallSupport, ToolCallSupport.unsupported);
 
+    // Changed 2026-10-23 (see above): Next asks, the status read does not.
     await facade.status();
+    await _settle();
+    expect(model.asked, 0);
+    final pending = scout();
     await _settle();
     expect(model.asked, 1, reason: "the wizard's model itself was asked");
     expect(await gate(), 'checking');
     model.answer.complete(_calls);
+    await pending;
     await _settle();
 
     expect(await gate(), 'ready', reason: "the helper's no is not borrowed");
@@ -216,9 +235,9 @@ void main() {
     await chat.testToolCalling();
     expect(chat.toolCallSupport, ToolCallSupport.supported);
 
-    await facade.status();
-    await _settle();
+    // Changed 2026-10-23 (see above): Check now asks, the status read does not.
     model.answer.complete(_prose);
+    await facade.testTools();
     await _settle();
     expect(await gate(), 'failed', reason: "the helper's yes is not borrowed");
 
@@ -229,11 +248,11 @@ void main() {
     expect(after['toolsGate'], 'ready');
   });
 
+  // Changed 2026-10-23 (see above): Check now asks, the status read does not.
   test('a model that passed and has since stopped is not ready', () async {
     model.ready = true;
-    await facade.status();
-    await _settle();
     model.answer.complete(_calls);
+    await facade.testTools();
     await _settle();
     expect(await gate(), 'ready');
 

@@ -39,10 +39,15 @@ export function worldToolsCopy(gate: WorldToolsGate): string | null {
     case 'notRunning':
       return 'This wizard needs a model that can use tools, and the app checks that by asking the model itself, so it has to be running first. Start it on the Models page (or connect your online provider), and the check runs by itself.';
     case 'notChecked':
-      return "This model hasn't been checked for tools yet. Press Check now and it takes a few seconds.";
+      return "This model hasn't been checked for tools yet. Next checks it first (on a local server that loads the model), or press Check now.";
     case 'failed':
       return "This model was tested and didn't answer the tool-calling check correctly, so it can't be used for World from Wiki. Pick a different model (for example Qwen 3 or Gemma 4) and it will be tested again.";
   }
+}
+
+/** Next may go: the model passed, or nothing has asked it yet (Next asks). */
+export function worldToolsAllowNext(gate: WorldToolsGate): boolean {
+  return gate === 'ready' || gate === 'notChecked';
 }
 
 /** The pill's "ask again", offered only when nothing has asked the model. */
@@ -61,7 +66,12 @@ export type ProposedWorldCard = {
   /** Slice 8: the scout-named place this card belongs to; undefined
    * for the root book (and for every card on an untagged wiki). */
   place?: string;
+  /** What the card is about (place, faction, event, concept, race, item,
+   * person); undefined from an older server. */
+  kind?: string;
 };
+
+export const WORLD_CARD_KINDS = ['place', 'faction', 'event', 'concept', 'race', 'item', 'person'];
 
 /** A place the scout named from tags/categories — the web twin of
  * WorldProposedPlace. The server sends them in build order. */
@@ -139,6 +149,10 @@ export function parseProposedCards(raw: unknown): ProposedWorldCard[] {
       sourceTitles,
       group: String(row.group ?? '').trim() || undefined,
       place: String(row.place ?? '').trim() || undefined,
+      kind: (() => {
+        const k = String(row.kind ?? '').trim().toLowerCase();
+        return WORLD_CARD_KINDS.includes(k) ? k : undefined;
+      })(),
     });
   }
   return out;
@@ -275,4 +289,23 @@ export function scoutPartsNote(parts: unknown, partsCut: unknown): string {
   if (p > 1) bits.push(`asked in ${p} parts`);
   if (c > 0) bits.push(`${c} cut off`);
   return bits.join(', ');
+}
+
+/** "(478 index pages)" or, for a big wiki, "(top 478 of 3,005 pages by
+ * links)" — twin of the desktop review header. '' when nothing was listed. */
+export function catalogCountCopy(titles: unknown, articles: unknown, ranked: unknown): string {
+  const t = typeof titles === 'number' ? titles : 0;
+  if (t <= 0) return '';
+  const a = typeof articles === 'number' ? articles : 0;
+  if (ranked === true && a > t) return ` (top ${t} of ${a.toLocaleString('en-US')} pages by links).`;
+  return ` (${t} index pages).`;
+}
+
+/** "shelf revised: 11 of 30 cards were people" or "review: …" when the
+ * revise did not take; '' when the shelf read as a world. */
+export function shelfReviewNote(revised: unknown, auditNotes: unknown): string {
+  if (!Array.isArray(auditNotes) || auditNotes.length === 0) return '';
+  const first = String(auditNotes[0]);
+  const short = first.includes(';') ? first.split(';')[0] : first;
+  return revised === true ? `shelf revised: ${short}` : `review: ${short}`;
 }

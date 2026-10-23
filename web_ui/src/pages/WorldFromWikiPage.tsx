@@ -13,6 +13,7 @@ import type { LoreEntry } from '../components/LoreEntriesEditor';
 import {
   WORLD_FROM_WIKI_STEPS,
   canOpenWorldFromWikiPreview,
+  catalogCountCopy,
   contextChoiceOptions,
   emptyScoutCopy,
   jumpWorldFromWikiStep,
@@ -20,6 +21,8 @@ import {
   parseProposedPlaces,
   parseWorldToolsGate,
   scoutPartsNote,
+  worldToolsAllowNext,
+  shelfReviewNote,
   shelfSections,
   signedCards,
   worldToolsCanRetest,
@@ -75,6 +78,8 @@ export function WorldFromWikiPage() {
   const [signed, setSigned] = useState<Set<number>>(new Set());
   const [titleCount, setTitleCount] = useState(0);
   const [partsNote, setPartsNote] = useState('');
+  const [catalogCopy, setCatalogCopy] = useState('');
+  const [reviewNote, setReviewNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [writeStatus, setWriteStatus] = useState('');
   const [error, setError] = useState('');
@@ -107,13 +112,16 @@ export function WorldFromWikiPage() {
 
   const toolsGate = parseWorldToolsGate(status?.toolsGate, status?.toolsAdvertised);
   const toolsOk = toolsGate === 'ready';
+  // An unchecked model is asked by Next (the relay's scout), never by the
+  // page: on oMLX or LM Studio a check is a model load.
+  const nextOk = worldToolsAllowNext(toolsGate);
 
-  // The check runs on the host (chat's tool check); follow it until it lands.
+  // A check is running on the host (Next or Check now); follow it until it lands.
   useEffect(() => {
-    if (step !== 0 || toolsOk || status == null) return;
+    if (step !== 0 || toolsGate !== 'checking' || status == null) return;
     const id = window.setTimeout(() => void loadStatus(), TOOLS_POLL_MS);
     return () => window.clearTimeout(id);
-  }, [step, toolsOk, status, loadStatus]);
+  }, [step, toolsGate, status, loadStatus]);
 
   const [retesting, setRetesting] = useState(false);
   const retestTools = async () => {
@@ -214,6 +222,10 @@ export function WorldFromWikiPage() {
         failure?: unknown;
         parts?: unknown;
         partsCut?: unknown;
+        articles?: unknown;
+        ranked?: unknown;
+        revised?: unknown;
+        auditNotes?: unknown;
       }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise });
       const cards = parseProposedCards(r.proposed);
       setProposed(cards);
@@ -228,6 +240,8 @@ export function WorldFromWikiPage() {
       setSigned(new Set());
       setTitleCount(typeof r.titles === 'number' ? r.titles : 0);
       setPartsNote(scoutPartsNote(r.parts, r.partsCut));
+      setCatalogCopy(catalogCountCopy(r.titles, r.articles, r.ranked));
+      setReviewNote(shelfReviewNote(r.revised, r.auditNotes));
       if (!cards.length) {
         setError(emptyScoutCopy(r.failure));
         return;
@@ -497,8 +511,9 @@ export function WorldFromWikiPage() {
             <p className="muted small">
               Sign the cards they proposed. Default is off — no select-all.
               {' '}{signed.size} of {proposed.length} signed
-              {titleCount > 0 ? ` (${titleCount} index pages).` : '.'}
+              {titleCount > 0 ? catalogCopy : '.'}
               {partsNote ? ` Index ${partsNote}.` : ''}
+              {reviewNote ? ` ${reviewNote[0].toUpperCase()}${reviewNote.slice(1)}.` : ''}
             </p>
             {shelfSections(proposed, places).map((section, si) => (
               <div key={section.place ? `place-${section.place.name}` : `root-${si}`}>
@@ -550,7 +565,7 @@ export function WorldFromWikiPage() {
                       />
                       <span>
                         <strong>{c.name}</strong>
-                        {' '}({c.role}{c.group ? ` · ${c.group}` : ''})
+                        {' '}({c.kind ?? c.role}{c.group ? ` · ${c.group}` : ''})
                         <br />
                         <span className="muted small">{c.sourceTitles.join(', ')}</span>
                       </span>
@@ -605,7 +620,7 @@ export function WorldFromWikiPage() {
       <div className="wizard-nav">
         <button disabled={step === 0 || busy} onClick={() => setStep(step - 1)}>← Back</button>
         {step === 0 && (
-          <button className="primary" disabled={busy || !toolsOk || !wikiUrl} onClick={() => void scout()}>
+          <button className="primary" disabled={busy || !nextOk || !wikiUrl} onClick={() => void scout()}>
             {busy ? 'Scouting…' : lorebooksOn ? 'Scout wiki' : 'Next: Preview'}
           </button>
         )}

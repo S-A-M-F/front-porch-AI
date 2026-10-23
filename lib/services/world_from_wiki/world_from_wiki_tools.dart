@@ -23,13 +23,24 @@ const int kWorldLoreContentMax = 330;
 const String kWorldClimateToolName = 'write_world_climate';
 
 const String kWorldScoutPrompt =
-    'Cast list not table of contents. Merge numbered chapters / drafts / '
-    'images into one card when they are the same subject. 20–40 cards. '
-    'Role era/hub/leaf/crown. Optional inclusion group slug from this book. '
-    'they/them. Do not invent climate. Do not use another setting\'s '
-    'faction names. If index lines show [tags], the tags name nations, '
-    'peoples and regions: propose up to 8 places they imply (with the '
-    'characters that belong there) and set each card\'s place. With no '
+    'Build a WORLD, not a cast list and not a table of contents. Merge '
+    'numbered chapters / drafts / images into one card when they are the '
+    'same subject. 20–40 cards, shaped like a setting bible: ONE era card '
+    'for the premise\'s time (role era, kind event); the places (kind '
+    'place: realms, cities, fortresses, districts); the factions and '
+    'organizations (kind faction); the events and timeline of the premise '
+    '(kind event); the powers, races, items and terms a scene needs (kind '
+    'concept / race / item); and LAST the people who define the premise '
+    '(kind person) — at most a third of the shelf, each written as they are '
+    'in the premise\'s time. Role: era for the one era card, hub for places '
+    'and factions that pull detail, crown for a peak figure or relic in a '
+    'group, leaf for everything else. Set kind on every card. Optional '
+    'inclusion group slug from this book. they/them. Do not invent climate. '
+    'Do not use another setting\'s faction names. If index lines show '
+    '[tags], the tags name places, nations, peoples, factions and page '
+    'types: propose up to $kWorldScoutPlaceMax places they imply (nested '
+    'with parentName where one lies inside another), give every place its '
+    'own hub card, and set each card\'s place to where it belongs. With no '
     'tags, send no places and no card places.';
 
 /// Scout: one shelf of cards from index titles. Tools-only.
@@ -42,18 +53,20 @@ List<Map<String, dynamic>> worldScoutToolSchema() {
         'description':
             'Propose 20–40 lorebook cards for this wiki, and — when the index '
             'carries tags or categories — the places they imply, so cards '
-            'can each name one place. Cast list, not a '
-            'table of contents. Merge numbered chapters, drafts, and image '
-            'pages of the same subject into one card. Roles: era, hub, leaf, '
-            'crown. Optional group is an inclusion slug from THIS book only.',
+            'can each name one place. A world shelf: its era, places, '
+            'factions, events and powers first, people last and few. Merge '
+            'numbered chapters, drafts, and image pages of the same subject '
+            'into one card. Roles: era, hub, leaf, crown. Optional group is '
+            'an inclusion slug from THIS book only.',
         'parameters': {
           'type': 'object',
           'properties': {
             'places': {
               'type': 'array',
               'description':
-                  'Optional (slice 8). Up to 8 places the tags/categories '
-                  'name. Cards then set place to one of these names.',
+                  'Optional (slice 8). Up to $kWorldScoutPlaceMax places the '
+                  'tags/categories name, nested with parentName. Cards then '
+                  'set place to one of these names.',
               'items': worldPlaceItemSchema(),
             },
             'cards': {
@@ -99,8 +112,16 @@ List<Map<String, dynamic>> worldScoutToolSchema() {
                         'or empty for the world root. A card belongs to '
                         'exactly one place.',
                   },
+                  'kind': {
+                    'type': 'string',
+                    'enum': kWorldCardKinds,
+                    'description':
+                        'What the card is about. A world shelf is mostly '
+                        'places, factions, events and concepts; people are '
+                        'at most a third of it.',
+                  },
                 },
-                'required': ['name', 'role', 'sourceTitles'],
+                'required': ['name', 'role', 'sourceTitles', 'kind'],
               },
             },
           },
@@ -336,6 +357,7 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
           sourceTitles: sources.take(3).toList(),
           group: parsed.group,
           place: parsed.place,
+          kind: parsed.kind,
         ),
       );
       if (out.length >= kWorldScoutCardMax) return out;

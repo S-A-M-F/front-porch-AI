@@ -22,10 +22,18 @@ class WorldScoutResult {
     this.failure,
     this.parts = 0,
     this.partsCut = 0,
+    this.revised = false,
+    this.auditNotes = const [],
   });
 
   final WikiStudioCatalog catalog;
   final List<WorldProposedCard> proposed;
+
+  /// The shelf review's verdict: [revised] when the model's second shelf
+  /// replaced the first, [auditNotes] what the review found (empty when
+  /// the first shelf already read as a world).
+  final bool revised;
+  final List<String> auditNotes;
 
   /// How many requests the index took: 1 when it fit the wizard's context
   /// whole, more when it was asked in parts and merged.
@@ -140,6 +148,8 @@ class WorldFromWikiEngine {
       failure: scouted.failure,
       parts: scouted.parts,
       partsCut: scouted.partsCut,
+      revised: scouted.revised,
+      auditNotes: scouted.auditNotes,
     );
   }
 
@@ -289,7 +299,9 @@ class WorldFromWikiEngine {
     buf.writeln(
       'Call $kWorldLoreBatchToolName once. One entry per card above, '
       'same names. HARD CAP $kWorldLoreContentMax characters — two short '
-      'sentences. Alias keys as separate words. they/them for unnamed '
+      'sentences. Alias keys as separate words, with the spellings a chat '
+      'would type. Write every person and faction as they are in the '
+      'premise\'s time, not their whole history. they/them for unnamed '
       'people. Do not invent climate, biomes, or facts missing from the '
       'articles.',
     );

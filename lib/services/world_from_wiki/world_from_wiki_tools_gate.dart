@@ -48,8 +48,9 @@ String? worldFromWikiToolsCopy(WorldToolsGate gate, {bool onPhone = false}) {
           'first. ${onPhone ? 'Start it on the Models page' : 'Press Start Backend above'} '
           '(or connect your online provider), and the check runs by itself.';
     case WorldToolsGate.notChecked:
-      return "This model hasn't been checked for tools yet. Press Check now "
-          'and it takes a few seconds.';
+      return "This model hasn't been checked for tools yet. Next checks it "
+          'first (on a local server that loads the model), or press Check '
+          'now.';
     case WorldToolsGate.failed:
       return 'This model was tested and didn\'t answer the tool-calling check '
           'correctly, so it can\'t be used for World from Wiki. Pick a '

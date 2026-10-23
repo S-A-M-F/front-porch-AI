@@ -12,6 +12,80 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_budget.d
 const int kWorldFromWikiScanDepth = 10;
 const int kWorldFromWikiTokenBudget = 2800;
 
+/// Tag words that say what a page IS; a line keeps these first.
+const List<String> kWorldTagTypeWords = [
+  'location',
+  'place',
+  'city',
+  'town',
+  'realm',
+  'world',
+  'region',
+  'nation',
+  'organization',
+  'organisation',
+  'faction',
+  'group',
+  'character',
+  'people',
+  'race',
+  'species',
+  'event',
+  'battle',
+  'war',
+  'arc',
+  'term',
+  'concept',
+  'power',
+  'abilit',
+  'item',
+  'weapon',
+];
+
+/// Tags that are wiki housekeeping, never world facts.
+const List<String> kWorldTagNoiseWords = [
+  'pages',
+  'articles',
+  'stub',
+  'needing',
+  'unofficial',
+  'image',
+  'gallery',
+  'with ',
+  'without',
+  'missing',
+  'cleanup',
+  'spoiler',
+  'template',
+];
+
+/// The tags a title shows the scout, best four first: tags that name
+/// another catalog title (a place or faction the page sits in), then tags
+/// that say what the page is, then the rest; housekeeping tags are dropped.
+List<String> worldScoutTagsFor(
+  List<String> tags, {
+  required Set<String> titlesLower,
+  int max = 4,
+}) {
+  int rank(String tag) {
+    final lower = tag.toLowerCase();
+    if (titlesLower.contains(lower)) return 0;
+    if (kWorldTagTypeWords.any(lower.contains)) return 1;
+    return 2;
+  }
+
+  final kept = [
+    for (final tag in tags)
+      if (!tag.startsWith(r'$:/') &&
+          !kWorldTagNoiseWords.any(tag.toLowerCase().contains))
+        tag,
+  ];
+  final ranked = [
+    for (var i = 0; i < kept.length; i++) (rank(kept[i]), i),
+  ]..sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+  return [for (final r in ranked.take(max)) kept[r.$2]];
+}
+
 /// The scout's index lines: a title, and its tags when the wiki has them
 /// (Neokosmos keeps its nations ONLY in tags — titles alone read
 /// "Ceolwynn, Bealdric…" with nothing saying where they belong, design §9).
@@ -19,13 +93,14 @@ List<String> worldScoutIndexLines(
   List<String> titles,
   Map<String, List<String>> tags,
 ) {
+  final titlesLower = {for (final t in titles) t.toLowerCase()};
   return [
     for (final t in titles)
       () {
-        final shown = [
-          for (final tag in tags[t] ?? const <String>[])
-            if (!tag.startsWith(r'$:/')) tag,
-        ].take(4).join(', ');
+        final shown = worldScoutTagsFor(
+          tags[t] ?? const <String>[],
+          titlesLower: titlesLower,
+        ).join(', ');
         return shown.isEmpty ? '- $t' : '- $t [$shown]';
       }(),
   ];
@@ -211,4 +286,16 @@ String worldScoutPartsNote({required int parts, required int partsCut}) {
   if (parts > 1) bits.add('asked in $parts parts');
   if (partsCut > 0) bits.add('$partsCut cut off');
   return bits.isEmpty ? '' : ', ${bits.join(', ')}';
+}
+
+/// ", shelf revised: 11 of 30 cards were people" or ", review: …" when
+/// the revise did not take; '' when the shelf read as a world.
+String worldScoutShelfNote({
+  required bool revised,
+  required List<String> auditNotes,
+}) {
+  if (auditNotes.isEmpty) return '';
+  final first = auditNotes.first;
+  final short = first.contains(';') ? first.split(';').first : first;
+  return revised ? ', shelf revised: $short' : ', review: $short';
 }

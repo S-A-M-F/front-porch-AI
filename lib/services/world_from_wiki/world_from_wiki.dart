@@ -13,5 +13,6 @@ export 'world_from_wiki_places_tools.dart';
 export 'world_from_wiki_scout.dart';
 export 'world_from_wiki_tools.dart';
 export 'world_from_wiki_tools_gate.dart';
+export 'world_shelf_audit.dart';
 export 'world_places.dart';
 export 'world_places_write.dart';

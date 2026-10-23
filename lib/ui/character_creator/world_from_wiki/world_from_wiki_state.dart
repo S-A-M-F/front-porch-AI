@@ -37,6 +37,11 @@ class WorldFromWikiState extends ChangeNotifier {
   String? error;
   int catalogTitleCount = 0;
 
+  /// The wiki's own article count and whether the catalog is its
+  /// most-linked pages (a big wiki) rather than a complete listing.
+  int? catalogArticleCount;
+  bool catalogRanked = false;
+
   List<WorldProposedCard> proposed = [];
   final Set<int> signed = {};
   List<LorebookEntry> entries = [];
@@ -121,8 +126,10 @@ class WorldFromWikiState extends ChangeNotifier {
   }
 
   /// Read chat's tool check for the model this wizard runs on (the running
-  /// local engine, or the remote model picked on Setup); it asks that model
-  /// when nothing has yet.
+  /// local engine, or the remote model picked on Setup). Reads only: the
+  /// check asks the model from [ensureToolsChecked] (Next) or
+  /// [retestTools] (Check now), never on its own — on oMLX or LM Studio a
+  /// ping is a model load, and picking a model is not asking for one.
   void refreshToolsGate({
     required ChatService chat,
     required LLMProvider llm,
@@ -132,11 +139,35 @@ class WorldFromWikiState extends ChangeNotifier {
       chat.toolCheckFor(
         via: _wizardLlm(llm, creator),
         remoteModel: _wizardRemoteModel(llm, creator),
+        autoAsk: false,
       ),
     );
     if (next == toolsGate) return;
     toolsGate = next;
     notify();
+  }
+
+  /// Setup's Next: ask the model now if nothing has, then say whether the
+  /// wizard may go on. The one place the wizard itself loads a model.
+  Future<bool> ensureToolsChecked({
+    required ChatService chat,
+    required LLMProvider llm,
+    required CreatorState creator,
+  }) async {
+    refreshToolsGate(chat: chat, llm: llm, creator: creator);
+    if (toolsGate == WorldToolsGate.notChecked) {
+      toolsGate = WorldToolsGate.checking;
+      error = null;
+      notify();
+      await retestTools(chat: chat, llm: llm, creator: creator);
+      toolsGate = WorldToolsGate.notChecked;
+      refreshToolsGate(chat: chat, llm: llm, creator: creator);
+    }
+    if (!toolsReady) {
+      error = worldFromWikiToolsCopy(toolsGate);
+      notify();
+    }
+    return toolsReady;
   }
 
   /// "Check now": ask the wizard's model again.
@@ -215,6 +246,8 @@ class WorldFromWikiState extends ChangeNotifier {
         premise: premiseController.text,
       );
       catalogTitleCount = result.catalog.titles.length;
+      catalogArticleCount = result.catalog.articleCount;
+      catalogRanked = result.catalog.ranked;
       proposed = result.proposed;
       places = result.places;
       signed.clear();
@@ -228,7 +261,8 @@ class WorldFromWikiState extends ChangeNotifier {
           '${proposed.length} cards from $catalogTitleCount pages'
           '${places.isNotEmpty ? ', ${places.length} places' : ''}'
           '${result.catalog.skipped > 0 ? ', skipped ${result.catalog.skipped}' : ''}'
-          '${worldScoutPartsNote(parts: result.parts, partsCut: result.partsCut)}';
+          '${worldScoutPartsNote(parts: result.parts, partsCut: result.partsCut)}'
+          '${worldScoutShelfNote(revised: result.revised, auditNotes: result.auditNotes)}';
       if (proposed.isEmpty) {
         // The engine says why when the model never answered (token limit,
         // busy server, unreadable call); the premise line is for a real
@@ -430,4 +464,29 @@ class WorldFromWikiState extends ChangeNotifier {
       return '';
     }
   }
+}
+
+/// "(478 index pages)" or, for a big wiki, "(top 478 of 3,005 pages by
+/// links)" — one wording for the desktop header and the phone.
+String worldCatalogCountCopy({
+  required int titles,
+  required int? articles,
+  required bool ranked,
+}) {
+  if (titles <= 0) return '';
+  if (ranked && articles != null && articles > titles) {
+    return ' (top $titles of ${worldWikiThousands(articles)} pages by links).';
+  }
+  return ' ($titles index pages).';
+}
+
+/// 3005 → "3,005".
+String worldWikiThousands(int n) {
+  final s = n.toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+    buf.write(s[i]);
+  }
+  return buf.toString();
 }

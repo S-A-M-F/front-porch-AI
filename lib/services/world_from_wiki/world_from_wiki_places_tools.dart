@@ -18,8 +18,9 @@ import 'world_places.dart';
 
 const String kWorldPlaceProfileToolName = 'write_place_profile';
 
-/// The most places one scout may name (design §9.2).
-const int kWorldScoutPlaceMax = 8;
+/// The most places one scout may name. Design §9.2 said eight; the
+/// maintainer's hand-built Bleach world has eleven, nested.
+const int kWorldScoutPlaceMax = 12;
 
 /// How many characters of each place source ride the profile prompt.
 /// A people chapter is ~8k; two articles plus the tag evidence fit any

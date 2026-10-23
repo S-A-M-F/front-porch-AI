@@ -38,7 +38,7 @@ class WorldFromWikiReviewStep extends StatelessWidget {
           child: Text(
             'Sign the cards they proposed. Default is off — no select-all. '
             '${state.signed.length} of ${state.proposed.length} signed'
-            '${state.catalogTitleCount > 0 ? ' (${state.catalogTitleCount} index pages).' : '.'}',
+            '${state.catalogTitleCount > 0 ? worldCatalogCountCopy(titles: state.catalogTitleCount, articles: state.catalogArticleCount, ranked: state.catalogRanked) : '.'}',
             style: TextStyle(color: StudioColors.proseOf(context), height: 1.4),
           ),
         ),
@@ -95,8 +95,10 @@ class WorldFromWikiReviewStep extends StatelessWidget {
       value: on,
       activeColor: StudioColors.amberOf(context),
       title: Text(card.name),
+      // The kind (place, faction, person…) says what the card is; the role
+      // word (hub, crown) is engine jargon and shows only without one.
       subtitle: Text(
-        '${card.role.name}$group'
+        '${card.kind.isEmpty ? card.role.name : card.kind}$group'
         '${sources.isEmpty ? '' : '\n$sources'}',
       ),
       isThreeLine: sources.isNotEmpty,

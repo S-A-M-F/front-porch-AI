@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canOpenWorldFromWikiPreview,
+  catalogCountCopy,
   contextChoiceOptions,
   emptyScoutCopy,
   formatContextTokens,
@@ -11,8 +12,11 @@ import {
   parseProposedCards,
   parseProposedPlaces,
   scoutPartsNote,
+  shelfReviewNote,
   shelfSections,
   signedCards,
+  worldToolsAllowNext,
+  worldToolsCopy,
 } from './worldFromWiki';
 
 describe('world-from-wiki review shelf', () => {
@@ -264,5 +268,44 @@ describe('wizard context pick (web twin)', () => {
     expect(scoutPartsNote(3, 0)).toBe('asked in 3 parts');
     expect(scoutPartsNote(4, 1)).toBe('asked in 4 parts, 1 cut off');
     expect(scoutPartsNote('x', null)).toBe('');
+  });
+});
+
+describe('world shelf review (web twin)', () => {
+  it('keeps a known kind on a card and drops an unknown one', () => {
+    const cards = parseProposedCards([
+      { name: 'Seireitei', role: 'hub', sourceTitles: ['Seireitei'], kind: 'Place' },
+      { name: 'Ichigo', role: 'crown', sourceTitles: ['Ichigo Kurosaki'], kind: 'hero' },
+      { name: 'Old card', role: 'leaf', sourceTitles: ['Old'] },
+    ]);
+    expect(cards.map((c) => c.kind)).toEqual(['place', undefined, undefined]);
+  });
+
+  it('words the catalog by links for a big wiki and by pages for a small one', () => {
+    expect(catalogCountCopy(478, 3005, true)).toBe(' (top 478 of 3,005 pages by links).');
+    expect(catalogCountCopy(211, undefined, false)).toBe(' (211 index pages).');
+    expect(catalogCountCopy(0, 3005, true)).toBe('');
+  });
+
+  it('notes a revised shelf, a review that did not take, and silence when it passed', () => {
+    const notes = ['11 of 30 cards are people; keep at most 10 and spend the rest on places'];
+    expect(shelfReviewNote(true, notes)).toBe('shelf revised: 11 of 30 cards are people');
+    expect(shelfReviewNote(false, notes)).toBe('review: 11 of 30 cards are people');
+    expect(shelfReviewNote(false, [])).toBe('');
+    expect(shelfReviewNote(true, 'junk')).toBe('');
+  });
+});
+
+describe('no model load until Next (web twin)', () => {
+  it('lets Next go when the model passed or nothing has asked it yet', () => {
+    expect(worldToolsAllowNext('ready')).toBe(true);
+    expect(worldToolsAllowNext('notChecked')).toBe(true);
+    expect(worldToolsAllowNext('checking')).toBe(false);
+    expect(worldToolsAllowNext('failed')).toBe(false);
+    expect(worldToolsAllowNext('notRunning')).toBe(false);
+  });
+
+  it('tells the user Next does the check', () => {
+    expect(worldToolsCopy('notChecked')).toContain('Next checks it first');
   });
 });

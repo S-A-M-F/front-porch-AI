@@ -916,6 +916,240 @@ void main() {
       );
     });
   });
+
+  group('a world, not a cast list', () {
+    WorldProposedCard card(
+      String name,
+      String kind, {
+      WorldCraftRole role = WorldCraftRole.leaf,
+    }) => WorldProposedCard(
+      name: name,
+      keys: const [],
+      role: role,
+      sourceTitles: [name],
+      kind: kind,
+    );
+
+    List<WorldProposedCard> shelf({
+      required int people,
+      required int places,
+      required int factions,
+      int concepts = 0,
+      bool era = true,
+      bool kinds = true,
+    }) => [
+      if (era) card('The war', kinds ? 'event' : '', role: WorldCraftRole.era),
+      for (var i = 0; i < places; i++)
+        card('Place $i', kinds ? 'place' : '', role: WorldCraftRole.hub),
+      for (var i = 0; i < factions; i++)
+        card('Faction $i', kinds ? 'faction' : '', role: WorldCraftRole.hub),
+      for (var i = 0; i < concepts; i++)
+        card('Concept $i', kinds ? 'concept' : ''),
+      for (var i = 0; i < people; i++)
+        card('Person $i', kinds ? 'person' : '', role: WorldCraftRole.crown),
+    ];
+
+    test('the audit flags a shelf of people and passes a setting bible', () {
+      final heavy = auditWorldShelf(
+        shelf(people: 20, places: 5, factions: 4),
+        places: const [],
+        tagged: false,
+      );
+      expect(heavy.problems, hasLength(1));
+      expect(heavy.problems.single, contains('20 of 30 cards are people'));
+      final good = auditWorldShelf(
+        shelf(people: 8, places: 9, factions: 6),
+        places: const [],
+        tagged: false,
+      );
+      expect(good.ok, isTrue);
+      final thin = auditWorldShelf(
+        shelf(people: 6, places: 1, factions: 1, concepts: 6),
+        places: const [],
+        tagged: false,
+      );
+      expect(thin.problems.single, contains('only 2 place or faction cards'));
+      expect(thin.problems.single, contains('settings'));
+    });
+
+    test('the audit wants one era card and a kind on every card', () {
+      final noEra = auditWorldShelf(
+        shelf(people: 4, places: 6, factions: 4, era: false),
+        places: const [],
+        tagged: false,
+      );
+      expect(noEra.problems.single, contains('no era card'));
+      final noKinds = auditWorldShelf(
+        shelf(people: 4, places: 6, factions: 4, kinds: false),
+        places: const [],
+        tagged: false,
+      );
+      expect(noKinds.problems.single, contains('no kind'));
+    });
+
+    test('a tagged wiki with place cards but no named places is flagged; a '
+        'small shelf is never judged', () {
+      final unnamed = auditWorldShelf(
+        shelf(people: 4, places: 6, factions: 4),
+        places: const [],
+        tagged: true,
+      );
+      expect(unnamed.problems.single, contains('no places were named'));
+      final small = auditWorldShelf(
+        shelf(people: 9, places: 0, factions: 0),
+        places: const [],
+        tagged: true,
+      );
+      expect(
+        small.ok,
+        isTrue,
+        reason: 'ten cards: the author signs what is there',
+      );
+    });
+
+    test(
+      'a card keeps a known kind, drops an unknown one, and round-trips it',
+      () {
+        final person = WorldProposedCard.tryParse({
+          'name': 'Yhwach',
+          'role': 'crown',
+          'sourceTitles': ['Yhwach'],
+          'kind': 'Person',
+        })!;
+        expect(person.kind, 'person');
+        expect(person.toJson()['kind'], 'person');
+        final odd = WorldProposedCard.tryParse({
+          'name': 'X',
+          'role': 'leaf',
+          'sourceTitles': ['X'],
+          'kind': 'hero',
+        })!;
+        expect(odd.kind, '');
+        expect(odd.toJson().containsKey('kind'), isFalse);
+      },
+    );
+
+    test(
+      'a title shows its place and type tags first and drops housekeeping',
+      () {
+        final shown = worldScoutTagsFor(
+          [
+            'Card pages with an unofficial Greek name',
+            'Kurosaki Family',
+            'Characters',
+            'Soul Society',
+            'Hollow',
+            'Stubs',
+          ],
+          titlesLower: {'soul society', 'hollow'},
+        );
+        expect(shown, [
+          'Soul Society',
+          'Hollow',
+          'Characters',
+          'Kurosaki Family',
+        ]);
+      },
+    );
+
+    test(
+      'the status note names a revised shelf, a review that did not take, and nothing when it passed',
+      () {
+        final notes = ['20 of 30 cards are people; keep at most 10'];
+        expect(
+          worldScoutShelfNote(revised: true, auditNotes: notes),
+          ', shelf revised: 20 of 30 cards are people',
+        );
+        expect(
+          worldScoutShelfNote(revised: false, auditNotes: notes),
+          ', review: 20 of 30 cards are people',
+        );
+        expect(worldScoutShelfNote(revised: false, auditNotes: const []), '');
+      },
+    );
+
+    test(
+      'the review asks once with the findings and takes a better shelf',
+      () async {
+        final llm = _ReviewLlm(second: _ReviewLlm.balanced);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(65536),
+            ).run(
+              titles: _ReviewLlm.titles,
+              tags: const {},
+              worldName: 'Bleach (TYBW)',
+              premise: 'The Thousand-Year Blood War.',
+            );
+        expect(llm.prompts, hasLength(2));
+        expect(llm.prompts.last, contains('REVIEW FOUND'));
+        expect(llm.prompts.last, contains('cards are people'));
+        expect(llm.prompts.last, contains('FIRST SHELF'));
+        expect(llm.prompts.last, contains('INDEX TITLES'));
+        expect(run.revised, isTrue);
+        expect(run.auditNotes.single, contains('cards are people'));
+        expect(run.cards.where((c) => c.kind == 'person').length, 6);
+        expect(run.cards.where((c) => c.kind == 'place').length, 7);
+        expect(run.failure, isNull);
+      },
+    );
+
+    test(
+      'a revise that comes back worse, short or broken keeps the first shelf',
+      () async {
+        for (final second in [
+          _ReviewLlm.balanced,
+          _ReviewLlm.short,
+          _ReviewLlm.boom,
+        ]) {
+          final llm = _ReviewLlm(
+            second: second,
+            stillHeavy: second == _ReviewLlm.balanced,
+          );
+          final run =
+              await WorldScoutRunner(
+                llm: llm,
+                budget: const WorldWikiBudget(65536),
+              ).run(
+                titles: _ReviewLlm.titles,
+                tags: const {},
+                worldName: 'Bleach (TYBW)',
+                premise: 'The Thousand-Year Blood War.',
+              );
+          expect(
+            llm.prompts,
+            hasLength(2),
+            reason: 'one revise, never a loop ($second)',
+          );
+          expect(run.revised, isFalse, reason: second);
+          expect(run.auditNotes, isNotEmpty, reason: second);
+          expect(
+            run.cards.where((c) => c.kind == 'person').length,
+            20,
+            reason: 'the first shelf stays ($second)',
+          );
+        }
+      },
+    );
+
+    test('a shelf that already reads as a world is not reviewed', () async {
+      final llm = _ReviewLlm(second: _ReviewLlm.balanced, firstBalanced: true);
+      final run =
+          await WorldScoutRunner(
+            llm: llm,
+            budget: const WorldWikiBudget(65536),
+          ).run(
+            titles: _ReviewLlm.titles,
+            tags: const {},
+            worldName: 'Bleach (TYBW)',
+            premise: 'The Thousand-Year Blood War.',
+          );
+      expect(llm.prompts, hasLength(1));
+      expect(run.revised, isFalse);
+      expect(run.auditNotes, isEmpty);
+    });
+  });
 }
 
 /// One scripted scout answer: a fixed response, or a thrown error.
@@ -993,6 +1227,88 @@ class _PartsLlm extends LLMService {
             ],
           },
         ),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Scout fake for the review pass: the first call answers a people-heavy
+/// shelf (or a balanced one with [firstBalanced]); the second answers per
+/// [second] — a balanced shelf, a short one, or a thrown 502. With
+/// [stillHeavy] the "balanced" second shelf is as people-heavy as the first.
+class _ReviewLlm extends LLMService {
+  _ReviewLlm({
+    required this.second,
+    this.firstBalanced = false,
+    this.stillHeavy = false,
+  });
+  static const balanced = 'balanced';
+  static const short = 'short';
+  static const boom = 'boom';
+  static final titles = [for (var i = 0; i < 40; i++) 'Title $i'];
+  final String second;
+  final bool firstBalanced;
+  final bool stillHeavy;
+  final List<String> prompts = [];
+
+  Map<String, dynamic> _card(int i, String kind, String role) => {
+    'name': '$kind $i',
+    'role': role,
+    'sourceTitles': ['Title ${i % 40}'],
+    'kind': kind,
+  };
+
+  List<Map<String, dynamic>> _heavy() => [
+    _card(0, 'event', 'era'),
+    for (var i = 1; i <= 2; i++) _card(i, 'place', 'hub'),
+    for (var i = 3; i <= 4; i++) _card(i, 'faction', 'hub'),
+    for (var i = 5; i <= 24; i++) _card(i, 'person', 'crown'),
+  ];
+
+  List<Map<String, dynamic>> _balanced() => [
+    _card(0, 'event', 'era'),
+    for (var i = 1; i <= 7; i++) _card(i, 'place', 'hub'),
+    for (var i = 8; i <= 12; i++) _card(i, 'faction', 'hub'),
+    for (var i = 13; i <= 16; i++) _card(i, 'event', 'leaf'),
+    for (var i = 17; i <= 19; i++) _card(i, 'concept', 'leaf'),
+    for (var i = 20; i <= 25; i++) _card(i, 'person', 'crown'),
+  ];
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    prompts.add(params.prompt);
+    List<Map<String, dynamic>> cards;
+    if (prompts.length == 1) {
+      cards = firstBalanced ? _balanced() : _heavy();
+    } else {
+      if (second == boom) {
+        throw LlmToolTransportException(
+          'tool call HTTP 502 (server busy/unavailable)',
+        );
+      }
+      if (second == short) {
+        cards = _balanced().take(5).toList();
+      } else {
+        cards = stillHeavy ? _heavy() : _balanced();
+      }
+    }
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(name: kWorldScoutToolName, arguments: {'cards': cards}),
       ],
       text: '',
       finishReason: 'tool_calls',
