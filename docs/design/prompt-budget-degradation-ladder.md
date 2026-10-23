@@ -1,78 +1,61 @@
 # Prompt budget degradation ladder — statement of work
 
-Draft 2, 2026-10-23. Status at the end. Nothing here is built.
+Draft 3, 2026-10-23. Status at the end. Nothing here is built.
 
-On a small context the app's own notes can crowd the conversation out. Every state-zone block is fixed-count and exempt from trimming by design, so when the context is 4K or 8K the Journal, the realism block, the world prose, the objectives and the frame can take a quarter of the window and the transcript falls to the overflow floor. This scopes two things: a ladder, where the notes give ground in a fixed order before the chat does, and compaction on approach, where the recap is rewritten when the chat is about to lose messages it has not yet read, instead of on a fixed interval.
+On a small context the app's own notes can crowd the conversation out. Every state-zone block is fixed-count and exempt from trimming by design, so when the context is 4K or 8K the Journal, the realism block, the objectives, the world block and the frame can take a large share of the window and the transcript falls to the overflow floor. Draft 1 proposed a ladder of blocks to shrink. The maintainer's review of it found, rung by rung, that each block is read by something besides the model, and shrinking it moves that something. This draft records those side effects, keeps the one mechanism that has none, and puts measurement before any further ladder.
 
 ## What the engine does today (from the code)
 
 | Finding | Evidence |
 | --- | --- |
 | Every block but history and memories is counted once into `fixedCountText`, and the history budget is what is left after the reply reserve. Nothing in the zone yields. | `prompt_plan.dart` matrix; `chat_service_generation_plan.dart` `historyBudget = contextBudget - fixedTokens - generationReserve` |
-| The Journal is the only block with its own cap (600 tokens). The realism block, the world block, the objectives and the recap have none beyond their own salience gates. | `state_zone_frame.dart` doc; `realism_state_injection.dart` |
+| The Journal is the only block with its own cap (600 tokens). | `state_zone_frame.dart` doc |
 | The frame alone is about 121 tokens of prefill a turn. | `state_zone_frame.dart` |
 | The recap is the app's compaction: a model-written account of the chat up to a cursor, rewritten by the Journal pass. The pass runs every `journalInterval` user messages (default 10) or on a salient event kick. Nothing ties it to messages leaving the window, so between passes up to nine exchanges can fall out before the recap has read them. | `_maybeRunJournalPass` in `chat_service_turn_flow.dart`; `_summaryLastIndex` |
-| The recap already has one yield rule: it is dropped when every message is visible, because then it can only contradict the transcript. That is a redundancy gate, not a budget one. | `recapIsRedundant` in `recap_injection.dart` |
-| Zero or negative history budget keeps only the last user line and everything after it. There is no floor above that. | `_overflowContinuityHistory` |
-| Continue counts the fixed text before its zone is stripped, so it budgets as if the stripped blocks were present. This keeps its history window identical to the send before it, which is what a prefix cache wants. | `_stripContinuePlanSections` runs after the count |
-| The sidebar's "Chat History pruning" surprise (#550) was the estimate, fixed in #563; the real send trims. | issue #550 |
+| The recap is dropped when every message is visible (it can only contradict the transcript then). A redundancy gate, not a budget one. | `recapIsRedundant` in `recap_injection.dart` |
+| Zero or negative history budget keeps only the last user line and everything after it. | `_overflowContinuityHistory` |
+| Continue counts the fixed text before its zone is stripped, so it budgets as if the stripped blocks were present and keeps the same history window as the send before it. | `_stripContinuePlanSections` runs after the count |
+| The last send's per-row token counts are saved with the session (`context_budget_json`) and, since #609, at the tokenizer's count. | `chat_service_context_budget.dart` |
 
-## What changes and what stays
+## Side effects found in the draft-1 rungs (2026-10-23)
 
-Two mechanisms, one PR each.
-
-**The ladder** is a fixed order of concessions, taken one rung at a time until the transcript has a floor's worth of room. Concessions are prompt-only: nothing a block records is lost, and nothing a block decides changes. The order, the floor and the caps are constants; there is no per-chat setting and no new screen.
-
-**Compaction on approach** is a new reason for the Journal pass to run: a send that drops messages the recap has not read yet. The recap then covers what fell out, the way a compaction summary does, instead of waiting for the interval to come round.
-
-Stays: every gate and switch as it is; the recap redundancy rule; Continue's budgeting (see below); the state frame's wording; the walk, the chunk rounding and the overflow floor; the Context Viewer's rows and Total; the Journal pass itself (one model call, same prompt, same cooling).
-
-## 1. The floor
-
-Ruled 2026-10-23: the latest beat plus six user-and-reply pairs, in the walk's own token count. The ladder runs only when the fixed count leaves less than that. On a 16K or 32K context it never runs; on 8K it runs on long Journals and busy scenes; on 4K it runs most turns. A share of the context was considered and set aside: pairs are what a person can check in the Context Viewer.
-
-## 2. The rungs
-
-Taken in this order, each only as far as needed, re-counting after each:
-
-| Rung | Concession | Why this order |
+| Proposed rung | What else reads the block | Why it was withdrawn |
 | --- | --- | --- |
-| 1 | Journal cap steps down 600 → 400 → 250 tokens (hot cards first, as the cap already orders them) | The Journal is the biggest block and already ranks its own cards |
-| 2 | Secondary objectives leave the prompt; the primary never does (ruled 2026-10-23) | Side wants are the first thing a stressed scene forgets; the main goal is the one note that always goes out |
-| 3 | Realism keeps only the posture line and the time line | Feelings in words are the "truer guide" and go last |
-| 4 | The frame is dropped with the zone when nothing is left in it | The existing salience gate, reached by the ladder |
+| World prose to one line | The scene itself | Maintainer: the setting is where the scene is, not colour the model can do without |
+| Recap dropped | Compaction of the messages that fell out | On a small context it is the memory the ladder protects; it stays whenever messages were dropped |
+| Secondary objectives hidden | The goal sync and the stuck-step count | A hidden goal cannot be pursued; its checks see no movement, the stuck count climbs, the sync can set it `dormant`. A goal would drift to dormancy because the context was small. Gain about 100 tokens |
+| Realism to posture and time | The composer's eleven fragments | Four of them are not realism features: the promise ledger, ambitions, the plan line and Likes and Dislikes, which is ungated on purpose so it survives the engine being off. The composer's own doc records that a blanket cut "silently deleted all eleven fragments"; this rung would redo that bug by budget instead of by switch |
+| Journal cap stepping down | RAG dedup | The injected cards are `journalCoverLines`, which drop retrieved windows the diary already covers. Fewer cards shown means fewer windows dropped, so retrieval refills part of the room the cap freed, and memories are budget-fitted, so they take it. Net gain unknown without measuring |
+| Hysteresis stored with the session | Regen determinism | "Regen with the same inputs reproduces the same deltas." A sticky rung state is an input the regen does not share with the original turn unless it is stamped on the message like `story_clock_before`. More machinery than the rung |
 
-The world block is not a rung (ruled 2026-10-23): the place, its weather and its prose go out whole at every rung. The setting is where the scene is, not colour the model can do without. The recap is not a rung either. On a small context it is the compaction of what fell out, so dropping it would lose the memory the ladder is trying to protect; it stays whenever messages were dropped (the existing gate) and keeps its own length. The Author's Note, the card's post-history, the lore buckets, the speaker card and the catastrophe never yield: they are the user's or the card's instructions, or a one-shot event that must land.
+What is left of the ladder with no side effect is the frame's own salience gate, which already exists. The ladder as a mechanism is withdrawn.
 
-**Hysteresis.** A rung taken in a chat stays taken until the fixed count drops by a margin (a rung's worth), so a chat on the edge does not flap a block in and out of the prompt turn by turn. The rungs in force are kept with the session, like the sticky trim anchor.
+## 1. Compaction on approach (kept, narrowed)
 
-## 3. Compaction on approach
+The Journal pass gains a third trigger beside the interval and the event kick: the send's walk dropped messages whose index is at or past the recap cursor (`_summaryLastIndex`). The recap then covers what fell out, the way a compaction summary does, instead of waiting for the interval.
 
-The Journal pass gains a third trigger beside the interval and the event kick: the send's walk dropped messages whose index is at or past the recap cursor (`_summaryLastIndex`). The pass runs after the reply as today, never competing with the main call, and rewrites the recap over the window it has not read, so the next send carries them in compressed form. The interval still runs on long chats that never drop; the event kick is unchanged. The pass's own cooling keeps a 4K chat that drops every turn from compacting every turn: at most one compaction per interval's worth of drops, with the recap cursor as the record of what has been read.
+Narrowed after the trace: the trigger must rewrite the recap only, not run the full maintenance pass. The pass also reviews and cools Journal cards, and Growth deliberately keeps its own cursor because the Journal's "per-pass cooling is tuned to journalInterval" (`growth_service.dart`, `chat_service_wiring_memory.dart`). Firing the whole pass off-interval would change card cooling on every small-context chat. Whether a recap-only rewrite can be split out of `runMaintenancePass` is the first thing to establish; if it cannot, this item waits.
 
-## 4. Continue
+Continue never triggers compaction (it drops nothing new). The pass's own cooling and the recap cursor keep a 4K chat from compacting every turn.
 
-Continue keeps counting the zone it strips. That is the cache-friendly choice (same history window as the send before it) and it stays; the doc comment in `prompt_plan.dart` describes it as inherited from the legacy assembly and should say it is deliberate. The ladder runs on Continue from the same inputs as the send it extends, so the window and the rungs are the same. Continue never triggers compaction (it drops nothing new).
+## 2. Measure before any further ladder
 
-## 5. Where it shows
+The per-send rows are already saved with every session at the tokenizer's count. A read-only script over a library (`tools/`, like the notes rotator) reports, per chat and in aggregate: the zone's share of the context on each send, which rows carry it, how often the transcript fell below six exchange pairs, and at which context sizes. The maintainer's own library is the measurement, as it was for the state zone and the recap. If the zone's share is small the question is closed; if one row dominates, that row gets its own design with its readers traced first.
 
-- The Context Viewer's budget rows already report the shrunken blocks; a one-line note in the viewer says which rungs ran ("Notes trimmed to fit: Journal to 400, side goals"), desktop and web, next to the existing dropped-messages note.
-- No sidebar change. The Journal, objectives and world panels keep showing everything the engine holds; the ladder hides, it never erases.
+## 3. Continue
 
-## Open questions for the maintainer
-
-1. Rung 1's steps, or a single cut to 250?
-2. Does a Chaos or Porch Night turn skip the ladder (their one-shots must land) or ride it? (Recommended: skip; the one-shots are not zone members and are never trimmed anyway, so the question is only whether the ladder may run on the same turn. Letting it run is simpler.)
+Continue keeps counting the zone it strips. That is the cache-friendly choice (same history window as the send before it) and it stays; the doc comment in `prompt_plan.dart` describes it as inherited from the legacy assembly and should say it is deliberate.
 
 ## Tests
 
-Guards proven red then green, appended to `prompt_plan_test.dart`, the recap tests and the context budget tests: a 4K context with a 600-token Journal and a long realism block leaves the floor's worth of transcript; the rungs run in order and stop at the first that suffices; the primary objective is in the prompt at every rung; the recap stays when messages were dropped; a 32K context runs no rung; a rung taken stays taken until the count drops by the margin; Continue runs the same rungs as the send before it and keeps the same history window; a send that drops past the recap cursor queues a Journal pass and one that does not, does not; the viewer's note names the rungs that ran. One journey on a real `ChatService` against the loopback backend with a 4K context and a 40-message chat, asserting the sent transcript carries the last six pairs and the recap covers the lines that fell out.
+For compaction: a send that drops past the recap cursor queues a recap rewrite and one that does not, does not; the rewrite touches no card and no Growth ring (the cooling guard); Continue never queues one. One journey on a real `ChatService` against the loopback backend with a 4K context and a 40-message chat, asserting the recap covers the lines that fell out. For the measurement script: a fixture library with known rows reports the known shares.
 
 ## Desktop and web
 
-One note in the Context Budget on both surfaces. No setting, so no parity-manifest entry.
+No UI change in either item.
 
 ## Status
 
 - 2026-10-23: draft from the prompt-assembly audit. Awaiting the maintainer's word on the open questions.
-- 2026-10-23, rulings: the floor is six pairs; the primary objective never leaves the prompt; the world block never yields (the maintainer: dropping world prose to one line is not a good idea), so the ladder has four rungs. The maintainer asked whether the chat could compact the way an agent compacts near its context limit; that is what the recap is, and the gap is its trigger, so compaction on approach (part 3) is in and the recap is no longer a rung. Two PRs: the ladder, then compaction.
+- 2026-10-23, rulings: the floor is six pairs; the primary objective never leaves the prompt; the world block never yields. The maintainer asked whether the chat could compact near its limit the way an agent does; that is what the recap is, and the gap is its trigger.
+- 2026-10-23, draft 3: the maintainer's review found a side effect behind each rung (table above), and the agent's own trace found two more (RAG dedup, regen determinism) and a third in compaction (card cooling). The ladder is withdrawn. Compaction on approach stays as a recap-only rewrite, pending a check that it can be split from the pass. A measurement over the library comes before any new shrink proposal.
