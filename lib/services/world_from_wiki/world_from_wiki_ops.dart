@@ -19,6 +19,7 @@ World worldFromWikiDraft({
   required List<LorebookEntry> entries,
   bool climateEnabled = false,
   Map<String, dynamic>? biome,
+  String parentWorldId = '',
 }) {
   final trimmed = name.trim();
   final custom = climateEnabled && biome != null && biome.isNotEmpty;
@@ -34,6 +35,8 @@ World worldFromWikiDraft({
     climateEnabled: custom,
     biomeId: custom ? 'custom' : null,
     biomeJson: custom ? jsonEncode(biome) : null,
+    // Slice 8: places hang off the root; '' keeps a flat world a root.
+    parentWorldId: parentWorldId.isEmpty ? null : parentWorldId,
   );
 }
 

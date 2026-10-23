@@ -294,4 +294,42 @@ void main() {
       },
     );
   });
+  test('slice 8: a tiddler\'s tags survive the parse into the index', () {
+    // Design §9.1's pin: nations live ONLY in tags on a wiki like
+    // Neokosmos. If the parser dropped them again, the scout would go
+    // blind and the wizard would silently flatten every world.
+    final store = jsonEncode([
+      {
+        'title': 'Ceolwynn',
+        'text': 'A singer of the Alnhama Republic.',
+        'type': 'text/vnd.tiddlywiki',
+        'tags': ['Characters', 'Alnhama Republic'],
+      },
+      {
+        'title': 'Plain Page',
+        'text': 'No tags here.',
+        'type': 'text/vnd.tiddlywiki',
+      },
+      {
+        'title': 'Spacey Tags',
+        'text': 'Old export shape: one string.',
+        'type': 'text/vnd.tiddlywiki',
+        'tags': 'Nations',
+      },
+    ]);
+    final html = '<!doctype html><html><body>'
+        '<script class="tiddlywiki-tiddler-store" '
+        'type="application/json">$store</script></body></html>';
+    final index = parseTiddlyStoreHtml(html)!;
+    final byTitle = {for (final t in index.tiddlers) t.title: t};
+    expect(byTitle['Ceolwynn']!.tags, ['Characters', 'Alnhama Republic']);
+    expect(byTitle['Ceolwynn']!.tagKeys, contains('alnhama republic'));
+    expect(byTitle['Plain Page']!.tags, isEmpty);
+    expect(
+      byTitle['Spacey Tags']!.tags,
+      ['Nations'],
+      reason: 'the string form is accepted too',
+    );
+  });
+
 }

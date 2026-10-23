@@ -72,6 +72,9 @@ class WorldFromWikiFacade {
       'skipped': result.catalog.skipped,
       'parsed': result.catalog.parsed,
       'proposed': [for (final c in result.proposed) c.toJson()],
+      // Slice 8 (additive): the tag-named places. An older PWA simply
+      // ignores them and saves one flat world, as before.
+      'places': [for (final p in result.places) p.toJson()],
     };
   }
 
@@ -121,16 +124,21 @@ class WorldFromWikiFacade {
         });
         return;
       }
-      final entries = await engine.write(
+      final tree = await engine.writeTree(
         cards,
+        places: _placesFrom(body),
         worldName: body['name']?.toString() ?? '',
         premise: body['premise']?.toString() ?? '',
         climateEnabled: body['climateEnabled'] == true,
+        climatePlaces: _climateSetFrom(body),
       );
       if (engine.aborted) {
         _hub?.broadcast({'event': 'world_wiki_abort', 'data': 'Stopped.'});
         return;
       }
+      final entries = tree.root.entries
+          .followedBy([for (final p in tree.places) ...p.entries])
+          .toList();
       final book = Lorebook(
         entries: entries,
         recursiveScanning: true,
@@ -138,16 +146,51 @@ class WorldFromWikiFacade {
         tokenBudget: kWorldFromWikiTokenBudget,
       );
       final climateOn = body['climateEnabled'] == true && engine.biome != null;
+      final rootDescription = tree.root.description.isNotEmpty
+          ? tree.root.description
+          : body['premise']?.toString() ?? '';
       _hub?.broadcast({
         'event': 'world_wiki_done',
         'name': body['name']?.toString() ?? '',
-        'description': body['premise']?.toString() ?? '',
+        'description': rootDescription,
         'climateEnabled': climateOn,
         if (climateOn) 'biome': engine.biome,
         'recursiveScanning': true,
         'scanDepth': kWorldFromWikiScanDepth,
         'tokenBudget': kWorldFromWikiTokenBudget,
         'entries': lorebookEntriesToJson(book),
+        // Slice 8 (additive): per-place books so the PWA saves a root
+        // plus children. Empty/absent → flat save, exactly today.
+        'root': {
+          'name': tree.root.name,
+          'description': tree.root.description,
+          'entries': lorebookEntriesToJson(
+            Lorebook(
+              entries: tree.root.entries,
+              recursiveScanning: true,
+              scanDepth: kWorldFromWikiScanDepth,
+              tokenBudget: kWorldFromWikiTokenBudget,
+            ),
+          ),
+          if (tree.root.biome != null) 'biome': tree.root.biome,
+        },
+        'places': [
+          for (final p in tree.places)
+            {
+              'name': p.name,
+              'parentName': p.parentName,
+              'description': p.description,
+              'entries': lorebookEntriesToJson(
+                Lorebook(
+                  entries: p.entries,
+                  recursiveScanning: true,
+                  scanDepth: kWorldFromWikiScanDepth,
+                  tokenBudget: kWorldFromWikiTokenBudget,
+                ),
+              ),
+              if (p.hasClimate) 'biome': p.biome,
+            },
+        ],
       });
     } catch (e) {
       _hub?.broadcast({'event': 'world_wiki_error', 'error': e.toString()});
@@ -155,6 +198,26 @@ class WorldFromWikiFacade {
       _writing = false;
       _live = null;
     }
+  }
+
+  /// Scout places the PWA kept across the review (verbatim round-trip of
+  /// the scout response). Junk entries drop, never throw.
+  List<WorldProposedPlace> _placesFrom(Map<String, dynamic> body) {
+    final raw = body['places'];
+    if (raw is! List) return const [];
+    return [
+      for (final e in raw)
+        if (e is Map) ?WorldProposedPlace.tryParse(
+          Map<String, dynamic>.from(e),
+        ),
+    ];
+  }
+
+  Set<String> _climateSetFrom(Map<String, dynamic> body) {
+    final raw = body['placeClimate'];
+    if (raw is! List) return const {};
+    return {for (final e in raw) e?.toString().toLowerCase() ?? ''}
+      ..remove('');
   }
 
   WorldToolsGate _toolsGate() => worldFromWikiToolsGate(_chat.toolCheckFor());

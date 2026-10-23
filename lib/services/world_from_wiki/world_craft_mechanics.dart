@@ -32,6 +32,7 @@ class WorldProposedCard {
     required this.role,
     required this.sourceTitles,
     this.group = '',
+    this.place = '',
   });
 
   final String name;
@@ -40,12 +41,18 @@ class WorldProposedCard {
   final List<String> sourceTitles;
   final String group;
 
+  /// Slice 8 (design §9.2): the scout-named place this card belongs to,
+  /// empty for the root book. Additive — a card from an older scout (or
+  /// an older client's write payload) simply has no place.
+  final String place;
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'keys': keys,
     'role': role.name,
     'sourceTitles': sourceTitles,
     if (group.isNotEmpty) 'group': group,
+    if (place.isNotEmpty) 'place': place,
   };
 
   static WorldProposedCard? tryParse(Map<String, dynamic> json) {
@@ -60,12 +67,18 @@ class WorldProposedCard {
     if (sources.isEmpty) return null;
     final keys = _stringList(json['keys']);
     final group = json['group']?.toString().trim() ?? '';
+    final place =
+        (json['place'] ?? json['worldPlace'] ?? json['world_place'])
+            ?.toString()
+            .trim() ??
+        '';
     return WorldProposedCard(
       name: name,
       keys: keys.isEmpty ? [name] : keys,
       role: role,
       sourceTitles: sources,
       group: group,
+      place: place,
     );
   }
 }

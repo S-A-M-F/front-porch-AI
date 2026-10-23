@@ -4,6 +4,7 @@
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_places_tools.dart';
 
 const String kWorldLoreEntryToolName = 'write_lorebook_entry';
 const String kWorldLoreBatchToolName = 'write_lorebook_entries';
@@ -26,7 +27,10 @@ const String kWorldScoutPrompt =
     'images into one card when they are the same subject. 20–40 cards. '
     'Role era/hub/leaf/crown. Optional inclusion group slug from this book. '
     'they/them. Do not invent climate. Do not use another setting\'s '
-    'faction names.';
+    'faction names. If index lines show [tags], the tags name nations, '
+    'peoples and regions: propose up to 8 places they imply (with the '
+    'characters that belong there) and set each card\'s place. With no '
+    'tags, send no places and no card places.';
 
 /// Scout: one shelf of cards from index titles. Tools-only.
 List<Map<String, dynamic>> worldScoutToolSchema() {
@@ -36,13 +40,22 @@ List<Map<String, dynamic>> worldScoutToolSchema() {
       'function': {
         'name': kWorldScoutToolName,
         'description':
-            'Propose 20–40 lorebook cards for this wiki. Cast list, not a '
+            'Propose 20–40 lorebook cards for this wiki, and — when the index '
+            'carries tags or categories — the places they imply, so cards '
+            'can each name one place. Cast list, not a '
             'table of contents. Merge numbered chapters, drafts, and image '
             'pages of the same subject into one card. Roles: era, hub, leaf, '
             'crown. Optional group is an inclusion slug from THIS book only.',
         'parameters': {
           'type': 'object',
           'properties': {
+            'places': {
+              'type': 'array',
+              'description':
+                  'Optional (slice 8). Up to 8 places the tags/categories '
+                  'name. Cards then set place to one of these names.',
+              'items': worldPlaceItemSchema(),
+            },
             'cards': {
               'type': 'array',
               'description': 'Proposed cards, 20 to 40.',
@@ -78,6 +91,13 @@ List<Map<String, dynamic>> worldScoutToolSchema() {
                     'description':
                         'Optional inclusion group slug from this book '
                         '(a faith, a street, a guild). Not a borrowed setting.',
+                  },
+                  'place': {
+                    'type': 'string',
+                    'description':
+                        'Slice 8: name of one entry from the places list, '
+                        'or empty for the world root. A card belongs to '
+                        'exactly one place.',
                   },
                 },
                 'required': ['name', 'role', 'sourceTitles'],
@@ -315,6 +335,7 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
           role: parsed.role,
           sourceTitles: sources.take(3).toList(),
           group: parsed.group,
+          place: parsed.place,
         ),
       );
       if (out.length >= kWorldScoutCardMax) return out;
