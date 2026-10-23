@@ -71,7 +71,7 @@ extension ChatServiceGenerationBlocks on ChatService {
             t.directUserSend &&
             !t.autonomous &&
             t.mode != GenerationMode.continue_)) {
-      t.systemPrompt += '\n\n$kSearchCharacterLine';
+      t.toolRulesBlock += '\n$kSearchCharacterLine\n';
     }
     t.userToolCards = loadUserToolCards(_storageService.toolsDir);
     if (shouldAdvertiseUserTools(
@@ -81,7 +81,7 @@ extension ChatServiceGenerationBlocks on ChatService {
       toolsUnsupported: _toolProbe.isXmlOnly(_evalBackendIdentity),
       autonomousMode: t.autonomous,
     )) {
-      t.systemPrompt += '\n\n$kUserToolCharacterLine';
+      t.toolRulesBlock += '\n$kUserToolCharacterLine\n';
     }
 
     // Lorebook injection: positioned buckets from the injector (group

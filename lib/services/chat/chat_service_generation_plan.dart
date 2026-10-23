@@ -176,6 +176,17 @@ extension ChatServiceGenerationPlan on ChatService {
         section: 'postHistory',
       );
     }
+    // The Author's Note (and the per-character, entrance, director and
+    // guest notes appended to it) was the one user-written block that
+    // skipped this pass: a `{{char}}` typed into the note reached the
+    // model as braces.
+    if (t.authorNoteBlock.isNotEmpty) {
+      t.authorNoteBlock = _macroResolver.resolve(
+        t.authorNoteBlock,
+        macroCtx,
+        section: 'authorNote',
+      );
+    }
 
     // Ensure the popped message is always restored, even if prompt assembly throws
     try {
