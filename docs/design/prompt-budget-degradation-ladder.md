@@ -37,13 +37,12 @@ Taken in this order, each only as far as needed, re-counting after each:
 
 | Rung | Concession | Why this order |
 | --- | --- | --- |
-| 1 | World prose shrinks to its one-line place and weather facts | Setting colour is the least load-bearing note; the facts stay |
-| 2 | Journal cap steps down 600 → 400 → 250 tokens (hot cards first, as the cap already orders them) | The Journal is the biggest block and already ranks its own cards |
-| 3 | Secondary objectives leave the prompt; the primary never does (ruled 2026-10-23) | Side wants are the first thing a stressed scene forgets; the main goal is the one note that always goes out |
-| 4 | Realism keeps only the posture line and the time line | Feelings in words are the "truer guide" and go last |
-| 5 | The frame is dropped with the zone when nothing is left in it | The existing salience gate, reached by the ladder |
+| 1 | Journal cap steps down 600 → 400 → 250 tokens (hot cards first, as the cap already orders them) | The Journal is the biggest block and already ranks its own cards |
+| 2 | Secondary objectives leave the prompt; the primary never does (ruled 2026-10-23) | Side wants are the first thing a stressed scene forgets; the main goal is the one note that always goes out |
+| 3 | Realism keeps only the posture line and the time line | Feelings in words are the "truer guide" and go last |
+| 4 | The frame is dropped with the zone when nothing is left in it | The existing salience gate, reached by the ladder |
 
-The recap is not a rung. On a small context it is the compaction of what fell out, so dropping it would lose the memory the ladder is trying to protect; it stays whenever messages were dropped (the existing gate) and keeps its own length. The Author's Note, the card's post-history, the lore buckets, the speaker card and the catastrophe never yield: they are the user's or the card's instructions, or a one-shot event that must land.
+The world block is not a rung (ruled 2026-10-23): the place, its weather and its prose go out whole at every rung. The setting is where the scene is, not colour the model can do without. The recap is not a rung either. On a small context it is the compaction of what fell out, so dropping it would lose the memory the ladder is trying to protect; it stays whenever messages were dropped (the existing gate) and keeps its own length. The Author's Note, the card's post-history, the lore buckets, the speaker card and the catastrophe never yield: they are the user's or the card's instructions, or a one-shot event that must land.
 
 **Hysteresis.** A rung taken in a chat stays taken until the fixed count drops by a margin (a rung's worth), so a chat on the edge does not flap a block in and out of the prompt turn by turn. The rungs in force are kept with the session, like the sticky trim anchor.
 
@@ -62,7 +61,7 @@ Continue keeps counting the zone it strips. That is the cache-friendly choice (s
 
 ## Open questions for the maintainer
 
-1. Rung 2's steps, or a single cut to 250?
+1. Rung 1's steps, or a single cut to 250?
 2. Does a Chaos or Porch Night turn skip the ladder (their one-shots must land) or ride it? (Recommended: skip; the one-shots are not zone members and are never trimmed anyway, so the question is only whether the ladder may run on the same turn. Letting it run is simpler.)
 
 ## Tests
