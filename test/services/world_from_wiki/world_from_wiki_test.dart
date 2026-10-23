@@ -107,6 +107,9 @@ class _ToolsLlm extends LLMService {
   bool climateNull = false;
   String lastPrompt = '';
 
+  /// The scout's own prompt (the reviewer's comes after it now).
+  String scoutPrompt = '';
+
   @override
   Future<LlmToolResponse?> generateWithTools(
     GenerationParams params,
@@ -121,11 +124,23 @@ class _ToolsLlm extends LLMService {
     ];
     if (names.contains(kWorldScoutToolName)) {
       scoutCalls++;
+      scoutPrompt = params.prompt;
       return LlmToolResponse(
         calls: [
           LlmToolCall(
             name: kWorldScoutToolName,
             arguments: {'cards': _homemadeCards()},
+          ),
+        ],
+        text: '',
+      );
+    }
+    if (names.contains(kWorldShelfReviewToolName)) {
+      return const LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldShelfReviewToolName,
+            arguments: {'pass': true, 'problems': []},
           ),
         ],
         text: '',
@@ -436,7 +451,9 @@ void main() {
     expect(llm.scoutCalls, 1);
     expect(llm.writeCalls, 0);
     expect(result.proposed.map((c) => c.group), contains('river-faith'));
-    expect(llm.lastPrompt, contains(kWorldScoutPrompt));
+    // Changed 2026-10-23: the shelf reviewer's call now follows the scout's,
+    // so the last prompt is the review's; the scout's own prompt is pinned.
+    expect(llm.scoutPrompt, contains(kWorldScoutPrompt));
   });
 
   test('K signed cards → K lorebook entries, not wiki title count', () async {
@@ -852,7 +869,7 @@ void main() {
           worldName: 'Bleach (TYBW)',
           premise: 'The war.',
         );
-        final prompt = llm.prompts.single;
+        final prompt = llm.prompts.first;
         expect(prompt, contains('Moment: the night after the first invasion'));
         expect(prompt, contains('50–80 cards.'));
         expect(prompt, contains('unknown to everyone'));
@@ -925,6 +942,7 @@ void main() {
             await WorldScoutRunner(
               llm: llm,
               budget: const WorldWikiBudget(16384),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: titles,
               tags: const {},
@@ -975,6 +993,7 @@ void main() {
             await WorldScoutRunner(
               llm: llm,
               budget: const WorldWikiBudget(16384),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: titles,
               tags: const {},
@@ -998,6 +1017,7 @@ void main() {
             await WorldScoutRunner(
               llm: llm,
               budget: const WorldWikiBudget(65536),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: titles,
               tags: const {},
@@ -1018,6 +1038,7 @@ void main() {
             await WorldScoutRunner(
               llm: llm,
               budget: const WorldWikiBudget(16384),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: titles,
               tags: const {},
@@ -1079,7 +1100,7 @@ void main() {
         tagged: false,
       );
       expect(heavy.problems, hasLength(1));
-      expect(heavy.problems.single, contains('20 of 30 cards are people'));
+      expect(heavy.problems.single, contains('20 people against 9'));
       final good = auditWorldShelf(
         shelf(people: 8, places: 9, factions: 6),
         places: const [],
@@ -1087,7 +1108,7 @@ void main() {
       );
       expect(good.ok, isTrue);
       final thin = auditWorldShelf(
-        shelf(people: 6, places: 1, factions: 1, concepts: 6),
+        shelf(people: 2, places: 1, factions: 1, concepts: 8),
         places: const [],
         tagged: false,
       );
@@ -1199,19 +1220,20 @@ void main() {
             await WorldScoutRunner(
               llm: llm,
               budget: const WorldWikiBudget(65536),
+              depth: WorldWikiDepth.full,
             ).run(
               titles: _ReviewLlm.titles,
               tags: const {},
               worldName: 'Bleach (TYBW)',
               premise: 'The Thousand-Year Blood War.',
             );
-        expect(llm.prompts, hasLength(2));
-        expect(llm.prompts.last, contains('REVIEW FOUND'));
-        expect(llm.prompts.last, contains('cards are people'));
-        expect(llm.prompts.last, contains('FIRST SHELF'));
-        expect(llm.prompts.last, contains('INDEX TITLES'));
+        expect(llm.prompts, hasLength(3), reason: 'scout, revise, review');
+        expect(llm.prompts[1], contains('REVIEW FOUND'));
+        expect(llm.prompts[1], contains('people against'));
+        expect(llm.prompts[1], contains('FIRST SHELF'));
+        expect(llm.prompts[1], contains('INDEX TITLES'));
         expect(run.revised, isTrue);
-        expect(run.auditNotes.single, contains('cards are people'));
+        expect(run.auditNotes.single, contains('people against'));
         expect(run.cards.where((c) => c.kind == 'person').length, 6);
         expect(run.cards.where((c) => c.kind == 'place').length, 7);
         expect(run.failure, isNull);
@@ -1230,20 +1252,23 @@ void main() {
             second: second,
             stillHeavy: second == _ReviewLlm.balanced,
           );
-          final run =
-              await WorldScoutRunner(
-                llm: llm,
-                budget: const WorldWikiBudget(65536),
-              ).run(
-                titles: _ReviewLlm.titles,
-                tags: const {},
-                worldName: 'Bleach (TYBW)',
-                premise: 'The Thousand-Year Blood War.',
-              );
+          final runner = WorldScoutRunner(
+            llm: llm,
+            budget: const WorldWikiBudget(65536),
+            depth: WorldWikiDepth.full,
+          )..retryPause = Duration.zero;
+          final run = await runner.run(
+            titles: _ReviewLlm.titles,
+            tags: const {},
+            worldName: 'Bleach (TYBW)',
+            premise: 'The Thousand-Year Blood War.',
+          );
           expect(
             llm.prompts,
-            hasLength(2),
-            reason: 'one revise, never a loop ($second)',
+            hasLength(second == _ReviewLlm.boom ? 5 : 3),
+            reason:
+                'scout plus two revises at depth full, never a fourth; a thrown '
+                'revise is asked twice ($second)',
           );
           expect(run.revised, isFalse, reason: second);
           expect(run.auditNotes, isNotEmpty, reason: second);
@@ -1286,6 +1311,7 @@ void main() {
             await WorldScoutRunner(
               llm: llm,
               budget: const WorldWikiBudget(65536),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: _ReviewLlm.titles,
               tags: const {},
@@ -1310,6 +1336,7 @@ void main() {
             await WorldScoutRunner(
               llm: once,
               budget: const WorldWikiBudget(65536),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: _ReviewLlm.titles,
               tags: const {},
@@ -1335,6 +1362,7 @@ void main() {
             await WorldScoutRunner(
               llm: always,
               budget: const WorldWikiBudget(65536),
+              depth: WorldWikiDepth.quick,
             ).run(
               titles: _ReviewLlm.titles,
               tags: const {},
@@ -1347,21 +1375,121 @@ void main() {
       },
     );
 
-    test('a shelf that already reads as a world is not reviewed', () async {
+    test('a shelf that passes the gate is reviewed once and stands', () async {
       final llm = _ReviewLlm(second: _ReviewLlm.balanced, firstBalanced: true);
       final run =
           await WorldScoutRunner(
             llm: llm,
             budget: const WorldWikiBudget(65536),
+            depth: WorldWikiDepth.full,
           ).run(
             titles: _ReviewLlm.titles,
             tags: const {},
             worldName: 'Bleach (TYBW)',
             premise: 'The Thousand-Year Blood War.',
           );
-      expect(llm.prompts, hasLength(1));
+      expect(llm.prompts, hasLength(2), reason: 'scout, review');
       expect(run.revised, isFalse);
       expect(run.auditNotes, isEmpty);
+    });
+  });
+
+  group('the fill loop', () {
+    final titles = [
+      'Ichigo Kurosaki',
+      'Rukia Kuchiki',
+      'Soul Society',
+      'Soul King Palace',
+      'Royal Guard',
+      'Karakura Town',
+      'Senjumaru Shutara',
+      'Ōetsu Nimaiya',
+      'Kirio Hikifune',
+      'Tenjirō Kirinji',
+    ];
+    final tags = {
+      'Ichigo Kurosaki': ['Characters'],
+      'Rukia Kuchiki': ['Characters'],
+      'Soul Society': ['Locations'],
+      'Soul King Palace': ['Locations', 'Soul Society'],
+      'Royal Guard': ['Organizations'],
+      'Karakura Town': ['Locations'],
+      'Senjumaru Shutara': ['Characters', 'Royal Guard'],
+      'Ōetsu Nimaiya': ['Characters', 'Royal Guard'],
+      'Kirio Hikifune': ['Characters', 'Royal Guard'],
+      'Tenjirō Kirinji': ['Characters', 'Royal Guard'],
+    };
+
+    test(
+      'the Royal Guard gets its five and a missing top place is added',
+      () async {
+        final llm = _FillLlm();
+        final runner = WorldScoutRunner(
+          llm: llm,
+          budget: const WorldWikiBudget(65536),
+          depth: WorldWikiDepth.full,
+        )..retryPause = Duration.zero;
+        final run = await runner.run(
+          titles: titles,
+          tags: tags,
+          worldName: 'Bleach (TYBW)',
+          premise: 'The Thousand-Year Blood War.',
+        );
+        final names = run.cards.map((c) => c.name).toList();
+        expect(
+          names,
+          containsAll([
+            'Senjumaru Shutara',
+            'Ōetsu Nimaiya',
+            'Kirio Hikifune',
+            'Tenjirō Kirinji',
+          ]),
+        );
+        expect(
+          run.cards.where((c) => c.name == 'Senjumaru Shutara').single.place,
+          'Soul King Palace',
+          reason: "a faction member lands where the faction card stands",
+        );
+        expect(
+          names,
+          contains('Rukia Kuchiki'),
+          reason: 'the top characters gap',
+        );
+        expect(
+          run.places.map((p) => p.name),
+          contains('Karakura Town'),
+          reason: 'a top page tagged as a place becomes a place',
+        );
+        expect(
+          llm.fillPrompts.where((p) => p.contains('Royal Guard')),
+          isNotEmpty,
+        );
+        expect(
+          run.notes.any((n) => n.startsWith('Fill Royal Guard members: 4')),
+          isTrue,
+          reason: run.notes.join(' | '),
+        );
+      },
+    );
+
+    test('quick depth runs no fill rounds', () async {
+      final llm = _FillLlm();
+      final run =
+          await WorldScoutRunner(
+            llm: llm,
+            budget: const WorldWikiBudget(65536),
+            depth: WorldWikiDepth.quick,
+          ).run(
+            titles: titles,
+            tags: tags,
+            worldName: 'Bleach (TYBW)',
+            premise: 'x',
+          );
+      expect(llm.fillPrompts, isEmpty);
+      expect(
+        run.cards.map((c) => c.name),
+        isNot(contains('Senjumaru Shutara')),
+      );
     });
   });
 
@@ -1677,6 +1805,10 @@ class _ReviewLlm extends LLMService {
   final bool stillHeavy;
   final List<String> prompts = [];
 
+  /// How many times the shelf reviewer objects before it passes.
+  int reviewFails = 0;
+  int reviews = 0;
+
   Map<String, dynamic> _card(int i, String kind, String role) => {
     'name': '$kind $i',
     'role': role,
@@ -1706,6 +1838,28 @@ class _ReviewLlm extends LLMService {
     List<Map<String, dynamic>> tools,
   ) async {
     prompts.add(params.prompt);
+    final toolNames = [
+      for (final t in tools)
+        if (t['function'] is Map)
+          (t['function'] as Map)['name']?.toString() ?? '',
+    ];
+    if (toolNames.contains(kWorldShelfReviewToolName)) {
+      reviews++;
+      final fail = reviews <= reviewFails;
+      return LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldShelfReviewToolName,
+            arguments: {
+              'pass': !fail,
+              'problems': fail ? ['the era card states the ending'] : [],
+            },
+          ),
+        ],
+        text: '',
+        finishReason: 'tool_calls',
+      );
+    }
     List<Map<String, dynamic>> cards;
     if (prompts.length == 1) {
       cards = firstBalanced ? _balanced() : _heavy();
@@ -1875,6 +2029,131 @@ class _ProseThenCallLlm extends LLMService {
                   'kind': 'place',
                   'sourceTitles': ['Title $i'],
                 },
+            ],
+          },
+        ),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Scout fake for the fill loop: the first call answers a small backbone
+/// shelf, the reviewer passes, and every CANDIDATES call answers one card
+/// per candidate (a place with a hub card for the places gap).
+class _FillLlm extends LLMService {
+  final List<String> prompts = [];
+  final List<String> fillPrompts = [];
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    prompts.add(params.prompt);
+    final names = [
+      for (final t in tools)
+        if (t['function'] is Map)
+          (t['function'] as Map)['name']?.toString() ?? '',
+    ];
+    if (names.contains(kWorldShelfReviewToolName)) {
+      return const LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldShelfReviewToolName,
+            arguments: {'pass': true, 'problems': []},
+          ),
+        ],
+        text: '',
+      );
+    }
+    if (params.prompt.contains('CANDIDATES')) {
+      fillPrompts.add(params.prompt);
+      final after = params.prompt.split('CANDIDATES').last;
+      final candidates = [
+        for (final line in after.split('\n'))
+          if (line.startsWith('- ')) line.substring(2).split(' [').first.trim(),
+      ];
+      final isPlaces = params.prompt.contains('are places this world lacks');
+      return LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldScoutToolName,
+            arguments: {
+              'cards': [
+                for (final c in candidates)
+                  {
+                    'name': c,
+                    'role': isPlaces ? 'hub' : 'leaf',
+                    'kind': isPlaces ? 'place' : 'person',
+                    'sourceTitles': [c],
+                    if (isPlaces) 'place': c,
+                  },
+              ],
+              if (isPlaces)
+                'places': [
+                  for (final c in candidates) {'name': c},
+                ],
+            },
+          ),
+        ],
+        text: '',
+        finishReason: 'tool_calls',
+      );
+    }
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldScoutToolName,
+          arguments: {
+            'cards': [
+              {
+                'name': 'The war',
+                'role': 'era',
+                'kind': 'event',
+                'sourceTitles': ['Soul Society'],
+              },
+              {
+                'name': 'Soul Society',
+                'role': 'hub',
+                'kind': 'place',
+                'sourceTitles': ['Soul Society'],
+                'place': 'Soul Society',
+              },
+              {
+                'name': 'Soul King Palace',
+                'role': 'hub',
+                'kind': 'place',
+                'sourceTitles': ['Soul King Palace'],
+                'place': 'Soul King Palace',
+              },
+              {
+                'name': 'Royal Guard',
+                'role': 'hub',
+                'kind': 'faction',
+                'sourceTitles': ['Royal Guard'],
+                'place': 'Soul King Palace',
+              },
+              {
+                'name': 'Ichigo Kurosaki',
+                'role': 'crown',
+                'kind': 'person',
+                'sourceTitles': ['Ichigo Kurosaki'],
+              },
+            ],
+            'places': [
+              {'name': 'Soul Society'},
+              {'name': 'Soul King Palace', 'parentName': 'Soul Society'},
             ],
           },
         ),

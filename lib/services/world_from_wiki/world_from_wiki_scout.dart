@@ -20,7 +20,8 @@ import 'world_from_wiki_ops.dart';
 import 'world_from_wiki_places_tools.dart';
 import 'world_from_wiki_tools.dart';
 import 'world_places.dart';
-import 'world_shelf_audit.dart';
+import 'world_scout_fill.dart';
+import 'world_scout_review.dart';
 
 /// What one scout pass produced across every part of the index.
 class WorldScoutRun {
@@ -32,10 +33,14 @@ class WorldScoutRun {
     this.partsCut = 0,
     this.revised = false,
     this.auditNotes = const [],
+    this.notes = const [],
   });
 
   final List<WorldProposedCard> cards;
   final List<WorldProposedPlace> places;
+
+  /// The run log: one line per loop try, for the status and the relay.
+  final List<String> notes;
 
   /// True when the review pass replaced the scout's shelf with a better
   /// one; [auditNotes] then says what was wrong with the first.
@@ -55,6 +60,23 @@ class WorldScoutRun {
   /// Parts the model could not finish even at the smallest size; their
   /// titles are missing from the shelf.
   final int partsCut;
+
+  WorldScoutRun copyWith({
+    List<WorldProposedCard>? cards,
+    List<WorldProposedPlace>? places,
+    bool? revised,
+    List<String>? auditNotes,
+    List<String>? notes,
+  }) => WorldScoutRun(
+    cards: cards ?? this.cards,
+    places: places ?? this.places,
+    failure: failure,
+    parts: parts,
+    partsCut: partsCut,
+    revised: revised ?? this.revised,
+    auditNotes: auditNotes ?? this.auditNotes,
+    notes: notes ?? this.notes,
+  );
 }
 
 class WorldScoutRunner {
@@ -77,6 +99,9 @@ class WorldScoutRunner {
   /// How long one part's call may take before it is abandoned.
   Duration callTimeout = kWorldToolCallTimeout;
 
+  /// The wait before a stumbled review, revise or fill call is asked again.
+  Duration retryPause = const Duration(seconds: 2);
+
   Future<WorldScoutRun> run({
     required List<String> titles,
     required Map<String, List<String>> tags,
@@ -89,7 +114,7 @@ class WorldScoutRunner {
       lines,
       budget: budget,
       promptFor: (part) =>
-          _prompt(part, worldName: worldName, premise: premise, total: 1),
+          scoutPrompt(part, worldName: worldName, premise: premise, total: 1),
     );
     var total = queue.length;
     var asked = 0;
@@ -110,7 +135,7 @@ class WorldScoutRunner {
           'Scouting part $asked of $total (${part.length} titles)…',
         );
       }
-      final prompt = _prompt(
+      final prompt = scoutPrompt(
         part,
         worldName: worldName,
         premise: premise,
@@ -224,134 +249,28 @@ class WorldScoutRunner {
       partsCut: cut,
     );
     if (cards.isEmpty || (isAborted?.call() ?? false)) return first;
-    return _review(
-      first,
-      lines: lines,
-      titles: titles,
-      tagged: tags.values.any((t) => t.isNotEmpty),
-      worldName: worldName,
-      premise: premise,
-    );
-  }
-
-  /// The review pass: audit the merged shelf as a world; when it fails,
-  /// ask the model once to revise it against the problems and the index,
-  /// and keep whichever shelf has fewer problems. Never fewer cards than
-  /// the minimum, never a shelf from a call that did not answer.
-  Future<WorldScoutRun> _review(
-    WorldScoutRun first, {
-    required List<String> lines,
-    required List<String> titles,
-    required bool tagged,
-    required String worldName,
-    required String premise,
-  }) async {
-    final audit = auditWorldShelf(
-      first.cards,
-      places: first.places,
-      tagged: tagged,
-    );
-    if (audit.ok) return first;
-    debugPrint('[World] shelf review: ${audit.problems.join('; ')}');
-    onProgress?.call('Reviewing the shelf…');
-    final kept = WorldScoutRun(
-      cards: first.cards,
-      places: first.places,
-      failure: first.failure,
-      parts: first.parts,
-      partsCut: first.partsCut,
-      auditNotes: audit.problems,
-    );
-    final prompt = _revisePrompt(
-      first,
-      audit,
-      lines: lines,
-      worldName: worldName,
-      premise: premise,
-    );
-    LlmToolResponse? resp;
-    try {
-      resp = await llm.generateWithTools(
-        GenerationParams(
-          prompt: prompt,
-          maxLength: budget.replyFor(prompt, floor: kWorldScoutReplyFloor),
-          minLength: 16,
-          temperature: 0.3,
-          reasoningEnabled: true,
-          toolChoice: kWorldScoutToolName,
-        ),
-        worldScoutToolSchema(),
+    final tagged = tags.values.any((t) => t.isNotEmpty);
+    var run = first;
+    if (depth.reviews) {
+      run = await reviewLoop(
+        run,
+        lines: lines,
+        titles: titles,
+        tagged: tagged,
+        worldName: worldName,
+        premise: premise,
       );
-    } catch (e) {
-      debugPrint('[World] shelf review miss ($e)');
-      return kept;
     }
-    if (resp == null) return kept;
-    final cards = parseWorldScoutToolCalls(
-      resp.calls,
-      catalog: titles,
-      max: depth.cardTarget,
-    );
-    if (cards.length < kWorldScoutCardMin) {
-      debugPrint('[World] shelf review returned ${cards.length} cards — kept');
-      return kept;
-    }
-    final places = parseWorldScoutPlaces(resp.calls);
-    final after = auditWorldShelf(cards, places: places, tagged: tagged);
-    if (after.problems.length >= audit.problems.length) {
-      debugPrint(
-        '[World] shelf review did not improve: ${after.problems.join('; ')}',
+    if (depth.fillRounds > 0) {
+      run = await fillLoop(
+        run,
+        titles: titles,
+        tags: tags,
+        worldName: worldName,
+        premise: premise,
       );
-      return kept;
     }
-    debugPrint(
-      '[World] shelf revised cards=${cards.length} places=${places.length} '
-      'left=${after.problems.join('; ')}',
-    );
-    return WorldScoutRun(
-      cards: liftPlaceHubCards(cards, places),
-      places: places,
-      parts: first.parts,
-      partsCut: first.partsCut,
-      revised: true,
-      auditNotes: audit.problems,
-    );
-  }
-
-  String _revisePrompt(
-    WorldScoutRun run,
-    WorldShelfAudit audit, {
-    required List<String> lines,
-    required String worldName,
-    required String premise,
-  }) {
-    final shelf = [
-      for (final c in run.cards)
-        '- ${c.name} | ${c.kind.isEmpty ? '?' : c.kind} | ${c.role.name}'
-            '${c.place.isEmpty ? '' : ' | in ${c.place}'}'
-            ' | ${c.sourceTitles.join(', ')}',
-    ].join('\n');
-    final placesLine = run.places.isEmpty
-        ? ''
-        : 'PLACES NAMED: ${run.places.map((p) => p.name).join(', ')}\n';
-    final head =
-        'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
-        'Premise: ${premise.trim()}\n'
-        'FIRST SHELF (name | kind | role | place | sources):\n$shelf\n'
-        '$placesLine'
-        'REVIEW FOUND:\n- ${audit.problems.join('\n- ')}\n\n'
-        'Revise the shelf into a world: fix every finding above, keep what '
-        'already serves the setting, and return the COMPLETE corrected '
-        'shelf (20–40 cards, places included) with $kWorldScoutToolName.\n'
-        '$kWorldScoutPrompt\n';
-    // The index rides along as far as the window allows, so the revise
-    // can swap people for the places and factions the wiki really has.
-    final index = budget.clipForReply(
-      lines.join('\n'),
-      want: kWorldScoutReplyWant,
-      fixedTokens: worldWikiEstimateTokens(head) + 64,
-    );
-    return '${head}INDEX TITLES:\n$index\n\nCall $kWorldScoutToolName once.';
+    return run;
   }
 
   /// One part's call. A prose answer is read for a JSON shelf first (the
@@ -415,7 +334,8 @@ class WorldScoutRunner {
     return resp;
   }
 
-  String _prompt(
+  /// The scout prompt for one part of the index.
+  String scoutPrompt(
     List<String> part, {
     required String worldName,
     required String premise,

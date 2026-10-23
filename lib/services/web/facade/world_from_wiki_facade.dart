@@ -171,6 +171,7 @@ class WorldFromWikiFacade {
       'ranked': result.catalog.ranked,
       'revised': result.revised,
       'auditNotes': result.auditNotes,
+      'notes': result.notes,
     };
   }
 

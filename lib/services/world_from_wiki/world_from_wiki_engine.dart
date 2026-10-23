@@ -26,7 +26,11 @@ class WorldScoutResult {
     this.partsCut = 0,
     this.revised = false,
     this.auditNotes = const [],
+    this.notes = const [],
   });
+
+  /// The run log: one line per loop try.
+  final List<String> notes;
 
   final WikiStudioCatalog catalog;
   final List<WorldProposedCard> proposed;
@@ -137,14 +141,17 @@ class WorldFromWikiEngine {
       return WorldScoutResult(catalog: catalog, proposed: const []);
     }
     onProgress?.call('Scouting ${catalog.titles.length} titles…');
-    final runner = WorldScoutRunner(
-      llm: llm,
-      budget: budget,
-      depth: depth,
-      moment: moment,
-      onProgress: onProgress,
-      isAborted: () => _aborted,
-    )..callTimeout = callTimeout;
+    final runner =
+        WorldScoutRunner(
+            llm: llm,
+            budget: budget,
+            depth: depth,
+            moment: moment,
+            onProgress: onProgress,
+            isAborted: () => _aborted,
+          )
+          ..callTimeout = callTimeout
+          ..retryPause = retryPause;
     final scouted = await runner.run(
       titles: catalog.titles,
       tags: lastCatalogTags,
@@ -169,6 +176,7 @@ class WorldFromWikiEngine {
       partsCut: scouted.partsCut,
       revised: scouted.revised,
       auditNotes: scouted.auditNotes,
+      notes: scouted.notes,
     );
   }
 

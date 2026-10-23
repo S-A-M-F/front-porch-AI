@@ -5,16 +5,9 @@
 // factions, events, powers, then a few people) or as a cast list? Plain
 // rules the runner checks before it asks the model to revise once.
 
-import 'dart:math';
-
 import 'world_craft_mechanics.dart';
+import 'world_from_wiki_depth.dart';
 import 'world_places.dart';
-
-/// People may take at most this share of the shelf (one third).
-const int kWorldShelfPeopleShare = 3;
-
-/// Fewer people than this are always fine, whatever the share says.
-const int kWorldShelfPeopleFloor = 6;
 
 /// A shelf of twelve or more cards needs at least this many places or
 /// factions — the settings and the powers that be.
@@ -47,17 +40,10 @@ WorldShelfAudit auditWorldShelf(
   if (eras > 1) problems.add('$eras era cards; a world has one');
   final kinded = cards.where((c) => c.kind.isNotEmpty).length;
   if (kinded * 2 >= cards.length) {
+    // People are no longer rationed: the fill loop gives every place its
+    // residents. What the shelf must still have is its backbone, and
+    // people may not crowd it out of the first scout.
     final people = cards.where((c) => c.kind == 'person').length;
-    final allowed = max(
-      kWorldShelfPeopleFloor,
-      cards.length ~/ kWorldShelfPeopleShare,
-    );
-    if (people > allowed) {
-      problems.add(
-        '$people of ${cards.length} cards are people; keep at most $allowed '
-        'and spend the rest on places, factions, events and powers',
-      );
-    }
     final backbone = cards
         .where((c) => c.kind == 'place' || c.kind == 'faction')
         .length;
@@ -65,6 +51,15 @@ WorldShelfAudit auditWorldShelf(
       problems.add(
         'only $backbone place or faction cards; a world needs its settings '
         'and the powers that be',
+      );
+    }
+    // Three people to every two places and factions is the most a first
+    // shelf may carry; the fill loop adds the cast once the backbone stands.
+    if (people > 0 && people * 2 > backbone * 3) {
+      problems.add(
+        '$people people against $backbone places and factions; the backbone '
+        'comes first — add the places, factions, events and powers the '
+        'index shows before more people',
       );
     }
     if (tagged && places.isEmpty && cards.any((c) => c.kind == 'place')) {
@@ -77,4 +72,165 @@ WorldShelfAudit auditWorldShelf(
     problems.add('cards carry no kind; set kind on every card');
   }
   return WorldShelfAudit(problems);
+}
+
+/// Tag words that say a page is a place.
+const List<String> kWorldPlaceTagWords = [
+  'location',
+  'place',
+  'city',
+  'town',
+  'realm',
+  'world',
+  'region',
+  'nation',
+  'district',
+  'fortress',
+  'palace',
+  'castle',
+  'kingdom',
+  'village',
+  'island',
+];
+
+/// Tag words that say a page is a person.
+const List<String> kWorldPersonTagWords = ['character', 'people'];
+
+/// Candidates a gap carries to the model at most.
+const int kWorldGapCandidateMax = 12;
+
+/// Ranked titles the must-have-place check reads: a place that deep in
+/// the link ranking is a place the world needs.
+const int kWorldGapPlaceRank = 60;
+
+/// A hole the coverage audit found: the kind of hole, what it is about,
+/// the catalog titles that could fill it, and the place those cards
+/// belong to (null: the model decides).
+class WorldCoverageGap {
+  const WorldCoverageGap({
+    required this.kind,
+    required this.name,
+    required this.candidates,
+    this.place,
+  });
+
+  /// 'place' (a top page tagged as a place that is not a place),
+  /// 'faction' (a faction whose members the index lists), 'thinPlace' (a
+  /// place under the per-place minimum) or 'people' (top characters
+  /// missing).
+  final String kind;
+  final String name;
+  final List<String> candidates;
+  final String? place;
+
+  @override
+  String toString() => '$kind:$name (${candidates.length})';
+}
+
+bool _tagsSay(List<String> tags, List<String> words) =>
+    tags.any((t) => words.any((w) => t.toLowerCase().contains(w)));
+
+bool _tagsName(List<String> tags, String name) {
+  final n = name.trim().toLowerCase();
+  return tags.any((t) => t.trim().toLowerCase() == n);
+}
+
+/// The gaps between [cards] and what the catalog shows, in the order the
+/// fill loop works them. [titles] are the catalog in rank order and [tags]
+/// their categories. A title is offered to one gap only.
+List<WorldCoverageGap> auditWorldCoverage({
+  required List<WorldProposedCard> cards,
+  required List<WorldProposedPlace> places,
+  required List<String> titles,
+  required Map<String, List<String>> tags,
+  required WorldWikiDepth depth,
+}) {
+  final onShelf = {
+    for (final c in cards) c.name.trim().toLowerCase(),
+    for (final c in cards)
+      for (final s in c.sourceTitles) s.trim().toLowerCase(),
+    for (final p in places) p.key,
+  };
+  final taken = <String>{};
+  final gaps = <WorldCoverageGap>[];
+  List<String> pick(Iterable<String> from, {int max = kWorldGapCandidateMax}) {
+    final out = <String>[];
+    for (final t in from) {
+      final k = t.toLowerCase();
+      if (onShelf.contains(k) || taken.contains(k)) continue;
+      out.add(t);
+      taken.add(k);
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
+  // Must-have places: top-ranked pages the wiki tags as places.
+  final topPlaces = pick(
+    titles
+        .take(kWorldGapPlaceRank)
+        .where((t) => _tagsSay(tags[t] ?? const [], kWorldPlaceTagWords)),
+    max: 8,
+  );
+  if (topPlaces.isNotEmpty) {
+    gaps.add(
+      WorldCoverageGap(kind: 'place', name: 'places', candidates: topPlaces),
+    );
+  }
+
+  // Factions whose members the index lists.
+  for (final f in cards.where((c) => c.kind == 'faction')) {
+    final members = pick(
+      titles.where(
+        (t) =>
+            _tagsName(tags[t] ?? const [], f.name) &&
+            _tagsSay(tags[t] ?? const [], kWorldPersonTagWords),
+      ),
+    );
+    if (members.length >= 2) {
+      gaps.add(
+        WorldCoverageGap(
+          kind: 'faction',
+          name: f.name,
+          candidates: members,
+          place: f.place.isEmpty ? null : f.place,
+        ),
+      );
+    }
+  }
+
+  // Places under the minimum, with pages the wiki files under them.
+  for (final p in places) {
+    final inside = cards
+        .where((c) => c.place.trim().toLowerCase() == p.key)
+        .length;
+    if (inside >= depth.perPlaceMin) continue;
+    final residents = pick(
+      titles.where((t) => _tagsName(tags[t] ?? const [], p.name)),
+    );
+    if (residents.isNotEmpty) {
+      gaps.add(
+        WorldCoverageGap(
+          kind: 'thinPlace',
+          name: p.name,
+          candidates: residents,
+          place: p.name,
+        ),
+      );
+    }
+  }
+
+  // The wiki's most-linked characters.
+  final people = pick(
+    titles
+        .take(depth.topPeople * 2)
+        .where((t) => _tagsSay(tags[t] ?? const [], kWorldPersonTagWords)),
+    max: depth.topPeople,
+  );
+  if (people.isNotEmpty) {
+    gaps.add(
+      WorldCoverageGap(kind: 'people', name: 'people', candidates: people),
+    );
+  }
+  return gaps;
 }
