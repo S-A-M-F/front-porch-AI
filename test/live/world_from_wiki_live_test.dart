@@ -10,7 +10,8 @@
 //
 //   FPAI_LIVE_API_URL=http://localhost:8000/v1 FPAI_LIVE_MODEL=<id> \
 //   FPAI_LIVE_WIKI=https://bleach.fandom.com FPAI_LIVE_NAME='Bleach (TYBW)' \
-//   FPAI_LIVE_PREMISE='…' FPAI_LIVE_CONTEXT=65536 FPAI_LIVE_WRITE=1 \
+//   FPAI_LIVE_PREMISE='…' FPAI_LIVE_MOMENT='…' FPAI_LIVE_DEPTH=1 \
+//   FPAI_LIVE_CONTEXT=65536 FPAI_LIVE_WRITE=1 \
 //   FPAI_LIVE_OUT=/path/world.json \
 //     flutter test --tags wiki_live test/live/world_from_wiki_live_test.dart
 //
@@ -72,6 +73,10 @@ void main() {
   final context = int.tryParse(_env('FPAI_LIVE_CONTEXT') ?? '') ?? 65536;
   final name = _env('FPAI_LIVE_NAME') ?? 'Live world';
   final premise = _env('FPAI_LIVE_PREMISE') ?? '';
+  final moment = _env('FPAI_LIVE_MOMENT') ?? '';
+  final depth = WorldWikiDepthX.fromIndex(
+    int.tryParse(_env('FPAI_LIVE_DEPTH') ?? ''),
+  );
   final write = _env('FPAI_LIVE_WRITE') == '1';
 
   final savedOverrides = HttpOverrides.current;
@@ -97,6 +102,8 @@ void main() {
         wiki: WikiSearchService(getBaseUrl: () => wiki),
         llm: llm,
         contextTokens: context,
+        depth: depth,
+        moment: moment,
         onProgress: (m) => stdout.writeln('[live] $m'),
       );
       final report = <String, dynamic>{
@@ -106,6 +113,8 @@ void main() {
         'context': context,
         'name': name,
         'premise': premise,
+        'moment': moment,
+        'depth': depth.name,
       };
       void save() => File(
         out,
@@ -128,6 +137,7 @@ void main() {
         'partsCut': scout.partsCut,
         'revised': scout.revised,
         'auditNotes': scout.auditNotes,
+        'notes': scout.notes,
         'failure': scout.failure,
       };
       save();
@@ -156,6 +166,7 @@ void main() {
       );
       report['tree'] = {
         'seconds': sw.elapsed.inSeconds,
+        'writeLog': engine.writeLog,
         'root': tree.root.toJson(),
         'places': [for (final p in tree.places) p.toJson()],
       };

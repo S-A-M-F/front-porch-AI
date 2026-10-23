@@ -214,3 +214,28 @@ Stream<WorldWriteBatch> planWorldWriteBatches(
     yield WorldWriteBatch(cards: batchCards, articles: batchArticles);
   }
 }
+
+/// Write batches in flight at once on a remote provider; a local server
+/// has one generation slot and stays serial.
+const int kWorldWriteConcurrencyRemote = 2;
+
+/// Runs [work] over [items] with at most [limit] in flight, keeping the
+/// results in item order.
+Future<List<T>> forEachLimited<S, T>(
+  List<S> items,
+  int limit,
+  Future<T> Function(int index, S item) work,
+) async {
+  final results = List<T?>.filled(items.length, null);
+  var next = 0;
+  Future<void> worker() async {
+    while (next < items.length) {
+      final i = next++;
+      results[i] = await work(i, items[i]);
+    }
+  }
+
+  final lanes = limit < 1 ? 1 : limit;
+  await Future.wait([for (var i = 0; i < lanes; i++) worker()]);
+  return [for (final r in results) r as T];
+}

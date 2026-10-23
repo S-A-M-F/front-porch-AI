@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
+import 'package:front_porch_ai/services/reasoning_effort.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_budget.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_depth.dart';
@@ -96,6 +97,18 @@ class WorldFromWikiEngine {
 
   /// The write passes' run log: one line per entry-loop try.
   final List<String> writeLog = [];
+
+  int? _writeConcurrency;
+
+  /// Write batches in flight at once: two on a remote provider, one on a
+  /// local server (one generation slot). Settable for tests.
+  int get writeConcurrency =>
+      _writeConcurrency ??
+      (llm is LlmApiEndpoint &&
+              !isLocalRemoteUrl((llm as LlmApiEndpoint).apiUrl)
+          ? kWorldWriteConcurrencyRemote
+          : 1);
+  set writeConcurrency(int value) => _writeConcurrency = value;
 
   /// How long one tool call may take before it is abandoned and asked
   /// again (tests pass something short).
@@ -220,14 +233,16 @@ class WorldFromWikiEngine {
       onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
       stop: () => _aborted,
     );
-    await for (final batch in batches) {
-      if (_aborted) {
-        debugPrint('[World] abort');
-        break;
-      }
+    onProgress?.call('Reading $k articles…');
+    final planned = await batches.toList();
+    final written = await forEachLimited(planned, writeConcurrency, (
+      i,
+      batch,
+    ) async {
+      if (_aborted) return const <WorldCraftDraft>[];
       done += batch.cards.length;
       debugPrint(
-        '[World] write batch ${done - batch.cards.length + 1}–$done/$k '
+        '[World] write batch ${i + 1}/${planned.length} '
         'names=${batch.cards.map((c) => c.name).join(', ')}',
       );
       onProgress?.call('Writing ${batch.cards.length} cards ($done/$k)');
@@ -238,16 +253,18 @@ class WorldFromWikiEngine {
         premise: premise,
         extraLore: extraLore,
       );
-      drafts.addAll(
-        await reviewBatch(
-          cards: batch.cards,
-          articles: batch.articles,
-          drafts: matchWorldWriteBatch(batch.cards, generated),
-          worldName: worldName,
-          premise: premise,
-          extraLore: extraLore,
-        ),
+      return reviewBatch(
+        cards: batch.cards,
+        articles: batch.articles,
+        drafts: matchWorldWriteBatch(batch.cards, generated),
+        worldName: worldName,
+        premise: premise,
+        extraLore: extraLore,
       );
+    });
+    if (_aborted) debugPrint('[World] abort');
+    for (final r in written) {
+      drafts.addAll(r);
     }
     if (climateEnabled && !_aborted) {
       final climate = await _writeClimate(

@@ -1511,6 +1511,45 @@ void main() {
     });
   });
 
+  group('parallel writes', () {
+    test(
+      'a remote provider writes two batches at a time; a local server one; order is kept',
+      () async {
+        final llm = _SlowWriteLlm();
+        final engine =
+            WorldFromWikiEngine(
+                wiki: _wiki(),
+                llm: llm,
+                depth: WorldWikiDepth.quick,
+              )
+              ..retryPause = Duration.zero
+              ..writeConcurrency = 2;
+        final cards = [
+          for (var i = 0; i < 10; i++)
+            WorldProposedCard(
+              name: 'Card $i',
+              keys: ['Card $i'],
+              role: WorldCraftRole.leaf,
+              sourceTitles: const ['Ceolwynn'],
+            ),
+        ];
+        final entries = await engine.write(cards, worldName: 'B', premise: 'x');
+        expect(llm.maxInFlight, 2);
+        expect(entries.map((e) => e.keys.first).toList(), [
+          for (var i = 0; i < 10; i++) 'Card $i',
+        ], reason: 'batch order survives the parallelism');
+        expect(
+          WorldFromWikiEngine(
+            wiki: _wiki(),
+            llm: _SlowWriteLlm(),
+          ).writeConcurrency,
+          1,
+          reason: 'a service with no URL is local',
+        );
+      },
+    );
+  });
+
   group('the entry loop', () {
     WorldProposedCard card(String n, {String kind = 'person'}) =>
         WorldProposedCard(
@@ -2351,6 +2390,56 @@ class _EntryReviewLlm extends LLMService {
                   'keys': [n],
                   'content':
                       '${revise ? 'REVISED. ' : ''}${'Written as things stand that night. ' * 6}',
+                },
+            ],
+          },
+        ),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Write fake that answers after a short wait and counts how many writes
+/// are in flight at once.
+class _SlowWriteLlm extends LLMService {
+  int inFlight = 0;
+  int maxInFlight = 0;
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    inFlight++;
+    if (inFlight > maxInFlight) maxInFlight = inFlight;
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    inFlight--;
+    final cardNames = [
+      for (final line in params.prompt.split('\n'))
+        if (line.startsWith('Name: ')) line.substring(6).trim(),
+    ];
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldLoreBatchToolName,
+          arguments: {
+            'entries': [
+              for (final n in cardNames)
+                {
+                  'name': n,
+                  'keys': [n],
+                  'content': 'Written in the war. ' * 12,
                 },
             ],
           },

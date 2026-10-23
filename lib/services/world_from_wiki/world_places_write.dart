@@ -175,8 +175,12 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
       stop: () => aborted,
     );
-    await for (final batch in batches) {
-      if (aborted) break;
+    final planned = await batches.toList();
+    final written = await forEachLimited(planned, writeConcurrency, (
+      i,
+      batch,
+    ) async {
+      if (aborted) return const <WorldCraftDraft>[];
       done += batch.cards.length;
       onProgress?.call(
         'Writing $label: cards ${done - batch.cards.length + 1}–$done/$k',
@@ -188,16 +192,17 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         premise: premise,
         extraLore: extraLore,
       );
-      drafts.addAll(
-        await reviewBatch(
-          cards: batch.cards,
-          articles: batch.articles,
-          drafts: matchWorldWriteBatch(batch.cards, generated),
-          worldName: worldName,
-          premise: premise,
-          extraLore: extraLore,
-        ),
+      return reviewBatch(
+        cards: batch.cards,
+        articles: batch.articles,
+        drafts: matchWorldWriteBatch(batch.cards, generated),
+        worldName: worldName,
+        premise: premise,
+        extraLore: extraLore,
       );
+    });
+    for (final r in written) {
+      drafts.addAll(r);
     }
     return drafts;
   }
