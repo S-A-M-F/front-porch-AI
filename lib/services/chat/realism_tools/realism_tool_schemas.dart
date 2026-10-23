@@ -17,6 +17,7 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/services/chat/realism_tools/realism_tool_names.dart';
+import 'package:front_porch_ai/services/chat/realism_tools/place_mint_tool_schema.dart';
 import 'package:front_porch_ai/services/chat/realism_tools/afterglow_tool_schemas.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -279,6 +280,17 @@ final Map<String, Map<String, dynamic>> _sceneTimeFields = {
   // simply omit it, and the parse treats absent, "same" and "" identically
   // — never a move. It is in NO required list on purpose: tool models skip
   // optional fields, and skipping here is the safe answer.
+  // Slice 7 (same fixed-contract rule as scene_place): the pair behind
+  // scene_place == "new". Blank when not minting; models skipping the
+  // optional fields is the safe answer, same as the field itself.
+  'new_place_name': _strField(
+    'Only with scene_place "new": the exact NAME of the place the '
+    'narration arrived at ("the Salt Garden"). Blank if it has no name.',
+  ),
+  'new_place_descriptor': _strField(
+    'Only with scene_place "new": one line on what the place is, drawn '
+    'from the narration. Blank when there is nothing to say.',
+  ),
   'scene_place': _strField(
     'Where the reply leaves the scene: "same", or one of the place ids '
     'listed in the prompt. Report a move ONLY when the narration actually '
@@ -318,6 +330,8 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalTools = [
       // Slice 6: in the schema always (fixed contract); asked for in the
       // prompt only when Scene suggestions is on. Absent = 'same'.
       'scene_place': _sceneTimeFields['scene_place']!,
+      'new_place_name': _sceneTimeFields['new_place_name']!,
+      'new_place_descriptor': _sceneTimeFields['new_place_descriptor']!,
     },
     const ['minutes_elapsed'],
   ),
@@ -339,6 +353,8 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalToolsWithToday = [
       'new_day': _sceneTimeFields['new_day']!,
       'days_elapsed': _sceneTimeFields['days_elapsed']!,
       'scene_place': _sceneTimeFields['scene_place']!,
+      'new_place_name': _sceneTimeFields['new_place_name']!,
+      'new_place_descriptor': _sceneTimeFields['new_place_descriptor']!,
       'today_sentence': _todaySentenceField,
     },
     const ['minutes_elapsed', 'today_sentence'],
@@ -456,6 +472,9 @@ final List<Map<String, dynamic>> kCastFeelingsEvalTools = [
   ),
 ];
 
+/// Slice 7: place-mint draft tool. Fields are NOT required so that text-only
+/// models can omit or blank them without breaking salvage; the factory rejects
+/// incomplete drafts downstream rather than at the schema matcher.
 /// The whitelisted keys per tool (anything else the model invents is
 /// dropped, mirroring how the regex extractors ignore unknown text keys).
 final Map<String, Map<String, Map<String, dynamic>>> realismToolFieldsByTool = {
@@ -472,4 +491,5 @@ final Map<String, Map<String, Map<String, dynamic>>> realismToolFieldsByTool = {
   kReplyFactsToolName: kReplyFactsFields,
   kWithUserToolName: kWithUserFields,
   kCastFeelingsToolName: kCastFeelingsFields,
+  kPlaceMintTool: kPlaceMintFields,
 };

@@ -8,6 +8,8 @@
 // under one setting must be offerable again once the scene has moved,
 // because arrival is re-judged from a new place).
 
+import 'scene_mint_state.dart';
+
 /// One suggested move: an offered place the judge says the reply arrived at.
 class PendingPlaceMove {
   const PendingPlaceMove({required this.id, required this.name});
@@ -19,6 +21,15 @@ class PendingPlaceMove {
 /// one scene place, no split parties); declines are remembered per setting.
 class SceneMoveState {
   PendingPlaceMove? pending;
+
+  /// Slice 7: the mint half of the same suggestion pipeline — one
+  /// proposed place awaiting the author's tap, plus the per-chat
+  /// ignored-name memory. Cleared by the same reset sites as the move
+  /// flags (chat/session boundaries), unlike declines which are
+  /// setting-scoped: an ignored 'Salt Garden' stays ignored until the
+  /// chat changes, because the name itself, not the vantage, was
+  /// refused.
+  final SceneMintState mints = SceneMintState();
 
   /// Place ids declined while the setting was [_declineScope]. Any pending
   /// or declined id equal to the CURRENT setting itself is never offered
@@ -51,5 +62,6 @@ class SceneMoveState {
     pending = null;
     _declined.clear();
     _declineScope = null;
+    mints.reset();
   }
 }
