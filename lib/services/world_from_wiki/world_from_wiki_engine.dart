@@ -10,6 +10,7 @@ import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.da
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_budget.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_depth.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_entry_polish.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_entry_review.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_ops.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_scout.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
@@ -92,6 +93,9 @@ class WorldFromWikiEngine {
 
   /// The wait before a stumbled tool call is asked again (tests pass zero).
   Duration retryPause = const Duration(seconds: 2);
+
+  /// The write passes' run log: one line per entry-loop try.
+  final List<String> writeLog = [];
 
   /// How long one tool call may take before it is abandoned and asked
   /// again (tests pass something short).
@@ -234,7 +238,16 @@ class WorldFromWikiEngine {
         premise: premise,
         extraLore: extraLore,
       );
-      drafts.addAll(matchWorldWriteBatch(batch.cards, generated));
+      drafts.addAll(
+        await reviewBatch(
+          cards: batch.cards,
+          articles: batch.articles,
+          drafts: matchWorldWriteBatch(batch.cards, generated),
+          worldName: worldName,
+          premise: premise,
+          extraLore: extraLore,
+        ),
+      );
     }
     if (climateEnabled && !_aborted) {
       final climate = await _writeClimate(

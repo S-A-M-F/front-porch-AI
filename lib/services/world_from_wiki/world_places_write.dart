@@ -17,6 +17,7 @@ import 'package:front_porch_ai/services/llm_service.dart';
 
 import 'world_craft_mechanics.dart';
 import 'world_entry_polish.dart';
+import 'world_entry_review.dart';
 import 'world_from_wiki_budget.dart';
 import 'world_from_wiki_engine.dart';
 import 'world_from_wiki_ops.dart';
@@ -187,7 +188,16 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         premise: premise,
         extraLore: extraLore,
       );
-      drafts.addAll(matchWorldWriteBatch(batch.cards, generated));
+      drafts.addAll(
+        await reviewBatch(
+          cards: batch.cards,
+          articles: batch.articles,
+          drafts: matchWorldWriteBatch(batch.cards, generated),
+          worldName: worldName,
+          premise: premise,
+          extraLore: extraLore,
+        ),
+      );
     }
     return drafts;
   }

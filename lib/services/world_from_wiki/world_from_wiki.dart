@@ -7,6 +7,7 @@ library;
 
 export 'world_craft_mechanics.dart';
 export 'world_entry_polish.dart';
+export 'world_entry_review.dart';
 export 'world_from_wiki_budget.dart';
 export 'world_from_wiki_depth.dart';
 export 'world_from_wiki_engine.dart';

@@ -146,6 +146,18 @@ class _ToolsLlm extends LLMService {
         text: '',
       );
     }
+    if (names.contains(kWorldEntriesReviewToolName)) {
+      // The entries reviewer passes everything; it is not a write.
+      return const LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldEntriesReviewToolName,
+            arguments: {'verdicts': []},
+          ),
+        ],
+        text: '',
+      );
+    }
     if (names.contains(kWorldClimateToolName)) {
       writeCalls++;
       if (climateNull) return null;
@@ -196,7 +208,13 @@ class _ToolsLlm extends LLMService {
                 {
                   'name': c['name'],
                   'keys': c['keys'],
-                  'content': 'A baker on the quay keeps the oven lit for them.',
+                  // Two full sentences: the entry loop's gate sends a one-liner
+                  // back for a rewrite, which is not what these tests count.
+                  'content':
+                      'A baker on the quay keeps the oven lit for them through '
+                      'the long nights of the siege. Soldiers and scouts trade '
+                      'news for bread at the back door, and nothing said there '
+                      'leaves the room.',
                 },
             ],
           },
@@ -1493,6 +1511,93 @@ void main() {
     });
   });
 
+  group('the entry loop', () {
+    WorldProposedCard card(String n, {String kind = 'person'}) =>
+        WorldProposedCard(
+          name: n,
+          keys: [n],
+          role: WorldCraftRole.leaf,
+          sourceTitles: const ['Ceolwynn'],
+          kind: kind,
+        );
+
+    test(
+      'a failing entry is sent back with the finding; the passing ones are kept',
+      () async {
+        final llm = _EntryReviewLlm(
+          failOnce: {'yhwach': 'states his death, which is after the moment'},
+        );
+        final engine = WorldFromWikiEngine(
+          wiki: _wiki(),
+          llm: llm,
+          moment: 'the night after the first invasion',
+        )..retryPause = Duration.zero;
+        final entries = await engine.write(
+          [card('Yhwach'), card('Silbern', kind: 'place')],
+          worldName: 'Bleach (TYBW)',
+          premise: 'x',
+        );
+        expect(
+          llm.kinds,
+          ['write', 'review', 'revise', 'review'],
+          reason:
+              'write, review, one revise of the failing entry, review again',
+        );
+        expect(llm.prompts[2], contains('REVIEW FOUND: states his death'));
+        expect(llm.prompts[2], contains('Name: Yhwach'));
+        expect(
+          llm.prompts[2],
+          isNot(contains('Name: Silbern')),
+          reason: 'only the failing entry goes back',
+        );
+        expect(
+          llm.prompts[1],
+          contains('Moment: the night after the first invasion'),
+        );
+        final byName = {for (final e in entries) e.keys.first: e.content};
+        expect(byName['Yhwach'], contains('REVISED'));
+        expect(byName['Silbern'], isNot(contains('REVISED')));
+        expect(engine.writeLog.first, contains('1 sent back'));
+      },
+    );
+
+    test(
+      'an entry that never passes keeps its latest draft; quick depth asks no reviewer',
+      () async {
+        final llm = _EntryReviewLlm(
+          failOnce: {'yhwach': 'still wrong'},
+          failAlways: true,
+        );
+        final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+          ..retryPause = Duration.zero;
+        final entries = await engine.write(
+          [card('Yhwach')],
+          worldName: 'B',
+          premise: 'x',
+        );
+        expect(llm.kinds, [
+          'write',
+          'review',
+          'revise',
+          'review',
+          'revise',
+          'review',
+        ], reason: 'three tries, never a fourth');
+        expect(entries, hasLength(1), reason: 'never dropped');
+        expect(entries.single.content, contains('REVISED'));
+
+        final quick = _EntryReviewLlm(failOnce: {'yhwach': 'x'});
+        final quickEngine = WorldFromWikiEngine(
+          wiki: _wiki(),
+          llm: quick,
+          depth: WorldWikiDepth.quick,
+        )..retryPause = Duration.zero;
+        await quickEngine.write([card('Yhwach')], worldName: 'B', premise: 'x');
+        expect(quick.kinds, ['write']);
+      },
+    );
+  });
+
   group('writes that stumble, and where a place\'s card lives', () {
     WorldProposedCard card(
       String n, {
@@ -2154,6 +2259,99 @@ class _FillLlm extends LLMService {
             'places': [
               {'name': 'Soul Society'},
               {'name': 'Soul King Palace', 'parentName': 'Soul Society'},
+            ],
+          },
+        ),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Write fake with a reviewer: write calls answer one entry per card; the
+/// review fails the names in [failOnce] on the first review (or always
+/// with [failAlways]); a revise (a write prompt carrying REVIEW FOUND)
+/// answers "REVISED" entries for the cards it names.
+class _EntryReviewLlm extends LLMService {
+  _EntryReviewLlm({required this.failOnce, this.failAlways = false});
+  final Map<String, String> failOnce;
+  final bool failAlways;
+  final List<String> prompts = [];
+  final List<String> kinds = [];
+  int reviews = 0;
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    prompts.add(params.prompt);
+    final names = [
+      for (final t in tools)
+        if (t['function'] is Map)
+          (t['function'] as Map)['name']?.toString() ?? '',
+    ];
+    if (names.contains(kWorldEntriesReviewToolName)) {
+      reviews++;
+      kinds.add('review');
+      final entryNames = [
+        for (final line in params.prompt.split('\n'))
+          if (line.startsWith('--- ') && line.contains(' ('))
+            line.substring(4).split(' (').first.trim(),
+      ];
+      final fail = reviews == 1 || failAlways;
+      return LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldEntriesReviewToolName,
+            arguments: {
+              'verdicts': [
+                for (final n in entryNames)
+                  {
+                    'name': n,
+                    'pass': !(fail && failOnce.containsKey(n.toLowerCase())),
+                    'problems': fail && failOnce.containsKey(n.toLowerCase())
+                        ? [failOnce[n.toLowerCase()]]
+                        : [],
+                  },
+              ],
+            },
+          ),
+        ],
+        text: '',
+        finishReason: 'tool_calls',
+      );
+    }
+    if (!names.contains(kWorldLoreBatchToolName)) return null;
+    final revise = params.prompt.contains('REVIEW FOUND');
+    kinds.add(revise ? 'revise' : 'write');
+    final cardNames = [
+      for (final line in params.prompt.split('\n'))
+        if (line.startsWith('Name: ')) line.substring(6).trim(),
+    ];
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldLoreBatchToolName,
+          arguments: {
+            'entries': [
+              for (final n in cardNames)
+                {
+                  'name': n,
+                  'keys': [n],
+                  'content':
+                      '${revise ? 'REVISED. ' : ''}${'Written as things stand that night. ' * 6}',
+                },
             ],
           },
         ),
