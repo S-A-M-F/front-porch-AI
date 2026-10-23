@@ -1112,13 +1112,16 @@ void main() {
     ];
 
     test('the audit flags a shelf of people and passes a setting bible', () {
+      // Changed 2026-10-23: people are not rationed any more — the live run
+      // saw the ratio gate reject the revise the reviewer had asked for
+      // (members for the Schutzstaffel). A heavy shelf with its backbone
+      // passes; the fill loop and the reviewer shape the cast.
       final heavy = auditWorldShelf(
         shelf(people: 20, places: 5, factions: 4),
         places: const [],
         tagged: false,
       );
-      expect(heavy.problems, hasLength(1));
-      expect(heavy.problems.single, contains('20 people against 9'));
+      expect(heavy.ok, isTrue);
       final good = auditWorldShelf(
         shelf(people: 8, places: 9, factions: 6),
         places: const [],
@@ -1233,7 +1236,7 @@ void main() {
     test(
       'the review asks once with the findings and takes a better shelf',
       () async {
-        final llm = _ReviewLlm(second: _ReviewLlm.balanced);
+        final llm = _ReviewLlm(second: _ReviewLlm.balanced)..reviewFails = 1;
         final run =
             await WorldScoutRunner(
               llm: llm,
@@ -1245,13 +1248,20 @@ void main() {
               worldName: 'Bleach (TYBW)',
               premise: 'The Thousand-Year Blood War.',
             );
-        expect(llm.prompts, hasLength(3), reason: 'scout, revise, review');
-        expect(llm.prompts[1], contains('REVIEW FOUND'));
-        expect(llm.prompts[1], contains('people against'));
-        expect(llm.prompts[1], contains('FIRST SHELF'));
-        expect(llm.prompts[1], contains('INDEX TITLES'));
+        expect(
+          llm.prompts,
+          hasLength(4),
+          reason: 'scout, review (fail), revise, review (pass)',
+        );
+        expect(llm.prompts[2], contains('REVIEW FOUND'));
+        expect(llm.prompts[2], contains('the era card states the ending'));
+        expect(llm.prompts[2], contains('FIRST SHELF'));
+        expect(llm.prompts[2], contains('INDEX TITLES'));
         expect(run.revised, isTrue);
-        expect(run.auditNotes.single, contains('people against'));
+        expect(
+          run.auditNotes.single,
+          contains('the era card states the ending'),
+        );
         expect(run.cards.where((c) => c.kind == 'person').length, 6);
         expect(run.cards.where((c) => c.kind == 'place').length, 7);
         expect(run.failure, isNull);
@@ -1269,7 +1279,7 @@ void main() {
           final llm = _ReviewLlm(
             second: second,
             stillHeavy: second == _ReviewLlm.balanced,
-          );
+          )..reviewFails = 99;
           final runner = WorldScoutRunner(
             llm: llm,
             budget: const WorldWikiBudget(65536),
@@ -1283,12 +1293,16 @@ void main() {
           );
           expect(
             llm.prompts,
-            hasLength(second == _ReviewLlm.boom ? 5 : 3),
+            hasLength(second == _ReviewLlm.short ? 4 : 6),
             reason:
-                'scout plus two revises at depth full, never a fourth; a thrown '
-                'revise is asked twice ($second)',
+                'scout, review, then two revises (each reviewed when it is a '
+                'shelf; a thrown revise is asked twice; a short one is not '
+                'reviewed), never a fourth try ($second)',
           );
-          expect(run.revised, isFalse, reason: second);
+          // A revise that answered (even still heavy) is the last valid shelf
+          // and stands, as in Porch Stories; a short or broken one leaves the
+          // first shelf in place.
+          expect(run.revised, second == _ReviewLlm.balanced, reason: second);
           expect(run.auditNotes, isNotEmpty, reason: second);
           expect(
             run.cards.where((c) => c.kind == 'person').length,

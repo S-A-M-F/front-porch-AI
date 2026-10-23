@@ -40,10 +40,10 @@ WorldShelfAudit auditWorldShelf(
   if (eras > 1) problems.add('$eras era cards; a world has one');
   final kinded = cards.where((c) => c.kind.isNotEmpty).length;
   if (kinded * 2 >= cards.length) {
-    // People are no longer rationed: the fill loop gives every place its
-    // residents. What the shelf must still have is its backbone, and
-    // people may not crowd it out of the first scout.
-    final people = cards.where((c) => c.kind == 'person').length;
+    // People are not rationed: the reviewer asks for members and the fill
+    // loop gives every place its residents (the live run showed the gate
+    // rejecting the very revise the reviewer had asked for). What the
+    // shelf must have is its backbone.
     final backbone = cards
         .where((c) => c.kind == 'place' || c.kind == 'faction')
         .length;
@@ -51,15 +51,6 @@ WorldShelfAudit auditWorldShelf(
       problems.add(
         'only $backbone place or faction cards; a world needs its settings '
         'and the powers that be',
-      );
-    }
-    // Three people to every two places and factions is the most a first
-    // shelf may carry; the fill loop adds the cast once the backbone stands.
-    if (people > 0 && people * 2 > backbone * 3) {
-      problems.add(
-        '$people people against $backbone places and factions; the backbone '
-        'comes first — add the places, factions, events and powers the '
-        'index shows before more people',
       );
     }
     if (tagged && places.isEmpty && cards.any((c) => c.kind == 'place')) {
