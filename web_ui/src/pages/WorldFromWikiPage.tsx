@@ -261,7 +261,16 @@ export function WorldFromWikiPage() {
     const climateOn = climateEnabled && biome != null;
     setBusy(true);
     setError('');
+    let ladderStep = '';
+    const known = new Set<string>();
     try {
+      if (treePlaces.length && !treeRoot) {
+        // A tree write whose root book went missing must not silently
+        // flat-save (review #608): the ladder would half-exist with a
+        // fat root and the author would never know.
+        setError('The written places lost their root book. Stop and Write again.');
+        return;
+      }
       if (!treePlaces.length || !treeRoot) {
         await api.post('/api/worlds', {
           name,
@@ -283,7 +292,7 @@ export function WorldFromWikiPage() {
       // found by what was NOT there before — exact even when the unique
       // name law appended " (2)" (desktop's saveWorld does the same).
       const shelf = await api.get<{ worlds?: { id: string }[] }>('/api/worlds');
-      const known = new Set((shelf.worlds ?? []).map((w) => w.id));
+      for (const w of shelf.worlds ?? []) known.add(w.id);
       const create = async (payload: Record<string, unknown>): Promise<string> => {
         const r = await api.post<{ worlds?: { id: string; name: string }[] }>(
           '/api/worlds',
@@ -295,6 +304,7 @@ export function WorldFromWikiPage() {
         known.add(created.id);
         return created.id;
       };
+      ladderStep = `the world ${name}`;
       const rootId = await create({
         name,
         create: true,
@@ -310,6 +320,7 @@ export function WorldFromWikiPage() {
       const ids = new Map<string, string>();
       for (const p of treePlaces) {
         const parentId = ids.get(p.parentName.toLowerCase()) ?? rootId;
+        ladderStep = `the place ${p.name}`;
         const createdId = await create({
           name: p.name,
           create: true,
@@ -328,7 +339,15 @@ export function WorldFromWikiPage() {
       }
       navigate('/worlds');
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Save failed');
+      const why = e instanceof ApiError ? e.message : String(e);
+      // A ladder can fail halfway (a law refuses one place). Say what
+      // landed and what did not — half a tree must not look like none.
+      setError(
+        ladderStep && known.size > 0 && treePlaces.length
+          ? `Saved part of the ladder; failed on ${ladderStep}: ${why}. `
+            + 'The rest is in your library.'
+          : `Save failed: ${why}`,
+      );
     } finally {
       setBusy(false);
     }
