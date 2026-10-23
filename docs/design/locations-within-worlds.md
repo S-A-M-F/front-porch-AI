@@ -494,3 +494,15 @@ keys. Three things stood between the wizard and that shape:
 Also: the wizard's tools check reads chat's verdict and never pings on its
 own (`toolCheckFor(autoAsk: false)`); Setup's Next and Check now ask,
 because on oMLX and LM Studio a ping is a model load.
+
+**First live run (Kimi K2.6 via nano-gpt, 2026-10-23)** — 471-title ranked
+catalog, a 40-card shelf that passed the audit unrevised (10 nested
+places, 4 factions, 7 events, 11 concepts/races/items, 8 people), 23
+minutes end to end. Two slips it showed, both fixed: a nano-gpt 502
+("Upstream returned no tool call despite required tool_choice") dropped a
+whole write batch, so `askToolsTwice` asks a stumbled write, profile or
+climate call again and a batch that fails twice is asked once more as two
+halves; and every place's own hub card had landed inside that place's
+book, so `liftPlaceHubCards` moves it to the parent's (the root's for a
+top-level place) on both the shelf and the write. The harness is
+`test/live/world_from_wiki_live_test.dart` (`--tags wiki_live`).

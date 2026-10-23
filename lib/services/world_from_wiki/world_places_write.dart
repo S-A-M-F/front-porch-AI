@@ -55,7 +55,10 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       );
     }
 
-    final groups = groupCardsByPlace(_dedupeByName(signed), places);
+    final groups = groupCardsByPlace(
+      liftPlaceHubCards(_dedupeByName(signed), places),
+      places,
+    );
     final written = <WorldPlaceWrite>[];
     final all = <LorebookEntry>[];
 
@@ -216,8 +219,9 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         'a scene set here must know. '
         '${wantBiome ? 'The evidence above speaks to THIS place\'s weather: author the biome from it.' : 'Omit the biome — this place takes the weather of the world around it.'}';
     try {
-      final resp = await llm.generateWithTools(
-        GenerationParams(
+      final resp = await askToolsTwice(
+        llm,
+        params: GenerationParams(
           prompt: prompt,
           maxLength: budget.replyFor(prompt, floor: 1024),
           minLength: 16,
@@ -225,9 +229,11 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
           reasoningEnabled: true,
           toolChoice: kWorldPlaceProfileToolName,
         ),
-        worldPlaceProfileToolSchema(),
+        tools: worldPlaceProfileToolSchema(),
+        label: 'profile $name',
+        pause: retryPause,
       );
-      if (resp == null || resp.isUnusableNativeToolCall) return null;
+      if (resp == null) return null;
       final parsed = parseWorldPlaceProfileCall(
         resp.calls,
         expectTool: kWorldPlaceProfileToolName,

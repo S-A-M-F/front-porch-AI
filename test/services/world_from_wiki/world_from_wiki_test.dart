@@ -1150,6 +1150,99 @@ void main() {
       expect(run.auditNotes, isEmpty);
     });
   });
+
+  group('writes that stumble, and where a place\'s card lives', () {
+    WorldProposedCard card(
+      String n, {
+      String place = '',
+      WorldCraftRole role = WorldCraftRole.leaf,
+      String kind = 'concept',
+    }) => WorldProposedCard(
+      name: n,
+      keys: [n],
+      role: role,
+      sourceTitles: const ['Ceolwynn'],
+      place: place,
+      kind: kind,
+    );
+
+    test('a 502 on a write batch is asked again, not swallowed', () async {
+      final llm = _FlakyWriteLlm(failFirst: 1);
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+        ..retryPause = Duration.zero;
+      final entries = await engine.write(
+        [card('Schrift'), card('The Almighty')],
+        worldName: 'Bleach (TYBW)',
+        premise: 'x',
+      );
+      expect(llm.writeCalls, 2, reason: 'one stumble, one answer');
+      expect(
+        entries.map((e) => e.keys.first),
+        containsAll(['Schrift', 'The Almighty']),
+      );
+    });
+
+    test(
+      'a batch that fails twice is asked as two halves, each twice at most',
+      () async {
+        final llm = _FlakyWriteLlm(failFirst: 99);
+        final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+          ..retryPause = Duration.zero;
+        final entries = await engine.write(
+          [card('A'), card('B'), card('C'), card('D')],
+          worldName: 'Bleach (TYBW)',
+          premise: 'x',
+        );
+        expect(
+          llm.batchSizes,
+          [4, 4, 2, 2, 2, 2],
+          reason: 'the batch twice, then each half twice; never a third level',
+        );
+        expect(entries, isEmpty);
+      },
+    );
+
+    test("a place's own hub card is lifted into the book around it", () {
+      const places = [
+        WorldProposedPlace(name: 'Soul Society'),
+        WorldProposedPlace(name: 'Seireitei', parentName: 'Soul Society'),
+      ];
+      final lifted = liftPlaceHubCards([
+        card(
+          'Soul Society',
+          place: 'Soul Society',
+          role: WorldCraftRole.hub,
+          kind: 'place',
+        ),
+        card(
+          'Seireitei',
+          place: 'Seireitei',
+          role: WorldCraftRole.hub,
+          kind: 'place',
+        ),
+        card(
+          'Gotei 13',
+          place: 'Seireitei',
+          role: WorldCraftRole.hub,
+          kind: 'faction',
+        ),
+        card('Ichigo Kurosaki', kind: 'person'),
+      ], places);
+      expect(lifted.map((c) => c.place).toList(), [
+        '',
+        'Soul Society',
+        'Seireitei',
+        '',
+      ]);
+      final groups = groupCardsByPlace(lifted, places);
+      expect(groups['']!.map((c) => c.name), [
+        'Soul Society',
+        'Ichigo Kurosaki',
+      ]);
+      expect(groups['soul society']!.map((c) => c.name), ['Seireitei']);
+      expect(groups['seireitei']!.map((c) => c.name), ['Gotei 13']);
+    });
+  });
 }
 
 /// One scripted scout answer: a fixed response, or a thrown error.
@@ -1309,6 +1402,68 @@ class _ReviewLlm extends LLMService {
     return LlmToolResponse(
       calls: [
         LlmToolCall(name: kWorldScoutToolName, arguments: {'cards': cards}),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Write fake: the first [failFirst] write calls are a 502, the rest answer
+/// one entry per card in the prompt. Counts calls and batch sizes.
+class _FlakyWriteLlm extends LLMService {
+  _FlakyWriteLlm({required this.failFirst});
+  final int failFirst;
+  int writeCalls = 0;
+  final List<int> batchSizes = [];
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    final names = [
+      for (final t in tools)
+        if (t['function'] is Map)
+          (t['function'] as Map)['name']?.toString() ?? '',
+    ];
+    if (!names.contains(kWorldLoreBatchToolName)) return null;
+    writeCalls++;
+    final cardNames = [
+      for (final line in params.prompt.split('\n'))
+        if (line.startsWith('Name: ')) line.substring(6).trim(),
+    ];
+    batchSizes.add(cardNames.length);
+    if (writeCalls <= failFirst) {
+      throw LlmToolTransportException(
+        'tool call HTTP 502 (server busy/unavailable): Upstream returned no '
+        'tool call despite required tool_choice.',
+      );
+    }
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldLoreBatchToolName,
+          arguments: {
+            'entries': [
+              for (final n in cardNames)
+                {
+                  'name': n,
+                  'keys': [n],
+                  'content': 'Written in the war. ' * 12,
+                },
+            ],
+          },
+        ),
       ],
       text: '',
       finishReason: 'tool_calls',

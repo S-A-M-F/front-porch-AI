@@ -3,6 +3,8 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
@@ -298,4 +300,38 @@ String worldScoutShelfNote({
   final first = auditNotes.first;
   final short = first.contains(';') ? first.split(';').first : first;
   return revised ? ', shelf revised: $short' : ', review: $short';
+}
+
+/// One tool call, asked again once when the server stumbled (a thrown
+/// transport failure) or the model never finished (no usable call). The
+/// first live run on nano-gpt lost a whole write batch to one 502 —
+/// "Upstream returned no tool call despite required tool_choice" — and
+/// three cards vanished without a word. Null when both tries failed.
+Future<LlmToolResponse?> askToolsTwice(
+  LLMService llm, {
+  required GenerationParams params,
+  required List<Map<String, dynamic>> tools,
+  required String label,
+  Duration pause = const Duration(seconds: 2),
+}) async {
+  for (var attempt = 1; attempt <= 2; attempt++) {
+    try {
+      final resp = await llm.generateWithTools(params, tools);
+      if (resp != null &&
+          !resp.isUnusableNativeToolCall &&
+          resp.calls.isNotEmpty) {
+        return resp;
+      }
+      debugPrint(
+        '[World] $label try $attempt: no usable call '
+        '(finish=${resp?.finishReason})',
+      );
+    } catch (e) {
+      debugPrint('[World] $label try $attempt miss ($e)');
+    }
+    if (attempt == 1 && pause > Duration.zero) {
+      await Future<void>.delayed(pause);
+    }
+  }
+  return null;
 }

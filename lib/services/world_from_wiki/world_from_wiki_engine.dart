@@ -76,6 +76,9 @@ class WorldFromWikiEngine {
 
   late final WorldWikiBudget budget = WorldWikiBudget(contextTokens);
 
+  /// The wait before a stumbled tool call is asked again (tests pass zero).
+  Duration retryPause = const Duration(seconds: 2);
+
   bool _aborted = false;
   final List<LorebookEntry> entries = [];
   final Set<String> _written = {};
@@ -280,6 +283,7 @@ class WorldFromWikiEngine {
     required String worldName,
     required String premise,
     required String extraLore,
+    bool split = true,
   }) async {
     final buf = StringBuffer(
       writeHeader(worldName: worldName, premise: premise, extraLore: extraLore),
@@ -306,24 +310,53 @@ class WorldFromWikiEngine {
       'articles.',
     );
     final prompt = buf.toString();
-    try {
-      final resp = await llm.generateWithTools(
-        GenerationParams(
-          prompt: prompt,
-          maxLength: budget.replyFor(prompt, floor: kWorldWriteReplyWant),
-          minLength: 16,
-          temperature: 0.4,
-          reasoningEnabled: true,
-          toolChoice: kWorldLoreBatchToolName,
-        ),
-        worldLoreBatchToolSchema(),
+    final resp = await askToolsTwice(
+      llm,
+      params: GenerationParams(
+        prompt: prompt,
+        maxLength: budget.replyFor(prompt, floor: kWorldWriteReplyWant),
+        minLength: 16,
+        temperature: 0.4,
+        reasoningEnabled: true,
+        toolChoice: kWorldLoreBatchToolName,
+      ),
+      tools: worldLoreBatchToolSchema(),
+      label: 'write batch of ${cards.length}',
+      pause: retryPause,
+    );
+    if (resp != null) return parseWorldLoreBatchCalls(resp.calls);
+    // Twice is the server's fault or the batch's size. A batch of several
+    // cards is asked once more as two halves (each with its own retry);
+    // a single card that fails twice is a miss the status line counts.
+    if (!split || cards.length < 2) {
+      debugPrint(
+        '[World] write batch miss for ${cards.map((c) => c.name).join(', ')}',
       );
-      if (resp == null || resp.isUnusableNativeToolCall) return const [];
-      return parseWorldLoreBatchCalls(resp.calls);
-    } catch (e) {
-      debugPrint('[World] write batch miss ($e)');
       return const [];
     }
+    final mid = (cards.length + 1) ~/ 2;
+    debugPrint(
+      '[World] write batch of ${cards.length} failed twice — asking as '
+      '$mid + ${cards.length - mid}',
+    );
+    return [
+      ...await writeBatch(
+        cards: cards.sublist(0, mid),
+        articles: articles.sublist(0, mid),
+        worldName: worldName,
+        premise: premise,
+        extraLore: extraLore,
+        split: false,
+      ),
+      ...await writeBatch(
+        cards: cards.sublist(mid),
+        articles: articles.sublist(mid),
+        worldName: worldName,
+        premise: premise,
+        extraLore: extraLore,
+        split: false,
+      ),
+    ];
   }
 
   Future<WorldClimateWrite?> _writeClimate({
@@ -356,8 +389,9 @@ class WorldFromWikiEngine {
         'warm current, boreal winter, or storms — $kWorldLoreContentMin–'
         '$kWorldLoreContentMax characters each.';
     try {
-      final resp = await llm.generateWithTools(
-        GenerationParams(
+      final resp = await askToolsTwice(
+        llm,
+        params: GenerationParams(
           prompt: prompt,
           maxLength: budget.replyFor(prompt, floor: kWorldClimateReplyWant),
           minLength: 16,
@@ -365,9 +399,11 @@ class WorldFromWikiEngine {
           reasoningEnabled: true,
           toolChoice: kWorldClimateToolName,
         ),
-        worldClimateToolSchema(),
+        tools: worldClimateToolSchema(),
+        label: 'climate',
+        pause: retryPause,
       );
-      if (resp == null || resp.isUnusableNativeToolCall) return null;
+      if (resp == null) return null;
       return parseWorldClimateCalls(resp.calls);
     } catch (e) {
       debugPrint('[World] climate miss ($e)');

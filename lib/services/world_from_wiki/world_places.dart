@@ -69,9 +69,7 @@ class WorldProposedPlace {
               .trim() ??
           '',
       climateHint:
-          (json['climateHint'] ?? json['climate_hint'])
-              ?.toString()
-              .trim() ??
+          (json['climateHint'] ?? json['climate_hint'])?.toString().trim() ??
           '',
     );
   }
@@ -174,7 +172,10 @@ List<WorldProposedPlace> resolvePlaceOrder(List<WorldProposedPlace> places) {
       ordered.add(p);
       placed.add(p.key);
     }
-    remaining = [for (final p in remaining) if (!placed.contains(p.key)) p];
+    remaining = [
+      for (final p in remaining)
+        if (!placed.contains(p.key)) p,
+    ];
   }
   return ordered;
 }
@@ -197,6 +198,36 @@ Map<String, List<WorldProposedCard>> groupCardsByPlace(
     out[bucket]!.add(card);
   }
   return out;
+}
+
+/// A place's own hub card belongs in the book AROUND it — its parent's,
+/// or the root's for a top-level place — so a scene anywhere in the world
+/// can mention the place and have its card fire. Inside its own book the
+/// card would only ever fire while the scene is already there (the first
+/// live Bleach run put "Seireitei" inside Seireitei; from Karakura nothing
+/// answered to the name).
+List<WorldProposedCard> liftPlaceHubCards(
+  List<WorldProposedCard> cards,
+  List<WorldProposedPlace> places,
+) {
+  if (places.isEmpty) return cards;
+  final byKey = {for (final p in places) p.key: p};
+  return [
+    for (final c in cards)
+      if (byKey[c.name.trim().toLowerCase()] case final place?
+          when c.place.trim().toLowerCase() == place.key)
+        WorldProposedCard(
+          name: c.name,
+          keys: c.keys,
+          role: c.role,
+          sourceTitles: c.sourceTitles,
+          group: c.group,
+          kind: c.kind,
+          place: place.parentName,
+        )
+      else
+        c,
+  ];
 }
 
 /// One place's written product: what the review/preview shows and what

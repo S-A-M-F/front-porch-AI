@@ -194,7 +194,7 @@ class WorldScoutRunner {
           : firstFailure;
     }
     final first = WorldScoutRun(
-      cards: cards,
+      cards: liftPlaceHubCards(cards, places),
       places: places,
       failure: failure,
       parts: asked,
@@ -282,7 +282,7 @@ class WorldScoutRunner {
       'left=${after.problems.join('; ')}',
     );
     return WorldScoutRun(
-      cards: cards,
+      cards: liftPlaceHubCards(cards, places),
       places: places,
       parts: first.parts,
       partsCut: first.partsCut,
