@@ -25,7 +25,7 @@ const String kWorldClimateToolName = 'write_world_climate';
 const String kWorldScoutPrompt =
     'Build a WORLD, not a cast list and not a table of contents. Merge '
     'numbered chapters / drafts / images into one card when they are the '
-    'same subject. 20–40 cards, shaped like a setting bible: ONE era card '
+    'same subject. 30–40 cards, shaped like a setting bible: ONE era card '
     'for the premise\'s time (role era, kind event); the places (kind '
     'place: realms, cities, fortresses, districts); the factions and '
     'organizations (kind faction); the events and timeline of the premise '
@@ -40,8 +40,9 @@ const String kWorldScoutPrompt =
     '[tags], the tags name places, nations, peoples, factions and page '
     'types: propose up to $kWorldScoutPlaceMax places they imply (nested '
     'with parentName where one lies inside another), give every place its '
-    'own hub card, and set each card\'s place to where it belongs. With no '
-    'tags, send no places and no card places.';
+    'own hub card plus 2–5 cards of its own people, factions and smaller '
+    'places where the index has them, and set each card\'s place to where '
+    'it belongs. With no tags, send no places and no card places.';
 
 /// Scout: one shelf of cards from index titles. Tools-only.
 List<Map<String, dynamic>> worldScoutToolSchema() {

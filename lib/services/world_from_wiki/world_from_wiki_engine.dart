@@ -303,11 +303,13 @@ class WorldFromWikiEngine {
     buf.writeln(
       'Call $kWorldLoreBatchToolName once. One entry per card above, '
       'same names. HARD CAP $kWorldLoreContentMax characters — two short '
-      'sentences. Alias keys as separate words, with the spellings a chat '
-      'would type. Write every person and faction as they are in the '
-      'premise\'s time, not their whole history. they/them for unnamed '
-      'people. Do not invent climate, biomes, or facts missing from the '
-      'articles.',
+      'sentences. Keys: 2–6 per entry, each a whole name or alias a chat '
+      'would type ("Spiritual Pressure", "Soul Reaper"), never a name '
+      'split into words. Write every person and faction as they stand in '
+      'the premise\'s time — their role and fate then (alive, fallen, '
+      'defected, imprisoned), not their whole history. they/them for '
+      'unnamed people. Do not invent climate, biomes, or facts missing '
+      'from the articles.',
     );
     final prompt = buf.toString();
     final resp = await askToolsTwice(

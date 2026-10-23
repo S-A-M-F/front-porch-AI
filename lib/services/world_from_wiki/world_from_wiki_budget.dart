@@ -50,6 +50,13 @@ const int kWorldWriteReplyWant = 4096;
 /// lore cards.
 const int kWorldClimateReplyWant = 2048;
 
+/// Characters of article a single card brings to a write batch. Two
+/// sentences of lore do not need a 20K-token page, and a batch packed to
+/// a 64K window prefilled for minutes on a local model (gemma-4-26B:
+/// 60K-token prompts at 8 tok/s, 37 minutes for 30 cards). ~1.5K tokens
+/// per card keeps an eight-card batch near 12K.
+const int kWorldWriteArticleChars = 6000;
+
 /// chars/4, the estimate the Context Viewer uses everywhere.
 int worldWikiEstimateTokens(String text) =>
     text.isEmpty ? 0 : (text.length / 4).ceil();
@@ -171,10 +178,11 @@ Stream<WorldWriteBatch> planWorldWriteBatches(
       kWorldWikiPromptOverheadTokens -
       want -
       headerTokens;
-  // Characters one card's articles may take and still leave the reply room.
-  final articleCharCap = max(
-    800,
-    (capacity - kWorldWriteCardOverheadTokens) * 4,
+  // Characters one card's articles may take: the per-card cap, or less
+  // when the window would not leave the reply room even for that.
+  final articleCharCap = min(
+    kWorldWriteArticleChars,
+    max(800, (capacity - kWorldWriteCardOverheadTokens) * 4),
   );
   var batchCards = <WorldProposedCard>[];
   var batchArticles = <String>[];

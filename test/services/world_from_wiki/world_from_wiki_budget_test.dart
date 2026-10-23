@@ -151,11 +151,10 @@ void main() {
             kWorldWikiPromptOverheadTokens -
             kWorldWriteReplyWant -
             header;
-        expect(
-          batches.length,
-          greaterThan(2),
-          reason: '8-card batches cannot hold 5K-token articles',
-        );
+        // Changed 2026-10-23: a per-card article cap (kWorldWriteArticleChars)
+        // clips 20K-char articles to 6K, so six cards fit a 16K batch where
+        // three did; the window arithmetic below is the pin that matters.
+        expect(batches.length, 2, reason: 'six clipped cards, then four');
         expect(batches.expand((b) => b.cards).length, 10);
         for (final b in batches) {
           expect(b.cards.length, lessThanOrEqualTo(kWorldWriteBatchSize));
@@ -200,12 +199,30 @@ void main() {
             kWorldWikiPromptOverheadTokens -
             kWorldWriteReplyWant -
             100;
+        // Changed 2026-10-23: the per-card cap now binds before the window
+        // does at 16K (6,000 chars < what the window would allow).
+        expect(batches.single.articles.single.length, kWorldWriteArticleChars);
         expect(
-          batches.single.articles.single.length,
-          (capacity - kWorldWriteCardOverheadTokens) * 4,
+          kWorldWriteArticleChars,
+          lessThan((capacity - kWorldWriteCardOverheadTokens) * 4),
         );
       },
     );
+
+    test('a window too small for the cap clips to its own floor', () async {
+      final batches = await planWorldWriteBatches(
+        [_card(1)],
+        budget: const WorldWikiBudget(4096),
+        headerTokens: 100,
+        articleFor: (card) async => 'c' * 200000,
+      ).toList();
+      expect(
+        batches.single.articles.single.length,
+        800,
+        reason:
+            'the window leaves nothing; 800 chars is the floor one card always gets',
+      );
+    });
 
     test('stop ends the planning between cards', () async {
       var fetched = 0;
