@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -302,36 +303,127 @@ String worldScoutShelfNote({
   return revised ? ', shelf revised: $short' : ', review: $short';
 }
 
+/// A tool call the server never answers must not hang the wizard: past
+/// this the request is abandoned (its client closed) and asked again.
+/// The third Kimi run sat 30 minutes inside one profile call.
+const Duration kWorldToolCallTimeout = Duration(minutes: 6);
+
 /// One tool call, asked again once when the server stumbled (a thrown
-/// transport failure) or the model never finished (no usable call). The
-/// first live run on nano-gpt lost a whole write batch to one 502 —
-/// "Upstream returned no tool call despite required tool_choice" — and
-/// three cards vanished without a word. Null when both tries failed.
+/// transport failure, a timeout) or the model never finished (no usable
+/// call). The first live run on nano-gpt lost a whole write batch to one
+/// 502 — "Upstream returned no tool call despite required tool_choice" —
+/// and three cards vanished without a word. A prose answer is first read
+/// for a JSON object carrying [floorKey] (the text floor every eval also
+/// keeps); the second ask has thinking off, which is what settles a local
+/// model that narrates instead of calling. Null when both tries failed.
 Future<LlmToolResponse?> askToolsTwice(
   LLMService llm, {
   required GenerationParams params,
   required List<Map<String, dynamic>> tools,
   required String label,
+  String? toolName,
+  String? floorKey,
   Duration pause = const Duration(seconds: 2),
+  Duration timeout = kWorldToolCallTimeout,
 }) async {
   for (var attempt = 1; attempt <= 2; attempt++) {
+    final sent = attempt == 1
+        ? params
+        : GenerationParams(
+            prompt: params.prompt,
+            maxLength: params.maxLength,
+            minLength: params.minLength,
+            temperature: params.temperature,
+            reasoningEnabled: false,
+            reasoningMaxTokens: 0,
+            toolChoice: params.toolChoice,
+          );
     try {
-      final resp = await llm.generateWithTools(params, tools);
+      final resp = await llm.generateWithTools(sent, tools).timeout(timeout);
       if (resp != null &&
           !resp.isUnusableNativeToolCall &&
           resp.calls.isNotEmpty) {
         return resp;
       }
+      final prose =
+          resp != null && resp.calls.isEmpty && resp.finishReason != 'length';
+      if (prose && floorKey != null && toolName != null) {
+        final floor = worldToolArgsFromText(resp.text, key: floorKey);
+        if (floor != null) {
+          debugPrint('[World] $label try $attempt: read from the prose');
+          return LlmToolResponse(
+            calls: [LlmToolCall(name: toolName, arguments: floor)],
+            text: '',
+            finishReason: resp.finishReason,
+          );
+        }
+      }
       debugPrint(
         '[World] $label try $attempt: no usable call '
         '(finish=${resp?.finishReason})',
       );
+    } on TimeoutException {
+      debugPrint('[World] $label try $attempt: no answer in $timeout');
+      llm.abortGeneration();
     } catch (e) {
       debugPrint('[World] $label try $attempt miss ($e)');
     }
     if (attempt == 1 && pause > Duration.zero) {
       await Future<void>.delayed(pause);
     }
+  }
+  return null;
+}
+
+/// The scout's arguments dug out of a prose answer (see
+/// [worldToolArgsFromText]).
+Map<String, dynamic>? worldScoutArgsFromText(String text) =>
+    worldToolArgsFromText(text, key: 'cards');
+
+/// A tool call's arguments dug out of a prose answer: the first balanced
+/// JSON object in [text] that carries [key], fences and all. The text
+/// floor under the native call (the same order every eval keeps): gemma-4
+/// on oMLX wrote the shelf, and then whole write batches, as JSON blocks
+/// in plain text. Null when the prose holds no such object.
+Map<String, dynamic>? worldToolArgsFromText(
+  String text, {
+  required String key,
+}) {
+  var start = text.indexOf('{');
+  while (start >= 0) {
+    var depth = 0;
+    var inString = false;
+    var escaped = false;
+    for (var i = start; i < text.length; i++) {
+      final ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch == '\\') {
+          escaped = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+      } else if (ch == '{') {
+        depth++;
+      } else if (ch == '}') {
+        depth--;
+        if (depth == 0) {
+          try {
+            final decoded = jsonDecode(text.substring(start, i + 1));
+            if (decoded is Map && decoded[key] != null) {
+              return Map<String, dynamic>.from(decoded);
+            }
+          } catch (_) {}
+          break;
+        }
+      }
+    }
+    start = text.indexOf('{', start + 1);
   }
   return null;
 }

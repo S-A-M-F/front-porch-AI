@@ -233,7 +233,10 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         ),
         tools: worldPlaceProfileToolSchema(),
         label: 'profile $name',
+        toolName: kWorldPlaceProfileToolName,
+        floorKey: 'description',
         pause: retryPause,
+        timeout: callTimeout,
       );
       if (resp == null) return null;
       final parsed = parseWorldPlaceProfileCall(

@@ -79,6 +79,10 @@ class WorldFromWikiEngine {
   /// The wait before a stumbled tool call is asked again (tests pass zero).
   Duration retryPause = const Duration(seconds: 2);
 
+  /// How long one tool call may take before it is abandoned and asked
+  /// again (tests pass something short).
+  Duration callTimeout = kWorldToolCallTimeout;
+
   bool _aborted = false;
   final List<LorebookEntry> entries = [];
   final Set<String> _written = {};
@@ -123,18 +127,18 @@ class WorldFromWikiEngine {
       return WorldScoutResult(catalog: catalog, proposed: const []);
     }
     onProgress?.call('Scouting ${catalog.titles.length} titles…');
-    final scouted =
-        await WorldScoutRunner(
-          llm: llm,
-          budget: budget,
-          onProgress: onProgress,
-          isAborted: () => _aborted,
-        ).run(
-          titles: catalog.titles,
-          tags: lastCatalogTags,
-          worldName: worldName,
-          premise: premise,
-        );
+    final runner = WorldScoutRunner(
+      llm: llm,
+      budget: budget,
+      onProgress: onProgress,
+      isAborted: () => _aborted,
+    )..callTimeout = callTimeout;
+    final scouted = await runner.run(
+      titles: catalog.titles,
+      tags: lastCatalogTags,
+      worldName: worldName,
+      premise: premise,
+    );
     final proposed = scouted.cards;
     debugPrint(
       '[World] scout titles=${catalog.titles.length} proposed=${proposed.length} '
@@ -324,7 +328,10 @@ class WorldFromWikiEngine {
       ),
       tools: worldLoreBatchToolSchema(),
       label: 'write batch of ${cards.length}',
+      toolName: kWorldLoreBatchToolName,
+      floorKey: 'entries',
       pause: retryPause,
+      timeout: callTimeout,
     );
     if (resp != null) return parseWorldLoreBatchCalls(resp.calls);
     // Twice is the server's fault or the batch's size. A batch of several
@@ -403,7 +410,10 @@ class WorldFromWikiEngine {
         ),
         tools: worldClimateToolSchema(),
         label: 'climate',
+        toolName: kWorldClimateToolName,
+        floorKey: 'biome',
         pause: retryPause,
+        timeout: callTimeout,
       );
       if (resp == null) return null;
       return parseWorldClimateCalls(resp.calls);

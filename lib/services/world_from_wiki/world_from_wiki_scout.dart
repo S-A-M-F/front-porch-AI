@@ -6,6 +6,7 @@
 // in halves, and the answers merge into one shelf. Size never fails the
 // wizard while a smaller part is left to try.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -68,6 +69,9 @@ class WorldScoutRunner {
   final void Function(String message)? onProgress;
   final bool Function()? isAborted;
 
+  /// How long one part's call may take before it is abandoned.
+  Duration callTimeout = kWorldToolCallTimeout;
+
   Future<WorldScoutRun> run({
     required List<String> titles,
     required Map<String, List<String>> tags,
@@ -111,17 +115,7 @@ class WorldScoutRunner {
       final reply = budget.replyFor(prompt, floor: kWorldScoutReplyFloor);
       LlmToolResponse? resp;
       try {
-        resp = await llm.generateWithTools(
-          GenerationParams(
-            prompt: prompt,
-            maxLength: reply,
-            minLength: 16,
-            temperature: 0.3,
-            reasoningEnabled: true,
-            toolChoice: kWorldScoutToolName,
-          ),
-          worldScoutToolSchema(),
-        );
+        resp = await _askPart(prompt);
       } catch (e) {
         // A busy or unreachable server will not answer a smaller part
         // either; keep what earlier parts gave and say why this stopped.
@@ -345,6 +339,67 @@ class WorldScoutRunner {
       fixedTokens: worldWikiEstimateTokens(head) + 64,
     );
     return '${head}INDEX TITLES:\n$index\n\nCall $kWorldScoutToolName once.';
+  }
+
+  /// One part's call. A prose answer is read for a JSON shelf first (the
+  /// text floor under the native call); failing that the model is asked
+  /// once more with its thinking off and the one line that usually settles
+  /// it (gemma-4 on oMLX answered in prose two runs in four). A second
+  /// prose answer with no shelf in it stands.
+  Future<LlmToolResponse?> _askPart(String prompt) async {
+    LlmToolResponse? resp;
+    for (var attempt = 1; attempt <= 2; attempt++) {
+      final nudge = attempt == 1
+          ? ''
+          : '\nAnswer ONLY with the $kWorldScoutToolName tool call — no prose, '
+                'no preamble, no markdown.';
+      final sent = '$prompt$nudge';
+      try {
+        resp = await llm
+            .generateWithTools(
+              GenerationParams(
+                prompt: sent,
+                // Sized from what is actually sent: the nudge costs a line.
+                maxLength: budget.replyFor(sent, floor: kWorldScoutReplyFloor),
+                minLength: 16,
+                temperature: 0.3,
+                reasoningEnabled: attempt == 1,
+                reasoningMaxTokens: attempt == 1 ? null : 0,
+                toolChoice: kWorldScoutToolName,
+              ),
+              worldScoutToolSchema(),
+            )
+            .timeout(callTimeout);
+      } on TimeoutException {
+        // A part the server never answers is asked once more, not waited
+        // on for ever; a second silence is a transport failure upstream.
+        debugPrint(
+          '[World] scout part try $attempt: no answer in $callTimeout',
+        );
+        llm.abortGeneration();
+        if (attempt == 2) rethrow;
+        continue;
+      }
+      final prose =
+          resp != null && resp.calls.isEmpty && resp.finishReason != 'length';
+      if (!prose) return resp;
+      final head = resp.text.replaceAll('\n', ' ');
+      debugPrint(
+        '[World] scout part answered in prose on try $attempt '
+        '(${resp.text.length} chars): '
+        '${head.length > 300 ? '${head.substring(0, 300)}…' : head}',
+      );
+      final floor = worldScoutArgsFromText(resp.text);
+      if (floor != null) {
+        debugPrint('[World] scout read the shelf from the prose (text floor)');
+        return LlmToolResponse(
+          calls: [LlmToolCall(name: kWorldScoutToolName, arguments: floor)],
+          text: '',
+          finishReason: resp.finishReason,
+        );
+      }
+    }
+    return resp;
   }
 
   String _prompt(

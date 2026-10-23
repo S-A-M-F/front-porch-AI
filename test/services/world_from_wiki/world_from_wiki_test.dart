@@ -5,6 +5,7 @@
 // abort does not save, full article not the chat 3500 clip. Chat clerk cap
 // stays 3.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -1180,6 +1181,97 @@ void main() {
       },
     );
 
+    test('a shelf written as JSON inside prose is read off the text floor', () {
+      const prose =
+          'Here is the world you asked for:\n```json\n'
+          '{"places": [{"name": "Soul Society"}], "cards": [{"name": "Soul Society", '
+          '"role": "hub", "kind": "place", "sourceTitles": ["Soul Society"]}]}\n```\n'
+          'Let me know if you want changes.';
+      final args = worldScoutArgsFromText(prose)!;
+      expect(args['cards'] as List, hasLength(1));
+      expect(
+        worldScoutArgsFromText('No JSON here {"not": "cards"} either.'),
+        isNull,
+      );
+      expect(
+        worldToolArgsFromText(
+          '{"entries": [{"name": "a \\"quoted\\" } brace"}]}',
+          key: 'entries',
+        )!['entries'],
+        hasLength(1),
+      );
+    });
+
+    test(
+      'a prose answer with a JSON shelf in it counts as the answer',
+      () async {
+        // The fifth gemma run wrote the whole shelf as a ```json block.
+        final llm = _ProseThenCallLlm(proseTimes: 99, proseWithShelf: true);
+        final run =
+            await WorldScoutRunner(
+              llm: llm,
+              budget: const WorldWikiBudget(65536),
+            ).run(
+              titles: _ReviewLlm.titles,
+              tags: const {},
+              worldName: 'Bleach (TYBW)',
+              premise: 'The Thousand-Year Blood War.',
+            );
+        expect(
+          llm.prompts,
+          hasLength(1),
+          reason: 'the text floor needs no second ask',
+        );
+        expect(run.cards.map((c) => c.name), ['Place 0', 'Place 1']);
+      },
+    );
+
+    test(
+      'a prose answer is asked once more with a nudge, then stands',
+      () async {
+        // The third gemma run on oMLX answered the scout in prose.
+        final once = _ProseThenCallLlm(proseTimes: 1);
+        final run =
+            await WorldScoutRunner(
+              llm: once,
+              budget: const WorldWikiBudget(65536),
+            ).run(
+              titles: _ReviewLlm.titles,
+              tags: const {},
+              worldName: 'Bleach (TYBW)',
+              premise: 'The Thousand-Year Blood War.',
+            );
+        expect(once.prompts, hasLength(2));
+        expect(
+          once.prompts.last,
+          contains('Answer ONLY with the propose_world_cards tool call'),
+        );
+        expect(
+          once.params.last.reasoningMaxTokens,
+          0,
+          reason: 'the second ask has thinking off',
+        );
+        expect(once.params.first.reasoningMaxTokens, isNull);
+        expect(run.cards, isNotEmpty);
+        expect(run.failure, isNull);
+
+        final always = _ProseThenCallLlm(proseTimes: 99);
+        final stuck =
+            await WorldScoutRunner(
+              llm: always,
+              budget: const WorldWikiBudget(65536),
+            ).run(
+              titles: _ReviewLlm.titles,
+              tags: const {},
+              worldName: 'Bleach (TYBW)',
+              premise: 'The Thousand-Year Blood War.',
+            );
+        expect(always.prompts, hasLength(2), reason: 'two tries, never a loop');
+        expect(stuck.cards, isEmpty);
+        expect(stuck.failure, contains('plain text'));
+      },
+    );
+
     test('a shelf that already reads as a world is not reviewed', () async {
       final llm = _ReviewLlm(second: _ReviewLlm.balanced, firstBalanced: true);
       final run =
@@ -1295,6 +1387,65 @@ void main() {
           isTrue,
           reason: 'their own cards live in the root book',
         );
+      },
+    );
+
+    test(
+      'a write batch answered as a JSON block in prose is read off the text floor',
+      () async {
+        // The fifth gemma run answered three write batches in prose.
+        final llm = _FlakyWriteLlm(failFirst: 0, proseTimes: 1);
+        final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+          ..retryPause = Duration.zero;
+        final entries = await engine.write(
+          [card('Schrift'), card('Medallion')],
+          worldName: 'Bleach (TYBW)',
+          premise: 'x',
+        );
+        expect(
+          llm.writeCalls,
+          1,
+          reason: 'the prose carried the entries; no second ask',
+        );
+        expect(
+          entries.map((e) => e.keys.first),
+          containsAll(['Schrift', 'Medallion']),
+        );
+      },
+    );
+
+    test('the second write ask has thinking off', () async {
+      final llm = _FlakyWriteLlm(failFirst: 1);
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+        ..retryPause = Duration.zero;
+      await engine.write(
+        [card('Schrift')],
+        worldName: 'Bleach (TYBW)',
+        premise: 'x',
+      );
+      expect(llm.params.map((p) => p.reasoningMaxTokens).toList(), [null, 0]);
+    });
+
+    test(
+      'a write the server never answers is abandoned after the timeout and asked again',
+      () async {
+        // The third Kimi run sat 30 minutes inside one call.
+        final llm = _FlakyWriteLlm(failFirst: 0, hangTimes: 1);
+        final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+          ..retryPause = Duration.zero
+          ..callTimeout = const Duration(milliseconds: 50);
+        final entries = await engine.write(
+          [card('Schrift')],
+          worldName: 'Bleach (TYBW)',
+          premise: 'x',
+        );
+        expect(llm.writeCalls, 2);
+        expect(
+          llm.aborts,
+          1,
+          reason: 'the hung request is closed, not left open',
+        );
+        expect(entries, hasLength(1));
       },
     );
 
@@ -1517,10 +1668,27 @@ class _ReviewLlm extends LLMService {
 /// Write fake: the first [failFirst] write calls are a 502, the rest answer
 /// one entry per card in the prompt. Counts calls and batch sizes.
 class _FlakyWriteLlm extends LLMService {
-  _FlakyWriteLlm({required this.failFirst});
+  _FlakyWriteLlm({
+    required this.failFirst,
+    this.proseTimes = 0,
+    this.hangTimes = 0,
+  });
   final int failFirst;
+
+  /// Write calls (after the failures) answered as a ```json block in prose.
+  final int proseTimes;
+
+  /// Write calls that never complete (a hung request).
+  final int hangTimes;
   int writeCalls = 0;
+  int aborts = 0;
   final List<int> batchSizes = [];
+  final List<GenerationParams> params = [];
+
+  @override
+  void abortGeneration() {
+    aborts++;
+  }
 
   @override
   Future<LlmToolResponse?> generateWithTools(
@@ -1534,6 +1702,7 @@ class _FlakyWriteLlm extends LLMService {
     ];
     if (!names.contains(kWorldLoreBatchToolName)) return null;
     writeCalls++;
+    this.params.add(params);
     final cardNames = [
       for (final line in params.prompt.split('\n'))
         if (line.startsWith('Name: ')) line.substring(6).trim(),
@@ -1543,6 +1712,20 @@ class _FlakyWriteLlm extends LLMService {
       throw LlmToolTransportException(
         'tool call HTTP 502 (server busy/unavailable): Upstream returned no '
         'tool call despite required tool_choice.',
+      );
+    }
+    if (writeCalls <= failFirst + hangTimes) {
+      return Completer<LlmToolResponse?>().future;
+    }
+    if (writeCalls <= failFirst + hangTimes + proseTimes) {
+      final rows = [
+        for (final n in cardNames)
+          '{"name": "$n", "keys": ["$n"], "content": "${'Written in the war. ' * 12}"}',
+      ].join(',');
+      return LlmToolResponse(
+        calls: const [],
+        text: 'Here you go:\n```json\n{"entries": [$rows]}\n```',
+        finishReason: 'stop',
       );
     }
     return LlmToolResponse(
@@ -1556,6 +1739,66 @@ class _FlakyWriteLlm extends LLMService {
                   'name': n,
                   'keys': [n],
                   'content': 'Written in the war. ' * 12,
+                },
+            ],
+          },
+        ),
+      ],
+      text: '',
+      finishReason: 'tool_calls',
+    );
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'test';
+}
+
+/// Scout fake that answers in prose [proseTimes] times, then with a small
+/// balanced card list.
+class _ProseThenCallLlm extends LLMService {
+  _ProseThenCallLlm({required this.proseTimes, this.proseWithShelf = false});
+  final int proseTimes;
+  final bool proseWithShelf;
+  final List<String> prompts = [];
+  final List<GenerationParams> params = [];
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    prompts.add(params.prompt);
+    this.params.add(params);
+    if (prompts.length <= proseTimes) {
+      return LlmToolResponse(
+        calls: const [],
+        text: proseWithShelf
+            ? 'Sure! Here is the shelf:\n```json\n{"cards": ['
+                  '{"name": "Place 0", "role": "hub", "kind": "place", "sourceTitles": ["Title 0"]},'
+                  '{"name": "Place 1", "role": "hub", "kind": "place", "sourceTitles": ["Title 1"]}'
+                  ']}\n```'
+            : 'Here is a world for you: Soul Society, Seireitei…',
+        finishReason: 'stop',
+      );
+    }
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldScoutToolName,
+          arguments: {
+            'cards': [
+              for (var i = 0; i < 3; i++)
+                {
+                  'name': 'Place $i',
+                  'role': 'hub',
+                  'kind': 'place',
+                  'sourceTitles': ['Title $i'],
                 },
             ],
           },
