@@ -22,11 +22,13 @@ String _tiddlyFixture() {
       'title': 'Ceolwynn',
       'text': 'A singer of the Alnhama Republic. ' * 200,
       'type': 'text/vnd.tiddlywiki',
+      'tags': ['Characters', 'Alnhama Republic'],
     },
     {
       'title': 'Alnhama',
       'text': 'The Alnhama Republic is a coastal city-state.',
       'type': 'text/vnd.tiddlywiki',
+      'tags': ['Nations', 'Alnhama Republic'],
     },
     {
       'title': 'River Faith',
@@ -201,6 +203,125 @@ class _ToolsLlm extends LLMService {
 List<WorldProposedCard> _signed(WorldScoutResult scout, Iterable<int> idx) {
   return [for (final i in idx) scout.proposed[i]];
 }
+
+class _PlacesLlm extends LLMService {
+  _PlacesLlm({this.flatMode = false});
+  final bool flatMode;
+  String lastScoutPrompt = '';
+
+  @override
+  Future<LlmToolResponse?> generateWithTools(
+    GenerationParams params,
+    List<Map<String, dynamic>> tools,
+  ) async {
+    final names = [
+      for (final t in tools)
+        if (t['function'] is Map)
+          (t['function'] as Map)['name']?.toString() ?? '',
+    ];
+    if (names.contains(kWorldScoutToolName)) {
+      lastScoutPrompt = params.prompt;
+      return LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldScoutToolName,
+            arguments: {
+              'cards': [
+                for (final c in _homemadeCards())
+                  if (c['name'] == 'Mira the Scout')
+                    {...c, 'place': 'Alnhama Republic'}
+                  else
+                    c,
+              ],
+              if (!flatMode)
+                'places': [
+                  {
+                    'name': 'Alnhama Republic',
+                    'keys': 'Alnhama',
+                    'sourceTitles': ['Alnhama'],
+                    'climateHint': 'coastal city-state, mild seas',
+                  },
+                ],
+            },
+          ),
+        ],
+        text: '',
+      );
+    }
+    if (names.contains(kWorldPlaceProfileToolName)) {
+      return LlmToolResponse(
+        calls: [
+          LlmToolCall(
+            name: kWorldPlaceProfileToolName,
+            arguments: {
+              'description':
+                  'A coastal city-state of shipwrights and singers.',
+              'biome': _biomeJson('Coastal mild'),
+            },
+          ),
+        ],
+        text: '',
+      );
+    }
+    // Lore batch: echo one entry per card, like _ToolsLlm.
+    final cards = _cardsFromPrompt(params.prompt);
+    return LlmToolResponse(
+      calls: [
+        LlmToolCall(
+          name: kWorldLoreBatchToolName,
+          arguments: {
+            'entries': [
+              for (final name in cards)
+                {
+                  'name': name,
+                  'keys': [name],
+                  'content': 'A citizen of the quay keeps the lamps lit. ' * 8,
+                },
+            ],
+          },
+        ),
+      ],
+      text: '',
+    );
+  }
+
+  /// The batch prompt lists card names on 'CARD n:' lines; mirror what
+  /// the real contract must answer so name-matching has something to
+  /// match (the same honesty as _ToolsLlm answering the fixed shelf).
+  List<String> _cardsFromPrompt(String prompt) {
+    final all = _homemadeCards().map((c) => c['name']!.toString()).toList();
+    return [for (final n in all) if (prompt.contains(n)) n];
+  }
+
+  @override
+  Stream<String> generateStream(GenerationParams params) async* {}
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendName => 'places-test';
+}
+
+Map<String, dynamic> _biomeJson(String displayName) => {
+  'displayName': displayName,
+  'description': 'Mild seas, salt air.',
+  'feel': 'Wind off the water.',
+  'diurnalAmplitude': 0.8,
+  'seasonLabels': {
+    'winter': 'Wet Season',
+    'spring': 'Fresh Water',
+    'summer': 'Long Tide',
+    'autumn': 'Return Fair',
+  },
+  'baseTemp': {'winter': 2, 'spring': 3, 'summer': 4, 'autumn': 3},
+  'weights': {
+    'winter': [30, 24, 18, 12, 10, 4, 2],
+    'spring': [36, 22, 14, 10, 12, 4, 2],
+    'summer': [46, 20, 10, 6, 10, 6, 2],
+    'autumn': [34, 24, 16, 10, 10, 4, 2],
+  },
+};
 
 void main() {
   test('chat clerk cap is still 3', () {
@@ -443,4 +564,98 @@ void main() {
       containsAll(['Sol Allevia', 'Order of Sol Allevia', 'sisters']),
     );
   });
+  group('slice 8 — places from tags', () {
+    test('the scout prompt shows the tags and the places come back', () async {
+      final llm = _PlacesLlm();
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm);
+      final result = await engine.scout(worldName: 'Neokosmos', premise: 'p');
+      // A nation that exists ONLY as a tag must reach the model's eyes.
+      expect(
+        llm.lastScoutPrompt,
+        contains('Ceolwynn [Characters, Alnhama Republic]'),
+      );
+      expect(result.places.map((p) => p.name), contains('Alnhama Republic'));
+      final place = result.places.firstWhere((p) => p.name == 'Alnhama Republic');
+      expect(place.climateHint, contains('coastal'));
+      // Cards keep their place; an unknown one rides the root.
+      final byName = {for (final c in result.proposed) c.name: c};
+      expect(byName['Mira the Scout']!.place, 'Alnhama Republic');
+      expect(byName["Baker's Street"]!.place, isEmpty);
+    });
+
+    test('writeTree writes a place book with its OWN biome and keeps the '
+        'root book for root cards', () async {
+      final llm = _PlacesLlm();
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm);
+      final result = await engine.scout(worldName: 'Neokosmos', premise: 'p');
+      final signed = [
+        for (final c in result.proposed)
+          WorldProposedCard(
+            name: c.name,
+            keys: c.keys,
+            role: c.role,
+            sourceTitles: c.sourceTitles,
+            group: c.group,
+            place: c.place,
+          ),
+      ];
+      final tree = await engine.writeTree(
+        signed,
+        places: result.places,
+        worldName: 'Neokosmos',
+        premise: 'p',
+        climateEnabled: true,
+        climatePlaces: {'alnhama republic'},
+      );
+      expect(tree.isFlat, isFalse);
+      final place = tree.places.single;
+      expect(place.name, 'Alnhama Republic');
+      expect(place.hasClimate, isTrue, reason: 'flagged → its own biome');
+      expect(place.biome!['displayName'], 'Coastal mild');
+      expect(place.description, contains('city-state'));
+      expect(
+        place.entries.map((e) => e.name),
+        contains('Mira the Scout'),
+        reason: 'the place holds its characters\' cards',
+      );
+      expect(
+        tree.root.entries.map((e) => e.name),
+        contains("Baker's Street"),
+        reason: 'root cards stay at the root',
+      );
+      expect(
+        tree.root.entries.map((e) => e.name),
+        isNot(contains('Mira the Scout')),
+      );
+    });
+
+    test('an untagged wiki still yields ONE flat world exactly as today',
+        () async {
+      // Same engine, places empty (what an untagged wiki produces): the
+      // tree write must return the flat product — design §9.7's pinned
+      // unchanged path, asserted by parity with `write`.
+      final flatLlm = _ToolsLlm();
+      final flat = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: flatLlm,
+      ).write(_homemadeCards().map(WorldProposedCard.tryParse).nonNulls.toList(),
+          worldName: 'W', premise: 'p');
+      final treeLlm = _PlacesLlm(flatMode: true);
+      final tree = await WorldFromWikiEngine(
+        wiki: _wiki(),
+        llm: treeLlm,
+      ).writeTree(
+        _homemadeCards().map(WorldProposedCard.tryParse).nonNulls.toList(),
+        places: const [],
+        worldName: 'W',
+        premise: 'p',
+      );
+      expect(tree.isFlat, isTrue);
+      expect(
+        tree.root.entries.map((e) => e.name).toList(),
+        flat.map((e) => e.name).toList(),
+      );
+    });
+  });
+
 }

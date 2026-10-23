@@ -58,7 +58,68 @@ export type ProposedWorldCard = {
   role: WorldCraftRole;
   sourceTitles: string[];
   group?: string;
+  /** Slice 8: the scout-named place this card belongs to; undefined
+   * for the root book (and for every card on an untagged wiki). */
+  place?: string;
 };
+
+/** A place the scout named from tags/categories — the web twin of
+ * WorldProposedPlace. The server sends them in build order. */
+export type ProposedWorldPlace = {
+  name: string;
+  keys: string[];
+  sourceTitles: string[];
+  parentName: string;
+  climateHint: string;
+};
+
+export function parseProposedPlaces(raw: unknown): ProposedWorldPlace[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProposedWorldPlace[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const name = String(row.name ?? '').trim();
+    if (!name) continue;
+    out.push({
+      name,
+      keys: stringList(row.keys),
+      sourceTitles: stringList(row.sourceTitles ?? row.source_titles).slice(0, 4),
+      parentName:
+        String(row.parentName ?? row.parent_place ?? row.parent ?? '').trim(),
+      climateHint: String(row.climateHint ?? row.climate_hint ?? '').trim(),
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** Shelf order for the grouped review: root cards first, then each
+ * place's block. Cards naming an unknown place ride the root —
+ * grouping is total, a card never vanishes (desktop twin). */
+export function shelfSections(
+  proposed: ProposedWorldCard[],
+  places: readonly ProposedWorldPlace[],
+): { place: ProposedWorldPlace | null; indices: number[] }[] {
+  if (!places.length) {
+    return [{ place: null, indices: proposed.map((_, i) => i) }];
+  }
+  const known = new Set(places.map((p) => p.name.toLowerCase()));
+  const buckets = new Map<string, number[]>();
+  const root: number[] = [];
+  for (const p of places) buckets.set(p.name.toLowerCase(), []);
+  proposed.forEach((card, i) => {
+    const pk = (card.place ?? '').trim().toLowerCase();
+    if (pk && known.has(pk)) buckets.get(pk)!.push(i);
+    else root.push(i);
+  });
+  return [
+    { place: null, indices: root },
+    ...places
+      .map((p) => ({ place: p, indices: buckets.get(p.name.toLowerCase())! }))
+      .filter((section) => section.indices.length > 0),
+  ];
+}
 
 export function parseProposedCards(raw: unknown): ProposedWorldCard[] {
   if (!Array.isArray(raw)) return [];
@@ -77,6 +138,7 @@ export function parseProposedCards(raw: unknown): ProposedWorldCard[] {
       role,
       sourceTitles,
       group: String(row.group ?? '').trim() || undefined,
+      place: String(row.place ?? '').trim() || undefined,
     });
   }
   return out;

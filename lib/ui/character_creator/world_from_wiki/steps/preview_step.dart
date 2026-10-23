@@ -76,6 +76,58 @@ class WorldFromWikiPreviewStep extends StatelessWidget {
                   state.notify();
                 },
               ),
+              if ((state.tree?.places.isNotEmpty ?? false) &&
+                  state.tree != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Places (${state.tree!.places.length}) — saved under '
+                  '${state.nameController.text.trim().isEmpty ? 'the world' : state.nameController.text.trim()}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: StudioColors.inkOf(context),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final p in state.tree!.places)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: StudioColors.raiseOf(context),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: StudioColors.lineOf(context)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.parentName.isEmpty
+                                ? p.name
+                                : '${p.name} · inside ${p.parentName}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: StudioColors.inkOf(context),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${p.entries.length} cards · '
+                            '${p.hasClimate ? 'own weather' : 'weather from above'}'
+                            '${p.description.isEmpty ? '' : '\n${p.description}'}',
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: StudioColors.proseOf(context),
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
               const SizedBox(height: 8),
               Text(
                 'Lorebook (${state.entries.length})',

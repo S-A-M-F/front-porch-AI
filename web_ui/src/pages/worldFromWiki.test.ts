@@ -6,6 +6,8 @@ import {
   canOpenWorldFromWikiPreview,
   jumpWorldFromWikiStep,
   parseProposedCards,
+  parseProposedPlaces,
+  shelfSections,
   signedCards,
 } from './worldFromWiki';
 
@@ -166,5 +168,48 @@ describe('world-from-wiki review shelf', () => {
         signedCount: 2,
       }),
     ).toBe(2);
+  });
+});
+
+describe('slice 8 places (web twin)', () => {
+  it('parses places and keeps place on cards', () => {
+    const cards = parseProposedCards([
+      { name: 'Mira', role: 'leaf', sourceTitles: ['Ceolwynn'], place: 'Alnhama Republic' },
+      { name: 'Baker', role: 'hub', sourceTitles: ['Alnhama'] },
+    ]);
+    expect(cards[0].place).toBe('Alnhama Republic');
+    expect(cards[1].place).toBeUndefined();
+    const places = parseProposedPlaces([
+      { name: 'Alnhama Republic', climateHint: 'coastal', source_titles: ['Alnhama'] },
+      { name: '' },
+    ]);
+    expect(places).toHaveLength(1);
+    expect(places[0].climateHint).toBe('coastal');
+    expect(places[0].sourceTitles).toEqual(['Alnhama']);
+  });
+
+  it('groups the shelf root-first and unknown places ride the root', () => {
+    const cards = parseProposedCards([
+      { name: 'Baker', role: 'hub', sourceTitles: ['Alnhama'] },
+      { name: 'Mira', role: 'leaf', sourceTitles: ['Ceolwynn'], place: 'Alnhama Republic' },
+      { name: 'Ghost', role: 'leaf', sourceTitles: ['Ceolwynn'], place: 'Nowhere' },
+    ]);
+    const places = parseProposedPlaces([{ name: 'Alnhama Republic' }]);
+    const sections = shelfSections(cards, places);
+    expect(sections).toHaveLength(2);
+    expect(sections[0].place).toBeNull();
+    expect(sections[0].indices).toEqual([0, 2]);
+    expect(sections[1].place?.name).toBe('Alnhama Republic');
+    expect(sections[1].indices).toEqual([1]);
+  });
+
+  it('no places keeps one flat section (the pinned unchanged path)', () => {
+    const cards = parseProposedCards([
+      { name: 'Baker', role: 'hub', sourceTitles: ['Alnhama'] },
+    ]);
+    const sections = shelfSections(cards, []);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].place).toBeNull();
+    expect(sections[0].indices).toEqual([0]);
   });
 });
