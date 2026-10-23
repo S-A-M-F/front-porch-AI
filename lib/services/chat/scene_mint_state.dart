@@ -10,9 +10,19 @@
 /// One proposed mint: the name and one-line descriptor the model heard
 /// in the narration — the same pair DetectedCharacter carries.
 class ProposedPlace {
-  const ProposedPlace({required this.name, required this.descriptor});
+  const ProposedPlace({
+    required this.name,
+    required this.descriptor,
+    this.settingName = '',
+  });
   final String name;
   final String descriptor;
+
+  /// The scene's current setting, resolved when the proposal was
+  /// flagged — the dialog asks `"inside <this>"` with the SAME words on
+  /// both shells (review #607). It is display context only: the mint
+  /// re-reads the live setting when the author taps.
+  final String settingName;
 }
 
 class SceneMintState {

@@ -56,7 +56,7 @@ export function ChatOverlays(props: {
   onAccept: () => void | Promise<void>;
   imagePromptReview?: string;
   placeMove?: { id: string; name: string } | null;
-  placeMint?: { name: string; descriptor: string } | null;
+  placeMint?: { name: string; descriptor: string; settingName?: string } | null;
   onAnswerPlaceMint?: (action: 'add_move' | 'add' | 'ignore') => void | Promise<void>;
   onAnswerPlaceMove?: (accept: boolean) => void | Promise<void>;
   pendingConfirm: PendingConfirm | null;
@@ -203,21 +203,25 @@ export function PlaceMoveModal(props: {
 /// Slice 7: the web twin of the desktop mint dialog. Same question,
 /// the same three honest answers, straight from the snapshot flag.
 export function PlaceMintModal(props: {
-  mint: { name: string; descriptor: string };
+  mint: { name: string; descriptor: string; settingName?: string };
   onAnswer: (action: 'add_move' | 'add' | 'ignore') => void;
 }) {
-  const { name, descriptor } = props.mint;
+  const { name, descriptor, settingName } = props.mint;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-label="A new place in the story">
       <div className="fp-card w-[420px] max-w-[92vw] p-5">
         <div className="mb-2 font-semibold">✨ A new place in the story</div>
         <p className="fp-dim">
           The story just described {name}
-          {descriptor ? ` — ${descriptor}` : ''}. Save it as a place?
+          {descriptor ? ` — ${descriptor}` : ''}.{' '}
+          {settingName
+            ? `Save it as a place inside ${settingName}?`
+            : 'Save it as a place?'}
         </p>
         <p className="fp-faint mt-2 text-xs">
           It arrives with a short description and a few lore entries written
-          from what the story showed, inheriting the setting's weather.
+          from what the story showed, inheriting the setting's weather. You
+          can edit or delete it later like any place.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button className="fp-btn" onClick={() => props.onAnswer('ignore')}>Ignore</button>

@@ -66,25 +66,41 @@ void main() {
     expect(chat.pendingPlaceMint, isNull);
   });
 
-  test('Ignore clears the proposal and remembers the name for the chat',
-      () async {
+  test(
+    'Ignore clears the proposal and remembers the name for the chat',
+    () async {
+      chat.flagSuggestedPlaceMint('Salt Garden', 'beds');
+      chat.ignoreMintedPlace();
+      expect(chat.pendingPlaceMint, isNull);
+      // The flagging lambda in the clock wiring consults this set; a
+      // re-proposal of the SAME name is what the dialog must stop seeing.
+      chat.flagSuggestedPlaceMint('Gate House', 'arch');
+      expect(chat.pendingPlaceMint?.name, 'Gate House');
+    },
+  );
+
+  test('the proposal names the current setting for the dialog copy', () {
+    // The web modal must be able to say "inside <world>" verbatim like
+    // the desktop dialog (review #607 copy parity) — the flag carries
+    // it, not the UI guessing from another fetch.
     chat.flagSuggestedPlaceMint('Salt Garden', 'beds');
-    chat.ignoreMintedPlace();
-    expect(chat.pendingPlaceMint, isNull);
-    // The flagging lambda in the clock wiring consults this set; a
-    // re-proposal of the SAME name is what the dialog must stop seeing.
-    chat.flagSuggestedPlaceMint('Gate House', 'arch');
-    expect(chat.pendingPlaceMint?.name, 'Gate House');
+    expect(
+      chat.pendingPlaceMint?.settingName,
+      '',
+      reason: 'no setting attached → empty, dialog drops the clause',
+    );
   });
 
-  test('accepting with no setting fails honestly — no throw, no residue',
-      () async {
-    chat.flagSuggestedPlaceMint('Salt Garden', 'beds');
-    final result = await chat.acceptMintedPlace(alsoMove: false);
-    expect(result.ok, isFalse);
-    expect(result.error, contains('no setting'));
-    expect(chat.pendingPlaceMint, isNull, reason: 'a refusal must not nag');
-  });
+  test(
+    'accepting with no setting fails honestly — no throw, no residue',
+    () async {
+      chat.flagSuggestedPlaceMint('Salt Garden', 'beds');
+      final result = await chat.acceptMintedPlace(alsoMove: false);
+      expect(result.ok, isFalse);
+      expect(result.error, contains('no setting'));
+      expect(chat.pendingPlaceMint, isNull, reason: 'a refusal must not nag');
+    },
+  );
 
   test('answering when nothing is proposed is an honest no-op', () async {
     final r = await chat.acceptMintedPlace(alsoMove: true);

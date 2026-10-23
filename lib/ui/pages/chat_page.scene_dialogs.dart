@@ -88,7 +88,11 @@ class ChatScenePrompts {
       );
     }
     // Slice 7: the judge heard a NAMED new place — offer the mint.
-    if (chat.pendingPlaceMint != null && !_showingPlaceMint) {
+    // The two locations asks never stack: a mint waits for the move
+    // to be answered (the move flow re-checks when it returns).
+    if (chat.pendingPlaceMove == null &&
+        chat.pendingPlaceMint != null &&
+        !_showingPlaceMint) {
       _showingPlaceMint = true;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _showPlaceMintDialog(context, chat),
@@ -164,11 +168,27 @@ class ChatScenePrompts {
     chat.resolveImagePromptReview(result);
   }
 
-  Future<void> _showPlaceMintDialog(BuildContext context, ChatService chat) =>
-      showPlaceMintFlow(context, chat);
+  Future<void> _showPlaceMintDialog(
+    BuildContext context,
+    ChatService chat,
+  ) async {
+    await showPlaceMintFlow(context, chat);
+    // The one-shot guard must release, or a second proposal this chat
+    // never gets a dialog (review #607 blocker).
+    _showingPlaceMint = false;
+  }
 
-  Future<void> _showPlaceMoveDialog(BuildContext context, ChatService chat) =>
-      showPlaceMoveFlow(context, chat);
+  Future<void> _showPlaceMoveDialog(
+    BuildContext context,
+    ChatService chat,
+  ) async {
+    await showPlaceMoveFlow(context, chat);
+    _showingPlaceMove = false;
+    if (chat.pendingPlaceMint != null && !_showingPlaceMint) {
+      _showingPlaceMint = true;
+      await _showPlaceMintDialog(context, chat);
+    }
+  }
 
   Future<void> _showGuestDetectionDialog(
     BuildContext context,

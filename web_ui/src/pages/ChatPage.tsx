@@ -84,6 +84,16 @@ export function ChatPage() {
     return Number.isFinite(n) ? Math.min(560, Math.max(260, n)) : 320;
   });
   const [importNotice, setImportNotice] = useState('');
+  // Slice 7: the mint proposal answered-but-unseen after a failed
+  // request (see onAnswerPlaceMint). Cleared when the flag empties.
+  const [dismissedMint, setDismissedMint] = useState('');
+  // Reset the local answer-memory once the server flag actually clears,
+  // so the NEXT proposal of any name is heard again (review #607).
+  const mintKey = (m: { name: string; descriptor: string }) =>
+    `${m.name}\u0000${m.descriptor}`;
+  useEffect(() => {
+    if (!state?.pendingMint && dismissedMint) setDismissedMint('');
+  }, [state?.pendingMint, dismissedMint]);
   const [showStats, setShowStats] = useState(false);
   const [showTheme, setShowTheme] = useState(false);
   const [showPersona, setShowPersona] = useState(false);
@@ -243,6 +253,14 @@ export function ChatPage() {
       toolSupport={state.toolSupport}
     />
   ) : null;
+
+  // Slice 7: hide a mint the author already answered locally until the
+  // server flag actually clears or a DIFFERENT name arrives (a failed
+  // POST must not reopen the modal on every poll — review #607).
+  const visibleMint =
+    state.pendingMint && mintKey(state.pendingMint) !== dismissedMint
+      ? state.pendingMint
+      : null;
 
   return (
     <div className="chat-layout">
@@ -548,8 +566,13 @@ export function ChatPage() {
         chance={chance}
         onReveal={revealFate}
         onAccept={acceptFate}
-        placeMint={state.pendingMint ?? null}
+        placeMint={visibleMint}
         onAnswerPlaceMint={async (action) => {
+          // One attempt, one answer: the modal closes on the tap. If the
+          // request then fails (network), the server flag is still set —
+          // re-showing it every poll is the nag loop review #607 caught.
+          // The next DIFFERENT proposal, or a chat reopen, speaks again.
+          if (state.pendingMint) setDismissedMint(mintKey(state.pendingMint));
           try {
             const res = await api.post<{ ok?: boolean; error?: string }>(
               '/api/chat/place-mint',

@@ -16,9 +16,13 @@ extension ChatServicePlaceMint on ChatService {
 
   void flagSuggestedPlaceMint(String name, String descriptor) {
     if (name.trim().isEmpty) return;
+    final setting = chatPrimaryWorldId == null
+        ? null
+        : _worldRepository.worldById(chatPrimaryWorldId!);
     _sceneMoves.mints.pending = ProposedPlace(
       name: name.trim(),
       descriptor: descriptor.trim(),
+      settingName: setting?.name ?? '',
     );
     debugPrint('[Realism:Mint] suggested place pending: $name');
     notifyListeners();
@@ -48,9 +52,10 @@ extension ChatServicePlaceMint on ChatService {
       );
     }
     final grounding = [
-      for (final m in _messages.length <= 6
-          ? _messages
-          : _messages.sublist(_messages.length - 6))
+      for (final m
+          in _messages.length <= 6
+              ? _messages
+              : _messages.sublist(_messages.length - 6))
         if (m.displayText.trim().isNotEmpty) m.displayText.trim(),
     ].join('\n');
     // Constructed at the call site like SceneGuestFactory (this file is
@@ -93,5 +98,4 @@ extension ChatServicePlaceMint on ChatService {
     _sceneMoves.mints.ignore(proposal.name);
     notifyListeners();
   }
-
 }

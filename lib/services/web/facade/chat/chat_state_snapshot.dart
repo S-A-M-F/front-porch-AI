@@ -276,6 +276,7 @@ class ChatStateSnapshot {
           : {
               'name': _chat.pendingPlaceMint!.name,
               'descriptor': _chat.pendingPlaceMint!.descriptor,
+              'settingName': _chat.pendingPlaceMint!.settingName,
             },
       'pendingPlaceMove': _chat.pendingPlaceMove == null
           ? null
