@@ -172,6 +172,58 @@ String _clip(String s, int max) {
 }
 
 /// The three stages a scout goes through, for the progress card's chips.
+/// Climate was asked for and the record shows no weather to write it from.
+String worldProgressNoWeather() =>
+    'No weather in the record; climate left off.';
+
+/// The Skim: one pass per part of the chat, named things counted.
+String worldProgressSkimPart(int index, int total, int from, int to) =>
+    'Skimming the chat · part $index of $total · messages $from to $to…';
+
+String worldProgressSkimDone(int index, int total, int named, String first) =>
+    'Part $index of $total · $named named thing${named == 1 ? '' : 's'}'
+    '${first.isEmpty ? '' : ': ${_clip(first, 90)}'}';
+
+String worldProgressSkimWeather(String words) =>
+    'Weather in this stretch: ${_clip(words, 80)}';
+
+String worldProgressCardRead(int sections, int entries) =>
+    "Reading the character's card · $sections section"
+    '${sections == 1 ? '' : 's'}'
+    '${entries == 0 ? '' : ' and $entries lore ${_entries(entries)}'} go '
+    'straight onto the index';
+
+String worldProgressSkimPlan(int messages, int parts, int objectives) =>
+    '$messages messages in $parts part${parts == 1 ? '' : 's'} of 50, each '
+    'with its Journal cards and Growth rings'
+    '${objectives == 0 ? '' : '; $objectives objective${objectives == 1 ? '' : 's'} join the closing notes'}';
+
+String worldProgressSkimReady(int named) =>
+    'Index ready: $named named thing${named == 1 ? '' : 's'}. The scout '
+    'reads the index, not the chat.';
+
+/// The scout's stages when the source is a chat: the Skim comes first.
+const List<String> kWorldCharacterScoutStages = [
+  'Skim the chat',
+  'Scout the index',
+  'Reviewer reads the shelf',
+  'Fill what it forgot',
+];
+
+/// Which character-scout stage a progress line belongs to (0-based).
+int worldCharacterScoutStageOf(String line) {
+  final l = line.toLowerCase();
+  if (l.startsWith('skimming') ||
+      l.startsWith('part ') ||
+      l.startsWith('weather in this stretch') ||
+      l.startsWith('reading the character') ||
+      l.contains('messages in ') ||
+      l.startsWith('index ready')) {
+    return 0;
+  }
+  return worldScoutStageOf(line) + 1;
+}
+
 const List<String> kWorldScoutStages = [
   'Scout the index',
   'Reviewer reads the shelf',

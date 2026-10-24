@@ -44,7 +44,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
     };
     for (var round = 1; round <= depth.fillRounds; round++) {
       if (isAborted?.call() ?? false) break;
-      if (cards.length >= depth.cardTarget) break;
+      if (cards.length >= cardTarget) break;
       final gaps = auditWorldCoverage(
         cards: cards,
         places: places,
@@ -60,7 +60,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
       // Every gap of the round is asked at once (three at a time on a
       // remote provider); the answers are merged in order under the cap.
       final roundGaps = gaps.take(kWorldFillGapsPerRound).toList();
-      final room = depth.cardTarget - cards.length;
+      final room = cardTarget - cards.length;
       if (room <= 0) break;
       final answers = await forEachLimited(roundGaps, concurrency, (
         i,
@@ -99,7 +99,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
           if (seenPlaces.add(p.key)) places.add(p);
         }
         for (final c in answer.cards) {
-          if (cards.length >= depth.cardTarget) break;
+          if (cards.length >= cardTarget) break;
           if (!seenCards.add(c.name.trim().toLowerCase())) continue;
           cards.add(
             gap.place != null && c.place.trim().isEmpty
@@ -203,7 +203,12 @@ extension WorldScoutFillLoop on WorldScoutRunner {
     );
     if (resp == null) return null;
     return (
-      cards: parseWorldScoutToolCalls(resp.calls, catalog: titles, max: room),
+      cards: parseWorldScoutToolCalls(
+        resp.calls,
+        catalog: titles,
+        max: room,
+        keepUnsourced: keepUnsourced,
+      ),
       places: parseWorldScoutPlaces(resp.calls),
     );
   }

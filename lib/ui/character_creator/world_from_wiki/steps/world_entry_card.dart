@@ -93,6 +93,13 @@ class _WorldEntryCardState extends State<WorldEntryCard> {
                   const SizedBox(width: 8),
                   _chip(context, kind),
                 ],
+                // What the mode let the writer add beyond the record
+                // ("rounded out", "extrapolated"), so it is one glance to
+                // drop (docs/design/world-from-character.md §3.3).
+                if ((state.noteFor(_name)?.addedLabel ?? '').isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _chip(context, state.noteFor(_name)!.addedLabel),
+                ],
                 const SizedBox(width: 8),
                 IconButton(
                   key: Key('world-entry-pin-$_name'),

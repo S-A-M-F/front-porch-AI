@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:front_porch_ai/services/llm_service.dart';
 
+import 'world_build_mode.dart';
 import 'world_craft_mechanics.dart';
 import 'world_from_wiki_budget.dart';
 import 'world_from_wiki_depth.dart';
@@ -102,6 +103,7 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
         'kind says what a card is about; a card\'s place is the book it lives '
         'in — for a person, where they stand at the moment, for a place, the '
         'place around it. Do not fault these.\n'
+        '${mode == null ? '' : '${mode!.shelfRule}\n'}'
         'Review this shelf as the world a fan would roleplay in. '
         '${worldMomentRule(moment)} Judge: are the places nested the way '
         'the setting has them; does each place carry the people and '
@@ -148,7 +150,7 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
     required String worldName,
     required String premise,
   }) async {
-    final (lo, hi) = depth.scoutRange;
+    final (lo, hi) = scoutRange;
     final head =
         'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
@@ -190,7 +192,8 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
     final cards = parseWorldScoutToolCalls(
       resp.calls,
       catalog: titles,
-      max: depth.cardTarget,
+      max: cardTarget,
+      keepUnsourced: keepUnsourced,
     );
     if (cards.length < kWorldScoutCardMin) {
       debugPrint('[World] shelf revise returned ${cards.length} cards');
@@ -203,6 +206,7 @@ extension WorldScoutReviewLoop on WorldScoutRunner {
     for (final c in shelf.cards)
       '- ${c.name} | ${c.kind.isEmpty ? '?' : c.kind} | ${c.role.name}'
           '${c.place.isEmpty ? '' : ' | in ${c.place}'}'
-          ' | ${c.sourceTitles.join(', ')}',
+          ' | ${c.sourceTitles.join(', ')}'
+          '${c.invented ? ' | invented' : ''}',
   ].join('\n');
 }

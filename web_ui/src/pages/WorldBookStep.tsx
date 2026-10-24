@@ -2,14 +2,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  WORLD_BUILD_MODES,
+  WORLD_CHARACTER_NO_DEEP_COPY,
+  characterDepthOptions,
   contextChoiceOptions,
   depthOptions,
   wikiHostLabel,
   wikiKindGuess,
+  type ChatSourceRow,
   type DepthChoice,
+  type WorldBuildMode,
+  type WorldModeChoice,
+  type WorldWizardSource,
 } from './worldFromWiki';
+import type { CharacterRow } from './story/setup/draft';
+import { WorldModeTiles } from './WorldModeTiles';
+import { WorldSourceCard } from './WorldSourceCard';
 
 type Props = {
+  /** World from Character: the second card and the mode tiles follow it. */
+  source?: WorldWizardSource;
+  characters?: CharacterRow[] | null;
+  chatRows?: ChatSourceRow[];
+  characterId?: string;
+  setCharacterId?: (id: string) => void;
+  sessionId?: string;
+  setSessionId?: (id: string) => void;
+  mode?: WorldBuildMode;
+  setMode?: (m: WorldBuildMode) => void;
+  modes?: WorldModeChoice[];
+  copyCardLore?: boolean;
+  setCopyCardLore?: (v: boolean) => void;
+  characterDepthChoices?: unknown;
   name: string;
   setName: (v: string) => void;
   premise: string;
@@ -40,13 +64,15 @@ type Props = {
  * deep, what to make. The desktop twin is WorldFromWikiBookStep.
  */
 export function WorldBookStep(p: Props) {
-  const depths = depthOptions(p.depthChoices);
+  const character = p.source === 'character';
+  const depths = character ? characterDepthOptions(p.characterDepthChoices) : depthOptions(p.depthChoices);
   const contexts = contextChoiceOptions(p.chatContextSize, p.contextSize, p.contextChoices);
   return (
     <div className={`wfw-book${p.busy ? ' dimmed' : ''}`}>
       <p className="muted">
-        Name the world, pick its wiki, say how deep to dig. Scout proposes a shelf of cards from the
-        wiki&apos;s index, not one card per page.
+        {character
+          ? 'Name the world, pick the character and one of their chats, say how deep to dig. The chat is skimmed into an index first; the scout proposes a shelf of cards from that, not one card per message.'
+          : "Name the world, pick its wiki, say how deep to dig. Scout proposes a shelf of cards from the wiki's index, not one card per page."}
       </p>
 
       <section className="wfw-card">
@@ -92,6 +118,19 @@ export function WorldBookStep(p: Props) {
         </div>
       </section>
 
+      {character ? (
+        <WorldSourceCard
+          characters={p.characters ?? null}
+          chatRows={p.chatRows ?? []}
+          characterId={p.characterId ?? ''}
+          setCharacterId={p.setCharacterId ?? (() => {})}
+          sessionId={p.sessionId ?? ''}
+          setSessionId={p.setSessionId ?? (() => {})}
+          mode={p.mode ?? 'factsOnly'}
+          depth={p.depth}
+          busy={p.busy}
+        />
+      ) : (
       <section className="wfw-card">
         <header className="wfw-card-head">
           <span className="wfw-badge" aria-hidden="true">
@@ -132,6 +171,7 @@ export function WorldBookStep(p: Props) {
         )}
         <span className="muted small">Saved wikis are the same list as Porch Life&apos;s web search.</span>
       </section>
+      )}
 
       <section className="wfw-card">
         <header className="wfw-card-head">
@@ -143,7 +183,7 @@ export function WorldBookStep(p: Props) {
         </header>
         <div className="wfw-tiles three" role="radiogroup" aria-label="Depth">
           {depths.map((d: DepthChoice) => {
-            const on = d.value === p.depth;
+            const on = d.value === (character && p.depth === 2 ? 1 : p.depth);
             return (
               <button
                 type="button"
@@ -165,6 +205,7 @@ export function WorldBookStep(p: Props) {
             );
           })}
         </div>
+        {character && <span className="muted small">{WORLD_CHARACTER_NO_DEEP_COPY}</span>}
         <div className="wfw-pills" role="radiogroup" aria-label="Context for this wizard">
           <span className="muted small">Context for this wizard</span>
           {contexts.map((o) => {
@@ -199,6 +240,15 @@ export function WorldBookStep(p: Props) {
           <strong>What to make</strong>
           <span className="muted small wfw-grow-right">4 of 4</span>
         </header>
+        {character && p.mode && p.setMode && (
+          <WorldModeTiles
+            modes={p.modes ?? WORLD_BUILD_MODES}
+            mode={p.mode}
+            setMode={p.setMode}
+            hasChat={!!p.sessionId}
+            busy={p.busy}
+          />
+        )}
         <div className="wfw-two">
           <label className="wfw-toggle">
             <BookIcon />
@@ -212,10 +262,32 @@ export function WorldBookStep(p: Props) {
             <CloudIcon />
             <span className="wfw-toggle-text">
               <strong>Climate</strong>
-              <span className="muted small">Off by default. On, each place with its own sky gets its own weather.</span>
+              <span className="muted small">
+                {character
+                  ? 'Off by default. On, the weather is read from the chat where it shows one; Creative may guess it from the card and says so.'
+                  : 'Off by default. On, each place with its own sky gets its own weather.'}
+              </span>
             </span>
             <input type="checkbox" checked={p.climateEnabled} disabled={p.busy} onChange={(e) => p.setClimateEnabled(e.target.checked)} />
           </label>
+          {character && p.setCopyCardLore && (
+            <label className="wfw-toggle">
+              <BookIcon />
+              <span className="wfw-toggle-text">
+                <strong>Copy the card&apos;s lorebook in</strong>
+                <span className="muted small">
+                  The character&apos;s own entries ride along unchanged, for one portable file. Off, the new cards chain to them instead.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                data-testid="world-character-copy-lore"
+                checked={!!p.copyCardLore}
+                disabled={p.busy}
+                onChange={(e) => p.setCopyCardLore?.(e.target.checked)}
+              />
+            </label>
+          )}
         </div>
       </section>
     </div>

@@ -19,16 +19,26 @@ class BookDepthSection extends StatelessWidget {
     required this.storage,
     required this.wide,
     required this.enabled,
+    this.forCharacter = false,
   });
 
   final StorageService storage;
   final bool wide;
   final bool enabled;
 
+  /// A chat source: Deep is not offered (a stored Deep shows as Full) and
+  /// the tiles carry the chat's smaller counts and times.
+  final bool forCharacter;
+
+  List<WorldWikiDepth> get _depths => forCharacter
+      ? const [WorldWikiDepth.quick, WorldWikiDepth.full]
+      : WorldWikiDepth.values;
+
   @override
   Widget build(BuildContext context) {
     final muted = StudioColors.mutedOf(context);
-    final depth = worldWizardDepth(storage);
+    final stored = worldWizardDepth(storage);
+    final depth = forCharacter ? worldCharacterDepth(stored) : stored;
     return WorldSectionCard(
       icon: Icons.layers_outlined,
       title: 'How deep',
@@ -39,7 +49,7 @@ class BookDepthSection extends StatelessWidget {
         children: [
           LayoutBuilder(
             builder: (context, box) {
-              final cols = wide ? 3 : 1;
+              final cols = wide ? _depths.length : 1;
               final w = cols == 1
                   ? box.maxWidth
                   : (box.maxWidth - 10 * (cols - 1)) / cols;
@@ -47,12 +57,19 @@ class BookDepthSection extends StatelessWidget {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  for (final d in WorldWikiDepth.values)
+                  for (final d in _depths)
                     SizedBox(width: w, child: _depthTile(context, d, depth)),
                 ],
               );
             },
           ),
+          if (forCharacter) ...[
+            const SizedBox(height: 8),
+            Text(
+              kWorldCharacterNoDeepCopy,
+              style: TextStyle(fontSize: 12, color: muted, height: 1.4),
+            ),
+          ],
           const SizedBox(height: 14),
           _contextRow(context),
           const SizedBox(height: 6),
@@ -94,14 +111,16 @@ class BookDepthSection extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                d.cardsLabel,
+                forCharacter
+                    ? '~${worldCharacterCardTarget(d)} cards'
+                    : d.cardsLabel,
                 style: TextStyle(fontSize: 12, color: selected ? amber : muted),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            d.blurb,
+            forCharacter ? worldCharacterDepthBlurb(d) : d.blurb,
             style: TextStyle(
               fontSize: 12,
               height: 1.4,
@@ -109,7 +128,10 @@ class BookDepthSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(d.timeHint, style: TextStyle(fontSize: 12, color: prose)),
+          Text(
+            forCharacter ? worldCharacterDepthTime(d) : d.timeHint,
+            style: TextStyle(fontSize: 12, color: prose),
+          ),
         ],
       ),
     );

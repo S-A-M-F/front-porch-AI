@@ -9,6 +9,7 @@
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 
+import 'world_build_mode.dart';
 import 'world_craft_mechanics.dart';
 import 'world_entry_polish.dart';
 import 'world_entry_review.dart';
@@ -319,9 +320,12 @@ extension WorldReviewActions on WorldFromWikiEngine {
       role: WorldCraftRole.leaf,
       sourceTitles: [title],
       place: place.trim(),
+      // Creative keeps a hand-added card the record does not know and
+      // writes it from the premise; every other run needs its page.
+      invented: mode?.allowsUnsourced ?? false,
     );
     onProgress?.call(worldProgressAdding(card.name));
-    final article = _clip(await joinSources(card.sourceTitles));
+    final article = _clip(await articleForCard(card));
     if (article.trim().isEmpty) return null;
     final written = await writeBatch(
       cards: [card],

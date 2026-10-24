@@ -16,6 +16,7 @@ import 'package:front_porch_ai/services/llm_service.dart';
 
 import 'world_craft_mechanics.dart';
 import 'world_from_wiki_budget.dart';
+import 'world_build_mode.dart';
 import 'world_from_wiki_depth.dart';
 import 'world_from_wiki_ops.dart';
 import 'world_from_wiki_places_tools.dart';
@@ -108,6 +109,21 @@ class WorldScoutRunner {
   /// provider's three; a local engine answers one at a time).
   int concurrency = 1;
 
+  /// How far the writer may go beyond the record; null is the wiki's own
+  /// rules (docs/design/world-from-character.md §3.3).
+  WorldBuildMode? mode;
+
+  /// A source's own shelf size, when it is not the depth's (a chat
+  /// yields fewer cards than a wiki).
+  int? cardTargetOverride;
+  (int, int)? scoutRangeOverride;
+
+  int get cardTarget => cardTargetOverride ?? depth.cardTarget;
+  (int, int) get scoutRange => scoutRangeOverride ?? depth.scoutRange;
+
+  /// Whether a card naming no index title is kept (Creative only).
+  bool get keepUnsourced => mode?.allowsUnsourced ?? false;
+
   Future<WorldScoutRun> run({
     required List<String> titles,
     required Map<String, List<String>> tags,
@@ -162,7 +178,8 @@ class WorldScoutRunner {
                 parseWorldScoutToolCalls(
                   resp.calls,
                   catalog: titles,
-                  max: depth.cardTarget,
+                  max: cardTarget,
+                  keepUnsourced: keepUnsourced,
                 ).length,
                 parseWorldScoutPlaces(resp.calls).length,
               ),
@@ -215,7 +232,8 @@ class WorldScoutRunner {
           : parseWorldScoutToolCalls(
               resp.calls,
               catalog: titles,
-              max: depth.cardTarget,
+              max: cardTarget,
+              keepUnsourced: keepUnsourced,
             );
       if (got.isEmpty && resp != null && resp.calls.isNotEmpty) {
         // A list came back and nothing in it survived the parse: say what
@@ -280,7 +298,7 @@ class WorldScoutRunner {
         continue;
       }
       for (final c in got) {
-        if (cards.length >= depth.cardTarget) break;
+        if (cards.length >= cardTarget) break;
         if (seenCards.add(c.name.toLowerCase())) cards.add(c);
       }
       final partPlaces = parseWorldScoutPlaces(resp!.calls);
@@ -325,7 +343,7 @@ class WorldScoutRunner {
         premise: premise,
       );
     }
-    if (depth.fillRounds > 0) {
+    if (depth.fillRounds > 0 && (mode?.fills ?? true)) {
       run = await fillLoop(
         run,
         titles: titles,
@@ -417,7 +435,7 @@ class WorldScoutRunner {
               'the cards these titles support)'
         : '';
     // Each part is asked for its share; the parts are merged after.
-    final (lo0, hi0) = depth.scoutRange;
+    final (lo0, hi0) = scoutRange;
     final lo = total > 1
         ? max(kWorldScoutPartCardsMin, (lo0 / total).ceil())
         : lo0;

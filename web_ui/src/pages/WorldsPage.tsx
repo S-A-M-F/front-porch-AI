@@ -611,6 +611,13 @@ export function WorldsPage() {
             📖 From Wiki
           </button>
           <button
+            className="ghost"
+            data-testid="worlds-from-character"
+            onClick={() => navigate('/worlds/from-character')}
+          >
+            🎭 From Character
+          </button>
+          <button
             className="primary"
             onClick={() => confirmDiscard(dirty) && openEdit(emptyDraft(null))}
           >

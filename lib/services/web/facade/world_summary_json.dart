@@ -48,6 +48,9 @@ Map<String, dynamic> worldSummaryJson(
   // these. Additive — old builds ignore them (mixed-version law).
   'parentWorldId': w.parentWorldId,
   'isModelMade': w.isModelMade,
+  // World from Character (additive): the "from <character>" tag.
+  if (w.sourceCharacterName != null)
+    'sourceCharacterName': w.sourceCharacterName,
   // Slice 5 (additive): "N places" chip and weather author for Stoop.
   'locationCount': locations.locationCount(w.id),
   'climateAuthorId': locations.climateAuthorId(w.id),

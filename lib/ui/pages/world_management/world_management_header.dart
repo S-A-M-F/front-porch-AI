@@ -162,6 +162,23 @@ class WorldManagementHeroHeader extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const Key('worlds-from-character'),
+                    icon: const Icon(Icons.person_outline, size: 18),
+                    label: const Text('From Character'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.formAccentOf(context),
+                      side: BorderSide(color: AppColors.formAccentOf(context)),
+                    ),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const WorldFromWikiPage(
+                          source: WorldWizardSource.character,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('New World'),

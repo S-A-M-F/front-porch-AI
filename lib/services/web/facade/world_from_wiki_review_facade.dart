@@ -154,10 +154,7 @@ extension WorldFromWikiReviewFacade on WorldFromWikiFacade {
           premise: _premise,
         );
         if (made == null) {
-          throw StateError(
-            'The wiki has no page called "$name", so nothing was written. '
-            'Give the page\'s title.',
-          );
+          throw StateError(reviewEngine!.source.missingPageCopy(name));
         }
         reviewTree = worldTreeAdd(reviewTree!, place, made);
         return {

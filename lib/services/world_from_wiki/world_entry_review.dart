@@ -9,13 +9,12 @@
 
 import 'package:flutter/foundation.dart';
 
-import 'package:front_porch_ai/services/chat/chat.dart';
-
 import 'package:front_porch_ai/services/llm_service.dart';
 
 import 'world_craft_mechanics.dart';
 import 'world_entry_polish.dart';
 import 'world_from_wiki_budget.dart';
+import 'world_build_mode.dart';
 import 'world_from_wiki_depth.dart';
 import 'world_from_wiki_engine.dart';
 import 'world_from_wiki_ops.dart';
@@ -33,17 +32,44 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
     final buf = StringBuffer();
     for (final title in titles.take(3)) {
       final t = title.trim();
-      if (t.isEmpty || skipWikiStudioTitle(t)) continue;
-      final article = await wiki.getArticleFull(t);
-      if (!article.ok) {
+      if (t.isEmpty) continue;
+      final article = await source.article(t);
+      if (article.isEmpty) {
         debugPrint('[World] write miss $t');
         continue;
       }
       if (buf.isNotEmpty) buf.writeln();
       buf.writeln('=== $t ===');
-      buf.writeln(article.snippet);
+      buf.writeln(article);
     }
     return buf.toString().trim();
+  }
+
+  /// The text a card is written from: its sources joined, or, under a
+  /// mode that allows it, a note that the card is invented. '' drops the
+  /// card from the write (the batcher's miss).
+  Future<String> articleForCard(WorldProposedCard card) async {
+    final joined = await joinSources(card.sourceTitles);
+    if (joined.isNotEmpty) return joined;
+    if (card.invented && (mode?.allowsUnsourced ?? false)) {
+      return 'NO SOURCE LINES. This card was proposed from the premise, '
+          'not the record: write it to fit the world and contradict '
+          'nothing the other cards say.';
+    }
+    return '';
+  }
+
+  /// A card nothing in the source supports. The wiki keeps its silent
+  /// skip; under a mode the Review step says why the card is missing.
+  void noteMiss(WorldProposedCard card) {
+    debugPrint('[World] write miss ${card.name}');
+    final m = mode;
+    if (m == null) return;
+    entryNotes[card.name.trim().toLowerCase()] = WorldEntryNote(
+      tries: 0,
+      passed: false,
+      problem: m.missCopy,
+    );
   }
 
   /// The lines every write-side prompt opens with: world, premise, the
@@ -57,10 +83,12 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
     final extraBlock = extra.isEmpty
         ? ''
         : '\nATTACHED NOTES (optional; do not override the articles):\n$extra\n';
+    final m = mode;
     return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
         'Premise: ${premise.trim()}\n'
         '${worldMomentLine(moment)}'
         '${worldShelfLine(shelfNames)}'
+        '${m == null ? '' : '${m.writeRule}\n'}'
         '$extraBlock';
   }
 
@@ -126,12 +154,24 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
           if (v != null && v.parsed && !v.pass && v.problems.isNotEmpty) {
             debugPrint('[World] entry review ${d.name}: ${v.problems.first}');
           }
-          if (v == null || v.pass || !v.parsed) {
+          final m = mode;
+          if (v != null &&
+              v.parsed &&
+              v.pass &&
+              v.added.isNotEmpty &&
+              m == WorldBuildMode.factsOnly) {
+            // Facts only: what the reviewer reports as added is a finding
+            // even when it passed the entry on everything else.
+            problems[key] = ['states more than its source lines: ${v.added}'];
+          } else if (v == null || v.pass || !v.parsed) {
             accepted[key] = d;
             entryNotes[key] = WorldEntryNote(
               tries: attempt,
               passed: true,
               problem: lastProblem[key] ?? '',
+              added: v == null || v.added.isEmpty || m == null
+                  ? ''
+                  : '${m.addedLabel}: ${v.added}',
             );
           } else {
             problems[key] = v.problems;
@@ -216,17 +256,21 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       buf.writeln('KEYS: ${d.keys.join(', ')}');
       buf.writeln('ENTRY: ${d.content}');
       buf.writeln(
-        'ARTICLE: ${article.length > kWorldEntryReviewArticleChars ? article.substring(0, kWorldEntryReviewArticleChars) : article}',
+        '${mode == null ? 'ARTICLE' : 'SOURCE LINES'}: ${article.length > kWorldEntryReviewArticleChars ? article.substring(0, kWorldEntryReviewArticleChars) : article}',
       );
     }
+    final m = mode;
+    final sourceRule = m == null
+        ? 'contradicts the article (a fact you cannot find in this excerpt '
+              'is not a failure; the writer read more of the page). '
+        : 'contradicts its source lines. ${m.reviewRule} ';
     buf.writeln();
     buf.writeln(
       'Review each entry for roleplay. ${worldMomentRule(moment)} An entry '
       'fails when it states anything after the moment, when a person has no '
       'look-or-manner clause or no whereabouts, when a place has no sights '
       'or no holder, when it is one sentence or more than two, or when it '
-      'contradicts the article (a fact you cannot find in this excerpt is '
-      'not a failure; the writer read more of the page). '
+      '$sourceRule'
       '$kWorldEntryChainRule Pass the '
       'rest; name the problem '
       'in one sentence the writer can act on. Call '
@@ -279,7 +323,7 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       buf.writeln('Role: ${card.role.name}');
       if (old != null) buf.writeln('PREVIOUS ENTRY: ${old.content}');
       buf.writeln('REVIEW FOUND: ${(problems[key] ?? const []).join('; ')}');
-      buf.writeln('ARTICLES:');
+      buf.writeln(sourceLabel);
       buf.writeln(articles[i]);
     }
     buf.writeln();

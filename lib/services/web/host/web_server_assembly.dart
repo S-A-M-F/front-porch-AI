@@ -138,7 +138,14 @@ import 'package:front_porch_ai/services/web/web_server_deps.dart';
       : null;
 
   final worldFromWikiFacade = (llm != null && chatService != null)
-      ? WorldFromWikiFacade(llm, storage, streamHub, chatService)
+      ? WorldFromWikiFacade(
+          llm,
+          storage,
+          streamHub,
+          chatService,
+          db: db,
+          characters: characters,
+        )
       : null;
 
   final backendFacade = (llm != null && models != null)

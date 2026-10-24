@@ -76,6 +76,12 @@ List<Map<String, dynamic>> worldEntriesReviewToolSchema() {
                     'type': 'array',
                     'items': {'type': 'string'},
                   },
+                  'added': {
+                    'type': 'string',
+                    'description':
+                        'What the entry states beyond its source, in one '
+                        'clause; empty when nothing.',
+                  },
                 },
                 'required': ['name', 'pass'],
               },
@@ -126,6 +132,7 @@ Map<String, WorldVerdict> parseWorldEntryVerdicts(List<LlmToolCall> calls) {
       out[name] = WorldVerdict(
         pass: pass is bool ? pass && problems.isEmpty : problems.isEmpty,
         problems: problems,
+        added: v['added']?.toString().trim() ?? '',
       );
     }
   }
@@ -150,16 +157,30 @@ class WorldEntryNote {
     required this.tries,
     required this.passed,
     this.problem = '',
+    this.added = '',
   });
 
   final int tries;
   final bool passed;
   final String problem;
 
+  /// What the entry states beyond its source, as `label: clause`
+  /// ("rounded out: the smell of tar on the quay"); '' when nothing, or
+  /// when the run had no mode (the wiki's rules). The label before the
+  /// colon is the Review step's chip.
+  final String added;
+
+  /// "rounded out" / "extrapolated" / "beyond the lines", or ''.
+  String get addedLabel {
+    final i = added.indexOf(':');
+    return i <= 0 ? added.trim() : added.substring(0, i).trim();
+  }
+
   Map<String, dynamic> toJson() => {
     'tries': tries,
     'passed': passed,
     if (problem.isNotEmpty) 'problem': problem,
+    if (added.isNotEmpty) 'added': added,
   };
 
   static WorldEntryNote? fromJson(Object? raw) {
@@ -169,20 +190,24 @@ class WorldEntryNote {
       tries: tries is int ? tries : int.tryParse('$tries') ?? 1,
       passed: raw['passed'] != false,
       problem: raw['problem']?.toString() ?? '',
+      added: raw['added']?.toString() ?? '',
     );
   }
 }
 
 /// "Passed first try", "Rewritten once · said how the war ends",
-/// "Still failing after 3 tries · …": one line under the entry.
+/// "Still failing after 3 tries · …": one line under the entry. A card
+/// the writer never got (no source) reads "Not written · why".
 String worldEntryNoteCopy(WorldEntryNote? note) {
   if (note == null) return 'Written without a reviewer';
   final why = note.problem.isEmpty ? '' : ' · ${note.problem}';
+  final added = note.added.isEmpty ? '' : ' · ${note.added}';
   if (note.passed) {
-    if (note.tries <= 1) return 'Passed first try';
-    if (note.tries == 2) return 'Rewritten once$why';
-    return 'Passed on try ${note.tries}$why';
+    if (note.tries <= 1) return 'Passed first try$added';
+    if (note.tries == 2) return 'Rewritten once$why$added';
+    return 'Passed on try ${note.tries}$why$added';
   }
+  if (note.tries == 0) return 'Not written$why';
   return 'Still failing after ${note.tries} '
       '${note.tries == 1 ? 'try' : 'tries'}$why';
 }

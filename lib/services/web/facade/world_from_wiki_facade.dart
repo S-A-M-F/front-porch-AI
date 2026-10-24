@@ -3,9 +3,11 @@
 
 import 'dart:async';
 
+import 'package:front_porch_ai/database/database.dart' show AppDatabase;
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/web/facade/world_character_source.dart';
 import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
@@ -15,7 +17,21 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 /// The tools gate is chat's own tool check on the chat model, which is the
 /// model scout and write run on here.
 class WorldFromWikiFacade {
-  WorldFromWikiFacade(this._llm, this._storage, this._hub, this._chat);
+  WorldFromWikiFacade(
+    this._llm,
+    this._storage,
+    this._hub,
+    this._chat, {
+    AppDatabase? db,
+    CharacterRepository? characters,
+  }) : characterSources = db == null || characters == null
+           ? null
+           : WorldCharacterSources(db: db, characters: characters);
+
+  /// The character sources this relay can build; null when the host has
+  /// no library or database to read, and the Book step then offers the
+  /// wiki alone.
+  final WorldCharacterSources? characterSources;
 
   final LLMProvider _llm;
   final StorageService _storage;
@@ -62,7 +78,73 @@ class WorldFromWikiFacade {
             'blurb': d.blurb,
           },
       ],
+      // Additive (World from Character): which sources this host can
+      // build from, the three modes with their tile copy, and the depth
+      // tiles a chat offers (no Deep). An older PWA ignores all three.
+      'sources': ['wiki', if (characterSources != null) 'character'],
+      'modes': [
+        for (final m in WorldBuildMode.values)
+          {
+            'value': m.name,
+            'label': m.label,
+            'does': m.does,
+            'never': m.never,
+            'addedLabel': m.addedLabel,
+          },
+      ],
+      'characterDepthChoices': [
+        for (final d in const [WorldWikiDepth.quick, WorldWikiDepth.full])
+          {
+            'value': d.index,
+            'label': d.label,
+            'cards': worldCharacterCardTarget(d),
+            'blurb': worldCharacterDepthBlurb(d),
+            'time': worldCharacterDepthTime(d),
+          },
+      ],
     };
+  }
+
+  /// The engine for [body]: the wiki at [wikiUrl], or the character
+  /// source the body names (built once per pick, so the chat is skimmed
+  /// once between scout and write). Deep runs as Full on a chat.
+  Future<WorldFromWikiEngine> _engineFor(
+    Map<String, dynamic> body,
+    String wikiUrl,
+    LLMService svc,
+  ) async {
+    final pick = WorldSourcePick.fromBody(body);
+    final sources = characterSources;
+    final source = pick == null || sources == null
+        ? WikiWorldSource(WikiSearchService(getBaseUrl: () => wikiUrl))
+        : await sources.sourceFor(pick);
+    return WorldFromWikiEngine(
+      source: source,
+      llm: svc,
+      contextTokens: _contextTokens(),
+      depth: pick == null ? _depth : worldCharacterDepth(_depth),
+      moment: body['moment']?.toString() ?? '',
+      mode: pick?.mode,
+      onProgress: (msg) {
+        _hub?.broadcast({'event': 'world_wiki_status', 'data': msg});
+      },
+    );
+  }
+
+  /// Why [body] cannot be read as a source, or null: a wiki body needs an
+  /// address, a character body a character this host knows.
+  Future<String?> _sourceError(Map<String, dynamic> body, String wikiUrl) {
+    final pick = WorldSourcePick.fromBody(body);
+    if (pick == null) {
+      return Future.value(
+        parseWikiBaseUrl(wikiUrl) == null ? 'wikiUrl is required' : null,
+      );
+    }
+    final sources = characterSources;
+    if (sources == null) {
+      return Future.value('this host cannot build a world from a character');
+    }
+    return sources.pickError(pick);
   }
 
   /// The Book step's context pick from the phone: 0 (same as chat) or a
@@ -127,9 +209,8 @@ class WorldFromWikiFacade {
 
   Future<Map<String, dynamic>> scout(Map<String, dynamic> body) async {
     final wikiUrl = body['wikiUrl']?.toString().trim() ?? '';
-    if (parseWikiBaseUrl(wikiUrl) == null) {
-      return {'ok': false, 'error': 'wikiUrl is required'};
-    }
+    final sourceError = await _sourceError(body, wikiUrl);
+    if (sourceError != null) return {'ok': false, 'error': sourceError};
     var gate = _toolsGate();
     if (gate == WorldToolsGate.notChecked || gate == WorldToolsGate.failed) {
       // The phone's Next: ask the model now, the way the desktop does; a
@@ -147,17 +228,7 @@ class WorldFromWikiFacade {
     if (!svc.isReady) {
       return {'ok': false, 'error': 'the LLM backend is not ready'};
     }
-    final wiki = WikiSearchService(getBaseUrl: () => wikiUrl);
-    final engine = WorldFromWikiEngine(
-      wiki: wiki,
-      llm: svc,
-      contextTokens: _contextTokens(),
-      depth: _depth,
-      moment: body['moment']?.toString() ?? '',
-      onProgress: (msg) {
-        _hub?.broadcast({'event': 'world_wiki_status', 'data': msg});
-      },
-    );
+    final engine = await _engineFor(body, wikiUrl, svc);
     final result = await engine.scout(
       worldName: body['name']?.toString() ?? '',
       premise: body['premise']?.toString() ?? '',
@@ -194,8 +265,15 @@ class WorldFromWikiFacade {
   Map<String, dynamic> startWrite(Map<String, dynamic> body) {
     if (_writing) return {'ok': false, 'error': 'already writing'};
     final wikiUrl = body['wikiUrl']?.toString().trim() ?? '';
-    if (parseWikiBaseUrl(wikiUrl) == null) {
+    final pick = WorldSourcePick.fromBody(body);
+    if (pick == null && parseWikiBaseUrl(wikiUrl) == null) {
       return {'ok': false, 'error': 'wikiUrl is required'};
+    }
+    if (pick != null && characterSources == null) {
+      return {
+        'ok': false,
+        'error': 'this host cannot build a world from a character',
+      };
     }
     final cards = parseSignedWorldWriteCards(
       body['cards'] ?? body['signed'],
@@ -224,17 +302,15 @@ class WorldFromWikiFacade {
     LLMService svc,
   ) async {
     _writing = true;
-    final wiki = WikiSearchService(getBaseUrl: () => wikiUrl);
-    final engine = _live = WorldFromWikiEngine(
-      wiki: wiki,
-      llm: svc,
-      contextTokens: _contextTokens(),
-      depth: _depth,
-      moment: body['moment']?.toString() ?? '',
-      onProgress: (msg) {
-        _hub?.broadcast({'event': 'world_wiki_status', 'data': msg});
-      },
-    );
+    final engine = _live = await _engineFor(body, wikiUrl, svc);
+    final pick = WorldSourcePick.fromBody(body);
+    final characterSource = engine.source;
+    final provenance =
+        pick != null &&
+            characterSource is CharacterChatWorldSource &&
+            characterSources != null
+        ? characterSources!.provenance(characterSource, pick)
+        : const <String, dynamic>{};
     try {
       final gate = _toolsGate();
       if (gate != WorldToolsGate.ready) {
@@ -259,6 +335,21 @@ class WorldFromWikiFacade {
       reviewEngine = engine;
       reviewTree = tree;
       reviewBody = Map<String, dynamic>.from(body);
+      // Copy the card's lorebook in (character source, opt-in): the
+      // character's own entries ride along on the root, unchanged.
+      if (pick != null &&
+          pick.copyCardLore &&
+          characterSource is CharacterChatWorldSource) {
+        final have = {
+          for (final e in tree.root.entries) e.name.trim().toLowerCase(),
+        };
+        for (final e
+            in characterSource.card.lorebook?.entries ??
+                const <LorebookEntry>[]) {
+          if (!e.enabled || !have.add(e.name.trim().toLowerCase())) continue;
+          tree.root.entries.add(e);
+        }
+      }
       final entries = tree.root.entries.followedBy([
         for (final p in tree.places) ...p.entries,
       ]).toList();
@@ -286,6 +377,9 @@ class WorldFromWikiFacade {
         'notes': {
           for (final e in engine.entryNotes.entries) e.key: e.value.toJson(),
         },
+        // Additive (World from Character): the root's provenance, which
+        // the PWA passes to its save. Absent on a wiki world.
+        ...provenance,
         // Slice 8 (additive): per-place books so the PWA saves a root
         // plus children. Empty/absent → flat save, exactly today.
         'root': {

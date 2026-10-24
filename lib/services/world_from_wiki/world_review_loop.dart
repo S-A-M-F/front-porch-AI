@@ -16,6 +16,7 @@ class WorldVerdict {
     required this.pass,
     this.problems = const [],
     this.parsed = true,
+    this.added = '',
   });
 
   static const skipped = WorldVerdict(pass: true, parsed: false);
@@ -23,6 +24,10 @@ class WorldVerdict {
   final bool pass;
   final List<String> problems;
   final bool parsed;
+
+  /// What an entry states beyond its source, in the reviewer's words;
+  /// '' when nothing (or when the reviewer was not asked).
+  final String added;
 }
 
 /// One line of the run log: what a stage's try produced.

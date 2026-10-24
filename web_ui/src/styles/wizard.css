@@ -282,3 +282,17 @@ button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transpar
 .world-progress-stage.lit { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: transparent; color: var(--accent); font-weight: 700; }
 .world-progress-stop { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); font-weight: 700; border-radius: 10px; min-height: 36px; padding: 0 14px; }
 @media (prefers-reduced-motion: reduce) { .world-progress-bar span { animation: none; left: 36%; } }
+
+/* World from Character: the source card's tiles and rows, the mode tiles. */
+@media (min-width: 760px) { .wfw-tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .wfw-tiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.wfw-tile-row { flex-direction: row; align-items: center; gap: 10px; }
+.wfw-tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.wfw-tile-text strong, .wfw-tile-text .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wfw-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.wfw-avatar-initials { display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+.wfw-card-wanted { border-color: var(--accent); }
+.wfw-chip.warn { background: color-mix(in srgb, var(--porch-terracotta) 16%, transparent); border-color: transparent; color: var(--porch-terracotta); }
+.wfw-warning { margin: 0; color: var(--porch-honey); line-height: 1.4; }
+.wfw-modes { display: flex; flex-direction: column; gap: 8px; }
+.wfw-modes .wfw-tile strong { color: var(--text); }

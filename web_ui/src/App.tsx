@@ -75,6 +75,7 @@ export function App() {
         <Route path="/create-group" element={<CreateGroupChatPage />} />
         <Route path="/worlds" element={<WorldsPage />} />
         <Route path="/worlds/from-wiki" element={<WorldFromWikiPage />} />
+        <Route path="/worlds/from-character" element={<WorldFromWikiPage source="character" />} />
         <Route path="/stories" element={<StoriesPage />} />
         <Route path="/stories/new" element={<StorySetupPage />} />
         <Route path="/stories/:id" element={<StoryDashboardPage />} />

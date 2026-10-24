@@ -1,6 +1,7 @@
 # World from Character
 
-Status: **proposed, not started.** Source: the maintainer's ask (Oct 2026)
+Status: **slices 1 to 3 built on `feat/world-from-character` (2026-10-24);
+slice 4 (group chats) open.** Source: the maintainer's ask (Oct 2026)
 to build a Living World from a character's card and, optionally, one of
 that character's chats, the way a Porch Story can be built from a chat.
 Companion to [locations-within-worlds.md](locations-within-worlds.md),
@@ -176,7 +177,9 @@ adjustments, each behind `source.kind`:
   that contradicts it is a finding the entry reviewer sends back. They
   differ in what the model may add: nothing, texture, or new things.
   Whatever is added is marked, so the author can drop it before Mint.
-  The choice is remembered per character for the next run.
+  The choice follows the pick (Facts only when a chat is picked, Creative
+  for Card only) and is not yet remembered between runs; that is a
+  settings-parity item for later.
   **Facts only** (default when a chat is picked) adds no fact the record
   does not hold. The model still writes the sentences; it may not add to
   them. Concretely: the scout proposes only names the Skim found or the

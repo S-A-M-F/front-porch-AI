@@ -65,6 +65,7 @@ const ROUTES: ((i: { character: string; story: string }) => string)[] = [
   () => '/create-group',
   () => '/worlds',
   () => '/worlds/from-wiki',
+  () => '/worlds/from-character',
   () => '/stories',
   () => '/stories/new',
   (i) => `/stories/${i.story}`,

@@ -401,6 +401,9 @@ class _WorldFromWikiReviewStepState extends State<WorldFromWikiReviewStep> {
         ? ' · ${card.role.name}'
         : '';
     final group = card.group.isEmpty ? '' : ' · ${card.group}';
+    // Creative only: a card the index does not know, proposed from the
+    // premise. It starts unsigned; the word says why.
+    final invented = card.invented ? ' · invented' : '';
     final sources = card.sourceTitles.join(', ');
     // A Material of its own: a list tile paints its ink on the nearest
     // Material, which a decorated box would hide.
@@ -424,7 +427,7 @@ class _WorldFromWikiReviewStepState extends State<WorldFromWikiReviewStep> {
         // The kind (place, faction, person…) says what the card is; the
         // role word (era, hub, crown) rides along when it means something.
         subtitle: Text(
-          '$kind$role$group${sources.isEmpty ? '' : '\n$sources'}',
+          '$kind$role$group$invented${sources.isEmpty ? '' : '\n$sources'}',
           maxLines: sources.isEmpty ? 1 : 2,
           overflow: TextOverflow.ellipsis,
         ),

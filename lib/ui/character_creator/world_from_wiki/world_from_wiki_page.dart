@@ -10,13 +10,20 @@ import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/steps.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_review_actions.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_source_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_wizard_source.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
-import 'package:front_porch_ai/services/storage/settings/web_search_settings.dart';
+
+export 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_wizard_source.dart';
 
 /// Studio wizard: wiki → lorebook cards → a real World in the library.
 class WorldFromWikiPage extends StatefulWidget {
-  const WorldFromWikiPage({super.key});
+  const WorldFromWikiPage({super.key, this.source = WorldWizardSource.wiki});
+
+  /// What the wizard builds from; From Character opens it with
+  /// [WorldWizardSource.character]. Same steps either way.
+  final WorldWizardSource source;
 
   @override
   State<WorldFromWikiPage> createState() => _WorldFromWikiPageState();
@@ -50,6 +57,15 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     super.initState();
     _chat = Provider.of<ChatService>(context, listen: false);
     _llm = Provider.of<LLMProvider>(context, listen: false);
+    worldState.wizardSource = widget.source;
+    if (widget.source.isCharacter) {
+      worldState.characterPick
+          .load(
+            repo: Provider.of<CharacterRepository>(context, listen: false),
+            stories: Provider.of<StoryPipelineService?>(context, listen: false),
+          )
+          .whenComplete(_tick);
+    }
     creatorState.loadSavedState();
     creatorState.addListener(_onCreator);
     worldState.addListener(_tick);
@@ -140,7 +156,9 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
               }
             : null;
       case 1:
-        nextLabel = worldState.lorebooksOn ? 'Scout wiki' : 'Next: Preview';
+        nextLabel = worldState.lorebooksOn
+            ? worldState.scoutLabel
+            : 'Next: Preview';
         onNext = busy
             ? null
             : () {
@@ -317,9 +335,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
   /// The app bar's second line: where the wizard stands, in a few words.
   String _subtitle(BuildContext context) {
     final name = worldState.nameController.text.trim();
-    final wiki = worldState.wikiUrl.isEmpty
-        ? ''
-        : wikiHostLabel(worldState.wikiUrl);
+    final wiki = worldState.sourceLabel;
     final storage = Provider.of<StorageService>(context, listen: false);
     switch (worldState.currentStep) {
       case 0:
@@ -327,11 +343,13 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
       case 1:
         if (worldState.scouting) {
           final tokens = worldWizardContextTokens(storage);
-          return 'Scouting $wiki · ${worldWizardDepth(storage).label} · '
+          final verb = worldState.scoutLabel == 'Skim chat'
+              ? 'Skimming'
+              : 'Scouting';
+          return '$verb $wiki · ${worldWizardDepth(storage).label} · '
               '${worldWikiContextLabel(tokens)}';
         }
-        return 'A whole place, with its people and its weather, from a wiki '
-            'you name';
+        return widget.source.restingSubtitle;
       case 2:
         return [
           if (name.isNotEmpty) name,
@@ -351,9 +369,13 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     final storage = Provider.of<StorageService>(context, listen: false);
     switch (worldState.currentStep) {
       case 1:
-        return worldState.lorebooksOn
-            ? 'Full on a remote model: ${worldWizardDepth(storage).timeHint.replaceFirst('About ', 'about ')}, with every step shown'
-            : '';
+        if (!worldState.lorebooksOn) return '';
+        if (widget.source.isCharacter) {
+          return worldState.characterPick.hasChat
+              ? 'one pass per 50 messages, then the scout'
+              : 'the card goes straight onto the index, then the scout';
+        }
+        return 'Full on a remote model: ${worldWizardDepth(storage).timeHint.replaceFirst('About ', 'about ')}, with every step shown';
       case 2:
         return 'A few minutes per book on a remote model';
       default:
@@ -395,14 +417,14 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                     : () => Navigator.of(context).pop(),
               ),
             ),
-            const WorldIconBadge(icon: Icons.menu_book_outlined, size: 36),
+            WorldIconBadge(icon: widget.source.icon, size: 36),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'World from Wiki',
+                    widget.source.title,
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,

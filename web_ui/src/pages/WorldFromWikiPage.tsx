@@ -44,7 +44,20 @@ import {
   type WorldReviewPlace,
   type WorldReviewResult,
   type WorldReviewRoot,
+  WORLD_CHARACTER_SCOUT_STAGES,
+  characterDepthValue,
+  defaultModeFor,
+  modeOptions,
+  parseChatSourceRows,
+  wizardSourceTitle,
+  worldCharacterScoutStageOf,
+  worldSourceBody,
+  type ChatSourceRow,
+  type WorldBuildMode,
+  type WorldWizardSource,
 } from './worldFromWiki';
+import type { CharacterRow } from './story/setup/draft';
+import { loadCharacters } from './story/setup/useSetupData';
 import { WorldProgressPanel } from './WorldProgressPanel';
 import { WorldBookStep } from './WorldBookStep';
 import { WorldReviewStep } from './WorldReviewStep';
@@ -62,15 +75,49 @@ type Status = {
   /** 0 quick, 1 full, 2 deep; older servers omit it. */
   depth?: number;
   depthChoices?: unknown;
+  /** World from Character (additive): which sources the host builds from,
+   * the mode tiles, and the depth tiles a chat offers. */
+  sources?: string[];
+  modes?: unknown;
+  characterDepthChoices?: unknown;
 };
 
 /** How often the Setup step asks again while the tool check is not done. */
 const TOOLS_POLL_MS = 3000;
 
-export function WorldFromWikiPage() {
+/**
+ * The wizard, from a wiki or (route `/worlds/from-character`) from a
+ * character and one of their chats. Same steps either way; only the Book
+ * step's second card and the words change (design §5).
+ */
+export function WorldFromWikiPage({ source = 'wiki' }: { source?: WorldWizardSource } = {}) {
   const navigate = useNavigate();
+  const character = source === 'character';
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState<Status | null>(null);
+  // World from Character: the library and its 1:1 chats, the pick, how
+  // far the writer may go, and the root's provenance from the done event.
+  const [characters, setCharacters] = useState<CharacterRow[] | null>(null);
+  const [chatRows, setChatRows] = useState<ChatSourceRow[]>([]);
+  const [characterId, setCharacterId] = useState('');
+  const [sessionId, setSessionIdRaw] = useState('');
+  const [mode, setMode] = useState<WorldBuildMode>(defaultModeFor(false));
+  const [copyCardLore, setCopyCardLore] = useState(false);
+  const [provenance, setProvenance] = useState<Record<string, unknown>>({});
+  const setSessionId = (id: string) => {
+    setSessionIdRaw(id);
+    setMode(defaultModeFor(!!id));
+  };
+  useEffect(() => {
+    if (!character) return;
+    loadCharacters()
+      .then(setCharacters)
+      .catch(() => setCharacters([]));
+    api
+      .get<unknown>('/api/stories/chat-sources')
+      .then((r) => setChatRows(parseChatSourceRows(r)))
+      .catch(() => setChatRows([]));
+  }, [character]);
   const [name, setName] = useState('');
   const [premise, setPremise] = useState('');
   const [moment, setMoment] = useState('');
@@ -242,6 +289,13 @@ export function WorldFromWikiPage() {
             : [],
         );
         setNotes(parseWorldEntryNotes((e as unknown as { notes?: unknown }).notes));
+        {
+          const raw = e as unknown as { sourceId?: unknown; placeTraits?: unknown };
+          setProvenance({
+            ...(typeof raw.sourceId === 'string' ? { sourceId: raw.sourceId } : {}),
+            ...(raw.placeTraits && typeof raw.placeTraits === 'object' ? { placeTraits: raw.placeTraits } : {}),
+          });
+        }
         setPinned(new Set());
         setReviewStatus('');
         setBookFields({
@@ -294,9 +348,15 @@ export function WorldFromWikiPage() {
       setStep(3);
       return;
     }
+    if (character && !characterId) {
+      setError('Pick a character first.');
+      return;
+    }
     setBusy(true);
     setError('');
-    startRun('Rummaging through the wiki…');
+    startRun(
+      !character ? 'Rummaging through the wiki…' : sessionId ? 'Skimming the chat…' : 'Reading the card…',
+    );
     try {
       const r = await api.post<{
         proposed?: unknown;
@@ -309,7 +369,13 @@ export function WorldFromWikiPage() {
         ranked?: unknown;
         revised?: unknown;
         auditNotes?: unknown;
-      }>('/api/worlds/from-wiki/scout', { wikiUrl, name, premise, moment });
+      }>('/api/worlds/from-wiki/scout', {
+        wikiUrl,
+        name,
+        premise,
+        moment,
+        ...worldSourceBody({ source, characterId, sessionId, mode, copyCardLore }),
+      });
       const cards = parseProposedCards(r.proposed);
       setProposed(cards);
       const rPlaces = parseProposedPlaces(r.places);
@@ -364,6 +430,7 @@ export function WorldFromWikiPage() {
         // one flat world; a newer one groups the write by place.
         places,
         placeClimate: [...placeClimate],
+        ...worldSourceBody({ source, characterId, sessionId, mode, copyCardLore }),
       });
     } catch (e) {
       setBusy(false);
@@ -477,6 +544,7 @@ export function WorldFromWikiPage() {
           scanDepth: bookFields.scanDepth,
           tokenBudget: bookFields.tokenBudget,
           ...(climateOn ? { biomeId: 'custom', biome } : {}),
+          ...provenance,
         });
         navigate('/worlds');
         return;
@@ -510,6 +578,7 @@ export function WorldFromWikiPage() {
         scanDepth: bookFields.scanDepth,
         tokenBudget: bookFields.tokenBudget,
         ...(climateOn ? { biomeId: 'custom', biome } : {}),
+        ...provenance,
       });
       const ids = new Map<string, string>();
       for (const p of treePlaces) {
@@ -555,7 +624,7 @@ export function WorldFromWikiPage() {
     <div className="page wizard">
       <header className="page-head">
         <button className="ghost" onClick={() => navigate('/worlds')}>← Places</button>
-        <h2>📖 World from Wiki</h2>
+        <h2>{character ? '🎭 ' : '📖 '}{wizardSourceTitle(source)}</h2>
       </header>
 
       <StepIndicator
@@ -595,16 +664,33 @@ export function WorldFromWikiPage() {
             {busy && (
               <WorldProgressPanel
                 status={liveStatus}
-                fallback="Scouting…"
+                fallback={character && sessionId ? 'Skimming…' : 'Scouting…'}
                 elapsed={worldElapsedLabel(elapsedMs)}
                 stepMs={stepMs}
-                subtitle="Scout · reading the index, not the articles · the model is thinking"
-                stages={WORLD_SCOUT_STAGES}
-                stage={worldScoutStageOf(liveStatus)}
+                subtitle={
+                  character
+                    ? 'Skim · one pass per 50 messages · then the scout reads the index, not the chat'
+                    : 'Scout · reading the index, not the articles · the model is thinking'
+                }
+                stages={character ? WORLD_CHARACTER_SCOUT_STAGES : WORLD_SCOUT_STAGES}
+                stage={character ? worldCharacterScoutStageOf(liveStatus) : worldScoutStageOf(liveStatus)}
                 onStop={() => void abortWrite()}
               />
             )}
             <WorldBookStep
+              source={source}
+              characters={characters}
+              chatRows={chatRows}
+              characterId={characterId}
+              setCharacterId={setCharacterId}
+              sessionId={sessionId}
+              setSessionId={setSessionId}
+              mode={mode}
+              setMode={setMode}
+              modes={modeOptions(status?.modes)}
+              copyCardLore={copyCardLore}
+              setCopyCardLore={setCopyCardLore}
+              characterDepthChoices={status?.characterDepthChoices}
               name={name}
               setName={setName}
               premise={premise}
@@ -619,7 +705,7 @@ export function WorldFromWikiPage() {
               contextSize={status?.contextSize ?? 0}
               chatContextSize={status?.chatContextSize}
               contextChoices={status?.contextChoices}
-              depth={status?.depth ?? 1}
+              depth={character ? characterDepthValue(status?.depth ?? 1) : (status?.depth ?? 1)}
               depthChoices={status?.depthChoices}
               onContext={(pick) => void setContext(pick)}
               lorebooksOn={lorebooksOn}
@@ -723,12 +809,26 @@ export function WorldFromWikiPage() {
         <button disabled={step === 0 || busy} onClick={() => setStep(step - 1)}>← Back</button>
         {step === 0 && (
           <span className="wfw-nav-next">
-            <button className="primary" disabled={busy || !nextOk || !wikiUrl} onClick={() => void scout()}>
-              {busy ? 'Scouting…' : lorebooksOn ? 'Scout wiki →' : 'Next: Review'}
+            <button
+              className="primary"
+              disabled={busy || !nextOk || (character ? !characterId : !wikiUrl)}
+              onClick={() => void scout()}
+            >
+              {busy
+                ? character && sessionId ? 'Skimming…' : 'Scouting…'
+                : !lorebooksOn
+                  ? 'Next: Review'
+                  : character
+                    ? sessionId ? 'Skim chat →' : 'Scout card →'
+                    : 'Scout wiki →'}
             </button>
             {lorebooksOn && !busy && (
               <span className="muted small" data-testid="world-from-wiki-nav-hint">
-                {depthTimeHint(status?.depth ?? 1).replace('About ', 'about ')}, with every step shown
+                {character
+                  ? sessionId
+                    ? 'one pass per 50 messages, then the scout'
+                    : 'the card goes straight onto the index, then the scout'
+                  : `${depthTimeHint(status?.depth ?? 1).replace('About ', 'about ')}, with every step shown`}
               </span>
             )}
           </span>

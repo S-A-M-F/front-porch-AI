@@ -16,66 +16,28 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_ops.dart
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_scout.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_places.dart';
+import 'world_build_mode.dart';
 import 'world_progress_copy.dart';
+import 'world_scout_result.dart';
+import 'world_source.dart';
 import 'world_write_rules.dart';
 import 'world_review_tools.dart';
 
-/// Scout result: index size plus proposed cards (default unsigned).
-class WorldScoutResult {
-  const WorldScoutResult({
-    required this.catalog,
-    required this.proposed,
-    this.places = const [],
-    this.failure,
-    this.parts = 0,
-    this.partsCut = 0,
-    this.revised = false,
-    this.auditNotes = const [],
-    this.notes = const [],
-  });
-
-  /// The run log: one line per loop try.
-  final List<String> notes;
-
-  final WikiStudioCatalog catalog;
-  final List<WorldProposedCard> proposed;
-
-  /// The shelf review's verdict: [revised] when the model's second shelf
-  /// replaced the first, [auditNotes] what the review found (empty when
-  /// the first shelf already read as a world).
-  final bool revised;
-  final List<String> auditNotes;
-
-  /// How many requests the index took: 1 when it fit the wizard's context
-  /// whole, more when it was asked in parts and merged.
-  final int parts;
-
-  /// Parts the model could not finish even at the smallest size; their
-  /// titles are missing from [proposed].
-  final int partsCut;
-
-  /// Plain words for why [proposed] is empty when the model never gave
-  /// its answer: the reply hit the token limit, the server was busy, the
-  /// call could not be read. Null when the model did answer — the wizard
-  /// then keeps its own "try a clearer premise" line.
-  final String? failure;
-
-  /// Slice 8 (design §9.2): the places the scout named from tag
-  /// evidence, already resolved into build order. Empty on an untagged
-  /// wiki — every consumer must treat that as "flat world, as before".
-  final List<WorldProposedPlace> places;
-}
+export 'world_scout_result.dart';
 
 /// Headless scout + write. Not ChatService. Signed-card count is the loop cap.
 class WorldFromWikiEngine {
   WorldFromWikiEngine({
-    required this.wiki,
+    WikiSearchService? wiki,
+    WorldSource? source,
     required this.llm,
     this.onProgress,
     this.contextTokens = kWorldWikiContextFloor,
     this.depth = kWorldWikiDepthDefault,
     this.moment = '',
-  });
+    this.mode,
+  }) : assert(wiki != null || source != null, 'a wiki or a source is needed'),
+       source = source ?? WikiWorldSource(wiki!);
 
   /// How deep this run digs (card target, fill rounds, review tries).
   final WorldWikiDepth depth;
@@ -83,7 +45,13 @@ class WorldFromWikiEngine {
   /// When in the story the scene starts; '' means the premise's time.
   final String moment;
 
-  final WikiSearchService wiki;
+  /// What this run reads: the wiki, or a character and a chat.
+  final WorldSource source;
+
+  /// How far the writer may go beyond the record; null is the wiki's own
+  /// rules, unchanged (docs/design/world-from-character.md §3.3).
+  final WorldBuildMode? mode;
+
   final LLMService llm;
   final void Function(String message)? onProgress;
 
@@ -145,8 +113,24 @@ class WorldFromWikiEngine {
     debugPrint('[World] abort');
   }
 
+  /// Hooks the source onto this run (the chat Skim needs the model and
+  /// the budget; the wiki ignores it). Idempotent; every pass calls it.
+  void bindSource() => source.bind(
+    llm: llm,
+    budget: budget,
+    onProgress: onProgress,
+    callTimeout: callTimeout,
+    retryPause: retryPause,
+    isAborted: () => _aborted,
+  );
+
+  /// The label a prompt gives a card's text: a wiki reads articles, a
+  /// record reads source lines.
+  String get sourceLabel => mode == null ? 'ARTICLES:' : 'SOURCE LINES:';
+
   Future<WikiStudioCatalog> scan({String? seedQuery}) async {
-    final catalog = await wiki.listStudioTitles(seedQuery: seedQuery);
+    bindSource();
+    final catalog = await source.catalog(seedQuery: seedQuery);
     lastCatalogTags = catalog.tagsByTitle;
     debugPrint(
       '[World] scan backend=${catalog.backend.name} '
@@ -186,7 +170,10 @@ class WorldFromWikiEngine {
           )
           ..callTimeout = callTimeout
           ..concurrency = writeConcurrency
-          ..retryPause = retryPause;
+          ..retryPause = retryPause
+          ..mode = mode
+          ..cardTargetOverride = source.cardTarget(depth)
+          ..scoutRangeOverride = source.scoutRange(depth);
     final scouted = await runner.run(
       titles: catalog.titles,
       tags: lastCatalogTags,
@@ -228,6 +215,7 @@ class WorldFromWikiEngine {
   }) async {
     _aborted = false;
     biome = null;
+    bindSource();
     rememberShelf(signed);
     entries.clear();
     _written.clear();
@@ -251,8 +239,8 @@ class WorldFromWikiEngine {
           extraLore: extraLore,
         ),
       ),
-      articleFor: (card) => joinSources(card.sourceTitles),
-      onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
+      articleFor: articleForCard,
+      onMiss: noteMiss,
       stop: () => _aborted,
     );
     onProgress?.call(worldProgressReading(k));
@@ -362,7 +350,7 @@ class WorldFromWikiEngine {
       buf.writeln('Name: ${card.name}');
       buf.writeln('Role: ${card.role.name}');
       buf.writeln('Suggested keys: $aliases');
-      buf.writeln('ARTICLES:');
+      buf.writeln(sourceLabel);
       buf.writeln(articles[i]);
     }
     buf.writeln();
@@ -437,13 +425,13 @@ class WorldFromWikiEngine {
     required String premise,
   }) async {
     onProgress?.call(worldProgressClimate());
-    final catalog = await scan();
-    final titles = [
-      for (final t in catalog.titles)
-        if (wikiTitleLooksClimate(t)) t,
-    ].take(4).toList();
+    bindSource();
+    final titles = await source.climateTitles(
+      allowGuess: mode?.guessesClimate ?? false,
+    );
     if (titles.isEmpty) {
       debugPrint('[World] climate miss no titles');
+      if (mode != null) onProgress?.call(worldProgressNoWeather());
       return null;
     }
     // The four climate articles must leave the biome call its room.

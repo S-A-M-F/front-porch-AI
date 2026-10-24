@@ -13,9 +13,12 @@ import 'package:front_porch_ai/services/lore_extraction_service.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_character_pick.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_shelf_actions.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_source_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_wizard_gate.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_progress_log.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_wizard_source.dart';
 
 /// The wizard's context for one run: the Book step's own pick, or chat's
 /// when the pick is "Same as chat". Read at Scout and Write time, never
@@ -82,6 +85,10 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
   /// The Moment: when in the story the scene starts. Every card is
   /// written as things stand then; later events are unknown.
   final momentController = TextEditingController();
+
+  /// What this run builds from; the Book step's second card follows it.
+  WorldWizardSource wizardSource = WorldWizardSource.wiki;
+  final characterPick = WorldCharacterPick();
 
   String wikiUrl = '';
   bool lorebooksOn = true;
@@ -195,24 +202,15 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     momentController.dispose();
   }
 
-  WikiSearchService _wiki() {
-    final url = wikiUrl;
-    final factory = wikiFactory;
-    if (factory != null) return factory(url);
-    return WikiSearchService(
-      getBaseUrl: () => wikiUrl,
-      sendRequest: sendRequest,
-    );
-  }
-
   Future<void> scout({
     required LLMProvider llm,
     required CreatorState creator,
     required int contextTokens,
     WorldWikiDepth depth = kWorldWikiDepthDefault,
   }) async {
-    if (wikiUrl.trim().isEmpty) {
-      error = 'Pick a wiki first.';
+    final pickError = sourcePickError;
+    if (pickError != null) {
+      error = pickError;
       notify();
       return;
     }
@@ -232,14 +230,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     beginRun('Scouting wiki…');
     notify();
     try {
-      engine = WorldFromWikiEngine(
-        wiki: _wiki(),
-        llm: svc,
-        contextTokens: contextTokens,
-        depth: depth,
-        moment: momentController.text,
-        onProgress: noteProgress,
-      );
+      engine = await engineFor(svc, contextTokens: contextTokens, depth: depth);
       final result = await engine!.scout(
         worldName: nameController.text,
         premise: premiseController.text,
@@ -300,15 +291,8 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     beginRun('Writing 0/${picked.length}');
     currentStep = 3;
     notify();
-    engine = WorldFromWikiEngine(
-      wiki: _wiki(),
-      llm: svc,
-      contextTokens: contextTokens,
-      depth: depth,
-      moment: momentController.text,
-      onProgress: noteProgress,
-    );
     try {
+      engine = await engineFor(svc, contextTokens: contextTokens, depth: depth);
       final t = await engine!.writeTree(
         picked,
         places: places,
@@ -344,7 +328,10 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     }
   }
 
-  World previewWorld() {
+  World previewWorld() =>
+      characterPick.stamp(_previewRoot(), active: wizardSource.isCharacter);
+
+  World _previewRoot() {
     final t = tree;
     if (t == null || t.isFlat) {
       return worldFromWikiDraft(

@@ -292,6 +292,8 @@ class WorldPlaceCard extends StatelessWidget {
                         if (insideName != null)
                           _tag(context, 'inside $insideName', muted: true),
                         if (world.isModelMade) _tag(context, 'model-made'),
+                        if (world.sourceCharacterName != null)
+                          _tag(context, 'from ${world.sourceCharacterName}'),
                         if (placeCount > 0)
                           _tag(
                             context,

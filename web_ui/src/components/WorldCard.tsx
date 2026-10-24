@@ -27,6 +27,9 @@ export interface WorldSummary {
   // additive fields; old payloads without them render today's card.
   parentWorldId?: string | null;
   isModelMade?: boolean;
+  /** World from Character (additive): the character the world was built
+   * from, for the "from <character>" tag. Provenance only, never a link. */
+  sourceCharacterName?: string | null;
 }
 
 /** Deterministic hue (0-359) from a world name, so a given world always renders
@@ -147,6 +150,11 @@ export function WorldCard({
           )}
           {world.isModelMade === true && (
             <span className="wsg-inside-tag">model-made</span>
+          )}
+          {world.sourceCharacterName && (
+            <span className="wsg-inside-tag" data-testid="world-from-character-tag">
+              from {world.sourceCharacterName}
+            </span>
           )}
         </div>
         <div className="wsg-world-actions">

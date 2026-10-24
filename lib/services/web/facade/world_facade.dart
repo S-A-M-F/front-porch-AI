@@ -205,6 +205,18 @@ class WorldFacade {
     if (f.containsKey('injectDescription')) {
       world.injectDescription = f['injectDescription'] == true;
     }
+    // World from Character (additive): the PWA passes the root's
+    // provenance from the wizard's done event. Absent keys keep what the
+    // row has; the desktop stamps the same two fields.
+    if (f.containsKey('sourceId')) {
+      final sourceId = f['sourceId']?.toString().trim() ?? '';
+      world.sourceId = sourceId.isEmpty ? null : sourceId;
+    }
+    if (f['placeTraits'] is Map) {
+      world.placeTraits.addAll(
+        Map<String, dynamic>.from(f['placeTraits'] as Map),
+      );
+    }
     // Slice 4 web twin: "Part of" changes the parent. Absent key keeps
     // the row's parent (same upsert discipline as the climate fields);
     // an explicit null or '' detaches it to its own world. The unknown/

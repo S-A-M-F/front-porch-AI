@@ -131,6 +131,16 @@ class World {
   /// round-trips in newer builds.
   bool get isModelMade => placeTraits['madeBy']?.toString() == 'model';
 
+  /// The character this world was built from (World from Character), or
+  /// null. Provenance only: nothing is linked, so renaming or deleting the
+  /// character leaves the world alone.
+  String? get sourceCharacterName {
+    final source = placeTraits['source'];
+    if (source is! Map || source['kind'] != 'character') return null;
+    final name = source['name']?.toString().trim() ?? '';
+    return name.isEmpty ? null : name;
+  }
+
   World({
     String? id,
     required this.name,

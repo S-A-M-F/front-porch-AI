@@ -345,6 +345,7 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
   List<LlmToolCall> calls, {
   Iterable<String>? catalog,
   int max = kWorldScoutCardMax,
+  bool keepUnsourced = false,
 }) {
   final byLower = catalog == null
       ? null
@@ -359,12 +360,20 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
       var sources = [
         for (final t in parsed.sourceTitles) worldScoutBareTitle(t),
       ];
+      var invented = false;
       if (byLower != null) {
-        sources = [
+        final matched = [
           for (final t in sources)
             if (byLower[t.toLowerCase()] != null) byLower[t.toLowerCase()]!,
         ];
-        if (sources.isEmpty) continue;
+        if (matched.isEmpty) {
+          // Creative mode keeps a card the index does not know, marked
+          // so the Shelf shows it unsigned; every other run drops it.
+          if (!keepUnsourced) continue;
+          invented = true;
+        } else {
+          sources = matched;
+        }
       }
       final key = parsed.name.toLowerCase();
       if (!seen.add(key)) continue;
@@ -377,6 +386,7 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
           group: parsed.group,
           place: parsed.place,
           kind: parsed.kind,
+          invented: invented,
         ),
       );
       if (out.length >= max) return out;

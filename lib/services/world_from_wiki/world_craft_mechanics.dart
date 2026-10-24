@@ -47,6 +47,7 @@ class WorldProposedCard {
     this.group = '',
     this.place = '',
     this.kind = '',
+    this.invented = false,
   });
 
   final String name;
@@ -54,6 +55,11 @@ class WorldProposedCard {
   final WorldCraftRole role;
   final List<String> sourceTitles;
   final String group;
+
+  /// Creative mode only: the scout proposed this card from the premise and
+  /// none of its source titles is in the index. Additive — an older scout
+  /// or client never sets it.
+  final bool invented;
 
   /// One of [kWorldCardKinds], or '' from an older scout or client.
   final String kind;
@@ -71,6 +77,7 @@ class WorldProposedCard {
     if (group.isNotEmpty) 'group': group,
     if (place.isNotEmpty) 'place': place,
     if (kind.isNotEmpty) 'kind': kind,
+    if (invented) 'invented': true,
   };
 
   static WorldProposedCard? tryParse(Map<String, dynamic> json) {
@@ -99,6 +106,7 @@ class WorldProposedCard {
       group: group,
       place: place,
       kind: kWorldCardKinds.contains(kindRaw) ? kindRaw : '',
+      invented: json['invented'] == true,
     );
   }
 }

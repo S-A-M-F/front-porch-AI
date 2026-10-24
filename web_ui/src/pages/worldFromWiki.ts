@@ -600,3 +600,204 @@ export function shelfBackboneIndices(proposed: ProposedWorldCard[]): number[] {
     .map((c, i) => (c.role === 'era' || WORLD_BACKBONE_KINDS.has(shelfKindOf(c)) ? i : -1))
     .filter((i) => i >= 0);
 }
+
+// ── World from Character (docs/design/world-from-character.md) ──────────
+
+/** What the wizard builds from; the steps are the same either way. */
+export type WorldWizardSource = 'wiki' | 'character';
+
+export function wizardSourceTitle(source: WorldWizardSource): string {
+  return source === 'character' ? 'World from Character' : 'World from Wiki';
+}
+
+/** How far the writer may go beyond the record (design §3.3). */
+export type WorldBuildMode = 'factsOnly' | 'faithful' | 'creative';
+
+export type WorldModeChoice = { value: WorldBuildMode; label: string; does: string; never: string };
+
+/** The shipped tiles, for an older server that sends none; same words as the desktop. */
+export const WORLD_BUILD_MODES: WorldModeChoice[] = [
+  {
+    value: 'factsOnly',
+    label: 'Facts only',
+    does: "Restates what the chat, its Journal, Growth rings and Objectives, and the card say, in the world's voice. The model writes the sentences; it adds no fact.",
+    never: 'A new name, place, event or detail. A sentence the lines do not state is sent back; a card nothing supports is dropped; weather only if the chat shows some.',
+  },
+  {
+    value: 'faithful',
+    label: 'Faithful',
+    does: 'Keeps every fact as the spine and rounds it out: a place gets the look its lines imply, a person their manner, a gap between known events a line of connective tissue.',
+    never: 'A new named place, person, faction, item or event, and nothing that changes what happened. Rounded-out sentences are marked at Review.',
+  },
+  {
+    value: 'creative',
+    label: 'Creative',
+    does: 'The same facts, and the model may invent around them: new places, people and events the chat only hints at, and a climate guessed from the card.',
+    never: 'A contradiction of the chat. Invented cards start unsigned on the Shelf and are marked at Review.',
+  },
+];
+
+export const WORLD_MODE_EXPLAINER =
+  'All three read the same record. They differ in what the model may add: nothing, texture, or new things. Whatever is added is marked, so you can drop it before Mint.';
+
+const MODE_VALUES: readonly WorldBuildMode[] = ['factsOnly', 'faithful', 'creative'];
+
+/** The relay's mode list as tiles, or the shipped list. */
+export function modeOptions(raw: unknown): WorldModeChoice[] {
+  if (!Array.isArray(raw) || raw.length === 0) return WORLD_BUILD_MODES;
+  const out: WorldModeChoice[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const value = String(row.value ?? '') as WorldBuildMode;
+    if (!MODE_VALUES.includes(value)) continue;
+    out.push({
+      value,
+      label: String(row.label ?? value),
+      does: String(row.does ?? ''),
+      never: String(row.never ?? ''),
+    });
+  }
+  return out.length ? out : WORLD_BUILD_MODES;
+}
+
+/** Facts only with a chat, Creative for Card only (design §7). */
+export function defaultModeFor(hasChat: boolean): WorldBuildMode {
+  return hasChat ? 'factsOnly' : 'creative';
+}
+
+/** Under this there is almost nothing to skim (design §3.5). */
+export const WORLD_CHAT_MESSAGES_FLOOR = 40;
+/** Under this (about fifty turns) Facts only gives a thin shelf. */
+export const WORLD_CHAT_MESSAGES_SHORT = 100;
+/** Below this Full is mostly review passes over the same cards. */
+export const WORLD_CHAT_MESSAGES_FOR_FULL = 200;
+
+/** The chip a chat row wears: 'too short to skim', 'short chat', or ''. */
+export function worldChatLengthChip(messages: number): string {
+  if (messages <= 0) return '';
+  if (messages < WORLD_CHAT_MESSAGES_FLOOR) return 'too short to skim';
+  if (messages < WORLD_CHAT_MESSAGES_SHORT) return 'short chat';
+  return '';
+}
+
+const MODE_LABEL: Record<WorldBuildMode, string> = { factsOnly: 'Facts only', faithful: 'Faithful', creative: 'Creative' };
+
+/** The one warning line under the chat rows, or null; the desktop says exactly this. It warns, never blocks. */
+export function worldChatLengthWarning(messages: number, mode: WorldBuildMode, depth: number): string | null {
+  if (messages <= 0) return null;
+  const turns = Math.round(messages / 2);
+  const count = `${messages} message${messages === 1 ? '' : 's'} (about ${turns} turn${turns === 1 ? '' : 's'})`;
+  if (messages < WORLD_CHAT_MESSAGES_FLOOR) {
+    return `This chat has ${count}. Under ${WORLD_CHAT_MESSAGES_FLOOR} messages there is almost nothing to skim: Card only, or Creative, does better.`;
+  }
+  if (messages < WORLD_CHAT_MESSAGES_SHORT) {
+    return mode === 'creative'
+      ? `This chat has ${count}. The shelf will lean on what the model invents around it.`
+      : `This chat has ${count}. ${MODE_LABEL[mode]} will give a thin shelf, likely under ten cards.`;
+  }
+  if (messages < WORLD_CHAT_MESSAGES_FOR_FULL && depth !== 0) {
+    return `This chat has ${count}. Below ${WORLD_CHAT_MESSAGES_FOR_FULL} messages Full is mostly review passes over the same cards; Quick is the better fit.`;
+  }
+  return null;
+}
+
+/** The depth tiles a chat offers: no Deep, smaller counts (design §3.3). */
+export const WORLD_CHARACTER_DEPTHS: DepthChoice[] = [
+  { value: 0, label: 'Quick', cards: 15, blurb: 'The places, the people around them, the events the chat turned on. No review passes; the shelf may be thin.', time: 'About 5 min on a remote model' },
+  { value: 1, label: 'Full', cards: 30, blurb: 'Places and factions name their people in their own card. Reviewers check the shelf and every entry against the chat.', time: 'About 15 min on a remote model' },
+];
+
+export const WORLD_CHARACTER_NO_DEEP_COPY =
+  "Deep is not offered here: a chat has no roster to walk the way a wiki's categories do.";
+
+/** The relay's character depth list, or the shipped one; a stored Deep shows as Full. */
+export function characterDepthOptions(raw: unknown): DepthChoice[] {
+  const parsed = depthOptions(raw);
+  const own = parsed === WORLD_WIKI_DEPTHS ? WORLD_CHARACTER_DEPTHS : parsed;
+  return own.filter((d) => d.value !== 2);
+}
+
+export function characterDepthValue(depth: number): number {
+  return depth === 2 ? 1 : depth;
+}
+
+/** The scout's stages when the source is a chat: the Skim comes first. */
+export const WORLD_CHARACTER_SCOUT_STAGES = ['Skim the chat', ...WORLD_SCOUT_STAGES];
+
+/** Which character-scout stage a progress line belongs to (0-based). */
+export function worldCharacterScoutStageOf(line: string): number {
+  const l = line.toLowerCase();
+  if (
+    l.startsWith('skimming') ||
+    l.startsWith('part ') ||
+    l.startsWith('weather in this stretch') ||
+    l.startsWith('reading the character') ||
+    l.includes('messages in ') ||
+    l.startsWith('index ready')
+  ) {
+    return 0;
+  }
+  return worldScoutStageOf(line) + 1;
+}
+
+/** One 1:1 chat as /api/stories/chat-sources lists it. */
+export type ChatSourceRow = {
+  character_id: string;
+  character_name: string;
+  session_id: string;
+  session_name: string;
+  summary: string;
+  date: string;
+  message_count: number;
+};
+
+export function parseChatSourceRows(raw: unknown): ChatSourceRow[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { chats?: unknown }).chats)
+      ? ((raw as { chats: unknown[] }).chats)
+      : [];
+  const out: ChatSourceRow[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const sessionId = String(r.session_id ?? '').trim();
+    if (!sessionId) continue;
+    out.push({
+      character_id: String(r.character_id ?? ''),
+      character_name: String(r.character_name ?? ''),
+      session_id: sessionId,
+      session_name: String(r.session_name ?? ''),
+      summary: String(r.summary ?? ''),
+      date: String(r.date ?? ''),
+      message_count: typeof r.message_count === 'number' ? r.message_count : Number(r.message_count) || 0,
+    });
+  }
+  return out;
+}
+
+/** The 1:1 chats of one character, as the relay orders them (newest first). */
+export function worldChatRowsFor(rows: ChatSourceRow[], characterId: string): ChatSourceRow[] {
+  return rows.filter((r) => r.character_id === characterId);
+}
+
+/** The relay's `source` field for a scout or write body; absent means the wiki. */
+export function worldSourceBody(pick: {
+  source: WorldWizardSource;
+  characterId: string;
+  sessionId: string;
+  mode: WorldBuildMode;
+  copyCardLore: boolean;
+}): Record<string, unknown> {
+  if (pick.source !== 'character') return {};
+  return {
+    source: {
+      kind: 'character',
+      characterId: pick.characterId,
+      ...(pick.sessionId ? { sessionId: pick.sessionId } : {}),
+      mode: pick.mode,
+      copyCardLore: pick.copyCardLore,
+    },
+  };
+}

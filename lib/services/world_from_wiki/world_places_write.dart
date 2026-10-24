@@ -38,6 +38,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
     bool climateEnabled = false,
     Set<String> climatePlaces = const {},
   }) async {
+    bindSource();
     rememberShelf(signed);
     if (places.isEmpty) {
       final flat = await write(
@@ -185,8 +186,8 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
           extraLore: extraLore,
         ),
       ),
-      articleFor: (card) => joinSources(card.sourceTitles),
-      onMiss: (card) => debugPrint('[World] write miss ${card.name}'),
+      articleFor: articleForCard,
+      onMiss: noteMiss,
       stop: () => aborted,
     );
     final planned = await batches.toList();

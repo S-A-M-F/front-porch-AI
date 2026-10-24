@@ -7,9 +7,13 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/book_depth_section.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/book_mode_section.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/book_source_section.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/book_wiki_section.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_wizard_source.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/world_progress_panel.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/world_section_card.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_source_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
 import 'package:front_porch_ai/ui/widgets/widgets.dart';
@@ -58,12 +62,20 @@ class WorldFromWikiBookStep extends StatelessWidget {
                 children: [
                   _worldCard(context, wide),
                   const SizedBox(height: 18),
-                  BookWikiSection(state: state, storage: storage, wide: wide),
+                  if (state.wizardSource.isCharacter)
+                    BookSourceSection(
+                      state: state,
+                      wide: wide,
+                      depth: worldWizardDepth(storage),
+                    )
+                  else
+                    BookWikiSection(state: state, storage: storage, wide: wide),
                   const SizedBox(height: 18),
                   BookDepthSection(
                     storage: storage,
                     wide: wide,
                     enabled: !state.busy,
+                    forCharacter: state.wizardSource.isCharacter,
                   ),
                   const SizedBox(height: 18),
                   _makeCard(context, wide),
@@ -77,12 +89,20 @@ class WorldFromWikiBookStep extends StatelessWidget {
                   if (state.scouting) ...[
                     WorldProgressPanel(
                       state: state,
-                      fallback: 'Scouting…',
-                      subtitle:
-                          'Scout · reading the index, not the articles · '
-                          'the model is thinking',
-                      stages: kWorldScoutStages,
-                      stage: worldScoutStageOf(state.status),
+                      fallback: state.scoutLabel == 'Skim chat'
+                          ? 'Skimming…'
+                          : 'Scouting…',
+                      subtitle: state.wizardSource.isCharacter
+                          ? 'Skim · one pass per 50 messages · then the '
+                                'scout reads the index, not the chat'
+                          : 'Scout · reading the index, not the articles · '
+                                'the model is thinking',
+                      stages: state.wizardSource.isCharacter
+                          ? kWorldCharacterScoutStages
+                          : kWorldScoutStages,
+                      stage: state.wizardSource.isCharacter
+                          ? worldCharacterScoutStageOf(state.status)
+                          : worldScoutStageOf(state.status),
                       onStop: state.abortWrite,
                     ),
                     const SizedBox(height: 18),
@@ -119,8 +139,7 @@ class WorldFromWikiBookStep extends StatelessWidget {
       ),
       const SizedBox(height: 6),
       Text(
-        'Name the world, pick its wiki, say how deep to dig. Scout proposes '
-        'a shelf of cards from the wiki\'s index, not one card per page.',
+        state.wizardSource.bookBlurb,
         style: TextStyle(
           color: StudioColors.proseOf(context),
           fontSize: 15,
@@ -266,9 +285,11 @@ class WorldFromWikiBookStep extends StatelessWidget {
       context,
       icon: Icons.cloud_outlined,
       title: 'Climate',
-      blurb:
-          'Off by default. On, each place with its own sky gets its own '
-          'weather.',
+      blurb: state.wizardSource.isCharacter
+          ? 'Off by default. On, the weather is read from the chat where it '
+                'shows one; Creative may guess it from the card and says so.'
+          : 'Off by default. On, each place with its own sky gets its own '
+                'weather.',
       value: state.climateEnabled,
       onChanged: (v) {
         state.climateEnabled = v;
@@ -283,6 +304,19 @@ class WorldFromWikiBookStep extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (state.wizardSource.isCharacter) ...[
+            BookModeSection(
+              mode: state.characterPick.mode,
+              hasChat: state.characterPick.hasChat,
+              wide: wide,
+              enabled: !state.busy,
+              onChanged: (m) {
+                state.characterPick.mode = m;
+                state.notify();
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
           if (wide)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,6 +330,22 @@ class WorldFromWikiBookStep extends StatelessWidget {
             lore,
             const SizedBox(height: 10),
             climate,
+          ],
+          if (state.wizardSource.isCharacter) ...[
+            const SizedBox(height: 10),
+            _toggleTile(
+              context,
+              icon: Icons.library_books_outlined,
+              title: "Copy the card's lorebook in",
+              blurb:
+                  "The character's own entries ride along unchanged, for one "
+                  'portable file. Off, the new cards chain to them instead.',
+              value: state.characterPick.copyCardLore,
+              onChanged: (v) {
+                state.characterPick.copyCardLore = v;
+                state.notify();
+              },
+            ),
           ],
           const SizedBox(height: 12),
           Wrap(
