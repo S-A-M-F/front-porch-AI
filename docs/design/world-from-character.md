@@ -104,6 +104,19 @@ that section's text. Without a chat this is the whole catalog, and the
 Book step says so ("From the card alone: a short world, mostly places the
 card names").
 
+**What counts as fact.** The record of the chat is more than its
+messages. The source reads all of it: the messages; the Journal cards
+(`JournalMemories`, per chat per character, placed at the message they
+were recorded against); the Growth rings (`GrowthRings`, one sentence
+each, pinned or retired); and the chat's Objectives (`Objectives`, the
+goal and its tasks, active or done, keyed by `stableGroupId` and chat
+id). Journal and Growth ride with the chunk that holds their receipt, the
+way `StoryChatMemory.chunkNotes` already places them; Objectives have no
+message receipt and join the closing notes with the unplaced cards, as
+"what the character was working toward". Together with the card these
+are the facts; §3.3's Faithful or Creative choice says what the writer may
+do beyond them.
+
 **The chat is skimmed, not indexed.** The wiki scout reads the index and
 never the articles, so chat chunks cannot be titles: "Chat part 3" says
 nothing to a scout. The source runs a **Skim** pass first, one call per
@@ -118,8 +131,8 @@ kind and `chat`, ranked by how many chunks mention it (so
 `catalog.ranked` is true and the scout's "linked most" ordering applies).
 `article(name)` returns the Skim line plus every message that names it or
 an alias, oldest first, clipped the way wiki articles are clipped, with
-the Journal cards and rings that name it appended under the same
-"confirmed by the chat's Journal" heading the Distiller uses.
+the Journal cards, rings and Objectives that name it appended under the
+same "confirmed by the chat's Journal" heading the Distiller uses.
 
 The Skim's tool is `skim_chat` (names, kinds, aliases, parent, weather
 flag), through the same tools gate as the scout; the wizard stays
@@ -156,13 +169,24 @@ adjustments, each behind `source.kind`:
 - **Where the story stands** is prefilled from the chat's end: the
   session summary (`chat.summary`, the same recap chat-to-story passes),
   editable, with the chip "from the chat's end".
-- **Stay with the chat** (switch, default on when a chat is picked, hidden
-  without one). On, the write header says "only what the sources show; a
-  sentence the chat and card do not support is a finding", and the entry
-  reviewer treats an unsupported sentence as a rewrite. Off, the writer
-  may fill the world in, and the entry reviewer marks what it invented so
-  the Review step shows an `extrapolated` chip on those cards. Either way
-  the author sees which is which before Mint.
+- **Faithful or Creative** (a two-way choice on the Book step, not a
+  switch; the story feature's faithful mode, worded for a world). Both
+  read the same facts (§3.2: the messages, the Journal, the Growth rings,
+  the Objectives, the card) and in both a sentence that contradicts them
+  is a finding the entry reviewer sends back.
+  **Faithful** (default when a chat is picked): the write header says
+  "only what the sources show; a sentence they do not support is a
+  finding", the entry reviewer treats an unsupported sentence as a
+  rewrite, and a card the sources cannot carry is dropped with the
+  verdict "nothing in the chat to write this from". The shelf is smaller
+  and true.
+  **Creative** (default for Card only): the scout may propose cards the
+  sources only hint at, shown on the Shelf with an `invented` chip and
+  unsigned by default; the writer may fill the world in around the facts;
+  the entry reviewer marks what it added so the Review step shows an
+  `extrapolated` chip on those cards, with the invented part named in
+  the verdict line. Either way the author sees which is which before
+  Mint, and the choice is remembered per character for the next run.
 - **Climate** stays off by default. On, the climate call reads the Skim's
   weather lines when any chunk showed weather, else the Scenario, and the
   Review step's place row says "weather from the chat" or "guessed from
@@ -225,9 +249,12 @@ Check now.
 3. **How deep** — Quick and Full tiles with their card counts and time
    hints for this source, and the Context for this wizard pills, as the
    wiki step has them.
-4. **What to make** — Lorebooks and Climate switches as today, plus Stay
-   with the chat and Copy the card's lorebook in, each with its one-line
-   blurb.
+4. **What to make** — first the **Faithful or Creative** pair as two
+   `WorldPickTile`s across the card ("Only what the chat, its Journal,
+   Growth and Objectives, and the card show" against "The same facts, and
+   the model may fill the world in; what it adds is marked"), then the
+   Lorebooks and Climate switches as today and Copy the card's lorebook
+   in, each with its one-line blurb.
 
 Next reads **Skim chat** when a chat is picked and **Scout card** when it
 is not; the hint under it says "one pass per 50 messages, then the scout".
@@ -263,7 +290,7 @@ library card.
 |---|-------|-----------|---------------------------|
 | 1 | `WorldSource` seam: interface, `WikiWorldSource`, engine and facade take the interface | — | none new; `world_from_wiki_test`, `world_review_loop_test`, `WorldFromWikiPage.tools.test.tsx` stay green unedited, which is the pin |
 | 2 | `CharacterChatWorldSource` (card sections, Skim, article lookup, persona macro, main-character exclusion), Quick/Full counts, From Character on both Worlds pages, Book step card 2, relay `source`, provenance tag | 1 | new `test/services/world_from_wiki/world_from_character_source_test.dart`: card sections become titles, Skim tool payload decodes and merges by alias, `article` returns only lines naming the title with Journal notes appended, the main character and the user are never titles, a minted entry never carries the persona name, group sessions are not offered; `world_from_wiki_depth_test`: source card targets; `worlds_management_test`: From Character opens the wizard, picking a character lists its chats; web `WorldFromWikiPage.character.test.tsx`, sweep route, journey |
-| 3 | Stay with the chat and `extrapolated` verdicts, Where the story stands from the chat's end, climate from weather lines, Copy the card's lorebook in | 2 | `world_review_loop_test`: an unsupported sentence is a finding under faithful and a chip otherwise; source test: weather lines reach the climate call, copied entries are byte-equal |
+| 3 | Faithful or Creative: `invented` shelf chips, `extrapolated` verdicts, drop-for-no-source under Faithful, Objectives in the closing notes, Where the story stands from the chat's end, climate from weather lines, Copy the card's lorebook in | 2 | `world_review_loop_test`: an unsupported sentence is a rewrite under Faithful and a chip under Creative, a contradiction is a finding under both; source test: Objectives reach the closing notes, weather lines reach the climate call, copied entries are byte-equal |
 | 4 | Group chats as a source (several characters, each excluded from person cards, speaker names kept) | 2 | source test: a group session's speakers are all excluded; picker lists groups |
 
 Slices 1 to 3 are the feature. Slice 4 is the path-complete debt
@@ -285,7 +312,9 @@ Desktop ↔ web in every slice.
 - The main character and the user get no person card.
 - The card's lorebook is grounding; copying it in is an opt-in switch.
 - Quick and Full only; smaller targets than a wiki.
-- Stay with the chat defaults on when a chat is picked.
+- Faithful or Creative is a two-way choice; Faithful when a chat is
+  picked, Creative for Card only; the same facts ground both, including
+  the Journal, Growth rings and Objectives.
 - The persona is `{{user}}` in every entry.
 - Provenance through `sourceId`; `linkedCharacterId` stays retired.
 - 1:1 chats first; groups are slice 4, said in the picker.
