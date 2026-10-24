@@ -20,7 +20,10 @@ void main() {
       expect(WorldWikiDepth.quick.fillRounds, 0);
       expect(WorldWikiDepth.quick.tries, 1);
       expect(WorldWikiDepth.full.reviews, isTrue);
-      expect(WorldWikiDepth.full.tries, 3);
+      // Changed 2026-10-23: Full gets one rewrite per entry, not two. The
+      // first Kimi loops run sent nearly every batch round three times and
+      // ran past four hours without finishing; Deep keeps three tries.
+      expect(WorldWikiDepth.full.tries, 2);
     });
 
     test(

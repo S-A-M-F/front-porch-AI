@@ -86,7 +86,7 @@ extension WorldWikiDepthX on WorldWikiDepth {
   /// Tries per review loop (one generate plus revises).
   int get tries => switch (this) {
     WorldWikiDepth.quick => 1,
-    WorldWikiDepth.full => 3,
+    WorldWikiDepth.full => 2,
     WorldWikiDepth.deep => 3,
   };
 

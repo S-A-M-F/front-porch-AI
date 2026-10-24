@@ -13,6 +13,7 @@
 //   FPAI_LIVE_PREMISE='…' FPAI_LIVE_MOMENT='…' FPAI_LIVE_DEPTH=1 \
 //   FPAI_LIVE_CONTEXT=65536 FPAI_LIVE_WRITE=1 \
 //   FPAI_LIVE_OUT=/path/world.json \
+//   FPAI_LIVE_SHELF=/path/earlier.json FPAI_LIVE_MAX_CARDS=40 \
 //     flutter test --tags wiki_live test/live/world_from_wiki_live_test.dart
 //
 // FPAI_LIVE_API_KEY names the provider key; without it, on macOS, the key
@@ -62,6 +63,42 @@ Future<String> _savedKeyFor(String apiUrl) async {
   }
 }
 
+/// A saved run's shelf as a scout result: its cards (the first [maxCards]
+/// when given) and the places those cards name.
+WorldScoutResult _shelfFrom(String path, {int? maxCards}) {
+  final raw = jsonDecode(File(path).readAsStringSync()) as Map;
+  final scout = raw['scout'] as Map;
+  var cards = parseSignedWorldWriteCards(scout['cards'], max: 400);
+  if (maxCards != null && maxCards > 0) cards = cards.take(maxCards).toList();
+  final used = {for (final c in cards) c.place.trim().toLowerCase()}
+    ..remove('');
+  final places = [
+    for (final e in (scout['places'] as List? ?? const []))
+      if (e is Map) ?WorldProposedPlace.tryParse(Map<String, dynamic>.from(e)),
+  ];
+  // Keep a place when a card names it, or a kept place lies inside it.
+  final keep = <String>{};
+  for (final p in places) {
+    if (used.contains(p.key)) keep.add(p.key);
+  }
+  for (final p in places) {
+    if (keep.contains(p.key) && p.parentName.trim().isNotEmpty) {
+      keep.add(p.parentName.trim().toLowerCase());
+    }
+  }
+  return WorldScoutResult(
+    catalog: const WikiStudioCatalog(
+      backend: WikiBackend.mediawiki,
+      titles: [],
+    ),
+    proposed: cards,
+    places: [
+      for (final p in places)
+        if (keep.contains(p.key)) p,
+    ],
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final apiUrl = _env('FPAI_LIVE_API_URL');
@@ -78,6 +115,11 @@ void main() {
     int.tryParse(_env('FPAI_LIVE_DEPTH') ?? ''),
   );
   final write = _env('FPAI_LIVE_WRITE') == '1';
+  // An earlier run's JSON whose scout shelf is written again (no scout),
+  // and a cap on how many of its cards, so the write can be iterated on
+  // without a half-hour scout each time.
+  final shelfPath = _env('FPAI_LIVE_SHELF');
+  final maxCards = int.tryParse(_env('FPAI_LIVE_MAX_CARDS') ?? '');
 
   final savedOverrides = HttpOverrides.current;
   setUp(() => HttpOverrides.global = _RealHttpOverrides());
@@ -121,7 +163,20 @@ void main() {
       ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
 
       final sw = Stopwatch()..start();
-      final scout = await engine.scout(worldName: name, premise: premise);
+      // Each finished book lands in the file at once, so a run cut short
+      // still leaves its work to judge.
+      final partial = <Map<String, dynamic>>[];
+      engine.onPlaceWritten = (p) {
+        partial.add(p.toJson());
+        report['partial'] = partial;
+        save();
+        stdout.writeln(
+          '[live] book done: ${p.name} (${p.entries.length} cards)',
+        );
+      };
+      final scout = shelfPath != null
+          ? _shelfFrom(shelfPath, maxCards: maxCards)
+          : await engine.scout(worldName: name, premise: premise);
       report['catalog'] = {
         'titles': scout.catalog.titles.length,
         'articles': scout.catalog.articleCount,

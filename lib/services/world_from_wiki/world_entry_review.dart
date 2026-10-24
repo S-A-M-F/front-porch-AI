@@ -9,6 +9,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'package:front_porch_ai/services/chat/chat.dart';
+
 import 'package:front_porch_ai/services/llm_service.dart';
 
 import 'world_craft_mechanics.dart';
@@ -27,6 +29,23 @@ import 'world_write_rules.dart';
 const int kWorldEntryReviewArticleChars = 1200;
 
 extension WorldEntryReviewLoop on WorldFromWikiEngine {
+  Future<String> joinSources(List<String> titles) async {
+    final buf = StringBuffer();
+    for (final title in titles.take(3)) {
+      final t = title.trim();
+      if (t.isEmpty || skipWikiStudioTitle(t)) continue;
+      final article = await wiki.getArticleFull(t);
+      if (!article.ok) {
+        debugPrint('[World] write miss $t');
+        continue;
+      }
+      if (buf.isNotEmpty) buf.writeln();
+      buf.writeln('=== $t ===');
+      buf.writeln(article.snippet);
+    }
+    return buf.toString().trim();
+  }
+
   /// The lines every write-side prompt opens with: world, premise, the
   /// Moment, the shelf's names, and the attached notes.
   String writeHeader({
@@ -104,6 +123,9 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
         for (final d in toReview) {
           final key = d.name.trim().toLowerCase();
           final v = verdicts[key];
+          if (v != null && v.parsed && !v.pass && v.problems.isNotEmpty) {
+            debugPrint('[World] entry review ${d.name}: ${v.problems.first}');
+          }
           if (v == null || v.pass || !v.parsed) {
             accepted[key] = d;
             entryNotes[key] = WorldEntryNote(

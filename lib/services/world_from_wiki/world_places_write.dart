@@ -114,6 +114,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
           biome: profile?.biome,
         ),
       );
+      onPlaceWritten?.call(written.last);
     }
 
     if (aborted) {

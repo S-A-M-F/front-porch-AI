@@ -322,22 +322,9 @@ class WorldFromWikiEngine {
     return List<LorebookEntry>.unmodifiable(entries);
   }
 
-  Future<String> joinSources(List<String> titles) async {
-    final buf = StringBuffer();
-    for (final title in titles.take(3)) {
-      final t = title.trim();
-      if (t.isEmpty || skipWikiStudioTitle(t)) continue;
-      final article = await wiki.getArticleFull(t);
-      if (!article.ok) {
-        debugPrint('[World] write miss $t');
-        continue;
-      }
-      if (buf.isNotEmpty) buf.writeln();
-      buf.writeln('=== $t ===');
-      buf.writeln(article.snippet);
-    }
-    return buf.toString().trim();
-  }
+  /// A place's book is finished (the root last): a live harness keeps
+  /// each one as it lands, so a run cut short still leaves its work.
+  void Function(WorldPlaceWrite place)? onPlaceWritten;
 
   /// The part of a write prompt every batch repeats: world, premise and
   /// the attached notes. Sized once so the batcher knows the fixed cost.

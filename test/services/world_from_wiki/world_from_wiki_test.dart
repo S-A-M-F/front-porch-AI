@@ -1614,13 +1614,15 @@ void main() {
             worldName: 'Bleach (TYBW)',
             premise: 'The Thousand-Year Blood War.',
           );
+          // Changed 2026-10-23: Full gets one revise, not two (the first
+          // Kimi loops run ran past four hours on three tries a batch).
           expect(
             llm.prompts,
-            hasLength(second == _ReviewLlm.short ? 4 : 6),
+            hasLength(second == _ReviewLlm.short ? 3 : 4),
             reason:
-                'scout, review, then two revises (each reviewed when it is a '
+                'scout, review, then one revise (reviewed when it is a '
                 'shelf; a thrown revise is asked twice; a short one is not '
-                'reviewed), never a fourth try ($second)',
+                'reviewed), never a third try ($second)',
           );
           // A revise that answered (even still heavy) is the last valid shelf
           // and stands, as in Porch Stories; a short or broken one leaves the
@@ -1953,14 +1955,14 @@ void main() {
           worldName: 'B',
           premise: 'x',
         );
+        // Changed 2026-10-23: Full gets two tries (one rewrite), not three;
+        // Deep keeps three.
         expect(llm.kinds, [
           'write',
           'review',
           'revise',
           'review',
-          'revise',
-          'review',
-        ], reason: 'three tries, never a fourth');
+        ], reason: 'two tries at Full, never a third');
         expect(entries, hasLength(1), reason: 'never dropped');
         expect(entries.single.content, contains('REVISED'));
 

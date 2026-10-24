@@ -239,7 +239,7 @@ Stream<WorldWriteBatch> planWorldWriteBatches(
 
 /// Write batches in flight at once on a remote provider; a local server
 /// has one generation slot and stays serial.
-const int kWorldWriteConcurrencyRemote = 2;
+const int kWorldWriteConcurrencyRemote = 3;
 
 /// Runs [work] over [items] with at most [limit] in flight, keeping the
 /// results in item order.
