@@ -165,6 +165,7 @@ Future<WorldLoopResult<T>> runWorldLoop<T>({
       );
     }
     if (verdict.pass) {
+      status?.call(worldProgressStagePassed(stage));
       notes.add(
         WorldLoopNote(
           stage: stage,

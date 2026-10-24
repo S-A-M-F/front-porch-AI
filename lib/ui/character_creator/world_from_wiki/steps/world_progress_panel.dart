@@ -22,14 +22,14 @@ class WorldProgressPanel extends StatelessWidget {
   /// The line shown before the engine has said anything.
   final String fallback;
 
-  /// How many earlier lines the panel shows under the current one.
-  static const int shown = 6;
+  /// A step waited on this long shows its own timer beside the total.
+  static const Duration stepTimerAfter = Duration(seconds: 15);
 
   @override
   Widget build(BuildContext context) {
     final log = state.progress;
     final now = state.status.isEmpty ? fallback : state.status;
-    final earlier = log.earlier.take(shown).toList();
+    final onStep = log.onStep >= stepTimerAfter ? log.onStepLabel : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -70,25 +70,17 @@ class WorldProgressPanel extends StatelessWidget {
             ),
           ],
         ),
-        if (earlier.isNotEmpty)
+        if (onStep.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(left: 30, top: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final line in earlier)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(
-                      '${line.at}  ${line.text}',
-                      style: TextStyle(
-                        color: StudioColors.mutedOf(context),
-                        fontSize: 12,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-              ],
+            padding: const EdgeInsets.only(left: 30, top: 4),
+            child: Text(
+              '$onStep on this step',
+              key: const Key('world-from-wiki-step-elapsed'),
+              style: TextStyle(
+                color: StudioColors.mutedOf(context),
+                fontSize: 12,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
       ],

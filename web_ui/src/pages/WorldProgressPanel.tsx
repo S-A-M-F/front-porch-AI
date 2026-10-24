@@ -1,28 +1,31 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { WorldProgressLine } from './worldFromWiki';
+import { worldElapsedLabel, type WorldProgressLine } from './worldFromWiki';
 
-/** How many earlier lines the panel shows under the current one. */
-export const WORLD_PROGRESS_SHOWN = 6;
+/** A step waited on this long shows its own timer beside the total. */
+export const WORLD_PROGRESS_STEP_TIMER_AFTER_MS = 15_000;
 
 /**
  * The wizard's progress while the host scouts or writes: the line for what
- * it is doing now, the time the run has taken, and the lines before it. The
- * desktop twin is WorldProgressPanel in the Flutter wizard.
+ * it is doing now, the time the run has taken, and how long this step has
+ * been waited on. No history under it (the maintainer's ask). The desktop
+ * twin is WorldProgressPanel in the Flutter wizard.
  */
 export function WorldProgressPanel({
   status,
   fallback,
-  log,
   elapsed,
+  stepMs = 0,
 }: {
   status: string;
   fallback: string;
-  log: WorldProgressLine[];
+  log?: WorldProgressLine[];
   elapsed: string;
+  /** How long the current line has been waited on. */
+  stepMs?: number;
 }) {
-  const earlier = log.slice(0, -1).reverse().slice(0, WORLD_PROGRESS_SHOWN);
+  const stepLabel = stepMs >= WORLD_PROGRESS_STEP_TIMER_AFTER_MS ? worldElapsedLabel(stepMs) : '';
   return (
     <div className="world-progress" data-testid="world-from-wiki-progress">
       <p className="world-progress-now">
@@ -30,14 +33,10 @@ export function WorldProgressPanel({
         <span className="world-progress-text">{status || fallback}</span>
         <span className="muted small world-progress-elapsed">{elapsed}</span>
       </p>
-      {earlier.length > 0 && (
-        <ul className="world-progress-log muted small">
-          {earlier.map((line, i) => (
-            <li key={`${line.at}-${i}`}>
-              <span className="world-progress-at">{line.at}</span> {line.text}
-            </li>
-          ))}
-        </ul>
+      {stepLabel && (
+        <p className="muted small world-progress-step" data-testid="world-from-wiki-step-elapsed">
+          {stepLabel} on this step
+        </p>
       )}
     </div>
   );

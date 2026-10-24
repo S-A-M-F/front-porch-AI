@@ -108,13 +108,22 @@ void main() {
           .data,
       '1:12',
     );
-    expect(
-      find.textContaining('0:07  Writing cards 1–6 of 38…'),
-      findsOneWidget,
+    // No history under the spinner (the maintainer's ask); the step's own
+    // timer shows once a line has been waited on a while.
+    expect(find.textContaining('Writing cards 1–6 of 38…'), findsNothing);
+    expect(find.byKey(const Key('world-from-wiki-step-elapsed')), findsNothing);
+    now = now.add(const Duration(seconds: 20));
+    // The step is mounted bare here (no listener), so build it again.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: WorldFromWikiWriteStep(state: state)),
+      ),
     );
     expect(
-      find.textContaining('0:00  Reading up on 38 pages…'),
-      findsOneWidget,
+      tester
+          .widget<Text>(find.byKey(const Key('world-from-wiki-step-elapsed')))
+          .data,
+      '0:20 on this step',
     );
   });
 }

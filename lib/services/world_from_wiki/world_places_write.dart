@@ -118,6 +118,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         entries: entries,
         biome: profile?.biome,
       );
+      onProgress?.call(worldProgressBookDone(label, entries.length));
       onPlaceWritten?.call(book);
       return book;
     });

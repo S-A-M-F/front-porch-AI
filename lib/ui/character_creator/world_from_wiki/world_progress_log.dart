@@ -20,6 +20,7 @@ class WorldProgressLog {
   final int keep;
 
   DateTime? _since;
+  DateTime? _stepSince;
   final List<WorldProgressLine> _lines = [];
 
   /// Every kept line, oldest first; the last is the current one.
@@ -40,9 +41,17 @@ class WorldProgressLog {
   /// Clock-face elapsed: 0:42, 12:05, 1:03:09.
   String get elapsedLabel => worldElapsedLabel(elapsed);
 
+  /// How long the current line has been the current line: the time one
+  /// model call has been waited on, which is what a watcher wants to know.
+  Duration get onStep =>
+      _stepSince == null ? Duration.zero : _now().difference(_stepSince!);
+
+  String get onStepLabel => worldElapsedLabel(onStep);
+
   /// A run begins: the clock starts and the old lines go.
   void start() {
     _since = _now();
+    _stepSince = null;
     _lines.clear();
   }
 
@@ -54,6 +63,7 @@ class WorldProgressLog {
     final line = text.trim();
     if (line.isEmpty || line == current) return;
     _lines.add((at: elapsedLabel, text: line));
+    _stepSince = _now();
     while (_lines.length > keep) {
       _lines.removeAt(0);
     }

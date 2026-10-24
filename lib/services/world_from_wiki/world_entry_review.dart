@@ -145,6 +145,13 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
         'Entries try $attempt: ${accepted.length} accepted, '
         '${problems.length} sent back',
       );
+      onProgress?.call(
+        worldProgressReviewed(
+          accepted.length,
+          problems.length,
+          problems.isEmpty ? '' : problems.values.first.first,
+        ),
+      );
       if (problems.isEmpty || attempt == depth.tries) break;
       final failingCards = <WorldProposedCard>[];
       final failingArticles = <String>[];

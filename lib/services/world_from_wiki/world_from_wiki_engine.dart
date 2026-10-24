@@ -194,6 +194,9 @@ class WorldFromWikiEngine {
       premise: premise,
     );
     final proposed = scouted.cards;
+    onProgress?.call(
+      worldProgressShelfReady(proposed.length, scouted.places.length),
+    );
     debugPrint(
       '[World] scout titles=${catalog.titles.length} proposed=${proposed.length} '
       'places=${scouted.places.length} context=$contextTokens '
@@ -294,6 +297,9 @@ class WorldFromWikiEngine {
       );
       if (climate != null) {
         biome = climate.biome;
+        onProgress?.call(
+          worldProgressWeatherDone('${climate.biome['displayName'] ?? ''}'),
+        );
         debugPrint(
           '[World] climate biome=${climate.biome['displayName']} '
           'lore=${climate.lore.length}',

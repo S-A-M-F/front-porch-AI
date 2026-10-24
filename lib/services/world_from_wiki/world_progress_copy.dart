@@ -15,9 +15,48 @@ String worldProgressCatalog(int pages, {required bool ranked}) => ranked
           'that matter…'
     : 'Found $pages pages. Picking the ones that matter…';
 
-/// One part of a split index.
+/// One part of a split index, asked on its own.
 String worldProgressScoutPart(int index, int total, int titles) =>
     'Picking the ones that matter (part $index of $total, $titles pages)…';
+
+/// The parts of a split index, all out at once on a remote provider.
+String worldProgressScoutPartsOut(int parts, int pages) =>
+    'Picking the ones that matter: $parts parts of about $pages pages, '
+    'asked together…';
+
+/// A part came back.
+String worldProgressScoutPartDone(
+  int index,
+  int total,
+  int cards,
+  int places,
+) =>
+    'Part $index of $total answered: $cards cards'
+    '${places > 0 ? ', $places places' : ''}.';
+
+/// The shelf is in and signed off.
+String worldProgressShelfReady(int cards, int places) =>
+    'Shelf ready: $cards cards, $places places. Sign the ones to write.';
+
+/// A review loop's stage passed.
+String worldProgressStagePassed(String stage) => '$stage — passed.';
+
+/// One fill gap came back.
+String worldProgressFillDone(String what, int added) => added == 0
+    ? 'Nothing new for $what.'
+    : '$what: +$added card${added == 1 ? '' : 's'}.';
+
+/// The entry reviewer's count for a batch.
+String worldProgressReviewed(int passed, int back, String why) => back == 0
+    ? 'All $passed ${_entries(passed)} passed.'
+    : '$passed passed, $back sent back: ${_clip(why, 110)}';
+
+/// A place's book is finished.
+String worldProgressBookDone(String book, int cards) =>
+    '$book\'s book is done: $cards card${cards == 1 ? '' : 's'}.';
+
+/// The world's climate came back.
+String worldProgressWeatherDone(String name) => 'Weather written: $name.';
 
 /// A part the model could not finish is asked again as two.
 String worldProgressHalving(int a, int b) =>

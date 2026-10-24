@@ -138,10 +138,13 @@ class WorldScoutRunner {
     final preAsked = <List<String>, ({LlmToolResponse? resp, Object? error})>{};
     if (concurrency > 1 && queue.length > 1) {
       final first = List<List<String>>.from(queue);
+      onProgress?.call(
+        worldProgressScoutPartsOut(
+          first.length,
+          (first.fold<int>(0, (n, p) => n + p.length) / first.length).round(),
+        ),
+      );
       final answers = await forEachLimited(first, concurrency, (i, part) async {
-        onProgress?.call(
-          worldProgressScoutPart(i + 1, first.length, part.length),
-        );
         final prompt = scoutPrompt(
           part,
           worldName: worldName,
@@ -150,7 +153,22 @@ class WorldScoutRunner {
           total: first.length,
         );
         try {
-          return (resp: await _askPart(prompt), error: null);
+          final resp = await _askPart(prompt);
+          if (resp != null) {
+            onProgress?.call(
+              worldProgressScoutPartDone(
+                i + 1,
+                first.length,
+                parseWorldScoutToolCalls(
+                  resp.calls,
+                  catalog: titles,
+                  max: depth.cardTarget,
+                ).length,
+                parseWorldScoutPlaces(resp.calls).length,
+              ),
+            );
+          }
+          return (resp: resp, error: null);
         } catch (e) {
           return (resp: null, error: e);
         }
@@ -265,9 +283,20 @@ class WorldScoutRunner {
         if (cards.length >= depth.cardTarget) break;
         if (seenCards.add(c.name.toLowerCase())) cards.add(c);
       }
-      for (final p in parseWorldScoutPlaces(resp!.calls)) {
+      final partPlaces = parseWorldScoutPlaces(resp!.calls);
+      for (final p in partPlaces) {
         if (places.length >= kWorldScoutPlaceMax) break;
         if (seenPlaces.add(p.key)) places.add(p);
+      }
+      if (total > 1 && pre == null) {
+        onProgress?.call(
+          worldProgressScoutPartDone(
+            asked,
+            total,
+            got.length,
+            partPlaces.length,
+          ),
+        );
       }
     }
     String? failure;

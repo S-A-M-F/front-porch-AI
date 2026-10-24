@@ -117,6 +117,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
           got++;
         }
         added += got;
+        onProgress?.call(worldProgressFillDone(_gapLabel(gap), got));
         notes.add('Fill ${_gapLabel(gap)}: $got cards');
       }
       debugPrint(

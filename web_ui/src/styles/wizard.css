@@ -183,3 +183,4 @@ button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transpar
   border: 1px dashed var(--accent);
 }
 .world-review-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.world-progress-step { margin: 0 0 0 24px; font-variant-numeric: tabular-nums; }

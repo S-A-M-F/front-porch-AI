@@ -106,7 +106,9 @@ export function WorldFromWikiPage() {
   const [liveLog, setLiveLog] = useState<WorldProgressLine[]>([]);
   const [liveSince, setLiveSince] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [stepMs, setStepMs] = useState(0);
   const liveSinceRef = useRef<number | null>(null);
+  const stepSinceRef = useRef<number | null>(null);
   // The Review step: the reviewers' notes by entry, pinned cards, the
   // direction note and its scope, and the last action's one-line result.
   const [notes, setNotes] = useState<Record<string, WorldEntryNote>>({});
@@ -118,8 +120,10 @@ export function WorldFromWikiPage() {
   const startRun = (first: string) => {
     const now = Date.now();
     liveSinceRef.current = now;
+    stepSinceRef.current = now;
     setLiveSince(now);
     setElapsedMs(0);
+    setStepMs(0);
     setLiveStatus(first);
     setLiveLog(pushWorldProgress([], first, 0));
   };
@@ -129,7 +133,11 @@ export function WorldFromWikiPage() {
   };
   useEffect(() => {
     if (liveSince == null) return;
-    const tick = window.setInterval(() => setElapsedMs(Date.now() - liveSince), 1000);
+    const tick = window.setInterval(() => {
+      setElapsedMs(Date.now() - liveSince);
+      const since = stepSinceRef.current;
+      setStepMs(since == null ? 0 : Date.now() - since);
+    }, 1000);
     return () => window.clearInterval(tick);
   }, [liveSince]);
   const [error, setError] = useState('');
@@ -191,6 +199,8 @@ export function WorldFromWikiPage() {
       if (e.event === 'world_wiki_status' && e.data) {
         const line = e.data;
         const since = liveSinceRef.current;
+        stepSinceRef.current = Date.now();
+        setStepMs(0);
         setLiveStatus(line);
         setLiveLog((log) => pushWorldProgress(log, line, since == null ? 0 : Date.now() - since));
       } else if (e.event === 'world_wiki_done') {
@@ -680,6 +690,7 @@ export function WorldFromWikiPage() {
                 fallback="Scouting…"
                 log={liveLog}
                 elapsed={worldElapsedLabel(elapsedMs)}
+                stepMs={stepMs}
               />
             )}
           </div>
@@ -763,6 +774,7 @@ export function WorldFromWikiPage() {
               fallback="Writing lorebook cards…"
               log={liveLog}
               elapsed={worldElapsedLabel(elapsedMs)}
+              stepMs={stepMs}
             />
             <p className="muted small">Nothing is saved until Preview.</p>
             <button type="button" disabled={!busy} onClick={() => void abortWrite()}>
@@ -809,7 +821,7 @@ export function WorldFromWikiPage() {
               onPin={togglePin}
               onRewrite={rewriteEntry}
               onAdd={addCard}
-              progress={{ status: liveStatus, log: liveLog, elapsed: worldElapsedLabel(elapsedMs) }}
+              progress={{ status: liveStatus, log: liveLog, elapsed: worldElapsedLabel(elapsedMs), stepMs }}
             />
           </div>
         )}

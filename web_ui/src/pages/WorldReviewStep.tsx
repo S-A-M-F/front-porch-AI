@@ -38,7 +38,7 @@ type Props = {
   onPin: (name: string) => void;
   onRewrite: (name: string, note: string) => void;
   onAdd: (place: string, name: string, page: string) => void;
-  progress: { status: string; log: WorldProgressLine[]; elapsed: string };
+  progress: { status: string; log: WorldProgressLine[]; elapsed: string; stepMs?: number };
 };
 
 const lower = (s: string) => s.trim().toLowerCase();
@@ -136,8 +136,8 @@ export function WorldReviewStep(p: Props) {
         <WorldProgressPanel
           status={p.progress.status}
           fallback="Working…"
-          log={p.progress.log}
           elapsed={p.progress.elapsed}
+          stepMs={p.progress.stepMs}
         />
       )}
 
