@@ -9,6 +9,7 @@
 //
 //   FPAI_HF_LIVE=1 flutter test test/services/hf_search_test.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/hf_model.dart';
 import 'package:front_porch_ai/services/hf_search.dart';
+import 'package:front_porch_ai/services/model_manager.dart';
+import 'package:front_porch_ai/ui/pages/model_manager/model_manager.dart';
 import 'package:front_porch_ai/ui/widgets/hf_model_card.dart';
 import 'package:http/http.dart' as http;
 
@@ -153,4 +156,137 @@ void main() {
       }, skip: live ? false : 'set FPAI_HF_LIVE to ask huggingface.co');
     }
   });
+
+  group('HfSearch filters', () {
+    test('each sort asks HuggingFace for its own order', () {
+      String sortOf(HfSort s) => HfSearch.searchUri(
+        'https://huggingface.co',
+        'x',
+        sort: s,
+      ).queryParameters['sort']!;
+      expect(sortOf(HfSort.downloads), 'downloads');
+      expect(sortOf(HfSort.likes), 'likes');
+      expect(sortOf(HfSort.newest), 'lastModified');
+      expect(sortOf(HfSort.trending), 'trendingScore');
+    });
+
+    test('the size comes from the repo name, MoE counted in full', () {
+      expect(HfSearch.paramsBillions('Qwen3.8-27B-Dominatrix-GGUF'), 27);
+      expect(HfSearch.paramsBillions('Dark-Scarlett-v0.3-26B-A4B-GGUF'), 26);
+      expect(HfSearch.paramsBillions('Mixtral-8x7B-Instruct-GGUF'), 56);
+      expect(HfSearch.paramsBillions('Llama-3.2-1B-NSFW-Dominatrix'), 1);
+      expect(HfSearch.paramsBillions('SmolLM2-1.7B-Instruct'), 1.7);
+      expect(HfSearch.paramsBillions('Llama-3.3-70B-Instruct-GGUF'), 70);
+      expect(HfSearch.paramsBillions('Phi-3-mini-4k-instruct'), isNull);
+    });
+
+    test('roleplay only and a size bucket narrow the ranked list', () {
+      final rp12 = _hit('r/For-Her-Darkside-12B-GGUF', ['gguf', 'roleplay']);
+      final rp32 = _hit('r/For-Her-Darkside-32B-GGUF', ['gguf', 'roleplay']);
+      final plain12 = _hit('p/Mistral-Nemo-12B-GGUF', ['gguf']);
+      final unsized = _hit('p/Phi-mini-GGUF', ['gguf', 'roleplay']);
+      final all = [rp12, rp32, plain12, unsized];
+
+      List<String> ids(HfSearchOptions o) =>
+          HfSearch.rank(all, options: o).map((m) => m.id).toList();
+
+      expect(ids(const HfSearchOptions(roleplayOnly: true)), [
+        rp12.id,
+        rp32.id,
+        unsized.id,
+      ]);
+      expect(ids(const HfSearchOptions(size: HfSizeBucket.small)), [
+        rp12.id,
+        plain12.id,
+      ]);
+      expect(
+        ids(
+          const HfSearchOptions(roleplayOnly: true, size: HfSizeBucket.medium),
+        ),
+        [rp32.id],
+      );
+    });
+
+    test('the web relay reads its filters, and none means the default', () {
+      final none = HfSearchOptions.fromQuery(const {'q': 'x'});
+      expect(none.sort, HfSort.downloads);
+      expect(none.roleplayOnly, isFalse);
+      expect(none.size, HfSizeBucket.any);
+
+      final some = HfSearchOptions.fromQuery(const {
+        'sort': 'newest',
+        'rp': '1',
+        'size': 'large',
+      });
+      expect(some.sort, HfSort.newest);
+      expect(some.roleplayOnly, isTrue);
+      expect(some.size, HfSizeBucket.large);
+
+      expect(
+        HfSearchOptions.fromQuery(const {'sort': 'bogus'}).sort,
+        HfSort.downloads,
+      );
+    });
+  });
+
+  group('ModelSearchController', () {
+    test('a slow older search never overwrites a newer one', () async {
+      final models = _ScriptedModels();
+      final controller = ModelSearchController();
+      addTearDown(controller.dispose);
+
+      controller.textController.text = 'old';
+      final first = controller.search(models);
+      controller.textController.text = 'new';
+      final second = controller.search(models);
+
+      models.answer('new', [_instruct]);
+      await second;
+      models.answer('old', [_scarlett]);
+      await first;
+
+      expect(controller.results.map((m) => m.id), [_instruct.id]);
+      expect(controller.isSearching, isFalse);
+    });
+
+    test('changing a filter searches again with it', () async {
+      final models = _ScriptedModels();
+      final controller = ModelSearchController();
+      addTearDown(controller.dispose);
+      controller.textController.text = 'darkside';
+
+      controller.setOptions(const HfSearchOptions(roleplayOnly: true), models);
+      expect(models.asked.single.$1, 'darkside');
+      expect(models.asked.single.$2.roleplayOnly, isTrue);
+    });
+  });
+}
+
+/// A ModelManager whose searches answer when the test says so. No network:
+/// this pins the controller's ordering, not HuggingFace.
+class _ScriptedModels implements ModelManager {
+  final List<(String, HfSearchOptions)> asked = [];
+  final Map<String, Completer<List<HFModel>>> _pending = {};
+
+  void answer(String query, List<HFModel> results) =>
+      _pending[query]!.complete(results);
+
+  @override
+  Future<List<HFModel>> searchHFModels(
+    String query, {
+    int limit = HfSearch.shown,
+    HfSearchOptions options = const HfSearchOptions(),
+  }) {
+    asked.add((query, options));
+    return (_pending[query] = Completer<List<HFModel>>()).future;
+  }
+
+  @override
+  Future<Map<String, HFModel>> fetchFilesForModels(
+    List<HFModel> models, {
+    int concurrency = 6,
+  }) async => {for (final m in models) m.id: m};
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

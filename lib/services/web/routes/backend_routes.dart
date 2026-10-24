@@ -184,7 +184,9 @@ class WebBackendRoutes {
   Future<shelf.Response> _hfSearch(shelf.Request r) async {
     final q = r.url.queryParameters['q']?.trim() ?? '';
     if (q.isEmpty) return JsonResponse.ok({'models': []});
-    return JsonResponse.ok({'models': await _backend!.searchHf(q)});
+    return JsonResponse.ok({
+      'models': await _backend!.searchHf(q, r.url.queryParameters),
+    });
   }
 
   Future<shelf.Response> _hfFiles(shelf.Request r) async {

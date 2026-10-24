@@ -23,6 +23,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/pages/model_manager/model_manager_empty_state.dart';
 import 'package:front_porch_ai/ui/pages/model_manager/model_search_controller.dart';
+import 'package:front_porch_ai/ui/pages/model_manager/model_search_filters.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/hf_model_card.dart';
 
@@ -39,6 +40,9 @@ class ModelManagerSearchTab extends StatelessWidget {
 
   final ModelSearchController controller;
   final ModelManager modelManager;
+
+  /// Graphics memory in MB; 0 when it could not be read, which the quant
+  /// rows show as "fit unknown" rather than a guess.
   final int availableVram;
 
   void _onDownload(BuildContext context, HFModelFile file) {
@@ -52,6 +56,10 @@ class ModelManagerSearchTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The fit estimate is for the context size chat will actually load.
+    final contextSize = Provider.of<StorageService>(
+      context,
+    ).backendSettings.contextSize;
     return Column(
       children: [
         // Search bar
@@ -66,63 +74,77 @@ class ModelManagerSearchTab extends StatelessWidget {
               ),
             ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceContainerOf(context),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: controller.focusNode.hasFocus
-                          ? AppColors.porchAmberOf(context)
-                          : AppColors.borderOf(context).withValues(alpha: 0.4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerOf(context),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: controller.focusNode.hasFocus
+                              ? AppColors.porchAmberOf(context)
+                              : AppColors.borderOf(
+                                  context,
+                                ).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: TextField(
+                        controller: controller.textController,
+                        focusNode: controller.focusNode,
+                        decoration: InputDecoration(
+                          hintText: 'Search HuggingFace models...',
+                          hintStyle: TextStyle(
+                            color: AppColors.textTertiary(context),
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: AppColors.iconSecondary(context),
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        style: TextStyle(color: AppColors.textPrimary(context)),
+                        onSubmitted: (_) => controller.search(modelManager),
+                      ),
                     ),
                   ),
-                  child: TextField(
-                    controller: controller.textController,
-                    focusNode: controller.focusNode,
-                    decoration: InputDecoration(
-                      hintText: 'Search HuggingFace models...',
-                      hintStyle: TextStyle(
-                        color: AppColors.textTertiary(context),
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: AppColors.iconSecondary(context),
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: controller.isSearching
+                        ? null
+                        : () => controller.search(modelManager),
+                    icon: controller.isSearching
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.search, size: 18),
+                    label: Text(
+                      controller.isSearching ? 'Searching...' : 'Search',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.porchAmberOf(context),
+                      foregroundColor: AppColors.onAccentOf(context),
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,
                       ),
                     ),
-                    style: TextStyle(color: AppColors.textPrimary(context)),
-                    onSubmitted: (_) => controller.search(modelManager),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 12),
-              ElevatedButton.icon(
-                onPressed: controller.isSearching
-                    ? null
-                    : () => controller.search(modelManager),
-                icon: controller.isSearching
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search, size: 18),
-                label: Text(controller.isSearching ? 'Searching...' : 'Search'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.porchAmberOf(context),
-                  foregroundColor: AppColors.onAccentOf(context),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
+              const SizedBox(height: 10),
+              ModelSearchFilters(
+                options: controller.options,
+                onChanged: (o) => controller.setOptions(o, modelManager),
               ),
             ],
           ),
@@ -190,6 +212,7 @@ class ModelManagerSearchTab extends StatelessWidget {
                     return HFModelCard(
                       model: modelWithFiles,
                       availableVramMb: availableVram,
+                      contextSize: contextSize,
                       onDownload: (file) => _onDownload(context, file),
                       downloadingFiles: modelManager.downloadingFiles,
                       downloadedFiles: modelManager.downloadedFilenames,

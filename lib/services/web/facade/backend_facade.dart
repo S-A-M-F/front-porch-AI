@@ -201,8 +201,16 @@ class BackendFacade {
   };
 
   // ── HuggingFace browser + downloader ─────────────────────────────────────
-  Future<List<Map<String, dynamic>>> searchHf(String query) async {
-    final results = await _models.searchHFModels(query);
+  /// [filters] is the request's query map (`sort`, `rp`, `size`); an older
+  /// PWA sends none and gets the default search.
+  Future<List<Map<String, dynamic>>> searchHf(
+    String query, [
+    Map<String, String> filters = const {},
+  ]) async {
+    final results = await _models.searchHFModels(
+      query,
+      options: HfSearchOptions.fromQuery(filters),
+    );
     return results
         .map(
           (m) => {

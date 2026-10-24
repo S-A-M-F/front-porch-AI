@@ -36,12 +36,17 @@ class HfSearch {
   /// How many results the Model Manager lists (each costs a file fetch).
   static const int shown = 20;
 
-  static Uri searchUri(String baseUrl, String query, {int limit = fetched}) {
+  static Uri searchUri(
+    String baseUrl,
+    String query, {
+    int limit = fetched,
+    HfSort sort = HfSort.downloads,
+  }) {
     return Uri.parse('$baseUrl/api/models').replace(
       queryParameters: {
         'search': query,
         'filter': 'gguf',
-        'sort': 'downloads',
+        'sort': sort.apiValue,
         'direction': '-1',
         'limit': '$limit',
         'full': 'true',
@@ -49,10 +54,19 @@ class HfSearch {
     );
   }
 
-  /// Drops repos that are not chat models, then lists roleplay tunes first.
-  /// Within each group HuggingFace's downloads order is kept.
-  static List<HFModel> rank(List<HFModel> models, {int limit = shown}) {
-    final kept = models.where((m) => !isNonTextModel(m)).toList();
+  /// Drops repos that are not chat models or that [options] filters out,
+  /// then lists roleplay tunes first. Within each group HuggingFace's order
+  /// (the chosen sort) is kept.
+  static List<HFModel> rank(
+    List<HFModel> models, {
+    int limit = shown,
+    HfSearchOptions options = const HfSearchOptions(),
+  }) {
+    final kept = models
+        .where((m) => !isNonTextModel(m))
+        .where((m) => !options.roleplayOnly || m.isRoleplay)
+        .where((m) => options.size.admits(paramsBillions(m.name)))
+        .toList();
     final order = {for (var i = 0; i < kept.length; i++) kept[i].id: i};
     kept.sort((a, b) {
       final byRp = (b.isRoleplay ? 1 : 0) - (a.isRoleplay ? 1 : 0);
@@ -111,5 +125,94 @@ class HfSearch {
       if (tag.startsWith('base_model:')) names.add(tag);
     }
     return names.any((n) => _nonTextNames.any(n.contains));
+  }
+
+  static final RegExp _experts = RegExp(
+    r'(\d+)x(\d+(?:\.\d+)?)b(?![a-z])',
+    caseSensitive: false,
+  );
+  static final RegExp _billions = RegExp(
+    r'(?<![\d.])(\d+(?:\.\d+)?)b(?![a-z])',
+    caseSensitive: false,
+  );
+
+  /// Parameter count in billions read from a repo name: `Qwen3.8-27B` → 27,
+  /// `Dark-Scarlett-v0.3-26B-A4B` → 26 (the total, not the active experts),
+  /// `Mixtral-8x7B` → 56. Null when the name does not say.
+  static double? paramsBillions(String name) {
+    final moe = _experts.firstMatch(name);
+    if (moe != null) {
+      return int.parse(moe.group(1)!) * double.parse(moe.group(2)!);
+    }
+    final plain = _billions.firstMatch(name);
+    return plain == null ? null : double.parse(plain.group(1)!);
+  }
+}
+
+/// HuggingFace's own result orders.
+enum HfSort {
+  downloads('downloads', 'Most downloaded'),
+  likes('likes', 'Most liked'),
+  newest('lastModified', 'Recently updated'),
+  trending('trendingScore', 'Trending');
+
+  const HfSort(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+}
+
+/// Size filter on the parameter count read from the repo name.
+enum HfSizeBucket {
+  any('Any size'),
+  small('Up to 13B'),
+  medium('14B to 34B'),
+  large('35B and up');
+
+  const HfSizeBucket(this.label);
+
+  final String label;
+
+  /// A name with no size in it only passes "Any size".
+  bool admits(double? billions) => switch (this) {
+    any => true,
+    small => billions != null && billions < 13.5,
+    medium => billions != null && billions >= 13.5 && billions < 34.5,
+    large => billions != null && billions >= 34.5,
+  };
+}
+
+/// The Model Manager's search filters, shared by desktop and the web relay.
+class HfSearchOptions {
+  const HfSearchOptions({
+    this.sort = HfSort.downloads,
+    this.roleplayOnly = false,
+    this.size = HfSizeBucket.any,
+  });
+
+  final HfSort sort;
+  final bool roleplayOnly;
+  final HfSizeBucket size;
+
+  HfSearchOptions copyWith({
+    HfSort? sort,
+    bool? roleplayOnly,
+    HfSizeBucket? size,
+  }) => HfSearchOptions(
+    sort: sort ?? this.sort,
+    roleplayOnly: roleplayOnly ?? this.roleplayOnly,
+    size: size ?? this.size,
+  );
+
+  /// Reads the web relay's `sort`, `rp` and `size` query parameters. Unknown
+  /// or missing values fall back to the defaults an older PWA expects.
+  factory HfSearchOptions.fromQuery(Map<String, String> query) {
+    T pick<T extends Enum>(List<T> values, String? name, T fallback) =>
+        values.where((v) => v.name == name).firstOrNull ?? fallback;
+    return HfSearchOptions(
+      sort: pick(HfSort.values, query['sort'], HfSort.downloads),
+      roleplayOnly: query['rp'] == '1',
+      size: pick(HfSizeBucket.values, query['size'], HfSizeBucket.any),
+    );
   }
 }

@@ -65,3 +65,37 @@ describe('ModelDownloads roleplay badge', () => {
     expect(container.querySelectorAll('.hf-rp')).toHaveLength(1);
   });
 });
+
+describe('ModelDownloads search filters and stale replies', () => {
+  it('sends the chosen filters and drops a reply overtaken by a newer search', async () => {
+    let releaseFirst: (v: { models: typeof MODELS }) => void = () => {};
+    const replies: string[] = [];
+    get.mockImplementation((path: string) => {
+      if (!path.startsWith('/api/backend/hf/search')) {
+        return Promise.resolve({ downloads: [], overallProgress: 0, overallSpeed: 0, activeCount: 0 });
+      }
+      replies.push(path);
+      // The first search hangs until released; later ones answer at once.
+      if (replies.length === 1) return new Promise((res) => (releaseFirst = res));
+      return Promise.resolve({ models: [MODELS[1]] });
+    });
+    await act(async () => {
+      root.render(
+        createElement(ModelDownloads, { query: 'Scarlett', setQuery: () => {}, searchNonce: 1, onError: () => {} }),
+      );
+    });
+
+    const rpOnly = container.querySelector<HTMLInputElement>('.hf-rp-only input')!;
+    await act(async () => {
+      rpOnly.click();
+    });
+    expect(replies[1]).toBe('/api/backend/hf/search?q=Scarlett&rp=1');
+
+    await act(async () => {
+      releaseFirst({ models: MODELS });
+    });
+    // Only the newer answer (gemma) is on screen; the late first answer was dropped.
+    expect(container.querySelectorAll('.hf-row')).toHaveLength(1);
+    expect(rowFor('gemma-3-27b-it')).toBeTruthy();
+  });
+});

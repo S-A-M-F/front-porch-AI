@@ -232,8 +232,9 @@ class ModelManager extends ChangeNotifier {
   Future<List<HFModel>> searchHFModels(
     String query, {
     int limit = HfSearch.shown,
+    HfSearchOptions options = const HfSearchOptions(),
   }) async {
-    final url = HfSearch.searchUri(hfBaseUrl, query);
+    final url = HfSearch.searchUri(hfBaseUrl, query, sort: options.sort);
 
     try {
       final response = await http.get(url);
@@ -244,6 +245,7 @@ class ModelManager extends ChangeNotifier {
               .map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>))
               .toList(),
           limit: limit,
+          options: options,
         );
       }
       print('HF Search Error: HTTP ${response.statusCode}');

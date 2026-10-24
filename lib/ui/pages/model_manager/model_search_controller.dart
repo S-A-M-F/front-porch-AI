@@ -22,28 +22,44 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 
 /// The Model Manager's HuggingFace search state: the query field, the
-/// results with their file lists, and the in-flight / error flags. Owned by
-/// the page so a search survives switching tabs; listeners rebuild on every
-/// change.
+/// filters, the results with their file lists, and the in-flight / error
+/// flags. Owned by the page so a search survives switching tabs; listeners
+/// rebuild on every change.
 class ModelSearchController extends ChangeNotifier {
   final TextEditingController textController = TextEditingController();
   final FocusNode focusNode = FocusNode();
 
   List<HFModel> _results = [];
   Map<String, HFModel> _modelsWithFiles = {};
+  HfSearchOptions _options = const HfSearchOptions();
   bool _isSearching = false;
   String? _error;
   bool _disposed = false;
 
+  /// Bumped by every search; a reply whose number is no longer current was
+  /// overtaken by a newer search and is dropped.
+  int _seq = 0;
+
   List<HFModel> get results => _results;
   Map<String, HFModel> get modelsWithFiles => _modelsWithFiles;
+  HfSearchOptions get options => _options;
   bool get isSearching => _isSearching;
   String? get error => _error;
+
+  /// Changes the filters and, when there is a query, searches again.
+  void setOptions(HfSearchOptions options, ModelManager modelManager) {
+    _options = options;
+    notifyListeners();
+    if (textController.text.trim().isNotEmpty) search(modelManager);
+  }
 
   /// Search HuggingFace for the field's text, then fetch every hit's files.
   Future<void> search(ModelManager modelManager) async {
     final query = textController.text.trim();
     if (query.isEmpty) return;
+
+    final seq = ++_seq;
+    bool current() => !_disposed && seq == _seq;
 
     _isSearching = true;
     _results = [];
@@ -52,7 +68,11 @@ class ModelSearchController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final results = await modelManager.searchHFModels(query);
+      final results = await modelManager.searchHFModels(
+        query,
+        options: _options,
+      );
+      if (!current()) return;
 
       if (results.isEmpty) {
         _isSearching = false;
@@ -60,21 +80,18 @@ class ModelSearchController extends ChangeNotifier {
         return;
       }
 
-      // Fetch files for all results
       final modelsWithFiles = await modelManager.fetchFilesForModels(results);
+      if (!current()) return;
 
-      if (!_disposed) {
-        _results = results;
-        _modelsWithFiles = modelsWithFiles;
-        _isSearching = false;
-        notifyListeners();
-      }
+      _results = results;
+      _modelsWithFiles = modelsWithFiles;
+      _isSearching = false;
+      notifyListeners();
     } catch (e) {
-      if (!_disposed) {
-        _isSearching = false;
-        _error = 'Search failed: $e';
-        notifyListeners();
-      }
+      if (!current()) return;
+      _isSearching = false;
+      _error = 'Search failed: $e';
+      notifyListeners();
     }
   }
 

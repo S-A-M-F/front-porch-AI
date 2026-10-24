@@ -123,6 +123,8 @@
 .hf-row { padding: 0; margin: 0; }
 .hf-head { width: 100%; text-align: left; background: none; border: none; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
 .hf-rp { margin-left: 8px; }
+.hf-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.hf-rp-only { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; }
 .file-list { padding: 0 10px 10px; }
 .file-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .image-result { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
