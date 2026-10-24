@@ -52,6 +52,8 @@ class ModelManagerSearchTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final downloadingFiles = modelManager.downloadingFiles;
+    final downloadedFiles = modelManager.downloadedFilenames;
     return Column(
       children: [
         // Search bar
@@ -191,8 +193,11 @@ class ModelManagerSearchTab extends StatelessWidget {
                       model: modelWithFiles,
                       availableVramMb: availableVram,
                       onDownload: (file) => _onDownload(context, file),
-                      downloadingFiles: modelManager.downloadingFiles,
-                      downloadedFiles: modelManager.downloadedFilenames,
+                      downloadingFiles: downloadingFiles,
+                      downloadedFiles: downloadedFiles,
+                      // ModelManager only notifies on queue state changes;
+                      // the row of a file in flight redraws on these ticks.
+                      progressTicks: modelManager.downloadManager,
                     );
                   },
                 ),

@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
@@ -67,212 +66,209 @@ class _LocalModelCardState extends State<LocalModelCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
+      // No live BackdropFilter: these cards fill a scrolling list, and a blur
+      // per card re-blurs the window once per visible card on every frame.
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.isLight(context)
-                  ? AppColors.cardOf(context)
-                  : (_isHovered
-                        ? AppColors.porchAmberOf(
-                            context,
-                          ).withValues(alpha: 0.12)
-                        : AppColors.porchAmberOf(
-                            context,
-                          ).withValues(alpha: 0.06)),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.borderOf(context), width: 1),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Model icon
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.porchAmberOf(
-                      context,
-                    ).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.storage_rounded,
-                    color: DownloadStatusColors.downloading,
-                    size: 22,
-                  ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.isLight(context)
+                ? AppColors.cardOf(context)
+                : (_isHovered
+                      ? AppColors.porchAmberOf(context).withValues(alpha: 0.12)
+                      : AppColors.porchAmberOf(
+                          context,
+                        ).withValues(alpha: 0.06)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.borderOf(context), width: 1),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Model icon
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.porchAmberOf(
+                    context,
+                  ).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 12),
+                child: const Icon(
+                  Icons.storage_rounded,
+                  color: DownloadStatusColors.downloading,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
 
-                // Model info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          // Quant badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
+              // Model info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        // Quant badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: ModelColors.quantOf(
+                              context,
+                              widget.model.quantType.colorCategory,
+                            ).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
                               color: ModelColors.quantOf(
                                 context,
                                 widget.model.quantType.colorCategory,
-                              ).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: ModelColors.quantOf(
-                                  context,
-                                  widget.model.quantType.colorCategory,
-                                ).withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Text(
-                              widget.model.quantType.label,
-                              style: TextStyle(
-                                color: ModelColors.quantOf(
-                                  context,
-                                  widget.model.quantType.colorCategory,
-                                ),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              ).withValues(alpha: 0.3),
                             ),
                           ),
-                          const SizedBox(width: 8),
-
-                          // Filename
-                          Expanded(
-                            child: Text(
-                              widget.model.filename,
-                              style: TextStyle(
-                                color: AppColors.textPrimary(context),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                          child: Text(
+                            widget.model.quantType.label,
+                            style: TextStyle(
+                              color: ModelColors.quantOf(
+                                context,
+                                widget.model.quantType.colorCategory,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Stats row
-                      Row(
-                        children: [
-                          _infoChip(
-                            Icons.drive_file_rename_outline,
-                            widget.model.sizeDisplay,
-                          ),
-                          const SizedBox(width: 12),
-                          _infoChip(
-                            Icons.memory,
-                            VramEstimator.formatVramEstimate(vramUsage),
-                          ),
-                          if (widget.model.paramCountB != null) ...[
-                            const SizedBox(width: 12),
-                            _infoChip(
-                              Icons.miscellaneous_services,
-                              widget.model.paramDisplay,
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // VRAM usage bar. An undetected card (0 MB) gets no
-                      // bar and no percentage: 0% of nothing is no verdict.
-                      if (!vramKnown)
-                        Text(
-                          kGraphicsMemoryUnknown,
-                          style: TextStyle(
-                            color: AppColors.textTertiary(context),
-                            fontSize: 10,
-                          ),
-                        ),
-                      if (vramKnown) ...[
-                        Container(
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: InkColors.trackOf(context),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                          child: FractionallySizedBox(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: usagePercent,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: _getUsageColor(usagePercent),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${(usagePercent * 100).toStringAsFixed(0)}% of available VRAM',
-                          style: TextStyle(
-                            color: AppColors.textTertiary(context),
-                            fontSize: 10,
+                        const SizedBox(width: 8),
+
+                        // Filename
+                        Expanded(
+                          child: Text(
+                            widget.model.filename,
+                            style: TextStyle(
+                              color: AppColors.textPrimary(context),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
+                    ),
+                    const SizedBox(height: 6),
 
-                // Action buttons
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (widget.onSettings != null)
-                      IconButton(
-                        icon: Icon(
-                          Icons.settings_rounded,
-                          color: AppColors.iconSecondary(context),
-                          size: 18,
+                    // Stats row
+                    Row(
+                      children: [
+                        _infoChip(
+                          Icons.drive_file_rename_outline,
+                          widget.model.sizeDisplay,
                         ),
-                        onPressed: widget.onSettings,
-                        tooltip: 'Settings',
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.all(4),
-                      ),
-                    const SizedBox(height: 4),
-                    if (widget.onOpenLocation != null)
-                      IconButton(
-                        icon: Icon(
-                          Icons.folder_open_rounded,
-                          color: AppColors.iconSecondary(context),
-                          size: 18,
+                        const SizedBox(width: 12),
+                        _infoChip(
+                          Icons.memory,
+                          VramEstimator.formatVramEstimate(vramUsage),
                         ),
-                        onPressed: widget.onOpenLocation,
-                        tooltip: 'Open location',
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.all(4),
+                        if (widget.model.paramCountB != null) ...[
+                          const SizedBox(width: 12),
+                          _infoChip(
+                            Icons.miscellaneous_services,
+                            widget.model.paramDisplay,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // VRAM usage bar. An undetected card (0 MB) gets no
+                    // bar and no percentage: 0% of nothing is no verdict.
+                    if (!vramKnown)
+                      Text(
+                        kGraphicsMemoryUnknown,
+                        style: TextStyle(
+                          color: AppColors.textTertiary(context),
+                          fontSize: 10,
+                        ),
                       ),
-                    const SizedBox(height: 4),
+                    if (vramKnown) ...[
+                      Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: InkColors.trackOf(context),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: usagePercent,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: _getUsageColor(usagePercent),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${(usagePercent * 100).toStringAsFixed(0)}% of available VRAM',
+                        style: TextStyle(
+                          color: AppColors.textTertiary(context),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // Action buttons
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (widget.onSettings != null)
                     IconButton(
                       icon: Icon(
-                        Icons.delete_rounded,
+                        Icons.settings_rounded,
                         color: AppColors.iconSecondary(context),
                         size: 18,
                       ),
-                      onPressed: widget.onDelete,
-                      tooltip: 'Delete model',
+                      onPressed: widget.onSettings,
+                      tooltip: 'Settings',
                       constraints: const BoxConstraints(),
                       padding: const EdgeInsets.all(4),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  const SizedBox(height: 4),
+                  if (widget.onOpenLocation != null)
+                    IconButton(
+                      icon: Icon(
+                        Icons.folder_open_rounded,
+                        color: AppColors.iconSecondary(context),
+                        size: 18,
+                      ),
+                      onPressed: widget.onOpenLocation,
+                      tooltip: 'Open location',
+                      constraints: const BoxConstraints(),
+                      padding: const EdgeInsets.all(4),
+                    ),
+                  const SizedBox(height: 4),
+                  IconButton(
+                    icon: Icon(
+                      Icons.delete_rounded,
+                      color: AppColors.iconSecondary(context),
+                      size: 18,
+                    ),
+                    onPressed: widget.onDelete,
+                    tooltip: 'Delete model',
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

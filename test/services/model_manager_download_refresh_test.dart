@@ -108,4 +108,38 @@ void main() {
       );
     }, _RealHttpOverrides());
   });
+
+  test('progress ticks do not notify ModelManager listeners', () async {
+    // The whole Model Manager page and Settings listen to ModelManager; a
+    // rebuild per tick pinned the UI thread on Windows during a download.
+    final task = DownloadTask(
+      url: 'https://example.com/tick.gguf',
+      filename: 'tick.gguf',
+      targetDir: root.path,
+    )..start();
+    var downloadTicks = 0;
+    var modelNotifies = 0;
+    downloads.addListener(() => downloadTicks++);
+    models.addListener(() => modelNotifies++);
+
+    Stream<List<int>> slowBody() async* {
+      for (var i = 0; i < 3; i++) {
+        await Future<void>.delayed(
+          DownloadManager.progressNotifyInterval * 1.5,
+        );
+        yield List<int>.filled(1024, 7);
+      }
+    }
+
+    await downloads.pumpBody(
+      task,
+      slowBody(),
+      File(p.join(root.path, 'tick.gguf.part')).openWrite(),
+      startOffset: 0,
+      totalSize: 3 * 1024,
+    );
+
+    expect(downloadTicks, greaterThanOrEqualTo(2));
+    expect(modelNotifies, 0);
+  });
 }

@@ -98,9 +98,16 @@ class ModelManager extends ChangeNotifier {
   // on every chunk — rescanning the models dir then would hitch Settings.
   final Set<String> _seenCompletedDownloadIds = {};
 
-  /// Notifies listeners when download state changes. A newly completed
-  /// download is the one true door into [refreshModels] — Settings → Model
-  /// Selection reads [models], so a rescan is what makes the file appear.
+  // Task ids and states as of the last notify. Progress ticks leave it
+  // unchanged, so they do not rebuild every ModelManager listener (the whole
+  // Model Manager page and Settings); widgets that draw progress listen to
+  // [downloadManager] directly.
+  String _queueShape = '';
+
+  /// Notifies listeners when a download is added, removed or changes state.
+  /// A newly completed download is the one true door into [refreshModels] —
+  /// Settings → Model Selection reads [models], so a rescan is what makes the
+  /// file appear.
   void _onDownloadChanged() {
     final completedIds = {
       for (final task in _downloadManager.completedDownloads) task.id,
@@ -109,7 +116,14 @@ class ModelManager extends ChangeNotifier {
     _seenCompletedDownloadIds
       ..clear()
       ..addAll(completedIds);
-    notifyListeners();
+    final shape = [
+      for (final task in _downloadManager.queue)
+        '${task.id}:${task.state.name}',
+    ].join(',');
+    if (shape != _queueShape) {
+      _queueShape = shape;
+      notifyListeners();
+    }
     if (discovered.isNotEmpty) {
       unawaited(refreshModels());
     }

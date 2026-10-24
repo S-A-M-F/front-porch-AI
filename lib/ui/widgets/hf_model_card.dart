@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
@@ -46,6 +45,10 @@ class HFModelCard extends StatefulWidget {
   /// Set of already downloaded filenames.
   final Set<String> downloadedFiles;
 
+  /// Fires on download progress ticks; only rows with a file in flight
+  /// listen, so a tick redraws one row rather than the card.
+  final Listenable? progressTicks;
+
   const HFModelCard({
     super.key,
     required this.model,
@@ -54,6 +57,7 @@ class HFModelCard extends StatefulWidget {
     required this.onDownload,
     this.downloadingFiles = const {},
     this.downloadedFiles = const {},
+    this.progressTicks,
   });
 
   @override
@@ -78,7 +82,18 @@ class _HFModelCardState extends State<HFModelCard>
       parent: _expandController,
       curve: Curves.easeInOut,
     );
+    _expandController.addStatusListener(_onExpandStatus);
   }
+
+  // Drops the quant rows once the collapse animation finishes.
+  void _onExpandStatus(AnimationStatus status) {
+    if (status.isDismissed && mounted) setState(() {});
+  }
+
+  /// A collapsed card builds no quant rows. SizeTransition lays its child out
+  /// at full size even at zero height, so a page of collapsed results was
+  /// mounting and laying out every file's row on each scroll and resize.
+  bool get _showsQuantRows => _isExpanded || !_expandController.isDismissed;
 
   @override
   void dispose() {
@@ -102,134 +117,133 @@ class _HFModelCardState extends State<HFModelCard>
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
+      // No live BackdropFilter: these cards fill a scrolling list, and a blur
+      // per card re-blurs the window once per visible card on every frame.
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.isLight(context)
-                  ? AppColors.cardOf(context)
-                  : (_isHovered
-                        ? AppColors.porchAmberOf(
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.isLight(context)
+                ? AppColors.cardOf(context)
+                : (_isHovered
+                      ? AppColors.porchAmberOf(context).withValues(alpha: 0.12)
+                      : AppColors.porchAmberOf(
+                          context,
+                        ).withValues(alpha: 0.06)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.borderOf(context), width: 1),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header (always visible)
+              InkWell(
+                onTap: _toggleExpanded,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      // Model icon
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.porchAmberOf(
                             context,
-                          ).withValues(alpha: 0.12)
-                        : AppColors.porchAmberOf(
-                            context,
-                          ).withValues(alpha: 0.06)),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.borderOf(context), width: 1),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header (always visible)
-                InkWell(
-                  onTap: _toggleExpanded,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        // Model icon
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.porchAmberOf(
-                              context,
-                            ).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.science_rounded,
-                            color: DownloadStatusColors.verifying,
-                            size: 22,
-                          ),
+                          ).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        const SizedBox(width: 12),
-
-                        // Model info
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.model.name,
-                                style: TextStyle(
-                                  color: AppColors.textPrimary(context),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                widget.model.author,
-                                style: TextStyle(
-                                  color: AppColors.textTertiary(context),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
+                        child: const Icon(
+                          Icons.science_rounded,
+                          color: DownloadStatusColors.verifying,
+                          size: 22,
                         ),
+                      ),
+                      const SizedBox(width: 12),
 
-                        // Stats
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                      // Model info
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _statChip(
-                              Icons.download_rounded,
-                              widget.model.downloadsDisplay,
+                            Text(
+                              widget.model.name,
+                              style: TextStyle(
+                                color: AppColors.textPrimary(context),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(width: 8),
-                            _statChip(
-                              Icons.favorite_rounded,
-                              widget.model.likesDisplay,
-                            ),
-                            const SizedBox(width: 12),
-
-                            // Expand arrow
-                            AnimatedRotation(
-                              turns: _isExpanded ? 0.5 : 0,
-                              duration: const Duration(milliseconds: 300),
-                              child: Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: AppColors.iconSecondary(context),
-                                size: 20,
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.model.author,
+                              style: TextStyle(
+                                color: AppColors.textTertiary(context),
+                                fontSize: 12,
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Expanded quant options
-                SizeTransition(
-                  sizeFactor: _expandAnimation,
-                  // Old axisAlignment: -1 (vertical) per the SDK migration formula.
-                  alignment: Alignment.topLeft,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerOf(context),
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(12),
-                        bottomRight: Radius.circular(12),
                       ),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: _buildQuantList(),
+
+                      // Stats
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _statChip(
+                            Icons.download_rounded,
+                            widget.model.downloadsDisplay,
+                          ),
+                          const SizedBox(width: 8),
+                          _statChip(
+                            Icons.favorite_rounded,
+                            widget.model.likesDisplay,
+                          ),
+                          const SizedBox(width: 12),
+
+                          // Expand arrow
+                          AnimatedRotation(
+                            turns: _isExpanded ? 0.5 : 0,
+                            duration: const Duration(milliseconds: 300),
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: AppColors.iconSecondary(context),
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              // Expanded quant options
+              SizeTransition(
+                sizeFactor: _expandAnimation,
+                // Old axisAlignment: -1 (vertical) per the SDK migration formula.
+                alignment: Alignment.topLeft,
+                child: _showsQuantRows
+                    ? Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceContainerOf(context),
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(12),
+                            bottomRight: Radius.circular(12),
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: _buildQuantList(),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
           ),
         ),
       ),
@@ -283,6 +297,7 @@ class _HFModelCardState extends State<HFModelCard>
               downloadTask: widget.downloadingFiles[file.filename],
               isDownloaded: widget.downloadedFiles.contains(file.filename),
               onDownload: widget.onDownload,
+              progressTicks: widget.progressTicks,
             ),
           )
           .toList(),

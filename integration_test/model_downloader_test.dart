@@ -139,24 +139,12 @@ void main() {
     expect(hf.treeRequests, greaterThanOrEqualTo(1));
 
     final downloadBtns = find.widgetWithText(ElevatedButton, 'Download');
-    await d.waitForWidget(downloadBtns);
-    // Two GGUF rows (the README.md in the tree listing must be filtered
-    // out), sorted smallest-first: index 0 fits, index 1 exceeds.
-    await d.waitFor(
-      () => downloadBtns.evaluate().length == 2,
-      () =>
-          'both quant rows to render '
-          '(buttons=${downloadBtns.evaluate().length})',
-    );
 
     // Expand the result card — and gate on the button being TAPPABLE, not on
-    // it existing. The quant rows live inside a `SizeTransition`, which
-    // builds its child unconditionally: while the card is collapsed the
-    // buttons are already in the tree, already laid out at full intrinsic
-    // size, and clipped to nothing. A presence check therefore reports
-    // "expanded" for a shut card, every tap lands on whatever is painted
-    // behind the clip, and the journey dies later with no dialog and nothing
-    // queued — round 2's macOS and Windows legs exactly.
+    // it existing. A collapsed card builds no quant rows, but mid-animation
+    // the buttons are in the tree while clipped, so a presence check can
+    // report "expanded" for a card still opening; taps then land on whatever
+    // is painted behind the clip — round 2's macOS and Windows legs exactly.
     for (
       var attempt = 0;
       attempt < 6 && !d.hitReaches(downloadBtns.last);
@@ -170,8 +158,16 @@ void main() {
       () => d.hitReaches(downloadBtns.last),
       () =>
           'the model card to expand far enough that its Download button is '
-          'actually hit-testable (a collapsed card still renders it)',
+          'actually hit-testable',
       timeout: const Duration(seconds: 30),
+    );
+    // Two GGUF rows (the README.md in the tree listing must be filtered
+    // out), sorted smallest-first: index 0 fits, index 1 exceeds.
+    await d.waitFor(
+      () => downloadBtns.evaluate().length == 2,
+      () =>
+          'both quant rows to render '
+          '(buttons=${downloadBtns.evaluate().length})',
     );
 
     // ── Oversize → dialog → Cancel queues NOTHING ───────────────────────
