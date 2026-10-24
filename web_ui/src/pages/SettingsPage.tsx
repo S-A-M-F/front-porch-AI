@@ -15,6 +15,7 @@ import { PromptSettingsCard } from '../components/PromptSettingsCard';
 import type { BuiltInPrompt, SavedPrompt } from '../components/PromptSlot';
 import { ModelTransportCard } from '../components/ModelTransportCard';
 import { IdleUnloadSettings } from '../components/IdleUnloadSettings';
+import { HfTokenCard } from '../components/HfTokenCard';
 import { KeepRecentChatsSettings } from '../components/KeepRecentChatsSettings';
 import { applySpellCheckLang } from '../spellCheckLang';
 import {
@@ -47,6 +48,8 @@ interface Settings {
   remoteApiUrl: string;
   remoteModelName: string;
   hasApiKey: boolean;
+  /** A HuggingFace token is saved on the host. Absent on older hosts. */
+  hasHfToken?: boolean;
   remoteApiUrlsWithKeys?: string[];
   /** Slot → last model used on that host. Absent on older hosts. */
   remoteApiModels?: Record<string, string>;
@@ -603,6 +606,7 @@ export function SettingsPage() {
             <KeepRecentChatsSettings />
           </div>
         )}
+        <HfTokenCard hasToken={!!s.hasHfToken} totpEnabled={totpEnabled} />
       </div>
 
       <div className="settings-section" data-section="advanced">

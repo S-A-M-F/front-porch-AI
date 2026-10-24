@@ -637,6 +637,60 @@ void main() {
       },
     );
   });
+
+  group('DownloadManager credentials', () {
+    setUpAll(() => HttpOverrides.global = null);
+
+    test('a token goes to the host that asked for it, never on to the CDN '
+        'it redirects to', () async {
+      final bytes = List<int>.generate(4096, (i) => i & 0xff);
+      final seen = <String, String?>{};
+      final cdn = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      cdn.listen((req) async {
+        seen['cdn'] = req.headers.value('authorization');
+        req.response
+          ..contentLength = bytes.length
+          ..add(bytes);
+        await req.response.close();
+      });
+      final hf = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      hf.listen((req) async {
+        seen['hf'] = req.headers.value('authorization');
+        // A different host name for the same machine stands in for the CDN.
+        req.response
+          ..statusCode = HttpStatus.found
+          ..headers.set('location', 'http://localhost:${cdn.port}/blob');
+        await req.response.close();
+      });
+      final dir = await Directory.systemTemp.createTemp('fpai_token_redirect_');
+      final manager = DownloadManager(targetDir: dir.path)
+        ..headersFor = (url) => url.host == '127.0.0.1'
+            ? const {'Authorization': 'Bearer hf_secret'}
+            : const {};
+      addTearDown(() async {
+        manager.dispose();
+        await hf.close(force: true);
+        await cdn.close(force: true);
+        await dir.delete(recursive: true);
+      });
+
+      final task = manager.addDownload(
+        url: 'http://127.0.0.1:${hf.port}/r/m/resolve/main/m.gguf',
+        filename: 'm.gguf',
+      );
+      await _until(() => task.state.isTerminal);
+
+      expect(
+        task.state,
+        DownloadTaskState.completed,
+        reason: task.errorMessage,
+      );
+      expect(File(task.targetPath).readAsBytesSync(), bytes);
+      expect(seen['hf'], 'Bearer hf_secret');
+      expect(seen.containsKey('cdn'), isTrue);
+      expect(seen['cdn'], isNull);
+    });
+  });
 }
 
 Future<void> _until(

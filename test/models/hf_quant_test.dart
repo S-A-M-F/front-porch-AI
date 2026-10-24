@@ -277,4 +277,28 @@ void main() {
       skip: live ? false : 'set FPAI_HF_LIVE to ask huggingface.co',
     );
   });
+
+  group('live gated repo', () {
+    // Never printed. FPAI_HF_GATED_REPO is a repo whose licence the token's
+    // account has accepted, e.g. a meta-llama or google GGUF repo.
+    final token = Platform.environment['FPAI_HF_TOKEN'];
+    final repo = Platform.environment['FPAI_HF_GATED_REPO'];
+    final skip = token == null || repo == null
+        ? 'set FPAI_HF_TOKEN and FPAI_HF_GATED_REPO to ask huggingface.co'
+        : false;
+    setUpAll(() => HttpOverrides.global = null);
+
+    test('lists with the token, and says "gated" without it', () async {
+      final without = await HfRepoFiles.list('https://huggingface.co', repo!);
+      expect(without.problem, HfFilesProblem.gated);
+
+      final withToken = await HfRepoFiles.list(
+        'https://huggingface.co',
+        repo,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      expect(withToken.problem, isNull);
+      expect(withToken.files, isNotEmpty);
+    }, skip: skip);
+  });
 }

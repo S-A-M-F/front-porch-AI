@@ -115,6 +115,7 @@ class BackendTab extends StatelessWidget {
                 kcppsModelExists: kcppsModelExists,
               ),
             ),
+          const HfTokenSection(),
           const OpenCodeManagedSection(),
           WorkerBackendSection(kcppsPresets: localPresets),
         ],

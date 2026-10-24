@@ -87,7 +87,12 @@ class ModelManager extends ChangeNotifier {
     _init();
     _storageService.addListener(_onStorageChanged);
     _downloadManager.addListener(_onDownloadChanged);
+    _downloadManager.headersFor = _hfHeaders;
   }
+
+  /// The user's HuggingFace token, for requests to HuggingFace itself only.
+  Map<String, String> _hfHeaders(Uri url) => _storageService.backendSettings.hf
+      .headersFor(url, Uri.parse(hfBaseUrl).host);
 
   // StorageService notifies on EVERY settings mutation, but a full recursive
   // model-directory rescan (synchronous listSync on the UI isolate) only
@@ -272,7 +277,7 @@ class ModelManager extends ChangeNotifier {
     final url = HfSearch.searchUri(hfBaseUrl, query, sort: options.sort);
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url, headers: _hfHeaders(url));
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return HfSearch.rank(
@@ -295,8 +300,11 @@ class ModelManager extends ChangeNotifier {
       (await listModelFiles(repoId)).files;
 
   /// The repo's GGUF files, or why there are none (gated, gone, offline).
-  Future<HfFilesResult> listModelFiles(String repoId) =>
-      HfRepoFiles.list(hfBaseUrl, repoId);
+  Future<HfFilesResult> listModelFiles(String repoId) => HfRepoFiles.list(
+    hfBaseUrl,
+    repoId,
+    headers: _hfHeaders(Uri.parse(hfBaseUrl)),
+  );
 
   /// Fetches files for multiple repositories, a few at a time.
   /// Returns a map of repoId -> HFModel with files populated, in [models]

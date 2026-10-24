@@ -287,6 +287,14 @@ class SettingsWriter {
       await b.setRemoteApiKey(apiKey);
       remoteChanged = true;
     }
+    // The HuggingFace token: like the API key, never read back; an empty
+    // value is ignored and `hfTokenClear` removes it.
+    final hfToken = body['hfToken']?.toString().trim();
+    if (hfToken != null && hfToken.isNotEmpty) {
+      await _storage.backendSettings.hf.setToken(hfToken);
+    } else if (body['hfTokenClear'] == true) {
+      await _storage.backendSettings.hf.setToken('');
+    }
 
     final ctx = body['contextSize'];
     if (ctx is num && _presetRefusal(body) == null) {

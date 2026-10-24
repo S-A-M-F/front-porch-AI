@@ -93,18 +93,16 @@ class SegmentedTransfer {
   SegmentedTransfer({
     required this.task,
     required this.plan,
-    required this.client,
-    required this.request,
+    required this.send,
     required this.onProgress,
     required this.progressEvery,
   });
 
   final DownloadTask task;
   final SegmentPlan plan;
-  final http.Client client;
 
-  /// Builds a GET for the task URL with the given Range header.
-  final http.Request Function(String range) request;
+  /// GETs the task URL with the given Range header.
+  final Future<http.StreamedResponse> Function(String range) send;
   final void Function() onProgress;
   final Duration progressEvery;
 
@@ -152,8 +150,7 @@ class SegmentedTransfer {
     while (!seg.finished && !_halt) {
       try {
         final response =
-            opening ??
-            await client.send(request('bytes=${seg.next}-${seg.end - 1}'));
+            opening ?? await send('bytes=${seg.next}-${seg.end - 1}');
         opening = null;
         final ok =
             response.statusCode == 206 ||

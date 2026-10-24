@@ -97,11 +97,11 @@ class DownloadTransfer {
         return await _segmented(task, saved, client, onProgress, null);
       }
 
-      var response = await client.send(_request(task, task.rangeHeader));
+      var response = await _send(client, task, task.rangeHeader);
       if (response.statusCode == 416 && task.rangeHeader != null) {
         await response.stream.drain<void>();
         task.restartFromZero();
-        response = await client.send(_request(task, null));
+        response = await _send(client, task, null);
       }
       if (response.statusCode != 200 && response.statusCode != 206) {
         await response.stream.drain<void>();
@@ -135,12 +135,20 @@ class DownloadTransfer {
     }
   }
 
-  http.Request _request(DownloadTask task, String? range) {
+  /// GETs the task URL with any [headersFor] credentials. HuggingFace
+  /// answers with a redirect to its CDN; dart:io drops `Authorization` when
+  /// a redirect changes host, so the token stays with HuggingFace (pinned
+  /// in download_manager_test).
+  Future<http.StreamedResponse> _send(
+    http.Client client,
+    DownloadTask task,
+    String? range,
+  ) {
     final url = Uri.parse(task.url);
-    final request = http.Request('GET', url);
-    request.headers.addAll(headersFor?.call(url) ?? const {});
+    final request = http.Request('GET', url)
+      ..headers.addAll(headersFor?.call(url) ?? const {});
     if (range != null) request.headers['Range'] = range;
-    return request;
+    return client.send(request);
   }
 
   Future<TransferOutcome> _segmented(
@@ -153,8 +161,7 @@ class DownloadTransfer {
     final finished = await SegmentedTransfer(
       task: task,
       plan: plan,
-      client: client,
-      request: (range) => _request(task, range),
+      send: (range) => _send(client, task, range),
       onProgress: onProgress,
       progressEvery: progressEvery,
     ).run(first: first);
