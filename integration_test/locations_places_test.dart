@@ -125,6 +125,10 @@ void main() {
 
     // ── 2. "Add a place inside" from the library card ───────────────────
     await d.waitForWidget(find.text('Add a place inside'));
+    // The Worlds header's button column (From Wiki, From Character, New
+    // World) pushes the card below the fold of the 645px macOS window.
+    await tester.ensureVisible(find.text('Add a place inside').first);
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('Add a place inside').first);
     await pumpUntilFound(tester, find.text('Add a place to Bletchport'));
     // The dialog opens pre-parented: the Part of picker already names the
