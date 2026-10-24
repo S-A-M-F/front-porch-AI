@@ -357,6 +357,21 @@ class DownloadTask {
     return null;
   }
 
+  /// Throws away the partial file and the resume offset, so the next
+  /// request asks for the whole file. Used when the server refuses the
+  /// Range (HTTP 416) or a finished file fails its checksum.
+  void restartFromZero() {
+    _resumeOffset = 0;
+    bytesDownloaded = 0;
+    progress = 0.0;
+    try {
+      final tempFile = File(tempPath);
+      if (tempFile.existsSync()) tempFile.deleteSync();
+    } catch (e) {
+      errorMessage = 'Could not remove the partial file: $e';
+    }
+  }
+
   /// Serializes this task to a map for persistence.
   Map<String, dynamic> toJson() {
     return {
