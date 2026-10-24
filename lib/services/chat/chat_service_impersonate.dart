@@ -184,6 +184,15 @@ extension ChatServiceImpersonate on ChatService {
         macroCtx,
         section: 'postHistory',
       );
+      // Same pass as the reply path: the note is the user's text and may
+      // name {{char}} or {{user}}.
+      if (authorNoteBlock.isNotEmpty) {
+        authorNoteBlock = _macroResolver.resolve(
+          authorNoteBlock,
+          macroCtx,
+          section: 'authorNote',
+        );
+      }
       final identity = directorNote
           ? impersonateDirectorBlock(userName: userName)
           : impersonateIdentityBlock(

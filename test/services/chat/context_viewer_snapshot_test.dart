@@ -12,6 +12,8 @@ import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import '../../helpers/chat_db_teardown.dart';
+import '../../helpers/fake_kobold_engine.dart';
+import '../../helpers/kobold_chat_harness.dart';
 
 class _ScriptedLlm extends LLMService {
   @override
@@ -226,5 +228,57 @@ void main() {
       expect(history, isNot(contains('(turn 0)')));
       expect(history, contains('Tell me about the evening.'));
     });
+  });
+
+  test('scaleBudgetRows keeps each row\'s share and sums to the count', () {
+    expect(scaleBudgetRows({'A': 10, 'B': 30}, 100), {'A': 25, 'B': 75});
+    final odd = scaleBudgetRows({'A': 1, 'B': 1, 'C': 1}, 10);
+    expect(odd.values.fold<int>(0, (a, b) => a + b), 10);
+    expect(odd.values.every((v) => v >= 3), isTrue);
+    expect(scaleBudgetRows({'A': 7}, 0), {'A': 7});
+    expect(scaleBudgetRows(const {}, 50), isEmpty);
+    // A tiny row never rounds to nothing: the viewer drops zero rows.
+    expect(scaleBudgetRows({'A': 1, 'B': 1000}, 100)['A'], 1);
+  });
+
+  // Issue #550's reading: the rows were chars/4 while the send counted
+  // with KoboldCpp's tokenizer, so Total was not what went out. The
+  // stand-in engine counts words, which chars/4 never equals on prose.
+  group('ChatService counts with the backend tokenizer', () {
+    late KoboldChatHarness h;
+
+    setUp(() async => h = await KoboldChatHarness.start());
+
+    int total(Map<String, int> rows) =>
+        rows.values.fold<int>(0, (a, b) => a + b);
+    int counted(Map<String, String> sections) =>
+        FakeKoboldEngine.words(sections.values.join()).length;
+
+    test(
+      'the last send and Refresh both total the tokenizer\'s count',
+      () async {
+        await h.chat.sendMessage('Tell me about the porch this evening.');
+        await h.settle();
+        expect(h.chat.promptBudgetSource, ContextBudgetSource.lastSend);
+        final sent = h.chat.lastPromptSections;
+        final chars4 = sent.values.fold<int>(
+          0,
+          (a, b) => a + ContextViewerSnapshot.estimateTokens(b),
+        );
+        expect(
+          counted(sent),
+          isNot(chars4),
+          reason: 'the fixture must tell the tokenizer from chars/4',
+        );
+        expect(total(h.chat.lastPromptBudget), counted(sent));
+
+        await h.chat.estimateContextBudgetNow();
+        expect(h.chat.promptBudgetSource, ContextBudgetSource.estimate);
+        expect(
+          total(h.chat.lastPromptBudget),
+          counted(h.chat.lastPromptSections),
+        );
+      },
+    );
   });
 }

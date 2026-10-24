@@ -142,6 +142,43 @@ class ContextViewerSnapshot {
   }
 }
 
+/// The viewer's rows at the tokenizer's count. [rows] are the chars/4
+/// estimates per label; [totalTokens] is what the backend counted for the
+/// same text, so each row keeps its share and the rows sum to the real
+/// number. Largest-remainder rounding keeps that sum exact, except that a
+/// row the estimate saw keeps at least one token (the viewer drops zero
+/// rows). A total of zero or less, or empty rows, returns the rows
+/// unchanged (the estimate stays when there is nothing better).
+Map<String, int> scaleBudgetRows(Map<String, int> rows, int totalTokens) {
+  if (rows.isEmpty || totalTokens <= 0) return rows;
+  final estimated = rows.values.fold<int>(0, (a, b) => a + b);
+  if (estimated <= 0) return rows;
+  final exact = <String, double>{
+    for (final e in rows.entries) e.key: e.value * totalTokens / estimated,
+  };
+  final scaled = <String, int>{
+    for (final e in exact.entries) e.key: e.value.floor(),
+  };
+  var remainder = totalTokens - scaled.values.fold<int>(0, (a, b) => a + b);
+  final byFraction = exact.keys.toList()
+    ..sort(
+      (a, b) => (exact[b]! - exact[b]!.floor()).compareTo(
+        exact[a]! - exact[a]!.floor(),
+      ),
+    );
+  for (final key in byFraction) {
+    if (remainder <= 0) break;
+    scaled[key] = scaled[key]! + 1;
+    remainder--;
+  }
+  // A row the estimate saw cannot read as nothing; the viewer drops zero
+  // rows and its text would lose its count.
+  for (final key in scaled.keys.toList()) {
+    if (scaled[key]! <= 0 && rows[key]! > 0) scaled[key] = 1;
+  }
+  return scaled;
+}
+
 /// The viewer's line for [count] oldest messages left out of Chat History.
 String droppedMessagesNote(int count) =>
     '$count older message${count == 1 ? '' : 's'} not sent — trimmed to fit '

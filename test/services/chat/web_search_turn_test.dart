@@ -351,9 +351,11 @@ void main() {
             'after the doorbell, the mouth still completes on the Name: suffix',
       );
       expect(
-        mouth.systemPrompt,
+        mouth.prompt,
         contains(kWebSearchCharacterLine),
-        reason: 'the standing after-search line stays on the character prompt',
+        reason:
+            'the standing after-search line rides the tail after the chat, '
+            'off the cached system head',
       );
       expect(
         llm.streamPrompts.any(
