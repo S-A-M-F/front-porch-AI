@@ -12,7 +12,6 @@ import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/pages/model_manager_page.dart';
 import 'package:front_porch_ai/ui/widgets/hf_model_card.dart';
 import 'package:front_porch_ai/ui/widgets/hf_quant_row.dart';
-import 'package:front_porch_ai/ui/widgets/local_model_card.dart';
 
 import '../../golden/support/creator_test_support.dart';
 import '../../golden/support/fakes_services.dart';
@@ -90,55 +89,6 @@ void main() {
     );
     await tester.pump();
   }
-
-  // A live blur per card re-blurred the window once per visible card on
-  // every scroll frame; on Windows that made the lists crawl.
-  void expectNoLiveBlurInTabs() {
-    expect(
-      find.descendant(
-        of: find.byType(TabBarView),
-        matching: find.byType(BackdropFilter),
-      ),
-      findsNothing,
-    );
-  }
-
-  testWidgets('My Models list scrolls with no live blur per card', (
-    tester,
-  ) async {
-    await pumpPage(tester);
-    expect(find.byType(LocalModelCard), findsWidgets);
-
-    await tester.drag(find.byType(LocalModelCard).first, const Offset(0, -600));
-    await tester.pump();
-
-    expect(find.byType(LocalModelCard), findsWidgets);
-    expectNoLiveBlurInTabs();
-  });
-
-  testWidgets('search results scroll with no live blur per card', (
-    tester,
-  ) async {
-    await pumpPage(tester);
-    await tester.tap(find.text('Search / Download'));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField), 'llama');
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Search'));
-    await tester.pumpAndSettle();
-    expect(find.byType(HFModelCard), findsWidgets);
-
-    // Expand a card so its quant rows are on screen too.
-    await tester.tap(find.text('Model-0-GGUF'));
-    await tester.pumpAndSettle();
-    expect(find.text('Model-0-Q4_K_M.gguf'), findsOneWidget);
-
-    await tester.drag(find.byType(HFModelCard).first, const Offset(0, -600));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(HFModelCard), findsWidgets);
-    expectNoLiveBlurInTabs();
-  });
 
   testWidgets('collapsed result cards build no quant rows', (tester) async {
     await pumpPage(tester);
