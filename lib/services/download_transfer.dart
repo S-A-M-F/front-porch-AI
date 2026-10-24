@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/segmented_transfer.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 /// How a transfer ended without throwing.
@@ -57,6 +58,8 @@ class DownloadTransfer {
     this.headersFor,
     FreeDiskBytes? freeBytes,
     this.progressEvery = const Duration(milliseconds: 250),
+    this.segmentCount = 8,
+    this.segmentMinBytes = 32 * 1024 * 1024,
   }) : freeBytes = freeBytes ?? freeDiskBytes;
 
   /// Extra request headers for a URL (the HuggingFace token, say).
@@ -64,6 +67,14 @@ class DownloadTransfer {
 
   final FreeDiskBytes freeBytes;
   final Duration progressEvery;
+
+  /// Most parallel connections for one file. HuggingFace's CDN caps each
+  /// connection well below a fast downlink, so one stream rarely fills it.
+  final int segmentCount;
+
+  /// Smallest range one connection is given; a file under twice this is
+  /// fetched over a single connection.
+  final int segmentMinBytes;
 
   /// Space kept free on top of the file itself.
   static const int spareBytes = 512 * 1024 * 1024;
@@ -74,15 +85,49 @@ class DownloadTransfer {
   }) async {
     final client = http.Client();
     try {
-      var response = await _send(client, task);
+      SegmentPlan? saved;
+      try {
+        saved = await SegmentPlan.load(task.segmentsPath);
+      } on FormatException {
+        task.restartFromZero(); // the plan placed the bytes; without it, start over
+      }
+      if (saved != null) {
+        task.totalBytes = saved.total;
+        await _ensureSpace(task, saved.total - saved.done, null);
+        return await _segmented(task, saved, client, onProgress, null);
+      }
+
+      var response = await client.send(_request(task, task.rangeHeader));
       if (response.statusCode == 416 && task.rangeHeader != null) {
         await response.stream.drain<void>();
         task.restartFromZero();
-        response = await _send(client, task);
+        response = await client.send(_request(task, null));
       }
       if (response.statusCode != 200 && response.statusCode != 206) {
         await response.stream.drain<void>();
         throw HttpException('HTTP ${response.statusCode} for ${task.url}');
+      }
+
+      final total = int.tryParse(response.headers['content-length'] ?? '');
+      final ranged = (response.headers['accept-ranges'] ?? '').contains(
+        'bytes',
+      );
+      if (response.statusCode == 200 &&
+          ranged &&
+          segmentCount > 1 &&
+          total != null &&
+          total >= 2 * segmentMinBytes) {
+        task.totalBytes = total;
+        await _ensureSpace(task, total, response);
+        await File(task.tempPath).writeAsBytes(const [], flush: true);
+        final count = (total ~/ segmentMinBytes).clamp(2, segmentCount);
+        return await _segmented(
+          task,
+          SegmentPlan.split(total, count),
+          client,
+          onProgress,
+          response,
+        );
       }
       return await _write(task, response, onProgress);
     } finally {
@@ -90,13 +135,44 @@ class DownloadTransfer {
     }
   }
 
-  Future<http.StreamedResponse> _send(http.Client client, DownloadTask task) {
+  http.Request _request(DownloadTask task, String? range) {
     final url = Uri.parse(task.url);
     final request = http.Request('GET', url);
     request.headers.addAll(headersFor?.call(url) ?? const {});
-    final range = task.rangeHeader;
     if (range != null) request.headers['Range'] = range;
-    return client.send(request);
+    return request;
+  }
+
+  Future<TransferOutcome> _segmented(
+    DownloadTask task,
+    SegmentPlan plan,
+    http.Client client,
+    void Function() onProgress,
+    http.StreamedResponse? first,
+  ) async {
+    final finished = await SegmentedTransfer(
+      task: task,
+      plan: plan,
+      client: client,
+      request: (range) => _request(task, range),
+      onProgress: onProgress,
+      progressEvery: progressEvery,
+    ).run(first: first);
+    return finished ? TransferOutcome.finished : TransferOutcome.stopped;
+  }
+
+  /// Fails before writing when the models drive cannot hold [remaining].
+  Future<void> _ensureSpace(
+    DownloadTask task,
+    int remaining,
+    http.StreamedResponse? open,
+  ) async {
+    if (remaining <= 0) return;
+    final free = await freeBytes(task.targetDir);
+    if (free != null && free < remaining + spareBytes) {
+      await open?.stream.drain<void>();
+      throw DownloadSpaceException(remaining, free, task.targetDir);
+    }
   }
 
   Future<TransferOutcome> _write(
@@ -121,14 +197,7 @@ class DownloadTransfer {
     }
     if (totalSize > 0) task.totalBytes = totalSize;
 
-    final remaining = totalSize - startOffset;
-    if (remaining > 0) {
-      final free = await freeBytes(task.targetDir);
-      if (free != null && free < remaining + spareBytes) {
-        await response.stream.drain<void>();
-        throw DownloadSpaceException(remaining, free, task.targetDir);
-      }
-    }
+    await _ensureSpace(task, totalSize - startOffset, response);
 
     final sink = File(
       task.tempPath,

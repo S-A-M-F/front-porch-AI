@@ -543,6 +543,100 @@ void main() {
       },
     );
   });
+
+  group('DownloadManager parallel segments', () {
+    late Directory tempDir;
+    late _ByteServer server;
+    late DownloadManager manager;
+    final bytes = List<int>.generate(512 * 1024, (i) => (i * 13 + 7) & 0xff);
+
+    setUpAll(() => HttpOverrides.global = null);
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('fpai_segment_test_');
+      server = await _ByteServer.start(bytes)
+        ..acceptRanges = true;
+      // 32 KB segments: the 512 KB file splits into the full eight.
+      manager = DownloadManager(
+        targetDir: tempDir.path,
+        segmentMinBytes: 32 * 1024,
+      );
+    });
+
+    tearDown(() async {
+      manager.dispose();
+      await server.close();
+      await tempDir.delete(recursive: true);
+    });
+
+    DownloadTask queue() =>
+        manager.addDownload(url: server.url, filename: 'big.gguf');
+
+    test('a large file that allows ranges comes down over several '
+        'connections at once, byte-exact', () async {
+      server.chunkDelay = const Duration(milliseconds: 5);
+      final task = queue();
+      await _until(() => task.state.isTerminal);
+
+      expect(
+        task.state,
+        DownloadTaskState.completed,
+        reason: task.errorMessage,
+      );
+      expect(File(task.targetPath).readAsBytesSync(), bytes);
+      expect(server.maxOpen, greaterThan(1));
+      expect(server.ranges, hasLength(7)); // segment 0 rides the first GET
+      expect(File(task.segmentsPath).existsSync(), isFalse);
+    });
+
+    test('pause and resume keep every segment\'s progress', () async {
+      // Pause a quarter of the way in, by what the server has sent.
+      server.chunkDelay = const Duration(milliseconds: 80);
+      final task = queue();
+      await _until(() => server.served >= 128 * 1024);
+      manager.pauseDownload(task.id);
+      await _until(() => server.openResponses == 0);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(task.state, DownloadTaskState.paused);
+      expect(File(task.segmentsPath).existsSync(), isTrue);
+      expect(File(task.targetPath).existsSync(), isFalse);
+      final rangesBefore = server.ranges.length;
+
+      server.chunkDelay = Duration.zero;
+      manager.resumeDownload(task.id);
+      await _until(() => task.state.isTerminal);
+
+      expect(
+        task.state,
+        DownloadTaskState.completed,
+        reason: task.errorMessage,
+      );
+      expect(File(task.targetPath).readAsBytesSync(), bytes);
+      expect(File(task.segmentsPath).existsSync(), isFalse);
+      // Resumed segments ask for what is left, not their whole range.
+      final resumed = server.ranges.skip(rangesBefore);
+      expect(resumed, isNotEmpty);
+      expect(resumed.every((r) => !r.startsWith('bytes=0-')), isTrue);
+    });
+
+    test(
+      'a segment whose connection drops picks up where it stopped',
+      () async {
+        server.dropRangeAfter = 8192;
+        final task = queue();
+        await _until(() => task.state.isTerminal);
+
+        expect(
+          task.state,
+          DownloadTaskState.completed,
+          reason: task.errorMessage,
+        );
+        expect(File(task.targetPath).readAsBytesSync(), bytes);
+        expect(server.ranges.length, greaterThan(7));
+      },
+    );
+  });
 }
 
 Future<void> _until(
@@ -556,8 +650,11 @@ Future<void> _until(
   }
 }
 
-/// Serves one byte array over loopback HTTP with real Range support, in
-/// 8 KB chunks spaced by [chunkDelay] so a test can pause mid-file.
+/// Serves one byte array over loopback HTTP with real Range support
+/// (`bytes=a-` and `bytes=a-b`), in 8 KB chunks spaced by [chunkDelay] so a
+/// test can pause mid-file. [acceptRanges] advertises ranges on a plain
+/// GET, which is what lets the downloader split a file; [dropRangeAfter]
+/// cuts the first mid-file range response off after that many bytes.
 class _ByteServer {
   _ByteServer._(this._server, this._bytes);
 
@@ -565,8 +662,13 @@ class _ByteServer {
   final List<int> _bytes;
   Duration chunkDelay = Duration.zero;
   bool refuseRanges = false;
+  bool acceptRanges = false;
+  int? dropRangeAfter;
+  bool _dropped = false;
   int requests = 0;
   int openResponses = 0;
+  int maxOpen = 0;
+  int served = 0;
   final List<String> ranges = [];
 
   String get url => 'http://127.0.0.1:${_server.port}/model.gguf';
@@ -581,26 +683,41 @@ class _ByteServer {
   Future<void> _handle(HttpRequest req) async {
     requests++;
     openResponses++;
+    if (openResponses > maxOpen) maxOpen = openResponses;
     final res = req.response;
     try {
       final range = req.headers.value('range');
       var start = 0;
+      var end = _bytes.length; // exclusive
+      var cutAt = end;
       if (range != null) {
         ranges.add(range);
         if (refuseRanges) {
           res.statusCode = HttpStatus.requestedRangeNotSatisfiable;
           return;
         }
-        start = int.parse(RegExp(r'bytes=(\d+)-').firstMatch(range)!.group(1)!);
+        final m = RegExp(r'bytes=(\d+)-(\d*)').firstMatch(range)!;
+        start = int.parse(m.group(1)!);
+        if (m.group(2)!.isNotEmpty) end = int.parse(m.group(2)!) + 1;
+        if (dropRangeAfter != null && !_dropped && start > 0) {
+          _dropped = true;
+          cutAt = start + dropRangeAfter!;
+        } else {
+          cutAt = end;
+        }
         res.statusCode = HttpStatus.partialContent;
         res.headers.set(
           'content-range',
-          'bytes $start-${_bytes.length - 1}/${_bytes.length}',
+          'bytes $start-${end - 1}/${_bytes.length}',
         );
+      } else if (acceptRanges) {
+        res.headers.set('accept-ranges', 'bytes');
       }
-      res.contentLength = _bytes.length - start;
-      for (var i = start; i < _bytes.length; i += 8192) {
-        res.add(_bytes.sublist(i, (i + 8192).clamp(0, _bytes.length)));
+      res.contentLength = end - start;
+      for (var i = start; i < end; i += 8192) {
+        if (i >= cutAt) return; // hang up mid-body: the client sees a drop
+        res.add(_bytes.sublist(i, (i + 8192).clamp(0, end)));
+        served += (i + 8192).clamp(0, end) - i;
         await res.flush();
         if (chunkDelay > Duration.zero) await Future<void>.delayed(chunkDelay);
       }

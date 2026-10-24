@@ -79,6 +79,9 @@ class DownloadTask {
   /// Full path to the temporary partial download file.
   String get tempPath => '$targetDir/.$filename.part';
 
+  /// Segment progress of a parallel download, beside the partial file.
+  String get segmentsPath => '$targetDir/.$filename.part.json';
+
   /// Current state of the download.
   DownloadTaskState state;
 
@@ -365,8 +368,10 @@ class DownloadTask {
     bytesDownloaded = 0;
     progress = 0.0;
     try {
-      final tempFile = File(tempPath);
-      if (tempFile.existsSync()) tempFile.deleteSync();
+      for (final path in [tempPath, segmentsPath]) {
+        final file = File(path);
+        if (file.existsSync()) file.deleteSync();
+      }
     } catch (e) {
       errorMessage = 'Could not remove the partial file: $e';
     }

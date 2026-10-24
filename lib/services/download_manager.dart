@@ -107,8 +107,12 @@ class DownloadManager extends ChangeNotifier {
     required String targetDir,
     this.maxConcurrent = 3,
     FreeDiskBytes? freeBytes,
+    int segmentMinBytes = 32 * 1024 * 1024,
   }) : _targetDir = targetDir,
-       _transfer = DownloadTransfer(freeBytes: freeBytes) {
+       _transfer = DownloadTransfer(
+         freeBytes: freeBytes,
+         segmentMinBytes: segmentMinBytes,
+       ) {
     _ensureTargetDir();
     _startProcessing();
   }
