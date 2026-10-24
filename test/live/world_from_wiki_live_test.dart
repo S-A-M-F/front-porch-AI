@@ -68,7 +68,12 @@ Future<String> _savedKeyFor(String apiUrl) async {
 WorldScoutResult _shelfFrom(String path, {int? maxCards}) {
   final raw = jsonDecode(File(path).readAsStringSync()) as Map;
   final scout = raw['scout'] as Map;
-  var cards = parseSignedWorldWriteCards(scout['cards'], max: 400);
+  // The scout's own cards, not the signed-shelf parser (nothing is signed
+  // in a saved scout).
+  var cards = [
+    for (final e in (scout['cards'] as List? ?? const []))
+      if (e is Map) ?WorldProposedCard.tryParse(Map<String, dynamic>.from(e)),
+  ];
   if (maxCards != null && maxCards > 0) cards = cards.take(maxCards).toList();
   final used = {for (final c in cards) c.place.trim().toLowerCase()}
     ..remove('');
