@@ -18,6 +18,14 @@ import {
   shelfSections,
   signedCards,
   applyWorldReview,
+  depthTimeHint,
+  shelfBackboneIndices,
+  shelfFilterIndices,
+  shelfKindCounts,
+  wikiHostLabel,
+  wikiKindGuess,
+  worldScoutStageOf,
+  worldWriteStageOf,
   mergeWorldEntryNotes,
   parseWorldEntryNotes,
   pushWorldProgress,
@@ -421,5 +429,46 @@ describe('the Review step (web twin)', () => {
     const notes = mergeWorldEntryNotes({ seireitei: { tries: 1, passed: true } }, result);
     expect(notes['royal guard']).toEqual({ tries: 2, passed: true, problem: '' });
     expect(notes.seireitei).toBeUndefined();
+  });
+});
+
+describe('the uplift (web twin)', () => {
+  it('maps a progress line to its stage chip', () => {
+    expect(worldScoutStageOf('Picking the ones that matter: 2 parts of about 232 pages, asked together…')).toBe(0);
+    expect(worldScoutStageOf('Reading the shelf as a roleplay world — the reviewer is reading it…')).toBe(1);
+    expect(worldScoutStageOf('Sent back: 2 era cards. Revising (try 2 of 2)…')).toBe(1);
+    expect(worldScoutStageOf('Hunting for what the shelf forgot: Gotei 13 members (round 1 of 2, 12 candidates)…')).toBe(2);
+    expect(worldScoutStageOf('Gotei 13 members: +12 cards.')).toBe(2);
+    expect(worldWriteStageOf('Writing the Silbern book: cards 1–8 of 11…')).toBe(0);
+    expect(worldWriteStageOf('Reading 8 fresh entries against the story…')).toBe(1);
+    expect(worldWriteStageOf('Walking around Silbern…')).toBe(2);
+    expect(worldWriteStageOf("Silbern's book is done: 11 cards.")).toBe(2);
+  });
+
+  it('names a wiki tile from its address alone', () => {
+    expect(wikiKindGuess('https://bleach.fandom.com')).toBe('MediaWiki');
+    expect(wikiKindGuess('https://quietoak.github.io/NeokosmosWiki/')).toBe('Tiddly');
+    expect(wikiKindGuess('https://example.org/')).toBe('Wiki');
+    expect(wikiHostLabel('https://bleach.fandom.com')).toBe('bleach.fandom.com');
+    expect(wikiHostLabel('https://quietoak.github.io/NeokosmosWiki/')).toBe('quietoak.github.io/NeokosmosWiki');
+    expect(wikiHostLabel('junk')).toBe('junk');
+    expect(depthTimeHint(1)).toContain('40 min');
+  });
+
+  it('filters the shelf by kind and signs the backbone, never everything', () => {
+    const proposed = parseProposedCards([
+      { name: 'TYBW', keys: [], role: 'era', kind: 'event', sourceTitles: ['a'] },
+      { name: 'Seireitei', keys: [], role: 'hub', kind: 'place', sourceTitles: ['a'] },
+      { name: 'Gotei 13', keys: [], role: 'hub', kind: 'faction', sourceTitles: ['a'] },
+      { name: 'Bankai', keys: [], role: 'leaf', kind: 'concept', sourceTitles: ['a'] },
+      { name: 'Ichigo', keys: [], role: 'crown', kind: 'person', sourceTitles: ['a'] },
+      { name: 'Rukia', keys: [], role: 'leaf', sourceTitles: ['a'] },
+    ]);
+    const all = proposed.map((_, i) => i);
+    expect(shelfKindCounts(proposed)).toEqual({ Places: 1, Factions: 1, Events: 1, 'Powers & terms': 1, People: 1 });
+    expect(shelfFilterIndices(proposed, all, 'People')).toEqual([4]);
+    expect(shelfFilterIndices(proposed, all, '')).toEqual(all);
+    expect(shelfFilterIndices(proposed, all, 'Nope')).toEqual(all);
+    expect(shelfBackboneIndices(proposed)).toEqual([0, 1, 2]);
   });
 });

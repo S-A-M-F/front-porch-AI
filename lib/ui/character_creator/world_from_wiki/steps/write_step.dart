@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
+
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/world_progress_panel.dart';
@@ -29,6 +31,11 @@ class WorldFromWikiWriteStep extends StatelessWidget {
                 WorldProgressPanel(
                   state: state,
                   fallback: 'Writing lorebook cards…',
+                  subtitle:
+                      'Write · each book written and reviewed, three '
+                      'at a time on a remote model',
+                  stages: kWorldWriteStages,
+                  stage: worldWriteStageOf(state.status),
                 )
               else
                 Text(

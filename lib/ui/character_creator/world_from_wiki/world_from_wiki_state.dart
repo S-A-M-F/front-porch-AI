@@ -13,6 +13,7 @@ import 'package:front_porch_ai/services/lore_extraction_service.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_shelf_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_wizard_gate.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_progress_log.dart';
 
@@ -101,6 +102,9 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
 
   List<WorldProposedCard> proposed = [];
   final Set<int> signed = {};
+
+  /// The Shelf step's kind filter: '' shows every card.
+  String shelfFilter = '';
   List<LorebookEntry> entries = [];
 
   /// Slice 8 (design §9): scout-named places (empty on an untagged wiki
@@ -240,20 +244,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
         worldName: nameController.text,
         premise: premiseController.text,
       );
-      catalogTitleCount = result.catalog.titles.length;
-      catalogArticleCount = result.catalog.articleCount;
-      catalogRanked = result.catalog.ranked;
-      proposed = result.proposed;
-      places = result.places;
-      shelfNotes = result.auditNotes;
-      shelfRevised = result.revised;
-      signed.clear();
-      placeClimate
-        ..clear()
-        ..addAll([
-          for (final p in places)
-            if (p.climateHint.isNotEmpty) p.key,
-        ]);
+      takeShelf(result);
       status =
           '${proposed.length} cards from $catalogTitleCount pages'
           '${places.isNotEmpty ? ', ${places.length} places' : ''}'

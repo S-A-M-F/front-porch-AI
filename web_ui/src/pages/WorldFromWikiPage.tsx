@@ -14,9 +14,6 @@ import {
   WORLD_FROM_WIKI_STEPS,
   canOpenWorldFromWikiPreview,
   catalogCountCopy,
-  contextChoiceOptions,
-  depthLabel,
-  depthOptions,
   emptyScoutCopy,
   jumpWorldFromWikiStep,
   parseProposedCards,
@@ -25,11 +22,15 @@ import {
   scoutPartsNote,
   worldToolsAllowNext,
   shelfReviewNote,
-  shelfSections,
   signedCards,
   worldToolsCanRetest,
   pushWorldProgress,
   worldElapsedLabel,
+  worldScoutStageOf,
+  worldWriteStageOf,
+  WORLD_SCOUT_STAGES,
+  WORLD_WRITE_STAGES,
+  depthTimeHint,
   worldToolsCopy,
   type ProposedWorldCard,
   type ProposedWorldPlace,
@@ -45,7 +46,9 @@ import {
   type WorldReviewRoot,
 } from './worldFromWiki';
 import { WorldProgressPanel } from './WorldProgressPanel';
+import { WorldBookStep } from './WorldBookStep';
 import { WorldReviewStep } from './WorldReviewStep';
+import { WorldShelfStep } from './WorldShelfStep';
 
 type Status = {
   available: boolean;
@@ -317,7 +320,10 @@ export function WorldFromWikiPage() {
         ),
       );
       setTreePlaces([]);
-      setSigned(new Set());
+      // Every proposed card starts signed: the Review step at the end is
+      // where the user fixes what the write got wrong, so the shelf is a
+      // trim, not a chore (the maintainer's ruling, 2026-10-24).
+      setSigned(new Set(cards.map((_, i) => i)));
       setTitleCount(typeof r.titles === 'number' ? r.titles : 0);
       setPartsNote(scoutPartsNote(r.parts, r.partsCut));
       setCatalogCopy(catalogCountCopy(r.titles, r.articles, r.ranked));
@@ -586,185 +592,67 @@ export function WorldFromWikiPage() {
       <div className="wizard-body">
         {step === 0 && (
           <div className="cg-config">
-            <p className="muted small">
-              Name the place, pick a saved wiki, then Scout. Climate stays off unless you turn it on.
-              They will propose a shelf of cards from the index — not one card per page.
-            </p>
-            <label className="cg-field">
-              <span className="cg-field-label">World name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <label className="cg-field">
-              <span className="cg-field-label">One-line premise</span>
-              <textarea value={premise} onChange={(e) => setPremise(e.target.value)} rows={3} />
-            </label>
-            <fieldset className="cg-field">
-              <legend className="cg-field-label">Wiki</legend>
-              {(status?.savedWikis ?? []).length === 0 && (
-                <p className="muted small">Save a Fandom or Tiddly URL in Porch Life first.</p>
-              )}
-              {(status?.savedWikis ?? []).map((url) => (
-                <label key={url} className="cg-toggle">
-                  <input
-                    type="radio"
-                    name="wiki"
-                    checked={wikiUrl === url}
-                    onChange={() => setWikiUrl(url)}
-                  />
-                  <span>{url}</span>
-                </label>
-              ))}
-            </fieldset>
-            <label className="cg-field">
-              <span className="cg-field-label">Context for this wizard</span>
-              <select
-                data-testid="world-wiki-context"
-                value={status?.contextSize ?? 0}
-                onChange={(e) => void setContext({ contextSize: Number(e.target.value) })}
-              >
-                {contextChoiceOptions(
-                  status?.chatContextSize,
-                  status?.contextSize,
-                  status?.contextChoices,
-                ).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <span className="muted small">
-                How much the model may read and write in one go. A bigger window lets a
-                thinking model finish the card list in one piece; a smaller one has the
-                index asked in parts.
-              </span>
-            </label>
-            <label className="cg-field">
-              <span className="cg-field-label">Depth</span>
-              <select
-                data-testid="world-wiki-depth"
-                value={status?.depth ?? 1}
-                onChange={(e) => void setContext({ depth: Number(e.target.value) })}
-              >
-                {depthOptions(status?.depthChoices).map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {depthLabel(d)}
-                  </option>
-                ))}
-              </select>
-              <span className="muted small">
-                {depthOptions(status?.depthChoices).find((d) => d.value === (status?.depth ?? 1))?.blurb ?? ''}
-              </span>
-            </label>
-            <label className="cg-field">
-              <span className="cg-field-label">Where the story stands (optional)</span>
-              <input
-                data-testid="world-wiki-moment"
-                value={moment}
-                placeholder="the night after the first invasion"
-                onChange={(e) => setMoment(e.target.value)}
-              />
-              <span className="muted small">
-                The point in the story the world is frozen at. Cards are written as things
-                are then; what happens after stays unwritten, so you can play it.
-              </span>
-            </label>
-            <label className="cg-field cg-toggle">
-              <input
-                type="checkbox"
-                checked={lorebooksOn}
-                onChange={(e) => setLorebooksOn(e.target.checked)}
-              />
-              <span>Lorebooks — they scout a shelf; you sign which cards to write</span>
-            </label>
-            <label className="cg-field cg-toggle">
-              <input
-                type="checkbox"
-                checked={climateEnabled}
-                onChange={(e) => setClimateEnabled(e.target.checked)}
-              />
-              <span>Climate (off by default — no biome json)</span>
-            </label>
             {busy && (
               <WorldProgressPanel
                 status={liveStatus}
                 fallback="Scouting…"
-                log={liveLog}
                 elapsed={worldElapsedLabel(elapsedMs)}
                 stepMs={stepMs}
+                subtitle="Scout · reading the index, not the articles · the model is thinking"
+                stages={WORLD_SCOUT_STAGES}
+                stage={worldScoutStageOf(liveStatus)}
+                onStop={() => void abortWrite()}
               />
             )}
+            <WorldBookStep
+              name={name}
+              setName={setName}
+              premise={premise}
+              setPremise={setPremise}
+              moment={moment}
+              setMoment={setMoment}
+              savedWikis={status?.savedWikis ?? []}
+              wikiUrl={wikiUrl}
+              setWikiUrl={setWikiUrl}
+              titleCount={titleCount}
+              ranked={catalogCopy.includes('links to most')}
+              contextSize={status?.contextSize ?? 0}
+              chatContextSize={status?.chatContextSize}
+              contextChoices={status?.contextChoices}
+              depth={status?.depth ?? 1}
+              depthChoices={status?.depthChoices}
+              onContext={(pick) => void setContext(pick)}
+              lorebooksOn={lorebooksOn}
+              setLorebooksOn={setLorebooksOn}
+              climateEnabled={climateEnabled}
+              setClimateEnabled={setClimateEnabled}
+              busy={busy}
+            />
           </div>
         )}
 
         {step === 1 && (
-          <div className="cg-config" data-testid="world-from-wiki-review">
-            <p className="muted small">
-              Sign the cards they proposed. Default is off — no select-all.
-              {' '}{signed.size} of {proposed.length} signed
-              {titleCount > 0 ? catalogCopy : '.'}
-              {partsNote ? ` Index ${partsNote}.` : ''}
-              {reviewNote ? ` ${reviewNote[0].toUpperCase()}${reviewNote.slice(1)}.` : ''}
-            </p>
-            {shelfSections(proposed, places).map((section, si) => (
-              <div key={section.place ? `place-${section.place.name}` : `root-${si}`}>
-                {section.place && (
-                  <div className="cg-shelf-head" data-testid="world-place-header">
-                    <strong>
-                      {section.place.parentName
-                        ? `${section.place.name} · inside ${section.place.parentName}`
-                        : section.place.name}
-                    </strong>
-                    {section.place.climateHint && (
-                      <span className="muted small">
-                        {' '}Weather hint: {section.place.climateHint}
-                      </span>
-                    )}
-                    {climateEnabled && (
-                      <label className="cg-toggle small">
-                        <input
-                          type="checkbox"
-                          checked={placeClimate.has(
-                            section.place.name.toLowerCase(),
-                          )}
-                          onChange={(e) => {
-                            const next = new Set(placeClimate);
-                            const key = section.place!.name.toLowerCase();
-                            if (e.target.checked) next.add(key);
-                            else next.delete(key);
-                            setPlaceClimate(next);
-                          }}
-                        />
-                        <span>Own weather</span>
-                      </label>
-                    )}
-                  </div>
-                )}
-                {section.indices.map((i) => {
-                  const c = proposed[i];
-                  return (
-                    <label key={`${c.name}-${i}`} className="cg-toggle">
-                      <input
-                        type="checkbox"
-                        checked={signed.has(i)}
-                        onChange={(e) => {
-                          const next = new Set(signed);
-                          if (e.target.checked) next.add(i);
-                          else next.delete(i);
-                          setSigned(next);
-                        }}
-                      />
-                      <span>
-                        <strong>{c.name}</strong>
-                        {' '}({c.kind ?? c.role}{c.group ? ` · ${c.group}` : ''})
-                        <br />
-                        <span className="muted small">{c.sourceTitles.join(', ')}</span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <WorldShelfStep
+            proposed={proposed}
+            places={places}
+            signed={signed}
+            setSigned={setSigned}
+            climateEnabled={climateEnabled}
+            placeClimate={placeClimate}
+            setPlaceClimate={setPlaceClimate}
+            reviewLine={[
+              reviewNote
+                ? `${reviewNote[0].toUpperCase()}${reviewNote.slice(1)}.`
+                : proposed.length
+                  ? 'The reviewer passed this shelf first time.'
+                  : '',
+              titleCount > 0 ? `${titleCount} pages read${catalogCopy.includes('links to most') ? ', the ones this wiki links to most' : ''}.` : '',
+              partsNote ? `Index ${partsNote}.` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            revised={reviewNote.includes('revised')}
+          />
         )}
 
         {step === 2 && (
@@ -772,9 +660,12 @@ export function WorldFromWikiPage() {
             <WorldProgressPanel
               status={liveStatus}
               fallback="Writing lorebook cards…"
-              log={liveLog}
               elapsed={worldElapsedLabel(elapsedMs)}
               stepMs={stepMs}
+              subtitle="Write · each book written and reviewed, three at a time on a remote model"
+              stages={WORLD_WRITE_STAGES}
+              stage={worldWriteStageOf(liveStatus)}
+              onStop={() => void abortWrite()}
             />
             <p className="muted small">Nothing is saved until Preview.</p>
             <button type="button" disabled={!busy} onClick={() => void abortWrite()}>
@@ -831,14 +722,24 @@ export function WorldFromWikiPage() {
       <div className="wizard-nav">
         <button disabled={step === 0 || busy} onClick={() => setStep(step - 1)}>← Back</button>
         {step === 0 && (
-          <button className="primary" disabled={busy || !nextOk || !wikiUrl} onClick={() => void scout()}>
-            {busy ? 'Scouting…' : lorebooksOn ? 'Scout wiki' : 'Next: Review'}
-          </button>
+          <span className="wfw-nav-next">
+            <button className="primary" disabled={busy || !nextOk || !wikiUrl} onClick={() => void scout()}>
+              {busy ? 'Scouting…' : lorebooksOn ? 'Scout wiki →' : 'Next: Review'}
+            </button>
+            {lorebooksOn && !busy && (
+              <span className="muted small" data-testid="world-from-wiki-nav-hint">
+                {depthTimeHint(status?.depth ?? 1).replace('About ', 'about ')}, with every step shown
+              </span>
+            )}
+          </span>
         )}
         {step === 1 && (
-          <button className="primary" disabled={busy || !toolsOk || signed.size === 0} onClick={() => void write()}>
-            Write {signed.size} cards
-          </button>
+          <span className="wfw-nav-next">
+            <button className="primary" disabled={busy || !toolsOk || signed.size === 0} onClick={() => void write()}>
+              Write {signed.size} cards →
+            </button>
+            <span className="muted small">a few minutes per book on a remote model</span>
+          </span>
         )}
         {step === 2 && (
           <button disabled={!busy} onClick={() => void abortWrite()}>Stop</button>

@@ -12,6 +12,7 @@ import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/steps.
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_review_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
+import 'package:front_porch_ai/services/storage/settings/web_search_settings.dart';
 
 /// Studio wizard: wiki → lorebook cards → a real World in the library.
 class WorldFromWikiPage extends StatefulWidget {
@@ -235,17 +236,35 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
           onMint: _saveAndFinish,
         );
     }
-    return CreatorNavBar(
-      busy: busy,
-      showBack: step > 0,
-      onBack: () {
-        worldState.currentStep = step - 1;
-        worldState.notify();
-      },
-      onNext: onNext,
-      nextLabel: nextLabel,
-      isLast: step >= 4,
-      nextKey: const Key('world-from-wiki-next'),
+    final hint = _navHint(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CreatorNavBar(
+          busy: busy,
+          showBack: step > 0,
+          onBack: () {
+            worldState.currentStep = step - 1;
+            worldState.notify();
+          },
+          onNext: onNext,
+          nextLabel: nextLabel,
+          isLast: step >= 4,
+          nextKey: const Key('world-from-wiki-next'),
+        ),
+        if (hint.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              hint,
+              key: const Key('world-from-wiki-nav-hint'),
+              style: TextStyle(
+                fontSize: 12,
+                color: StudioColors.mutedOf(context),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -295,6 +314,53 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
 
   static const _stepLabels = ['Setup', 'Book', 'Shelf', 'Write', 'Review'];
 
+  /// The app bar's second line: where the wizard stands, in a few words.
+  String _subtitle(BuildContext context) {
+    final name = worldState.nameController.text.trim();
+    final wiki = worldState.wikiUrl.isEmpty
+        ? ''
+        : wikiHostLabel(worldState.wikiUrl);
+    final storage = Provider.of<StorageService>(context, listen: false);
+    switch (worldState.currentStep) {
+      case 0:
+        return 'Pick the model that writes it';
+      case 1:
+        if (worldState.scouting) {
+          final tokens = worldWizardContextTokens(storage);
+          return 'Scouting $wiki · ${worldWizardDepth(storage).label} · '
+              '${worldWikiContextLabel(tokens)}';
+        }
+        return 'A whole place, with its people and its weather, from a wiki '
+            'you name';
+      case 2:
+        return [
+          if (name.isNotEmpty) name,
+          if (wiki.isNotEmpty) wiki,
+        ].join(' · ');
+      case 3:
+        return worldState.writing
+            ? 'Writing ${name.isEmpty ? 'the world' : name}…'
+            : 'Stopped';
+      default:
+        return '${name.isEmpty ? 'The world' : name} · review before you mint';
+    }
+  }
+
+  /// A line under the nav: how long the next press takes, in plain words.
+  String _navHint(BuildContext context) {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    switch (worldState.currentStep) {
+      case 1:
+        return worldState.lorebooksOn
+            ? 'Full on a remote model: ${worldWizardDepth(storage).timeHint.replaceFirst('About ', 'about ')}, with every step shown'
+            : '';
+      case 2:
+        return 'A few minutes per book on a remote model';
+      default:
+        return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) =>
       CreatorTheme(child: Builder(builder: _scaffold));
@@ -303,7 +369,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     return Scaffold(
       backgroundColor: StudioColors.bgOf(context),
       appBar: AppBar(
-        toolbarHeight: 56,
+        toolbarHeight: 60,
         backgroundColor: StudioColors.sideOf(context),
         shape: Border(bottom: BorderSide(color: StudioColors.lineOf(context))),
         automaticallyImplyLeading: false,
@@ -329,21 +395,35 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                     : () => Navigator.of(context).pop(),
               ),
             ),
-            Icon(
-              Icons.menu_book_outlined,
-              color: StudioColors.amberOf(context),
-              size: 22,
-            ),
-            Text(
-              'World from Wiki',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: StudioColors.inkOf(context),
+            const WorldIconBadge(icon: Icons.menu_book_outlined, size: 36),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'World from Wiki',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                      color: StudioColors.inkOf(context),
+                    ),
+                  ),
+                  Text(
+                    _subtitle(context),
+                    key: const Key('world-from-wiki-subtitle'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: StudioColors.mutedOf(context),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const Spacer(),
-            CreatorStepIndicator(
+            WorldStepIndicator(
               labels: _stepLabels,
               current: worldState.currentStep,
             ),

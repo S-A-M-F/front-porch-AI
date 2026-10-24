@@ -350,14 +350,19 @@ export function shelfReviewNote(revised: unknown, auditNotes: unknown): string {
   return revised === true ? `shelf revised: ${short}` : `review: ${short}`;
 }
 
-export type DepthChoice = { value: number; label: string; cards?: number; blurb?: string };
+export type DepthChoice = { value: number; label: string; cards?: number; blurb?: string; time?: string };
 
 /** The shipped depth list, for an older server that sends none. */
 export const WORLD_WIKI_DEPTHS: DepthChoice[] = [
-  { value: 0, label: 'Quick', cards: 40, blurb: 'About 40 cards, no review passes. Fast; the shelf may be thin.' },
-  { value: 1, label: 'Full', cards: 60, blurb: 'About 60 cards. Factions and places name their people in their own card; the main cast gets cards. Reviewers check the shelf and every entry.' },
-  { value: 2, label: 'Deep', cards: 200, blurb: 'About 200 cards. Every place gets its people; slow on a local model.' },
+  { value: 0, label: 'Quick', cards: 40, blurb: 'About 40 cards, no review passes. Fast; the shelf may be thin.', time: 'About 10 min on a remote model' },
+  { value: 1, label: 'Full', cards: 60, blurb: 'About 60 cards. Factions and places name their people in their own card; the main cast gets cards. Reviewers check the shelf and every entry.', time: 'About 40 min on a remote model' },
+  { value: 2, label: 'Deep', cards: 200, blurb: 'About 200 cards. Every place gets its people; slow on a local model.', time: 'Hours; run it overnight' },
 ];
+
+/** The time hint for a depth value, from the shipped list. */
+export function depthTimeHint(value: number): string {
+  return WORLD_WIKI_DEPTHS.find((d) => d.value === value)?.time ?? '';
+}
 
 /** The relay's depth choices as select options, or the shipped list. */
 export function depthOptions(raw: unknown): DepthChoice[] {
@@ -512,4 +517,86 @@ export function mergeWorldEntryNotes(
   }
   for (const d of result.dropped ?? []) delete next[lower(d)];
   return next;
+}
+
+/** The three stages a scout goes through, for the progress card's chips. */
+export const WORLD_SCOUT_STAGES = ['Scout the index', 'Reviewer reads the shelf', 'Fill what it forgot'];
+
+/** The three stages a write goes through. */
+export const WORLD_WRITE_STAGES = ['Write the cards', 'Reviewer reads them', 'Places and weather'];
+
+/** Which scout stage a progress line belongs to (0-based), from its words. */
+export function worldScoutStageOf(line: string): number {
+  const l = line.toLowerCase();
+  if (l.startsWith('hunting') || l.startsWith('nothing new') || l.includes(': +') || l.startsWith('shelf ready')) return 2;
+  if (l.startsWith('reading the shelf') || l.startsWith('sent back') || l.includes('reviewer is reading') || l.includes('— passed')) return 1;
+  return 0;
+}
+
+/** Which write stage a progress line belongs to (0-based), from its words. */
+export function worldWriteStageOf(line: string): number {
+  const l = line.toLowerCase();
+  if (l.startsWith('walking around') || l.startsWith('checking the weather') || l.startsWith('weather written') || l.includes('book is done')) return 2;
+  if (l.startsWith('reading ') || l.startsWith('re-reading') || l.startsWith('rewriting') || l.includes('sent back') || l.includes('passed')) return 1;
+  return 0;
+}
+
+/** "MediaWiki", "Tiddly" or "Wiki" from the address alone. */
+export function wikiKindGuess(url: string): string {
+  const u = url.toLowerCase();
+  if (u.includes('fandom.com') || u.includes('wikipedia.org') || u.includes('/wiki/') || u.includes('wiki.')) return 'MediaWiki';
+  if (u.includes('tiddly') || u.includes('github.io')) return 'Tiddly';
+  return 'Wiki';
+}
+
+/** The host part of a saved wiki address, for a tile. */
+export function wikiHostLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.replace(/\/+$/, '');
+    return path && path !== '/' ? `${u.host}${path}` : u.host;
+  } catch {
+    return url;
+  }
+}
+
+/** The Shelf step's filter chips: label and the kinds each gathers. */
+export const WORLD_SHELF_FILTERS: { label: string; kinds: string[] }[] = [
+  { label: 'Places', kinds: ['place'] },
+  { label: 'Factions', kinds: ['faction'] },
+  { label: 'Events', kinds: ['event'] },
+  { label: 'Powers & terms', kinds: ['concept', 'race', 'item'] },
+  { label: 'People', kinds: ['person'] },
+];
+
+/** The kinds that make a world's backbone. */
+export const WORLD_BACKBONE_KINDS = new Set(['place', 'faction', 'event']);
+
+/** A card's kind, with the role standing in when the scout gave none. */
+export function shelfKindOf(c: ProposedWorldCard): string {
+  return c.kind && c.kind.length ? c.kind : c.role;
+}
+
+/** How many cards each filter chip gathers. */
+export function shelfKindCounts(proposed: ProposedWorldCard[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const f of WORLD_SHELF_FILTERS) {
+    out[f.label] = proposed.filter((c) => f.kinds.includes(shelfKindOf(c))).length;
+  }
+  return out;
+}
+
+/** The indices of [proposed] that pass the filter ('' = all). */
+export function shelfFilterIndices(proposed: ProposedWorldCard[], indices: number[], filter: string): number[] {
+  if (!filter) return indices;
+  const f = WORLD_SHELF_FILTERS.find((x) => x.label === filter);
+  if (!f) return indices;
+  return indices.filter((i) => f.kinds.includes(shelfKindOf(proposed[i])));
+}
+
+/** The indices "Sign the backbone" signs: the era card and every place, faction and event. */
+export function shelfBackboneIndices(proposed: ProposedWorldCard[]): number[] {
+  return proposed
+    .map((c, i) => (c.role === 'era' || WORLD_BACKBONE_KINDS.has(shelfKindOf(c)) ? i : -1))
+    .filter((i) => i >= 0);
 }

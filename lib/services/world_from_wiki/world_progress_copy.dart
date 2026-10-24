@@ -170,3 +170,68 @@ String _clip(String s, int max) {
   final one = s.replaceAll('\n', ' ').trim();
   return one.length > max ? '${one.substring(0, max)}…' : one;
 }
+
+/// The three stages a scout goes through, for the progress card's chips.
+const List<String> kWorldScoutStages = [
+  'Scout the index',
+  'Reviewer reads the shelf',
+  'Fill what it forgot',
+];
+
+/// The three stages a write goes through.
+const List<String> kWorldWriteStages = [
+  'Write the cards',
+  'Reviewer reads them',
+  'Places and weather',
+];
+
+/// Which scout stage a progress line belongs to (0-based), from its words.
+int worldScoutStageOf(String line) {
+  final l = line.toLowerCase();
+  if (l.startsWith('hunting') ||
+      l.startsWith('nothing new') ||
+      l.contains(': +') ||
+      l.startsWith('shelf ready')) {
+    return 2;
+  }
+  if (l.startsWith('reading the shelf') ||
+      l.startsWith('sent back') ||
+      l.contains('reviewer is reading') ||
+      l.contains('— passed')) {
+    return 1;
+  }
+  return 0;
+}
+
+/// Which write stage a progress line belongs to (0-based), from its words.
+int worldWriteStageOf(String line) {
+  final l = line.toLowerCase();
+  if (l.startsWith('walking around') ||
+      l.startsWith('checking the weather') ||
+      l.startsWith('weather written') ||
+      l.contains('book is done')) {
+    return 2;
+  }
+  if (l.startsWith('reading ') ||
+      l.startsWith('re-reading') ||
+      l.startsWith('rewriting') ||
+      l.contains('sent back') ||
+      l.contains('passed')) {
+    return 1;
+  }
+  return 0;
+}
+
+/// "MediaWiki", "Tiddly" or "Wiki" from the address alone, for a tile's
+/// subtitle before any scout has read it.
+String worldWikiKindGuess(String url) {
+  final u = url.toLowerCase();
+  if (u.contains('fandom.com') ||
+      u.contains('wikipedia.org') ||
+      u.contains('/wiki/') ||
+      u.contains('wiki.')) {
+    return 'MediaWiki';
+  }
+  if (u.contains('tiddly') || u.contains('github.io')) return 'Tiddly';
+  return 'Wiki';
+}

@@ -45,6 +45,17 @@ extension WorldWikiDepthX on WorldWikiDepth {
       'About 200 cards. Every place gets its people; slow on a local model.',
   };
 
+  /// "~60 cards", for a tile's corner.
+  String get cardsLabel => '~$cardTarget cards';
+
+  /// How long a remote provider takes, in the user's words; a local model
+  /// is slower and says so elsewhere.
+  String get timeHint => switch (this) {
+    WorldWikiDepth.quick => 'About 10 min on a remote model',
+    WorldWikiDepth.full => 'About 40 min on a remote model',
+    WorldWikiDepth.deep => 'Hours; run it overnight',
+  };
+
   /// The most cards the shelf holds once the fill loop is done.
   int get cardTarget => switch (this) {
     WorldWikiDepth.quick => 40,
