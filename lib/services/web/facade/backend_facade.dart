@@ -18,6 +18,7 @@
 
 import 'dart:async';
 
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/capability/capability.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/utils/utils.dart';
@@ -226,32 +227,27 @@ class BackendFacade {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> modelFiles(String repoId) async {
-    final files = await _models.getModelFiles(repoId);
-    return files
-        .map(
-          (f) => {
-            'filename': f.filename,
-            'sizeBytes': f.sizeBytes,
-            'repoId': f.repoId,
-            'quant': f.quantType.name,
-          },
-        )
-        .toList();
-  }
+  /// `{files, problem}`; see [HfFilesView].
+  Future<Map<String, dynamic>> modelFiles(String repoId) async =>
+      HfFilesView.toJson(
+        await _models.listModelFiles(repoId),
+        vramMb: _hardware?.hardwareInfo?.vramMb ?? 0,
+        contextSize: _storage.backendSettings.contextSize,
+      );
 
   /// Queue a GGUF file for download. The client supplies repoId + filename; we
   /// re-resolve the typed [HFModelFile] so the download has the correct URL/hash.
   /// Returns the new task id, or null if the file isn't found in the repo.
+  /// Any part of a split quant names the whole quant: every part is queued.
   Future<String?> queueDownload(String repoId, String filename) async {
-    final files = await _models.getModelFiles(repoId);
-    for (final f in files) {
-      if (f.filename == filename) {
+    final quants = HfQuant.group(await _models.getModelFiles(repoId));
+    for (final q in quants) {
+      if (q.parts.any((f) => f.filename == filename)) {
         // Downloading a model IS local intent — fetch the managed engine
         // alongside it (same trigger as the desktop Models page; no-op when
         // installed/downloading/remote).
         unawaited(_llm.backendManager.ensureEngineInstalled());
-        return _models.queueDownload(f).id;
+        return _models.queueQuant(q).first.id;
       }
     }
     return null;

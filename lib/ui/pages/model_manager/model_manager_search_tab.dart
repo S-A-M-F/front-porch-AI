@@ -45,9 +45,9 @@ class ModelManagerSearchTab extends StatelessWidget {
   /// rows show as "fit unknown" rather than a guess.
   final int availableVram;
 
-  void _onDownload(BuildContext context, HFModelFile file) {
+  void _onDownload(BuildContext context, HfQuant quant) {
     final modelManager = Provider.of<ModelManager>(context, listen: false);
-    modelManager.queueDownload(file);
+    modelManager.queueQuant(quant);
     // Downloading a model IS local intent: fetch the managed engine alongside
     // it (a no-op when installed/downloading/remote) so both finish together
     // instead of the engine wait landing right when the user starts chatting.
@@ -213,7 +213,9 @@ class ModelManagerSearchTab extends StatelessWidget {
                       model: modelWithFiles,
                       availableVramMb: availableVram,
                       contextSize: contextSize,
-                      onDownload: (file) => _onDownload(context, file),
+                      onDownload: (file) =>
+                          _onDownload(context, HfQuant.group([file]).single),
+                      onDownloadQuant: (quant) => _onDownload(context, quant),
                       downloadingFiles: modelManager.downloadingFiles,
                       downloadedFiles: modelManager.downloadedFilenames,
                     );

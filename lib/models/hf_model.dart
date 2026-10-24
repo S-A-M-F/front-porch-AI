@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'package:front_porch_ai/models/hf_quant.dart';
+
 /// All supported GGUF quantization types.
 /// Used for parsing filenames and displaying quant info to users.
 enum QuantType {
@@ -67,7 +69,12 @@ enum QuantType {
   /// Parses a QuantType from a GGUF filename.
   /// Handles common patterns like Q4_K_M, Q5_K_S, IQ2_XXS, etc.
   static QuantType fromFilename(String filename) {
-    final upper = filename.toUpperCase();
+    // The basename only: a repo subfolder ("Q8_0/…") must not decide it.
+    final upper = filename.split(RegExp(r'[/\\]')).last.toUpperCase();
+    // Integer quants are short tokens that also occur inside names
+    // ("PHI4"), so they only count standing on their own.
+    bool token(String t) =>
+        RegExp('(^|[^A-Z0-9])$t([^A-Z0-9]|\$)').hasMatch(upper);
 
     // Check for specific variants first (more specific patterns)
     if (upper.contains('Q4_K_M') || upper.contains('Q4KM')) return q4K;
@@ -101,13 +108,10 @@ enum QuantType {
     if (upper.contains('IQ6_M')) return iq6M;
 
     // Integer types
-    if (upper.contains('I2_S')) return i2S;
-    if (upper.contains('I3_S')) return i3S;
-    if (upper.contains('I4_') ||
-        (upper.contains('I4') && !upper.contains('I4_'))) {
-      return i4;
-    }
-    if (upper.contains('I8')) return i8;
+    if (token('I2_S')) return i2S;
+    if (token('I3_S')) return i3S;
+    if (token('I4')) return i4;
+    if (token('I8')) return i8;
 
     // Standard types (check these after variants)
     if (upper.contains('Q8_0')) return q8_0;
@@ -201,6 +205,22 @@ class HFModelFile {
   /// Architecture name if detectable from filename (e.g., "llama", "mistral").
   final String? architecture;
 
+  /// SHA-256 HuggingFace publishes for the file (its LFS oid), if known.
+  final String? sha256;
+
+  /// The file's name without any repo subfolder.
+  String get basename => filename.split('/').last;
+
+  /// A vision projector (`mmproj`), not a model.
+  bool get isProjector => basename.toLowerCase().contains('mmproj');
+
+  /// The name it is saved under in the models folder. Repo subfolders are
+  /// flattened (split parts must sit side by side for KoboldCpp), and a
+  /// projector carries its repo's name: every vision repo has an
+  /// `mmproj-F16.gguf`, and two of them must not overwrite each other.
+  String get localFilename =>
+      isProjector ? '${repoId.split('/').last}.$basename' : basename;
+
   /// File size in megabytes (rounded to 1 decimal).
   double get sizeMb => (sizeBytes / (1024 * 1024));
 
@@ -222,6 +242,7 @@ class HFModelFile {
     required this.repoId,
     this.paramCountB,
     this.architecture,
+    this.sha256,
   }) : quantType = QuantType.fromFilename(filename);
 
   /// Creates an HFModelFile from a HuggingFace API response map.
@@ -254,6 +275,9 @@ class HFModelFile {
     // Try to detect architecture from filename
     final arch = _detectArchitecture(path);
 
+    final lfs = map['lfs'];
+    final oid = lfs is Map ? lfs['oid'] : null;
+
     return HFModelFile(
       filename: path,
       downloadUrl: downloadUrl,
@@ -261,6 +285,7 @@ class HFModelFile {
       repoId: repoId,
       paramCountB: params,
       architecture: arch,
+      sha256: oid is String && oid.length == 64 ? oid : null,
     );
   }
 
@@ -331,6 +356,9 @@ class HFModel {
   /// Populated after calling [fetchFiles].
   final List<HFModelFile> files;
 
+  /// Why [files] is empty, when the file listing failed.
+  final HfFilesProblem? filesProblem;
+
   HFModel({
     required this.id,
     required this.author,
@@ -341,6 +369,7 @@ class HFModel {
     this.hasPipelineTag = false,
     this.pipelineTag,
     this.files = const [],
+    this.filesProblem,
   });
 
   /// Creates an HFModel from a HuggingFace API search response.
@@ -395,7 +424,7 @@ class HFModel {
   }
 
   /// Adds files to this model's file list.
-  HFModel withFiles(List<HFModelFile> newFiles) {
+  HFModel withFiles(List<HFModelFile> newFiles, {HfFilesProblem? problem}) {
     return HFModel(
       id: id,
       author: author,
@@ -406,6 +435,7 @@ class HFModel {
       hasPipelineTag: hasPipelineTag,
       pipelineTag: pipelineTag,
       files: List.unmodifiable(newFiles),
+      filesProblem: problem,
     );
   }
 

@@ -42,6 +42,7 @@ export 'group_chat.dart';
 export 'group_card.dart';
 export 'group_member.dart';
 export 'hf_model.dart';
+export 'hf_quant.dart';
 export 'local_model_info.dart';
 export 'lorebook.dart';
 export 'lorebook_codec.dart';

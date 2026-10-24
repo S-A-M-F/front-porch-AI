@@ -99,3 +99,43 @@ describe('ModelDownloads search filters and stale replies', () => {
     expect(rowFor('gemma-3-27b-it')).toBeTruthy();
   });
 });
+
+describe('ModelDownloads file list', () => {
+  async function expandWith(answer: unknown) {
+    get.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/backend/hf/search')) return { models: [MODELS[0]] };
+      if (path.startsWith('/api/backend/hf/files')) return answer;
+      return { downloads: [], overallProgress: 0, overallSpeed: 0, activeCount: 0 };
+    });
+    await act(async () => {
+      root.render(
+        createElement(ModelDownloads, { query: 'Scarlett', setQuery: () => {}, searchNonce: 1, onError: () => {} }),
+      );
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.hf-head')!.click();
+    });
+  }
+
+  it('shows a split quant once with its parts, the fit line, Best fit and the vision add-on', async () => {
+    await expandWith({
+      files: [
+        { filename: 'Q4/m-Q4_K_M.gguf', title: 'm-Q4_K_M.gguf', sizeBytes: 16e9, repoId: 'r/m', quant: 'q4K', parts: 1, kind: 'model', fit: 'fits', fitText: '6.2 GB free after loading', bestFit: true },
+        { filename: 'Q8/m-Q8_0-00001-of-00002.gguf', title: 'm-Q8_0.gguf', sizeBytes: 29e9, repoId: 'r/m', quant: 'q8_0', parts: 2, kind: 'model', fit: 'exceeds', fitText: '5.1 GB over your VRAM', bestFit: false },
+        { filename: 'mmproj-F16.gguf', title: 'mmproj-F16.gguf', sizeBytes: 8e8, repoId: 'r/m', quant: 'fp16', parts: 1, kind: 'projector', fit: 'fits', fitText: '22 GB free after loading', bestFit: false },
+      ],
+      problem: null,
+    });
+    const text = container.querySelector('.file-list')!.textContent!;
+    expect(text).toContain('m-Q8_0.gguf · 2 parts');
+    expect(text).toContain('5.1 GB over your VRAM');
+    expect(container.querySelectorAll('.hf-best')).toHaveLength(1);
+    expect(container.querySelector('.hf-best')!.closest('li')!.textContent).toContain('m-Q4_K_M.gguf');
+    expect(text.indexOf('Vision add-on')).toBeLessThan(text.indexOf('mmproj-F16.gguf'));
+  });
+
+  it('says a gated repo needs its licence and a token instead of loading forever', async () => {
+    await expandWith({ files: [], problem: 'gated' });
+    expect(container.querySelector('[data-testid="hf-files-note"]')!.textContent).toContain('Gated repo');
+  });
+});

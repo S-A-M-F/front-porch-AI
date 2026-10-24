@@ -192,7 +192,7 @@ class WebBackendRoutes {
   Future<shelf.Response> _hfFiles(shelf.Request r) async {
     final repoId = r.url.queryParameters['repoId'] ?? '';
     if (repoId.isEmpty) return JsonResponse.badRequest('repoId is required');
-    return JsonResponse.ok({'files': await _backend!.modelFiles(repoId)});
+    return JsonResponse.ok(await _backend!.modelFiles(repoId));
   }
 
   Future<shelf.Response> _deleteModel(shelf.Request r) async {

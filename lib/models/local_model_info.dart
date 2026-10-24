@@ -18,6 +18,7 @@
 
 import 'dart:io';
 import 'package:front_porch_ai/models/hf_model.dart';
+import 'package:front_porch_ai/utils/gguf_split.dart';
 
 /// Metadata for a locally stored GGUF model file.
 /// Provides parsed information about the model without requiring full GGUF parsing.
@@ -82,7 +83,8 @@ class LocalModelInfo {
     return LocalModelInfo(
       path: entity.path,
       filename: filename,
-      sizeBytes: stat.size,
+      // A split model is listed by its first part; its size is all parts.
+      sizeBytes: GgufSplit.totalBytes(entity.path, plainSize: stat.size),
       modified: stat.modified,
       kvBytesPerToken: null, // Will be populated by GGUFParser if needed
     );

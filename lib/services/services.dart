@@ -41,9 +41,11 @@ export 'expression_pack_jpeg_check.dart';
 export 'expression_pack_prepare.dart';
 export 'expression_pack_service.dart';
 export 'expression_pack_normalizer.dart';
+export 'hf_repo_files.dart';
 export 'hf_search.dart';
 export 'model_fetch.dart';
 export 'model_manager.dart';
+export 'projector_pairing.dart';
 export 'storage_service.dart';
 // The one settings TYPE consumers need by name (the sidebar's tri-state
 // control, the web facade/routes, the one-shot resolver). The settings

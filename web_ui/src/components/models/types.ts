@@ -81,12 +81,24 @@ export interface HFModel {
   roleplay?: boolean;
 }
 
+/** One downloadable quant (split parts joined). Fields past `quant` are absent from older hosts. */
 export interface HFFile {
   filename: string;
   sizeBytes: number;
   repoId: string;
   quant: string;
+  title?: string;
+  parts?: number;
+  complete?: boolean;
+  kind?: 'model' | 'projector';
+  vramMb?: number;
+  fit?: 'fits' | 'tight' | 'exceeds' | 'unknown';
+  fitText?: string;
+  bestFit?: boolean;
 }
+
+/** Why a repo's file list is empty. */
+export type HFFilesProblem = 'gated' | 'notFound' | 'network';
 
 export interface Download {
   id: string;
