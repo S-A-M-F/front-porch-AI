@@ -646,7 +646,13 @@ void main() {
       'keys': ['Sol Allevia, Order of Sol Allevia, sisters'],
       'content': long,
     })!;
-    expect(parsed.content.length, lessThanOrEqualTo(kWorldLoreContentMax));
+    // Changed 2026-10-23: a sentence ending just past the cap is kept whole
+    // (seventy characters of slack), never cut mid-word.
+    expect(
+      parsed.content.length,
+      lessThanOrEqualTo(kWorldLoreContentMax + kWorldLoreContentSlack),
+    );
+    expect(parsed.content, endsWith('.'));
     expect(
       parsed.keys,
       containsAll(['Sol Allevia', 'Order of Sol Allevia', 'sisters']),
@@ -1224,6 +1230,18 @@ void main() {
         clipLoreContent('$two  A third,   with "quotes" after.'),
         two,
       );
+      // A sentence ending just past the cap is kept whole, never cut
+      // mid-word ("…speak with their Zanpak").
+      final long =
+          'A thin, round, metallic device bearing the Wandenreich insignia, '
+          'roughly the size of a palm, that all Sternritter and Yhwach carry '
+          'into battle against the Gotei 13 and its captains. During the '
+          'first invasion they released five streams of dark energy that '
+          'disintegrated several Bankai into dark rings, sealing them away '
+          'so their owners can no longer speak with their Zanpakutō.';
+      expect(long.length, greaterThan(kWorldLoreContentMax));
+      expect(clipLoreContent(long), long);
+      expect(clipLoreContent(long), isNot(endsWith('Zanpak')));
     });
   });
 
@@ -1271,6 +1289,50 @@ void main() {
         ]);
       },
     );
+    test('on a remote provider the parts are asked together and merged in '
+        'order; a throw still ends the run with its reason', () async {
+      final llm = _PartsLlm(cutAbove: 1000);
+      final run =
+          await (WorldScoutRunner(
+                llm: llm,
+                budget: const WorldWikiBudget(65536),
+                depth: WorldWikiDepth.full,
+              )..concurrency = 3)
+              .run(
+                titles: titles,
+                tags: const {},
+                worldName: 'Neokosmos',
+                premise: 'A coastal republic.',
+              );
+      expect(run.parts, 2);
+      expect(llm.partSizes.take(2).toList(), [150, 150]);
+      expect(run.cards.take(4).map((c) => c.name).toList(), [
+        'Title 000',
+        'Title 002',
+        'Title 001',
+        'Title 003',
+      ]);
+      final busy = _PartsLlm(cutAbove: 1000, throwOn: 2);
+      final stopped =
+          await (WorldScoutRunner(
+                llm: busy,
+                budget: const WorldWikiBudget(65536),
+                depth: WorldWikiDepth.full,
+              )..concurrency = 3)
+              .run(
+                titles: titles,
+                tags: const {},
+                worldName: 'Neokosmos',
+                premise: 'A coastal republic.',
+              );
+      // The first part's cards stand; the thrown second part ends the run
+      // without a smaller part being asked (as when asked one by one).
+      expect(stopped.parts, 2);
+      expect(busy.partSizes, hasLength(2));
+      expect(stopped.cards.map((c) => c.name), ['Title 000', 'Title 002']);
+      expect(stopped.failure, isNull, reason: 'cards came, so no failure');
+    });
+
     test('the cutoff grows with the answer the call may run', () {
       expect(
         worldToolTimeoutFor(const Duration(minutes: 6), 8192),

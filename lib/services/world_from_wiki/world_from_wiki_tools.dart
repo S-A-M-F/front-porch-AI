@@ -420,10 +420,16 @@ List<String> _keysOf(dynamic raw) {
 }
 
 /// Collapse whitespace and cut at a sentence near [kWorldLoreContentMax].
+/// A sentence that ends just past the cap is kept whole: "…unable to
+/// speak with their Zanpak" is worse than a card seventy characters long.
+const int kWorldLoreContentSlack = 70;
+
 String clipLoreContent(String raw) {
   final s = worldTwoSentences(raw.trim().replaceAll(RegExp(r'\s+'), ' '));
   if (s.length <= kWorldLoreContentMax) return s;
-  final cut = s.substring(0, kWorldLoreContentMax);
+  final reach = kWorldLoreContentMax + kWorldLoreContentSlack;
+  if (s.length <= reach) return s;
+  final cut = s.substring(0, reach);
   var at = cut.lastIndexOf('. ');
   final bang = cut.lastIndexOf('! ');
   final q = cut.lastIndexOf('? ');

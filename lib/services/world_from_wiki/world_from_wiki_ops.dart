@@ -483,6 +483,9 @@ String worldMomentRule(String moment) => moment.trim().isEmpty
           '— their role and fate then (alive, fallen, defected, imprisoned), '
           'not their whole history.'
     : 'Write everything as it stands at the Moment ("${moment.trim()}"): '
-          'each person\'s role, whereabouts and fate then. What happens after '
-          'the Moment is unknown to everyone — never state it, not even as '
+          'each person\'s role, whereabouts and fate then. The era card is '
+          'the Moment itself: what has just happened, who is dead or gone, '
+          'what hangs over the next day. An event that happens after the '
+          'Moment does not belong on the shelf. What happens after the '
+          'Moment is unknown to everyone — never state it, not even as '
           'foreshadowing.';

@@ -133,11 +133,39 @@ class WorldScoutRunner {
     final places = <WorldProposedPlace>[];
     final seenPlaces = <String>{};
 
+    // On a remote provider the first parts go out together (a half asked
+    // again after a cut still goes alone, in order).
+    final preAsked = <List<String>, ({LlmToolResponse? resp, Object? error})>{};
+    if (concurrency > 1 && queue.length > 1) {
+      final first = List<List<String>>.from(queue);
+      final answers = await forEachLimited(first, concurrency, (i, part) async {
+        onProgress?.call(
+          worldProgressScoutPart(i + 1, first.length, part.length),
+        );
+        final prompt = scoutPrompt(
+          part,
+          worldName: worldName,
+          premise: premise,
+          index: i + 1,
+          total: first.length,
+        );
+        try {
+          return (resp: await _askPart(prompt), error: null);
+        } catch (e) {
+          return (resp: null, error: e);
+        }
+      });
+      for (var i = 0; i < first.length; i++) {
+        preAsked[first[i]] = answers[i];
+      }
+    }
+
     while (queue.isNotEmpty) {
       if (isAborted?.call() ?? false) break;
       final part = queue.removeAt(0);
       asked++;
-      if (total > 1) {
+      final pre = preAsked.remove(part);
+      if (total > 1 && pre == null) {
         onProgress?.call(worldProgressScoutPart(asked, total, part.length));
       }
       final prompt = scoutPrompt(
@@ -150,7 +178,8 @@ class WorldScoutRunner {
       final reply = budget.replyFor(prompt, floor: kWorldScoutReplyFloor);
       LlmToolResponse? resp;
       try {
-        resp = await _askPart(prompt);
+        if (pre != null && pre.error != null) throw pre.error!;
+        resp = pre != null ? pre.resp : await _askPart(prompt);
       } catch (e) {
         // A busy or unreachable server will not answer a smaller part
         // either; keep what earlier parts gave and say why this stopped.
