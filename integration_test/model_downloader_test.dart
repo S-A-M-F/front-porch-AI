@@ -139,23 +139,23 @@ void main() {
     expect(hf.treeRequests, greaterThanOrEqualTo(1));
 
     final downloadBtns = find.widgetWithText(ElevatedButton, 'Download');
+    // `.last` on a finder with no match throws rather than finding nothing,
+    // and a collapsed card has no buttons at all.
+    bool lastButtonHittable() =>
+        downloadBtns.evaluate().isNotEmpty && d.hitReaches(downloadBtns.last);
 
     // Expand the result card — and gate on the button being TAPPABLE, not on
     // it existing. A collapsed card builds no quant rows, but mid-animation
     // the buttons are in the tree while clipped, so a presence check can
     // report "expanded" for a card still opening; taps then land on whatever
     // is painted behind the clip — round 2's macOS and Windows legs exactly.
-    for (
-      var attempt = 0;
-      attempt < 6 && !d.hitReaches(downloadBtns.last);
-      attempt++
-    ) {
+    for (var attempt = 0; attempt < 6 && !lastButtonHittable(); attempt++) {
       await tester.tap(find.text('Tiny-Porch-GGUF').first, warnIfMissed: false);
       // Longer than the card's 300ms expand animation.
       await tester.pump(const Duration(milliseconds: 600));
     }
     await d.waitFor(
-      () => d.hitReaches(downloadBtns.last),
+      lastButtonHittable,
       () =>
           'the model card to expand far enough that its Download button is '
           'actually hit-testable',
