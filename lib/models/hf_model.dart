@@ -323,6 +323,10 @@ class HFModel {
   /// Whether this model has a pipeline tag (indicates it's ready to use).
   final bool hasPipelineTag;
 
+  /// HuggingFace task (`pipeline_tag`), e.g. `text-generation`. Usually null
+  /// on community quant repos.
+  final String? pipelineTag;
+
   /// List of available GGUF files for this model.
   /// Populated after calling [fetchFiles].
   final List<HFModelFile> files;
@@ -335,6 +339,7 @@ class HFModel {
     this.tags = const [],
     this.description,
     this.hasPipelineTag = false,
+    this.pipelineTag,
     this.files = const [],
   });
 
@@ -352,8 +357,24 @@ class HFModel {
       tags: tags,
       description: map['description'] as String?,
       hasPipelineTag: tags.contains('text-generation'),
+      pipelineTag: map['pipeline_tag'] as String?,
     );
   }
+
+  static const Set<String> _roleplayTags = {
+    'roleplay',
+    'role-play',
+    'rp',
+    'erp',
+    'nsfw',
+    'not-for-all-audiences',
+    'creative-writing',
+  };
+
+  /// Tagged by its author as a roleplay / creative tune. Drives the search
+  /// ranking boost and the "Roleplay" badge on desktop and web.
+  bool get isRoleplay =>
+      tags.any((t) => _roleplayTags.contains(t.toLowerCase()));
 
   /// Returns a formatted display string for download count.
   String get downloadsDisplay {
@@ -383,6 +404,7 @@ class HFModel {
       tags: tags,
       description: description,
       hasPipelineTag: hasPipelineTag,
+      pipelineTag: pipelineTag,
       files: List.unmodifiable(newFiles),
     );
   }

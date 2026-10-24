@@ -130,7 +130,10 @@ export function ModelDownloads({
           <li key={m.id} className="card hf-row">
             <button className="hf-head" onClick={() => expand(m.id)}>
               <strong>{m.name}</strong>
-              <span className="muted small">{m.author} · ♥ {m.likes} · ↓ {m.downloads}</span>
+              <span className="muted small">
+                {m.author} · ♥ {m.likes} · ↓ {m.downloads}
+                {m.roleplay && <span className="badge hf-rp">Roleplay</span>}
+              </span>
             </button>
             {expanded === m.id && (
               <ul className="file-list">

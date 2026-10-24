@@ -212,6 +212,7 @@ class BackendFacade {
             'likes': m.likes,
             'downloads': m.downloads,
             'description': m.description,
+            'roleplay': m.isRoleplay,
           },
         )
         .toList();

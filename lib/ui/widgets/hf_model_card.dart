@@ -19,6 +19,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/ui/theme/accent_colors.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/theme/download_status_colors.dart';
 import 'package:front_porch_ai/ui/widgets/hf_quant_row.dart';
@@ -165,12 +166,24 @@ class _HFModelCardState extends State<HFModelCard>
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                widget.model.author,
-                                style: TextStyle(
-                                  color: AppColors.textTertiary(context),
-                                  fontSize: 12,
-                                ),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      widget.model.author,
+                                      style: TextStyle(
+                                        color: AppColors.textTertiary(context),
+                                        fontSize: 12,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (widget.model.isRoleplay) ...[
+                                    const SizedBox(width: 8),
+                                    _roleplayBadge(),
+                                  ],
+                                ],
                               ),
                             ],
                           ),
@@ -231,6 +244,26 @@ class _HFModelCardState extends State<HFModelCard>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _roleplayBadge() {
+    final gold = AccentColors.goldOf(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: gold.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AccentColors.goldEdgeOf(context)),
+      ),
+      child: Text(
+        'Roleplay',
+        style: TextStyle(
+          color: gold,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

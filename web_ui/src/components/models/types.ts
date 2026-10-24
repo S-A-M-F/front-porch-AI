@@ -77,6 +77,8 @@ export interface HFModel {
   likes: number;
   downloads: number;
   description: string | null;
+  /** Tagged as a roleplay / creative tune; ranked first by the host. Absent from older hosts. */
+  roleplay?: boolean;
 }
 
 export interface HFFile {

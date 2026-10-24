@@ -25,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
+import 'package:front_porch_ai/services/hf_search.dart';
 import 'package:front_porch_ai/utils/utils.dart'; // GGUFModelInfo + parser, StartupTrace
 import 'package:front_porch_ai/models/models.dart';
 
@@ -226,22 +227,26 @@ class ModelManager extends ChangeNotifier {
   @visibleForTesting
   static String hfBaseUrl = 'https://huggingface.co';
 
-  /// Searches HuggingFace for models matching the query.
-  /// Returns typed [HFModel] objects.
-  Future<List<HFModel>> searchHFModels(String query, {int limit = 20}) async {
-    final encoded = Uri.encodeComponent(query);
-    final url = Uri.parse(
-      '$hfBaseUrl/api/models?search=$encoded&filter=gguf,text-generation&limit=$limit&full=true',
-    );
+  /// Searches HuggingFace for GGUF repos matching the query, roleplay tunes
+  /// first. See [HfSearch] for the filter and ranking.
+  Future<List<HFModel>> searchHFModels(
+    String query, {
+    int limit = HfSearch.shown,
+  }) async {
+    final url = HfSearch.searchUri(hfBaseUrl, query);
 
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        return data
-            .map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>))
-            .toList();
+        return HfSearch.rank(
+          data
+              .map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>))
+              .toList(),
+          limit: limit,
+        );
       }
+      print('HF Search Error: HTTP ${response.statusCode}');
     } catch (e) {
       print('HF Search Error: $e');
     }
@@ -274,22 +279,35 @@ class ModelManager extends ChangeNotifier {
     return [];
   }
 
-  /// Fetches files for multiple repositories concurrently.
-  /// Returns a map of repoId -> HFModel with files populated.
-  Future<Map<String, HFModel>> fetchFilesForModels(List<HFModel> models) async {
-    final results = <String, HFModel>{};
+  /// Fetches files for multiple repositories, a few at a time.
+  /// Returns a map of repoId -> HFModel with files populated, in [models]
+  /// order.
+  Future<Map<String, HFModel>> fetchFilesForModels(
+    List<HFModel> models, {
+    int concurrency = 6,
+  }) async {
+    final fetched = List<HFModel>.of(models);
+    var next = 0;
 
-    for (final model in models) {
-      try {
-        final files = await getModelFiles(model.id);
-        results[model.id] = model.withFiles(files);
-      } catch (e) {
-        print('Failed to fetch files for ${model.id}: $e');
-        results[model.id] = model; // Return model without files
+    Future<void> worker() async {
+      while (next < models.length) {
+        final i = next++;
+        final model = models[i];
+        try {
+          fetched[i] = model.withFiles(await getModelFiles(model.id));
+        } catch (e) {
+          print('Failed to fetch files for ${model.id}: $e');
+        }
       }
     }
 
-    return results;
+    await Future.wait(
+      List.generate(
+        concurrency.clamp(1, models.isEmpty ? 1 : models.length),
+        (_) => worker(),
+      ),
+    );
+    return {for (final m in fetched) m.id: m};
   }
 
   /// Adds a model file to the download queue.
