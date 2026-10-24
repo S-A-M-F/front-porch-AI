@@ -24,6 +24,10 @@ void main() {
       // first Kimi loops run sent nearly every batch round three times and
       // ran past four hours without finishing; Deep keeps three tries.
       expect(WorldWikiDepth.full.tries, 2);
+      expect(WorldWikiDepth.full.cardTarget, 60);
+      expect(WorldWikiDepth.full.memberCards, isFalse);
+      expect(WorldWikiDepth.quick.memberCards, isFalse);
+      expect(WorldWikiDepth.deep.memberCards, isTrue);
     });
 
     test(

@@ -1232,7 +1232,8 @@ void main() {
         // The review and fill loops ask after the two parts.
         expect(llm.partSizes.take(2).toList(), [150, 150]);
         expect(llm.prompts[0], contains('part 1 of 2'));
-        expect(llm.prompts[0], contains('20–30 cards'));
+        // Full asks 30–45 in all; two parts share it out.
+        expect(llm.prompts[0], contains('15–23 cards'));
         expect(llm.prompts[0], contains('Title 000'));
         expect(llm.prompts[0], contains('Title 002'));
         expect(
@@ -1780,13 +1781,15 @@ void main() {
     };
 
     test(
-      'the Royal Guard gets its five and a missing top place is added',
+      'at Deep the Royal Guard gets its five and a missing top place is added',
       () async {
+        // Changed 2026-10-23: member cards are Deep's; Full keeps the
+        // roster inside the faction card (the maintainer's ruling).
         final llm = _FillLlm();
         final runner = WorldScoutRunner(
           llm: llm,
           budget: const WorldWikiBudget(65536),
-          depth: WorldWikiDepth.full,
+          depth: WorldWikiDepth.deep,
         )..retryPause = Duration.zero;
         final run = await runner.run(
           titles: titles,
@@ -1830,6 +1833,40 @@ void main() {
         );
       },
     );
+
+    test('at Full a faction\'s members stay on its own card; the main cast '
+        'and the missing places are still filled', () async {
+      final llm = _FillLlm();
+      final run =
+          await (WorldScoutRunner(
+                llm: llm,
+                budget: const WorldWikiBudget(65536),
+                depth: WorldWikiDepth.full,
+              )..retryPause = Duration.zero)
+              .run(
+                titles: titles,
+                tags: tags,
+                worldName: 'Bleach (TYBW)',
+                premise: 'The Thousand-Year Blood War.',
+              );
+      final names = run.cards.map((c) => c.name).toList();
+      // The fake answers every gap with all its candidates, so the proof
+      // is the gap never asked: no faction-members prompt, no note.
+      expect(
+        llm.fillPrompts.any(
+          (p) => p.contains('The wiki files these pages under Royal Guard'),
+        ),
+        isFalse,
+        reason: 'a faction\'s members are its card\'s roster at Full',
+      );
+      expect(
+        run.notes.any((n) => n.startsWith('Fill Royal Guard members')),
+        isFalse,
+        reason: run.notes.join(' | '),
+      );
+      expect(names, contains('Rukia Kuchiki'), reason: 'the main cast');
+      expect(run.places.map((p) => p.name), contains('Karakura Town'));
+    });
 
     test('quick depth runs no fill rounds', () async {
       final llm = _FillLlm();

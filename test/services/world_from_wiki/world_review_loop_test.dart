@@ -205,14 +205,17 @@ void main() {
     ];
 
     test(
-      'names the missing top place, the faction members, the thin place and the top people, each title once',
+      'at Deep it names the missing top place, the faction members, the thin place and the top people, each title once',
       () {
+        // Changed 2026-10-23: a faction's members get cards only at Deep;
+        // at Full the faction's own card names them (the maintainer's
+        // ruling after the four-hour Kimi run).
         final gaps = auditWorldCoverage(
           cards: cards,
           places: places,
           titles: titles,
           tags: tags,
-          depth: WorldWikiDepth.full,
+          depth: WorldWikiDepth.deep,
         );
         final byKind = {for (final g in gaps) g.kind: g};
         expect(byKind['place']!.candidates, [
@@ -241,6 +244,22 @@ void main() {
         );
       },
     );
+
+    test('at Full a faction raises no members gap; its card carries the '
+        'roster, and the top people still come', () {
+      final gaps = auditWorldCoverage(
+        cards: cards,
+        places: places,
+        titles: titles,
+        tags: tags,
+        depth: WorldWikiDepth.full,
+      );
+      final kinds = gaps.map((g) => g.kind).toSet();
+      expect(kinds, isNot(contains('faction')));
+      expect(kinds, contains('place'));
+      final people = gaps.firstWhere((g) => g.kind == 'people');
+      expect(people.candidates, contains('Rukia Kuchiki'));
+    });
 
     test('a full shelf has no gaps', () {
       final full = [

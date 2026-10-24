@@ -169,8 +169,11 @@ List<WorldCoverageGap> auditWorldCoverage({
     );
   }
 
-  // Factions whose members the index lists.
-  for (final f in cards.where((c) => c.kind == 'faction')) {
+  // Factions whose members the index lists: a card each only at a depth
+  // that wants them; otherwise the faction's own card carries the roster.
+  for (final f in cards.where(
+    (c) => c.kind == 'faction' && depth.memberCards,
+  )) {
     final members = pick(
       titles.where(
         (t) =>

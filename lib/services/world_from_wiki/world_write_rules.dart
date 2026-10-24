@@ -13,9 +13,10 @@ const int kWorldShelfNamesInPrompt = 120;
 /// The write prompt's rule.
 const String kWorldWriteChainRule =
     'A place or faction (hub) also names one or two other cards from SHELF '
-    'it should pull — the war, the king, the district — and the notable '
-    'members or landmarks its article gives it, so one card leads to the '
-    'next. Keys include the titles and accentless spellings a player would '
+    'it should pull — the war, the king, the district — and names its '
+    'notable members (up to five) or landmarks from its article, so one '
+    'card leads to the next and a faction is one card, not a page per '
+    'member. Keys include the titles and accentless spellings a player would '
     'type ("Your Majesty"; "Kyoraku" and "Kyōraku").';
 
 /// The entry reviewer's rule for the same.

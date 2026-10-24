@@ -154,7 +154,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
             '${gap.place == null ? '' : ' ("${gap.place}" unless the article says otherwise)'}.',
       'thinPlace' =>
         'The wiki files these pages under ${gap.name}, a place on this shelf '
-            'with too few cards. Add its people, factions and smaller places '
+            'with too few cards. Add its ${depth.memberCards ? 'people, factions and smaller places' : 'factions, smaller places and only its main people'} '
             'as cards with place "${gap.name}".',
       _ =>
         'These are the wiki\'s most-linked characters not yet on the shelf. '

@@ -601,3 +601,15 @@ What the step does, on both surfaces:
 
 The sketch that was approved: the desktop and phone artboards of
 "World from Wiki: Review before Mint" (private artifact, 2026-10-23).
+
+### Full is sixty cards with rosters (2026-10-23)
+
+The maintainer's ruling after the first loops run: Full aims at about
+sixty cards. A faction's or place's members are named inside its own
+card (the write rule and the entry reviewer hold it to that); only Deep
+gives every member a card (`WorldWikiDepth.memberCards`), and the fill
+loop's faction gap runs only there. The main cast (the wiki's most-linked
+characters) still gets cards at every depth with reviews. Why: the
+97-card Full run on Kimi K2.6 was 57 people, lopsided across two places,
+and took the write past four hours; the hand-built TYBW world is 34
+cards.

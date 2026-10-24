@@ -38,8 +38,9 @@ extension WorldWikiDepthX on WorldWikiDepth {
     WorldWikiDepth.quick =>
       'About 40 cards, no review passes. Fast; the shelf may be thin.',
     WorldWikiDepth.full =>
-      'About 100 cards. Reviewers check the shelf and every entry and '
-          'send weak ones back.',
+      'About 60 cards. Factions and places name their people in their own '
+          'card; the main cast gets cards. Reviewers check the shelf and '
+          'every entry.',
     WorldWikiDepth.deep =>
       'About 200 cards. Every place gets its people; slow on a local model.',
   };
@@ -47,14 +48,20 @@ extension WorldWikiDepthX on WorldWikiDepth {
   /// The most cards the shelf holds once the fill loop is done.
   int get cardTarget => switch (this) {
     WorldWikiDepth.quick => 40,
-    WorldWikiDepth.full => 100,
+    WorldWikiDepth.full => 60,
     WorldWikiDepth.deep => 200,
   };
+
+  /// Whether a faction's members each get a card of their own. Below Deep
+  /// the faction's card names them instead (the maintainer's ruling,
+  /// 2026-10-23: sixty cards with rosters is less error-prone than a
+  /// hundred with a page per member; the four-hour Kimi run proved it).
+  bool get memberCards => this == WorldWikiDepth.deep;
 
   /// What the first scout call asks for; the fill loop adds the rest.
   (int, int) get scoutRange => switch (this) {
     WorldWikiDepth.quick => (30, 40),
-    WorldWikiDepth.full => (40, 60),
+    WorldWikiDepth.full => (30, 45),
     WorldWikiDepth.deep => (50, 80),
   };
 

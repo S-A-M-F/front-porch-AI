@@ -355,7 +355,7 @@ export type DepthChoice = { value: number; label: string; cards?: number; blurb?
 /** The shipped depth list, for an older server that sends none. */
 export const WORLD_WIKI_DEPTHS: DepthChoice[] = [
   { value: 0, label: 'Quick', cards: 40, blurb: 'About 40 cards, no review passes. Fast; the shelf may be thin.' },
-  { value: 1, label: 'Full', cards: 100, blurb: 'About 100 cards. Reviewers check the shelf and every entry and send weak ones back.' },
+  { value: 1, label: 'Full', cards: 60, blurb: 'About 60 cards. Factions and places name their people in their own card; the main cast gets cards. Reviewers check the shelf and every entry.' },
   { value: 2, label: 'Deep', cards: 200, blurb: 'About 200 cards. Every place gets its people; slow on a local model.' },
 ];
 
@@ -379,7 +379,7 @@ export function depthOptions(raw: unknown): DepthChoice[] {
   return out.length ? out : WORLD_WIKI_DEPTHS;
 }
 
-/** "Full — about 100 cards" for the select, and the blurb under it. */
+/** "Full — about 60 cards" for the select, and the blurb under it. */
 export function depthLabel(d: DepthChoice): string {
   return d.cards ? `${d.label} — about ${d.cards} cards` : d.label;
 }
