@@ -140,6 +140,7 @@ void main() {
         return;
       }
       final key = _env('FPAI_LIVE_API_KEY') ?? await _savedKeyFor(apiUrl);
+      final clock = Stopwatch();
       final llm = OpenRouterService(
         apiUrl: apiUrl,
         apiKey: key,
@@ -151,7 +152,8 @@ void main() {
         contextTokens: context,
         depth: depth,
         moment: moment,
-        onProgress: (m) => stdout.writeln('[live] $m'),
+        onProgress: (m) =>
+            stdout.writeln('[live] ${worldElapsedLabel(clock.elapsed)} $m'),
       );
       final report = <String, dynamic>{
         'provider': apiUrl,
@@ -167,6 +169,7 @@ void main() {
         out,
       ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
 
+      clock.start();
       final sw = Stopwatch()..start();
       // Each finished book lands in the file at once, so a run cut short
       // still leaves its work to judge.

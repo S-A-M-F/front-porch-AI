@@ -151,16 +151,11 @@ List<List<String>> splitWorldScoutIndex(
   return parts;
 }
 
-/// Characters of article one card gets: the floor that keeps a 32K
-/// window's batches sane, growing with the wizard's context to four times
-/// that from 128K on. The recipe reads the full article, not the chat clip,
-/// and the facts a Moment needs (who holds what, which invasion) sit deep
-/// in a wiki page.
-int worldWriteArticleCharsFor(int contextTokens) =>
-    (kWorldWriteArticleChars * contextTokens / 32768).round().clamp(
-      kWorldWriteArticleChars,
-      kWorldWriteArticleChars * 4,
-    );
+/// Characters of article one card gets, whatever the window: a 24K clip
+/// at 256K made each write call four times the prompt for no visible gain
+/// and the root book took most of an hour on a remote provider. The lead
+/// and first sections carry what a two-sentence card needs.
+int worldWriteArticleCharsFor(int contextTokens) => kWorldWriteArticleChars;
 
 /// Two halves of a part the model could not finish; the first keeps the
 /// odd line.

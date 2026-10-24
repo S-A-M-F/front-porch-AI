@@ -68,11 +68,18 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
     final written = <WorldPlaceWrite>[];
     final all = <LorebookEntry>[];
 
-    for (final entry in <(String, WorldProposedPlace?)>[
+    // Every place's book at once on a remote provider (three at a time),
+    // one after another on a local engine; the results keep the places'
+    // order, parents before children, which the save ladder needs.
+    final buckets = <(String, WorldProposedPlace?)>[
       ('', null),
       for (final p in places) (p.key, p),
-    ]) {
-      if (aborted) break;
+    ];
+    final results = await forEachLimited(buckets, writeConcurrency, (
+      i,
+      entry,
+    ) async {
+      if (aborted) return null;
       final bucketKey = entry.$1;
       final place = entry.$2;
       final cards = groups[bucketKey] ?? const <WorldProposedCard>[];
@@ -80,7 +87,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       if (place != null && cards.isEmpty && !named.contains(bucketKey)) {
         // An unsigned place with no signed cards is dropped (design
         // §9.3) — the author pruned its cast, the shelf stays clean.
-        continue;
+        return null;
       }
       final drafts = await _writeCardsForPlace(
         cards,
@@ -89,7 +96,7 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
         extraLore: extraLore,
         label: label,
       );
-      if (aborted) break;
+      if (aborted) return null;
       final ownClimate =
           climateEnabled &&
           place != null &&
@@ -104,17 +111,20 @@ extension WorldFromWikiPlacesWrite on WorldFromWikiEngine {
       final entries = applyWorldCraftMechanics(
         polishWorldDrafts(drafts, allNames: kept.map((c) => c.name)),
       );
-      all.addAll(entries);
-      written.add(
-        WorldPlaceWrite(
-          name: label,
-          parentName: place?.parentName ?? '',
-          description: profile?.description ?? '',
-          entries: entries,
-          biome: profile?.biome,
-        ),
+      final book = WorldPlaceWrite(
+        name: label,
+        parentName: place?.parentName ?? '',
+        description: profile?.description ?? '',
+        entries: entries,
+        biome: profile?.biome,
       );
-      onPlaceWritten?.call(written.last);
+      onPlaceWritten?.call(book);
+      return book;
+    });
+    for (final book in results) {
+      if (book == null) continue;
+      all.addAll(book.entries);
+      written.add(book);
     }
 
     if (aborted) {

@@ -104,6 +104,10 @@ class WorldScoutRunner {
   /// The wait before a stumbled review, revise or fill call is asked again.
   Duration retryPause = const Duration(seconds: 2);
 
+  /// How many fill-gap calls go out at once (the engine sets a remote
+  /// provider's three; a local engine answers one at a time).
+  int concurrency = 1;
+
   Future<WorldScoutRun> run({
     required List<String> titles,
     required Map<String, List<String>> tags,

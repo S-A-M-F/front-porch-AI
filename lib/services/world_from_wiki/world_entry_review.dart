@@ -26,7 +26,7 @@ import 'world_progress_copy.dart';
 import 'world_write_rules.dart';
 
 /// Characters of each article the reviewer sees beside its entry.
-const int kWorldEntryReviewArticleChars = 1200;
+const int kWorldEntryReviewArticleChars = kWorldWriteArticleChars;
 
 extension WorldEntryReviewLoop on WorldFromWikiEngine {
   Future<String> joinSources(List<String> titles) async {
@@ -218,7 +218,9 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       'fails when it states anything after the moment, when a person has no '
       'look-or-manner clause or no whereabouts, when a place has no sights '
       'or no holder, when it is one sentence or more than two, or when it '
-      'says something the article does not. $kWorldEntryChainRule Pass the '
+      'contradicts the article (a fact you cannot find in this excerpt is '
+      'not a failure; the writer read more of the page). '
+      '$kWorldEntryChainRule Pass the '
       'rest; name the problem '
       'in one sentence the writer can act on. Call '
       '$kWorldEntriesReviewToolName once with a verdict per entry.',

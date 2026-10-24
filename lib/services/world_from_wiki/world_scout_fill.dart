@@ -57,10 +57,16 @@ extension WorldScoutFillLoop on WorldScoutRunner {
         break;
       }
       var added = 0;
-      for (final gap in gaps.take(kWorldFillGapsPerRound)) {
-        if (isAborted?.call() ?? false) break;
-        final room = depth.cardTarget - cards.length;
-        if (room <= 0) break;
+      // Every gap of the round is asked at once (three at a time on a
+      // remote provider); the answers are merged in order under the cap.
+      final roundGaps = gaps.take(kWorldFillGapsPerRound).toList();
+      final room = depth.cardTarget - cards.length;
+      if (room <= 0) break;
+      final answers = await forEachLimited(roundGaps, concurrency, (
+        i,
+        gap,
+      ) async {
+        if (isAborted?.call() ?? false) return null;
         onProgress?.call(
           worldProgressFill(
             _gapLabel(gap),
@@ -69,7 +75,7 @@ extension WorldScoutFillLoop on WorldScoutRunner {
             gap.candidates.length,
           ),
         );
-        final answer = await _askGap(
+        return _askGap(
           gap,
           cards: cards,
           places: places,
@@ -79,6 +85,10 @@ extension WorldScoutFillLoop on WorldScoutRunner {
           premise: premise,
           room: room,
         );
+      });
+      for (var g = 0; g < roundGaps.length; g++) {
+        final gap = roundGaps[g];
+        final answer = answers[g];
         if (answer == null) {
           notes.add('Fill ${_gapLabel(gap)}: no answer');
           continue;

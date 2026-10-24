@@ -185,6 +185,7 @@ class WorldFromWikiEngine {
             isAborted: () => _aborted,
           )
           ..callTimeout = callTimeout
+          ..concurrency = writeConcurrency
           ..retryPause = retryPause;
     final scouted = await runner.run(
       titles: catalog.titles,

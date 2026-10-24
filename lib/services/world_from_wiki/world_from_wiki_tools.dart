@@ -421,7 +421,7 @@ List<String> _keysOf(dynamic raw) {
 
 /// Collapse whitespace and cut at a sentence near [kWorldLoreContentMax].
 String clipLoreContent(String raw) {
-  final s = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+  final s = worldTwoSentences(raw.trim().replaceAll(RegExp(r'\s+'), ' '));
   if (s.length <= kWorldLoreContentMax) return s;
   final cut = s.substring(0, kWorldLoreContentMax);
   var at = cut.lastIndexOf('. ');
@@ -433,6 +433,17 @@ String clipLoreContent(String raw) {
     return cut.substring(0, at + 1).trim();
   }
   return cut.trim();
+}
+
+/// The first two sentences when a third follows and the two already make
+/// a card: the reviewer used to send "three sentences; condense" back to
+/// the model, a whole call for a cut Dart can make.
+String worldTwoSentences(String s) {
+  final ends = RegExp(r'(?<=[.!?])\s+(?=[A-Z"“(])');
+  final parts = s.split(ends);
+  if (parts.length <= 2) return s;
+  final two = '${parts[0]} ${parts[1]}'.trim();
+  return two.length >= kWorldLoreContentMin ? two : s;
 }
 
 bool wikiTitleLooksClimate(String title) {

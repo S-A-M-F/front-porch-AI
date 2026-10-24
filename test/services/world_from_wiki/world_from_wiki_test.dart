@@ -1206,6 +1206,27 @@ void main() {
     });
   });
 
+  group('two sentences in Dart', () {
+    test('a third sentence is cut when the first two already make a card; '
+        'a short pair stays whole', () {
+      const two =
+          'The walled heart of Soul Society, its white streets still smoking '
+          'from the first invasion and the Gotei 13 licking its wounds inside. '
+          'Every captain who lost a Bankai to a medallion is on watch tonight.';
+      expect(worldTwoSentences('$two This third sentence goes.'), two);
+      expect(worldTwoSentences(two), two);
+      expect(
+        worldTwoSentences('Short one. Short two. Short three.'),
+        'Short one. Short two. Short three.',
+        reason: 'two short sentences are not yet a card',
+      );
+      expect(
+        clipLoreContent('$two  A third,   with "quotes" after.'),
+        two,
+      );
+    });
+  });
+
   group('scout parts by cards', () {
     final titles = List.generate(
       300,

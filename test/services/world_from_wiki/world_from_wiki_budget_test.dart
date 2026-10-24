@@ -131,12 +131,12 @@ void main() {
       },
     );
 
-    test('one card\'s article grows with the wizard\'s context', () {
-      expect(worldWriteArticleCharsFor(16384), kWorldWriteArticleChars);
-      expect(worldWriteArticleCharsFor(32768), kWorldWriteArticleChars);
-      expect(worldWriteArticleCharsFor(65536), kWorldWriteArticleChars * 2);
-      expect(worldWriteArticleCharsFor(131072), kWorldWriteArticleChars * 4);
-      expect(worldWriteArticleCharsFor(262144), kWorldWriteArticleChars * 4);
+    test('one card\'s article is the same clip at every context', () {
+      // Changed 2026-10-23, same day: a 24K clip at 256K made each write
+      // call four times the prompt and the root book took most of an hour.
+      for (final ctx in [16384, 32768, 65536, 131072, 262144]) {
+        expect(worldWriteArticleCharsFor(ctx), kWorldWriteArticleChars);
+      }
     });
 
     test('a 64K window asks the same index whole', () {
