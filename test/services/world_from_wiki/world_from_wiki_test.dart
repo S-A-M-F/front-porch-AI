@@ -1052,6 +1052,160 @@ void main() {
     });
   });
 
+  group('the Review step\'s loop', () {
+    LorebookEntry entry(String n, {String content = 'Two sentences. Here.'}) =>
+        LorebookEntry(name: n, keys: [n], content: content, order: 150);
+
+    test('a direction is held to the shelf, and without a sort every name '
+        'the note mentions is rewritten', () {
+      final sorted = parseWorldDirection(
+        [
+          const LlmToolCall(
+            name: kWorldDirectionToolName,
+            arguments: {
+              'rewrite': ['royal guard', 'Nobody', 'Seireitei'],
+              'add': [
+                {'name': 'Kurosaki Clinic', 'place': 'karakura town'},
+                {'name': 'Seireitei', 'place': ''},
+                {'name': ''},
+              ],
+              'drop': ['Aizen', 'Nobody'],
+            },
+          ),
+        ],
+        known: ['Seireitei', 'Royal Guard', 'Aizen'],
+        places: ['Karakura Town'],
+      );
+      expect(sorted.rewrite, ['Royal Guard', 'Seireitei']);
+      expect(sorted.add, [(name: 'Kurosaki Clinic', place: 'Karakura Town')]);
+      expect(sorted.drop, ['Aizen']);
+      expect(
+        parseWorldDirection(const [], known: ['Seireitei']).isEmpty,
+        isTrue,
+      );
+      final matched = matchDirectionNames(
+        'The Royal Guard card should name all four; less about Aizen.',
+        ['Seireitei', 'Royal Guard', 'Aizen', 'Yh'],
+      );
+      expect(matched.rewrite, ['Royal Guard', 'Aizen']);
+    });
+
+    test('the tree is edited by name: replace, remove, add under a place', () {
+      final tree = WorldWriteTree(
+        root: WorldPlaceWrite(
+          name: 'Bleach',
+          parentName: '',
+          description: '',
+          entries: [entry('Era')],
+        ),
+        places: [
+          WorldPlaceWrite(
+            name: 'Soul Society',
+            parentName: '',
+            description: '',
+            entries: [entry('Seireitei'), entry('Royal Guard')],
+          ),
+        ],
+      );
+      final replaced = worldTreeReplace(tree, {
+        'royal guard': worldEntryWithDraft(
+          entry('Royal Guard'),
+          const WorldCraftDraft(
+            name: 'Royal Guard',
+            keys: ['Royal Guard', 'Squad Zero'],
+            content: 'Five who guard the Soul King. Not yet come down.',
+            role: WorldCraftRole.hub,
+          ),
+        ),
+      });
+      final rg = replaced.places.single.entries.last;
+      expect(rg.content, 'Five who guard the Soul King. Not yet come down.');
+      expect(rg.keys, ['Royal Guard', 'Squad Zero']);
+      expect(rg.order, 150, reason: 'the mechanics stay');
+      final removed = worldTreeRemove(replaced, {'seireitei'});
+      expect(removed.places.single.entries.map((e) => e.name), ['Royal Guard']);
+      final added = worldTreeAdd(removed, 'soul society', entry('Rukongai'));
+      expect(added.places.single.entries.map((e) => e.name), [
+        'Royal Guard',
+        'Rukongai',
+      ]);
+      final toRoot = worldTreeAdd(added, 'nowhere', entry('Hueco Mundo'));
+      expect(toRoot.root.entries.map((e) => e.name), ['Era', 'Hueco Mundo']);
+      expect(worldTreeEntries(toRoot).map((e) => e.name), [
+        'Era',
+        'Hueco Mundo',
+        'Royal Guard',
+        'Rukongai',
+      ]);
+    });
+
+    test('the entry loop leaves a note on every entry, and the copy reads '
+        'it back', () async {
+      final llm = _EntryReviewLlm(failOnce: {'schrift': 'says how it ends'});
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+        ..retryPause = Duration.zero;
+      await engine.write(
+        [
+          WorldProposedCard(
+            name: 'Schrift',
+            keys: const ['Schrift'],
+            role: WorldCraftRole.leaf,
+            sourceTitles: const ['Ceolwynn'],
+          ),
+        ],
+        worldName: 'Bleach (TYBW)',
+        premise: 'x',
+      );
+      final note = engine.entryNotes['schrift'];
+      expect(note, isNotNull);
+      expect(note!.passed, isTrue);
+      expect(note.tries, 2);
+      expect(note.problem, 'says how it ends');
+      expect(worldEntryNoteCopy(note), 'Rewritten once · says how it ends');
+      expect(
+        worldEntryNoteCopy(const WorldEntryNote(tries: 1, passed: true)),
+        'Passed first try',
+      );
+      expect(
+        worldEntryNoteCopy(
+          const WorldEntryNote(tries: 3, passed: false, problem: 'thin'),
+        ),
+        'Still failing after 3 tries · thin',
+      );
+      expect(worldEntryNoteCopy(null), 'Written without a reviewer');
+      expect(WorldEntryNote.fromJson(note.toJson())?.problem, note.problem);
+    });
+
+    test('a rewrite with a note sends the note as the finding, with the '
+        'entry as it stands, and reviews what comes back', () async {
+      final llm = _FlakyWriteLlm(failFirst: 0);
+      final engine = WorldFromWikiEngine(wiki: _wiki(), llm: llm)
+        ..retryPause = Duration.zero;
+      engine.rememberShelf([
+        WorldProposedCard(
+          name: 'Schrift',
+          keys: const ['Schrift'],
+          role: WorldCraftRole.leaf,
+          sourceTitles: const ['Ceolwynn'],
+        ),
+      ]);
+      final drafts = await engine.rewriteWithNote(
+        entries: [entry('Schrift', content: 'The old text. As it stands.')],
+        note: 'Name the letter it stands for.',
+        worldName: 'Bleach (TYBW)',
+        premise: 'x',
+      );
+      final prompt = llm.params.first.prompt;
+      expect(prompt, contains('PREVIOUS ENTRY: The old text. As it stands.'));
+      expect(
+        prompt,
+        contains('REVIEW FOUND: The author says: Name the letter it stands for.'),
+      );
+      expect(drafts.keys, contains('schrift'));
+      expect(drafts['schrift']!.content, isNotEmpty);
+    });
+  });
+
   group('scout parts by cards', () {
     final titles = List.generate(
       300,

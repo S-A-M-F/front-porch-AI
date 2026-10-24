@@ -255,6 +255,17 @@ class WorldPlaceWrite {
 
   bool get hasClimate => biome != null && biome!.isNotEmpty;
 
+  WorldPlaceWrite copyWith({
+    List<LorebookEntry>? entries,
+    String? description,
+  }) => WorldPlaceWrite(
+    name: name,
+    parentName: parentName,
+    description: description ?? this.description,
+    entries: entries ?? this.entries,
+    biome: biome,
+  );
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'parentName': parentName,

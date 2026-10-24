@@ -18,6 +18,7 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_tools.da
 import 'package:front_porch_ai/services/world_from_wiki/world_places.dart';
 import 'world_progress_copy.dart';
 import 'world_write_rules.dart';
+import 'world_review_tools.dart';
 
 /// Scout result: index size plus proposed cards (default unsigned).
 class WorldScoutResult {
@@ -127,6 +128,13 @@ class WorldFromWikiEngine {
   /// should pull (the recipe's "chain, don't catalogue").
   List<String> shelfNames = const [];
 
+  /// The signed cards by lowercase name, kept so the Review step can fetch
+  /// a card's articles again for a rewrite.
+  final Map<String, WorldProposedCard> shelfCards = {};
+
+  /// What the entry loop did to each entry, by lowercase name.
+  final Map<String, WorldEntryNote> entryNotes = {};
+
   /// The tag sets from the newest [scan] — the scout prompt shows them
   /// so a tags-only wiki (Neokosmos) can reveal its places (slice 8).
   Map<String, List<String>> lastCatalogTags = const {};
@@ -216,7 +224,7 @@ class WorldFromWikiEngine {
   }) async {
     _aborted = false;
     biome = null;
-    shelfNames = [for (final c in signed) c.name];
+    rememberShelf(signed);
     entries.clear();
     _written.clear();
     final pending = <WorldProposedCard>[];
@@ -333,20 +341,12 @@ class WorldFromWikiEngine {
 
   /// The part of a write prompt every batch repeats: world, premise and
   /// the attached notes. Sized once so the batcher knows the fixed cost.
-  String writeHeader({
-    required String worldName,
-    required String premise,
-    required String extraLore,
-  }) {
-    final extra = extraLore.trim();
-    final extraBlock = extra.isEmpty
-        ? ''
-        : '\nATTACHED NOTES (optional; do not override the articles):\n$extra\n';
-    return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
-        'Premise: ${premise.trim()}\n'
-        '${worldMomentLine(moment)}'
-        '${worldShelfLine(shelfNames)}'
-        '$extraBlock';
+  /// The run's shelf: names for the prompts, cards for later rewrites.
+  void rememberShelf(List<WorldProposedCard> signed) {
+    shelfNames = [for (final c in signed) c.name];
+    for (final c in signed) {
+      shelfCards[c.name.trim().toLowerCase()] = c;
+    }
   }
 
   Future<List<WorldLoreWrite>> writeBatch({

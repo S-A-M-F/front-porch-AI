@@ -112,3 +112,74 @@ button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transpar
 .world-progress-log { list-style: none; margin: 0; padding: 0 0 0 24px; display: flex; flex-direction: column; gap: 2px; }
 .world-progress-at { font-variant-numeric: tabular-nums; opacity: 0.8; margin-right: 6px; }
 @media (prefers-reduced-motion: reduce) { .world-progress-spin { animation: none; } }
+
+/* ── World from Wiki · the Review step before Mint ─────────────────── */
+.world-review { display: flex; flex-direction: column; gap: 16px; }
+.world-review-findings, .world-review-direction, .world-review-add {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 16px;
+  border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border);
+}
+.world-review-direction { border-color: var(--accent); }
+.world-review-add { border-style: dashed; border-color: var(--accent); }
+.world-review-findings-head { display: flex; align-items: center; gap: 10px; }
+.world-review-findings-head .world-review-link { margin-left: auto; }
+.world-review-findings ul { margin: 0; padding-left: 20px; line-height: 1.5; }
+.world-review-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.world-review-scope label { display: inline-flex; align-items: center; gap: 6px; }
+.world-review-scope .world-review-outline { margin-left: auto; }
+.world-review-outline {
+  background: transparent; border: 1.5px solid var(--accent); color: var(--accent);
+  font-weight: 700; border-radius: 12px; min-height: 44px; padding: 0 18px;
+}
+.world-review-link {
+  background: none; border: 0; padding: 4px 8px; color: var(--accent); font-weight: 700; min-height: 36px;
+}
+.world-review-link.muted { color: var(--muted); }
+.world-review-more { align-self: center; }
+.world-review-place { display: flex; flex-direction: column; gap: 12px; }
+.world-review-place-head {
+  display: flex; align-items: flex-end; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.world-review-place-head > div { flex: 1; min-width: 0; }
+.world-review-place-head p { margin: 4px 0 0; }
+.world-review-place-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 1.1rem; }
+.world-review-chip {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-2);
+  border: 1px solid var(--border); color: var(--muted); font-weight: 400;
+}
+.world-review-add-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.world-review-add-row input { flex: 1 1 180px; }
+.world-review-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 900px) { .world-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.world-review-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); min-width: 0;
+}
+.world-review-card.noting { border-color: var(--accent); }
+.world-review-card.pinned { opacity: 0.85; }
+.world-review-card textarea { width: 100%; box-sizing: border-box; line-height: 1.45; }
+.world-review-card-head { display: flex; align-items: center; gap: 8px; }
+.world-review-grow { flex: 1; }
+.world-review-pin {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); display: grid; place-items: center; padding: 0;
+}
+.world-review-pin.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.world-review-keys { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.world-review-key {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; padding: 3px 9px;
+  border-radius: 999px; border: 1px solid var(--border); color: var(--text); background: transparent;
+}
+.world-review-key button { background: none; border: 0; color: var(--muted); padding: 0 2px; min-height: 0; line-height: 1; }
+.world-review-key.add { border-style: dashed; color: var(--muted); min-height: 0; cursor: pointer; }
+.world-review-key-input { width: 170px; font-size: 0.85rem; padding: 4px 8px; }
+.world-review-verdict { margin: 0; font-size: 0.78rem; line-height: 1.35; }
+.world-review-verdict.passed { color: var(--ok); }
+.world-review-verdict.rewritten { color: var(--studio-honey, var(--accent)); }
+.world-review-verdict.failing { color: var(--danger); }
+.world-review-verdict.kept { color: var(--muted); }
+.world-review-note {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px;
+  border: 1px dashed var(--accent);
+}
+.world-review-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

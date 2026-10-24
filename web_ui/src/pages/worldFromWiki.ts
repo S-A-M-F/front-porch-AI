@@ -3,7 +3,9 @@
 //
 // World-from-wiki review shelf: proposed cards, not a wiki table of contents.
 
-export const WORLD_FROM_WIKI_STEPS = ['Book', 'Review', 'Write', 'Preview'];
+import type { LoreEntry } from '../components/LoreEntriesEditor';
+
+export const WORLD_FROM_WIKI_STEPS = ['Book', 'Shelf', 'Write', 'Review'];
 
 /** Chat's own tool check for the chat model, as the host reports it. */
 export type WorldToolsGate =
@@ -380,4 +382,134 @@ export function depthOptions(raw: unknown): DepthChoice[] {
 /** "Full — about 100 cards" for the select, and the blurb under it. */
 export function depthLabel(d: DepthChoice): string {
   return d.cards ? `${d.label} — about ${d.cards} cards` : d.label;
+}
+
+/** What the entry loop did to one entry (the relay's `notes`, by lowercase name). */
+export type WorldEntryNote = { tries: number; passed: boolean; problem?: string };
+
+/** The relay's notes map, parsed defensively. */
+export function parseWorldEntryNotes(raw: unknown): Record<string, WorldEntryNote> {
+  const out: Record<string, WorldEntryNote> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object') continue;
+    const row = v as Record<string, unknown>;
+    const tries = typeof row.tries === 'number' ? row.tries : Number(row.tries) || 1;
+    out[name.trim().toLowerCase()] = {
+      tries,
+      passed: row.passed !== false,
+      problem: typeof row.problem === 'string' ? row.problem : '',
+    };
+  }
+  return out;
+}
+
+/** Same words as the desktop: "Passed first try", "Rewritten once · …". */
+export function worldEntryNoteCopy(note: WorldEntryNote | undefined): string {
+  if (!note) return 'Written without a reviewer';
+  const why = note.problem ? ` · ${note.problem}` : '';
+  if (note.passed) {
+    if (note.tries <= 1) return 'Passed first try';
+    if (note.tries === 2) return `Rewritten once${why}`;
+    return `Passed on try ${note.tries}${why}`;
+  }
+  return `Still failing after ${note.tries} ${note.tries === 1 ? 'try' : 'tries'}${why}`;
+}
+
+/** What the reviewers did, in plain lines, from the shelf note and the entry notes. */
+export function worldReviewFindings(
+  shelfNote: string,
+  notes: Record<string, WorldEntryNote>,
+): string[] {
+  const lines: string[] = [];
+  if (shelfNote) lines.push(shelfNote.replace(/^,\s*/, '').replace(/^\w/, (c) => c.toUpperCase()) + '.');
+  const all = Object.values(notes);
+  const rewritten = all.filter((n) => n.passed && n.tries > 1).length;
+  const failing = all.filter((n) => !n.passed).length;
+  if (rewritten > 0) {
+    lines.push(`${rewritten} of ${all.length} entries ${rewritten === 1 ? 'was' : 'were'} rewritten by the entry reviewer.`);
+  }
+  if (failing > 0) {
+    lines.push(`${failing} ${failing === 1 ? 'entry is' : 'entries are'} still marked by the reviewer; the last try stands.`);
+  }
+  return lines;
+}
+
+/** One entry as the page holds it (the LoreEntriesEditor shape: `key` is comma-joined). */
+export type WorldReviewEntry = LoreEntry;
+
+/** The root book of a written tree; the page keeps it without a name. */
+export type WorldReviewRoot = {
+  name?: string;
+  parentName?: string;
+  description: string;
+  entries: WorldReviewEntry[];
+  biome?: Record<string, unknown>;
+};
+
+export type WorldReviewPlace = {
+  name: string;
+  parentName: string;
+  description: string;
+  entries: WorldReviewEntry[];
+  biome?: Record<string, unknown>;
+};
+
+/** The relay's `world_wiki_review_done` event: only what changed. */
+export type WorldReviewResult = {
+  updated?: { name: string; place: string; entry: WorldReviewEntry; note?: unknown }[];
+  added?: { name: string; place: string; entry: WorldReviewEntry; note?: unknown }[];
+  dropped?: string[];
+};
+
+const lower = (s: string) => s.trim().toLowerCase();
+
+/**
+ * The page's tree after a review action: updated entries swapped in by name
+ * where they live, added ones appended under their place (the root when the
+ * place is unknown), dropped ones removed. Root may be null on a flat write.
+ */
+export function applyWorldReview(
+  root: WorldReviewRoot | null,
+  places: WorldReviewPlace[],
+  result: WorldReviewResult,
+): { root: WorldReviewRoot | null; places: WorldReviewPlace[] } {
+  const updates = new Map<string, WorldReviewEntry>();
+  for (const u of result.updated ?? []) updates.set(lower(u.name), u.entry);
+  const dropped = new Set((result.dropped ?? []).map(lower));
+  const swap = (es: WorldReviewEntry[]) =>
+    es.filter((e) => !dropped.has(lower(e.name))).map((e) => updates.get(lower(e.name)) ?? e);
+  let nextRoot = root ? { ...root, entries: swap(root.entries) } : null;
+  const nextPlaces = places.map((p) => ({ ...p, entries: swap(p.entries) }));
+  for (const a of result.added ?? []) {
+    const idx = nextPlaces.findIndex((p) => lower(p.name) === lower(a.place));
+    if (idx >= 0) {
+      nextPlaces[idx] = { ...nextPlaces[idx], entries: [...nextPlaces[idx].entries, a.entry] };
+    } else if (nextRoot) {
+      nextRoot = { ...nextRoot, entries: [...nextRoot.entries, a.entry] };
+    } else {
+      nextRoot = { description: '', entries: [a.entry] };
+    }
+  }
+  return { root: nextRoot, places: nextPlaces };
+}
+
+/** Every entry of the tree, root first, for the flat save and the count. */
+export function worldReviewEntries(root: WorldReviewRoot | null, places: WorldReviewPlace[]): WorldReviewEntry[] {
+  return [...(root?.entries ?? []), ...places.flatMap((p) => p.entries)];
+}
+
+/** Notes merged in from a review result (updated and added carry theirs). */
+export function mergeWorldEntryNotes(
+  notes: Record<string, WorldEntryNote>,
+  result: WorldReviewResult,
+): Record<string, WorldEntryNote> {
+  const next = { ...notes };
+  for (const row of [...(result.updated ?? []), ...(result.added ?? [])]) {
+    const parsed = parseWorldEntryNotes({ [row.name]: row.note });
+    const key = lower(row.name);
+    if (parsed[key]) next[key] = parsed[key];
+  }
+  for (const d of result.dropped ?? []) delete next[lower(d)];
+  return next;
 }

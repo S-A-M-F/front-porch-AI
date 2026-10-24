@@ -177,6 +177,6 @@ void main() {
       );
       expect(tree.root.entries, isNotEmpty);
     },
-    timeout: const Timeout(Duration(minutes: 60)),
+    timeout: const Timeout(Duration(minutes: 240)),
   );
 }

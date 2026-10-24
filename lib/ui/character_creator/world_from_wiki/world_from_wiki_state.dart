@@ -40,9 +40,20 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
   final WorldProgressLog progress;
   Timer? _ticker;
 
-  /// A scout or write begins: the log restarts and a once-a-second tick
-  /// keeps the elapsed time moving.
-  void _startRun(String first) {
+  /// The Review step: entries the author pinned (a send-back never touches
+  /// them), by lowercase name; the direction note; whether it is running.
+  final Set<String> pinned = {};
+
+  /// The shelf reviewer's findings from the scout, for the Review step.
+  List<String> shelfNotes = const [];
+  bool shelfRevised = false;
+  final directionController = TextEditingController();
+  bool directionWholeWorld = false;
+  bool reviewing = false;
+
+  /// A scout, write or review run begins: the log restarts and a
+  /// once-a-second tick keeps the elapsed time moving.
+  void beginRun(String first) {
     progress.start();
     status = first;
     progress.note(first);
@@ -50,7 +61,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => notify());
   }
 
-  void _endRun() {
+  void finishRun() {
     _ticker?.cancel();
     _ticker = null;
     progress.stop();
@@ -112,11 +123,14 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
   @override
   void notify() => notifyListeners();
 
-  bool get busy => scouting || writing;
+  bool get busy => scouting || writing || reviewing;
 
   /// Chat's tool check passed for this wizard's model.
   @override
   bool get toolsReady => toolsGate == WorldToolsGate.ready;
+
+  /// Anything the Review step may act on is running.
+  bool get busyReviewing => reviewing;
 
   bool get canSave => worldFromWikiCanSave(
     aborted: engine?.aborted ?? false,
@@ -170,6 +184,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
 
   void disposeControllers() {
     _ticker?.cancel();
+    directionController.dispose();
     nameController.dispose();
     premiseController.dispose();
     descController.dispose();
@@ -210,7 +225,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     }
     scouting = true;
     error = null;
-    _startRun('Scouting wiki…');
+    beginRun('Scouting wiki…');
     notify();
     try {
       engine = WorldFromWikiEngine(
@@ -230,6 +245,8 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
       catalogRanked = result.catalog.ranked;
       proposed = result.proposed;
       places = result.places;
+      shelfNotes = result.auditNotes;
+      shelfRevised = result.revised;
       signed.clear();
       placeClimate
         ..clear()
@@ -257,7 +274,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
       error = 'Scout failed: $e';
       debugPrint('[World] scout miss/fail reason=$e');
     } finally {
-      _endRun();
+      finishRun();
       scouting = false;
       notify();
     }
@@ -289,7 +306,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
     extraLore = await _extractFiles();
     writing = true;
     error = null;
-    _startRun('Writing 0/${picked.length}');
+    beginRun('Writing 0/${picked.length}');
     currentStep = 3;
     notify();
     engine = WorldFromWikiEngine(
@@ -330,7 +347,7 @@ class WorldFromWikiState extends ChangeNotifier with WorldWizardGate {
       error = 'Write failed: $e';
       debugPrint('[World] write miss/fail reason=$e');
     } finally {
-      _endRun();
+      finishRun();
       writing = false;
       notify();
     }

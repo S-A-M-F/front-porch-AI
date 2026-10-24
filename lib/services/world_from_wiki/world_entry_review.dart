@@ -27,6 +27,24 @@ import 'world_write_rules.dart';
 const int kWorldEntryReviewArticleChars = 1200;
 
 extension WorldEntryReviewLoop on WorldFromWikiEngine {
+  /// The lines every write-side prompt opens with: world, premise, the
+  /// Moment, the shelf's names, and the attached notes.
+  String writeHeader({
+    required String worldName,
+    required String premise,
+    required String extraLore,
+  }) {
+    final extra = extraLore.trim();
+    final extraBlock = extra.isEmpty
+        ? ''
+        : '\nATTACHED NOTES (optional; do not override the articles):\n$extra\n';
+    return 'World: ${worldName.trim().isEmpty ? 'Untitled' : worldName.trim()}\n'
+        'Premise: ${premise.trim()}\n'
+        '${worldMomentLine(moment)}'
+        '${worldShelfLine(shelfNames)}'
+        '$extraBlock';
+  }
+
   /// Gate, review, revise the failing, bounded by the depth's tries.
   /// [drafts] are the batch's matched drafts; the result keeps their order.
   Future<List<WorldCraftDraft>> reviewBatch({
@@ -47,8 +65,10 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
     };
     final current = {for (final d in drafts) d.name.trim().toLowerCase(): d};
     final accepted = <String, WorldCraftDraft>{};
+    final lastProblem = <String, String>{};
     var pending = [for (final d in drafts) d.name.trim().toLowerCase()];
-    for (var attempt = 1; attempt <= depth.tries; attempt++) {
+    var attempt = 1;
+    for (; attempt <= depth.tries; attempt++) {
       if (aborted) break;
       final problems = <String, List<String>>{};
       final toReview = <WorldCraftDraft>[];
@@ -86,10 +106,18 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
           final v = verdicts[key];
           if (v == null || v.pass || !v.parsed) {
             accepted[key] = d;
+            entryNotes[key] = WorldEntryNote(
+              tries: attempt,
+              passed: true,
+              problem: lastProblem[key] ?? '',
+            );
           } else {
             problems[key] = v.problems;
           }
         }
+      }
+      for (final e in problems.entries) {
+        if (e.value.isNotEmpty) lastProblem[e.key] = e.value.first;
       }
       writeLog.add(
         'Entries try $attempt: ${accepted.length} accepted, '
@@ -108,7 +136,7 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
       onProgress?.call(
         worldProgressRewrite(failingCards.length, attempt + 1, depth.tries),
       );
-      final revised = await _reviseEntries(
+      final revised = await reviseEntries(
         failingCards,
         failingArticles,
         problems: problems,
@@ -121,6 +149,14 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
         current[d.name.trim().toLowerCase()] = d;
       }
       pending = [for (final c in failingCards) c.name.trim().toLowerCase()];
+    }
+    for (final key in pending) {
+      if (accepted.containsKey(key)) continue;
+      entryNotes[key] = WorldEntryNote(
+        tries: attempt > depth.tries ? depth.tries : attempt,
+        passed: false,
+        problem: lastProblem[key] ?? '',
+      );
     }
     return [
       for (final d in drafts)
@@ -188,7 +224,9 @@ extension WorldEntryReviewLoop on WorldFromWikiEngine {
     return parseWorldEntryVerdicts(resp.calls);
   }
 
-  Future<List<WorldCraftDraft>> _reviseEntries(
+  /// The revise call: each card with what was found against its entry.
+  /// Public so a note from the Review step can be the finding.
+  Future<List<WorldCraftDraft>> reviseEntries(
     List<WorldProposedCard> cards,
     List<String> articles, {
     required Map<String, List<String>> problems,

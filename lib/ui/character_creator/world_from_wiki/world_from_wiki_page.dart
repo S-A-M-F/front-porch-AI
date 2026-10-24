@@ -9,6 +9,7 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/steps.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_review_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
 
@@ -102,7 +103,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            '${worldState.nameController.text.trim()} saved to Worlds.',
+            '${worldState.nameController.text.trim()} minted into Worlds.',
           ),
         ),
       );
@@ -220,8 +221,19 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
           ),
         );
       default:
-        nextLabel = 'Save World';
-        onNext = busy ? null : _saveAndFinish;
+        // Review: Back, the direction note's send-back, and Mint.
+        return WorldReviewNav(
+          state: worldState,
+          onBack: () {
+            worldState.currentStep = 3;
+            worldState.notify();
+          },
+          onSendBack: () => worldState.sendBackAround(
+            worldState.directionController.text,
+            wholeWorld: worldState.directionWholeWorld,
+          ),
+          onMint: _saveAndFinish,
+        );
     }
     return CreatorNavBar(
       busy: busy,
@@ -281,7 +293,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     );
   }
 
-  static const _stepLabels = ['Setup', 'Book', 'Review', 'Write', 'Preview'];
+  static const _stepLabels = ['Setup', 'Book', 'Shelf', 'Write', 'Review'];
 
   @override
   Widget build(BuildContext context) =>
@@ -303,10 +315,16 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
               dimension: 40,
               child: IconButton(
                 padding: EdgeInsets.zero,
-                icon: Icon(worldState.writing ? Icons.stop : Icons.arrow_back),
-                tooltip: worldState.writing ? 'Stop' : 'Back',
+                icon: Icon(
+                  worldState.writing || worldState.reviewing
+                      ? Icons.stop
+                      : Icons.arrow_back,
+                ),
+                tooltip: worldState.writing || worldState.reviewing
+                    ? 'Stop'
+                    : 'Back',
                 color: StudioColors.proseOf(context),
-                onPressed: worldState.writing
+                onPressed: worldState.writing || worldState.reviewing
                     ? worldState.abortWrite
                     : () => Navigator.of(context).pop(),
               ),
@@ -348,7 +366,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                   ? WorldFromWikiReviewStep(state: worldState)
                   : worldState.currentStep == 3
                   ? WorldFromWikiWriteStep(state: worldState)
-                  : WorldFromWikiPreviewStep(state: worldState),
+                  : WorldFromWikiReviewWorldStep(state: worldState),
             ),
           ),
           _nav(),

@@ -17,7 +17,14 @@ import {
   shelfReviewNote,
   shelfSections,
   signedCards,
+  applyWorldReview,
+  mergeWorldEntryNotes,
+  parseWorldEntryNotes,
   pushWorldProgress,
+  worldEntryNoteCopy,
+  worldReviewEntries,
+  worldReviewFindings,
+  WORLD_FROM_WIKI_STEPS,
   worldElapsedLabel,
   worldToolsAllowNext,
   worldToolsCanRetest,
@@ -358,5 +365,61 @@ describe('depth pick (web twin)', () => {
     expect(depthLabel(fromRelay[0])).toBe('Quick — about 40 cards');
     expect(depthOptions(undefined).map((d) => d.label)).toEqual(['Quick', 'Full', 'Deep']);
     expect(depthOptions([]).length).toBe(3);
+  });
+});
+
+describe('the Review step (web twin)', () => {
+  const entry = (name: string, content: string) => ({
+    name, key: name, content, enabled: true, constant: false, stickyDepth: 1, order: 150,
+  });
+  const root = { name: 'Bleach', parentName: '', description: '', entries: [entry('TYBW era', 'The war.')] };
+  const places = [
+    { name: 'Soul Society', parentName: '', description: '', entries: [entry('Seireitei', 'Old.'), entry('Royal Guard', 'Ichibe only.')] },
+  ];
+
+  it('is the last step, after the shelf and the write', () => {
+    expect(WORLD_FROM_WIKI_STEPS).toEqual(['Book', 'Shelf', 'Write', 'Review']);
+  });
+
+  it('reads the reviewer\'s notes back in the desktop\'s words', () => {
+    const notes = parseWorldEntryNotes({
+      Seireitei: { tries: 1, passed: true },
+      'Royal Guard': { tries: 2, passed: true, problem: 'named only Ichibe' },
+      Aizen: { tries: 3, passed: false, problem: 'after the moment' },
+      junk: 'nope',
+    });
+    expect(worldEntryNoteCopy(notes.seireitei)).toBe('Passed first try');
+    expect(worldEntryNoteCopy(notes['royal guard'])).toBe('Rewritten once · named only Ichibe');
+    expect(worldEntryNoteCopy(notes.aizen)).toBe('Still failing after 3 tries · after the moment');
+    expect(worldEntryNoteCopy(undefined)).toBe('Written without a reviewer');
+    expect(notes.junk).toBeUndefined();
+    expect(worldReviewFindings(', shelf revised: 11 of 30 cards were people', notes)).toEqual([
+      'Shelf revised: 11 of 30 cards were people.',
+      '1 of 3 entries was rewritten by the entry reviewer.',
+      '1 entry is still marked by the reviewer; the last try stands.',
+    ]);
+    expect(worldReviewFindings('', {})).toEqual([]);
+  });
+
+  it('applies a review result by name: updated in place, added under its place, dropped gone', () => {
+    const result = {
+      updated: [{ name: 'royal guard', place: 'Soul Society', entry: entry('Royal Guard', 'Five who guard.'), note: { tries: 2, passed: true } }],
+      added: [
+        { name: 'Rukongai', place: 'soul society', entry: entry('Rukongai', 'The outer districts.') },
+        { name: 'Hueco Mundo', place: 'nowhere', entry: entry('Hueco Mundo', 'The hollows\' desert.') },
+      ],
+      dropped: ['Seireitei'],
+    };
+    const next = applyWorldReview(root, places, result);
+    expect(next.places[0].entries.map((e) => e.name)).toEqual(['Royal Guard', 'Rukongai']);
+    expect(next.places[0].entries[0].content).toBe('Five who guard.');
+    expect(next.root?.entries.map((e) => e.name)).toEqual(['TYBW era', 'Hueco Mundo']);
+    expect(worldReviewEntries(next.root, next.places).map((e) => e.name)).toEqual([
+      'TYBW era', 'Hueco Mundo', 'Royal Guard', 'Rukongai',
+    ]);
+    expect(places[0].entries).toHaveLength(2);
+    const notes = mergeWorldEntryNotes({ seireitei: { tries: 1, passed: true } }, result);
+    expect(notes['royal guard']).toEqual({ tries: 2, passed: true, problem: '' });
+    expect(notes.seireitei).toBeUndefined();
   });
 });

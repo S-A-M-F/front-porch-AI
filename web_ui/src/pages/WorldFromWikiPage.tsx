@@ -34,8 +34,18 @@ import {
   type ProposedWorldCard,
   type ProposedWorldPlace,
   type WorldProgressLine,
+  applyWorldReview,
+  mergeWorldEntryNotes,
+  parseWorldEntryNotes,
+  worldReviewEntries,
+  worldReviewFindings,
+  type WorldEntryNote,
+  type WorldReviewPlace,
+  type WorldReviewResult,
+  type WorldReviewRoot,
 } from './worldFromWiki';
 import { WorldProgressPanel } from './WorldProgressPanel';
+import { WorldReviewStep } from './WorldReviewStep';
 
 type Status = {
   available: boolean;
@@ -97,6 +107,14 @@ export function WorldFromWikiPage() {
   const [liveSince, setLiveSince] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const liveSinceRef = useRef<number | null>(null);
+  // The Review step: the reviewers' notes by entry, pinned cards, the
+  // direction note and its scope, and the last action's one-line result.
+  const [notes, setNotes] = useState<Record<string, WorldEntryNote>>({});
+  const [pinned, setPinned] = useState<Set<string>>(new Set());
+  const [direction, setDirection] = useState('');
+  const [wholeWorld, setWholeWorld] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState('');
+  const treeRef = useRef<{ root: WorldReviewRoot | null; places: WorldReviewPlace[] }>({ root: null, places: [] });
   const startRun = (first: string) => {
     const now = Date.now();
     liveSinceRef.current = now;
@@ -210,6 +228,9 @@ export function WorldFromWikiPage() {
               }[])
             : [],
         );
+        setNotes(parseWorldEntryNotes((e as unknown as { notes?: unknown }).notes));
+        setPinned(new Set());
+        setReviewStatus('');
         setBookFields({
           recursiveScanning: e.recursiveScanning !== false,
           scanDepth: typeof e.scanDepth === 'number' ? e.scanDepth : 10,
@@ -223,6 +244,16 @@ export function WorldFromWikiPage() {
         setAborted(true);
         setEntries([]);
         setLiveStatus(e.data || 'Stopped.');
+      } else if (e.event === 'world_wiki_review_done') {
+        setBusy(false);
+        endRun();
+        const result = e as unknown as WorldReviewResult & { status?: string };
+        const next = applyWorldReview(treeRef.current.root, treeRef.current.places, result);
+        setTreeRoot(next.root);
+        setTreePlaces(next.places);
+        setEntries(worldReviewEntries(next.root, next.places));
+        setNotes((n) => mergeWorldEntryNotes(n, result));
+        if (typeof result.status === 'string') setReviewStatus(result.status);
       } else if (e.event === 'world_wiki_error') {
         setBusy(false);
         endRun();
@@ -332,6 +363,73 @@ export function WorldFromWikiPage() {
       setError(e instanceof ApiError ? e.message : 'Could not stop');
     }
   };
+
+  useEffect(() => {
+    treeRef.current = { root: treeRoot, places: treePlaces };
+  }, [treeRoot, treePlaces]);
+
+  /** A hand change to the tree the Review step shows; entries follow it. */
+  const applyLocal = (result: WorldReviewResult) => {
+    const next = applyWorldReview(treeRef.current.root, treeRef.current.places, result);
+    treeRef.current = next;
+    setTreeRoot(next.root);
+    setTreePlaces(next.places);
+    setEntries(worldReviewEntries(next.root, next.places));
+  };
+  const reviewEntryNamed = (name: string) =>
+    worldReviewEntries(treeRef.current.root, treeRef.current.places).find(
+      (x) => x.name.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+  const editEntry = (name: string, patch: { content?: string; key?: string }) => {
+    const cur = reviewEntryNamed(name);
+    if (!cur) return;
+    applyLocal({ updated: [{ name, place: '', entry: { ...cur, ...patch } }] });
+  };
+  const dropEntry = (name: string) => {
+    applyLocal({ dropped: [name] });
+    setPinned((s) => {
+      const n = new Set(s);
+      n.delete(name.trim().toLowerCase());
+      return n;
+    });
+  };
+  const togglePin = (name: string) =>
+    setPinned((s) => {
+      const n = new Set(s);
+      const k = name.trim().toLowerCase();
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  /** A Review action on the host; its result lands as world_wiki_review_done. */
+  const reviewPost = async (path: string, first: string, body: Record<string, unknown>) => {
+    setBusy(true);
+    setError('');
+    setReviewStatus('');
+    startRun(first);
+    try {
+      await api.post(`/api/worlds/from-wiki/review/${path}`, body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+      endRun();
+    }
+  };
+  const currentTexts = (names?: string[]) =>
+    worldReviewEntries(treeRef.current.root, treeRef.current.places)
+      .filter((x) => !names || names.includes(x.name))
+      .map((x) => ({ name: x.name, content: x.content, keys: x.key }));
+  const rewriteEntry = (name: string, note: string) =>
+    void reviewPost('rewrite', `Rewriting ${name}…`, { name, note, entries: currentTexts([name]) });
+  const sendBack = () =>
+    void reviewPost('direction', 'Reading your note…', {
+      note: direction,
+      wholeWorld,
+      pinned: [...pinned],
+      entries: currentTexts(),
+    });
+  const addCard = (place: string, cardName: string, page: string) =>
+    void reviewPost('add', `Writing ${cardName}…`, { name: cardName, place, page });
 
   const save = async () => {
     if (!canOpenWorldFromWikiPreview({ lorebooksOn, aborted, entryCount: entries.length })) {
@@ -691,13 +789,28 @@ export function WorldFromWikiPage() {
               />
               <span>Climate</span>
             </label>
-            <p className="muted small">Lorebook ({entries.length})</p>
-            {entries.map((e, i) => (
-              <div key={`${e.name}-${i}`} className="card">
-                <strong>{e.name || '(untitled)'}</strong>
-                <p className="muted small">{e.content}</p>
-              </div>
-            ))}
+            <WorldReviewStep
+              worldName={name}
+              root={treeRoot}
+              places={treePlaces}
+              climateEnabled={climateEnabled}
+              notes={notes}
+              pinned={pinned}
+              busy={busy}
+              findings={worldReviewFindings(reviewNote, notes)}
+              direction={direction}
+              setDirection={setDirection}
+              wholeWorld={wholeWorld}
+              setWholeWorld={setWholeWorld}
+              reviewStatus={reviewStatus}
+              onSendBack={sendBack}
+              onEdit={editEntry}
+              onDrop={dropEntry}
+              onPin={togglePin}
+              onRewrite={rewriteEntry}
+              onAdd={addCard}
+              progress={{ status: liveStatus, log: liveLog, elapsed: worldElapsedLabel(elapsedMs) }}
+            />
           </div>
         )}
         {error && <p className="error">{error}</p>}
@@ -707,7 +820,7 @@ export function WorldFromWikiPage() {
         <button disabled={step === 0 || busy} onClick={() => setStep(step - 1)}>← Back</button>
         {step === 0 && (
           <button className="primary" disabled={busy || !nextOk || !wikiUrl} onClick={() => void scout()}>
-            {busy ? 'Scouting…' : lorebooksOn ? 'Scout wiki' : 'Next: Preview'}
+            {busy ? 'Scouting…' : lorebooksOn ? 'Scout wiki' : 'Next: Review'}
           </button>
         )}
         {step === 1 && (
@@ -720,7 +833,17 @@ export function WorldFromWikiPage() {
         )}
         {step === 3 && (
           <button
+            data-testid="world-from-wiki-send-back-nav"
+            disabled={busy || !direction.trim()}
+            onClick={sendBack}
+          >
+            Send it back around
+          </button>
+        )}
+        {step === 3 && (
+          <button
             className="primary"
+            data-testid="world-from-wiki-mint"
             disabled={busy || !name.trim() || !canOpenWorldFromWikiPreview({
               lorebooksOn,
               aborted,
@@ -728,7 +851,7 @@ export function WorldFromWikiPage() {
             })}
             onClick={() => void save()}
           >
-            Save World
+            Mint World →
           </button>
         )}
       </div>

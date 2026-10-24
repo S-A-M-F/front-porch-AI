@@ -95,6 +95,16 @@ String worldProgressRewrite(int n, int attempt, int of) =>
 /// A place's profile call.
 String worldProgressProfile(String name) => 'Walking around $name…';
 
+/// The Review step: the author's note is being sorted against the shelf.
+String worldProgressTriage() => 'Reading your note against the shelf…';
+
+/// The Review step: entries rewritten with the author's note as the finding.
+String worldProgressDirected(int n) =>
+    'Rewriting $n ${_entries(n)} the way you asked…';
+
+/// The Review step: one card added by hand is written from its page.
+String worldProgressAdding(String name) => 'Writing $name from its page…';
+
 /// The world's climate call.
 String worldProgressClimate() => 'Checking the weather…';
 

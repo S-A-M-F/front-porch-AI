@@ -23,6 +23,7 @@ import 'package:front_porch_ai/services/chat/pass_support.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/system_role_probe.dart';
 import 'package:front_porch_ai/services/web/facade/world_from_wiki_facade.dart';
+import 'package:front_porch_ai/services/web/facade/world_from_wiki_review_facade.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -298,5 +299,33 @@ void main() {
     expect((await facade.setContext({'depth': 5}))['ok'], isFalse);
     expect((await facade.setContext({}))['ok'], isFalse);
     expect(storage.webSearchSettings.worldWikiDepth, 2);
+  });
+  test('the Review step\'s actions need a written world first', () async {
+    expect(facade.startRewrite({'name': 'Seireitei', 'note': 'x'}), {
+      'ok': false,
+      'error': 'Write the world first.',
+    });
+    expect(facade.startDirection({'note': 'x'}), {
+      'ok': false,
+      'error': 'Write the world first.',
+    });
+    expect(facade.startAdd({'name': 'Kurosaki Clinic'}), {
+      'ok': false,
+      'error': 'Write the world first.',
+    });
+    expect(
+      worldDirectionSummaryFor(
+        const WorldDirection(
+          add: [(name: 'Kurosaki Clinic', place: 'Karakura Town')],
+          drop: ['Aizen'],
+        ),
+        2,
+      ),
+      'Rewrote 2 entries, added Kurosaki Clinic, dropped 1.',
+    );
+    expect(
+      worldDirectionSummaryFor(const WorldDirection(), 0),
+      startsWith('Your note named nothing on the shelf'),
+    );
   });
 }

@@ -142,3 +142,47 @@ List<String> _strings(dynamic raw) {
   if (raw is String && raw.trim().isNotEmpty) return [raw.trim()];
   return [];
 }
+
+/// What the entry loop did to one entry, for the Review step: how many
+/// tries it took, whether it passed, and the last finding against it.
+class WorldEntryNote {
+  const WorldEntryNote({
+    required this.tries,
+    required this.passed,
+    this.problem = '',
+  });
+
+  final int tries;
+  final bool passed;
+  final String problem;
+
+  Map<String, dynamic> toJson() => {
+    'tries': tries,
+    'passed': passed,
+    if (problem.isNotEmpty) 'problem': problem,
+  };
+
+  static WorldEntryNote? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final tries = raw['tries'];
+    return WorldEntryNote(
+      tries: tries is int ? tries : int.tryParse('$tries') ?? 1,
+      passed: raw['passed'] != false,
+      problem: raw['problem']?.toString() ?? '',
+    );
+  }
+}
+
+/// "Passed first try", "Rewritten once · said how the war ends",
+/// "Still failing after 3 tries · …": one line under the entry.
+String worldEntryNoteCopy(WorldEntryNote? note) {
+  if (note == null) return 'Written without a reviewer';
+  final why = note.problem.isEmpty ? '' : ' · ${note.problem}';
+  if (note.passed) {
+    if (note.tries <= 1) return 'Passed first try';
+    if (note.tries == 2) return 'Rewritten once$why';
+    return 'Passed on try ${note.tries}$why';
+  }
+  return 'Still failing after ${note.tries} '
+      '${note.tries == 1 ? 'try' : 'tries'}$why';
+}

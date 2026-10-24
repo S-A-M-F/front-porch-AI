@@ -563,3 +563,41 @@ Loops, in order:
 Writes on a remote provider run two batches at a time; local stays serial.
 The run log (verdicts and notes per stage) rides the status line and the
 scout/write responses as `notes`.
+
+### The Review step before Mint (2026-10-23)
+
+The maintainer's ruling: the human review is the **last step before
+minting**, where the author gives input or direction and retriggers the
+loop on that feedback. The Preview step became the Review step; the Shelf
+step (tick-only) stays as the sign-off on names.
+
+What the step does, on both surfaces:
+
+- **Findings** — what the reviewers did this run: the shelf reviewer's
+  note (sent back / revised), how many entries the entry reviewer
+  rewrote, how many are still marked. From `WorldScoutResult.auditNotes`
+  and the engine's `entryNotes` (`WorldEntryNote`: tries, passed, the last
+  finding), which `reviewBatch` records per entry and the relay sends as
+  `notes` in `world_wiki_done`.
+- **Direction** — the author's note in their own words, with a scope: the
+  cards it names (default) or the whole world. `triageDirection` asks the
+  model to sort the note into rewrite / add / drop against the shelf
+  (`direct_world_review`); when that gives nothing, every shelf name the
+  note mentions is rewritten (`matchDirectionNames`). Rewrites go through
+  `rewriteWithNote`: the note is the finding (`REVIEW FOUND: The author
+  says: …`), the entry as it stands is the previous entry, and the entry
+  reviewer reads what comes back — the same loop that wrote the world.
+  Adds go through `writeOneCard` (the page by name when none is given).
+  A pinned card is never touched.
+- **Per entry** — text and keys editable in place (mechanics stay; the
+  entry is rebuilt from its own JSON with the new text), the verdict line,
+  Rewrite with a note (one card through `rewriteWithNote`), Drop, Keep.
+  Per place: Add a card here.
+- **Mint World** is the only save. The desktop keeps the tree in the
+  wizard state (`WorldFromWikiReviewActions`); the phone keeps its own
+  tree and sends only the named entries' current text with each action,
+  so its hand edits survive a host rewrite, and the relay answers with
+  only what changed (`world_wiki_review_done`: updated / added / dropped).
+
+The sketch that was approved: the desktop and phone artboards of
+"World from Wiki: Review before Mint" (private artifact, 2026-10-23).

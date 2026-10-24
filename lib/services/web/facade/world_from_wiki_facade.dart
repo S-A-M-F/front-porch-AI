@@ -25,6 +25,18 @@ class WorldFromWikiFacade {
   WorldFromWikiEngine? _live;
   bool _writing = false;
 
+  /// The last written world, kept for the phone's Review step: the engine
+  /// that wrote it (its shelf, reviewers and notes carry over), the tree
+  /// as it stands after each action, and the write's own body.
+  WorldFromWikiEngine? reviewEngine;
+  WorldWriteTree? reviewTree;
+  Map<String, dynamic> reviewBody = const {};
+
+  /// Whether a Review action (rewrite, direction, add) is running.
+  bool reviewing = false;
+
+  void broadcast(Map<String, dynamic> event) => _hub?.broadcast(event);
+
   bool get available => _llm.activeService.isReady;
 
   Future<Map<String, dynamic>> status() async {
@@ -202,6 +214,7 @@ class WorldFromWikiFacade {
 
   void abort() {
     _live?.abort();
+    if (reviewing) reviewEngine?.abort();
   }
 
   Future<void> _runWrite(
@@ -243,6 +256,9 @@ class WorldFromWikiFacade {
         _hub?.broadcast({'event': 'world_wiki_abort', 'data': 'Stopped.'});
         return;
       }
+      reviewEngine = engine;
+      reviewTree = tree;
+      reviewBody = Map<String, dynamic>.from(body);
       final entries = tree.root.entries.followedBy([
         for (final p in tree.places) ...p.entries,
       ]).toList();
@@ -266,6 +282,10 @@ class WorldFromWikiFacade {
         'scanDepth': kWorldFromWikiScanDepth,
         'tokenBudget': kWorldFromWikiTokenBudget,
         'entries': lorebookEntriesToJson(book),
+        // Additive: what the entry loop did to each entry, by name.
+        'notes': {
+          for (final e in engine.entryNotes.entries) e.key: e.value.toJson(),
+        },
         // Slice 8 (additive): per-place books so the PWA saves a root
         // plus children. Empty/absent → flat save, exactly today.
         'root': {
