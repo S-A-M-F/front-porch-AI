@@ -389,10 +389,36 @@ class DownloadManager extends ChangeNotifier {
     final sink = tempFile.openWrite(
       mode: startOffset > 0 ? FileMode.append : FileMode.write,
     );
-    int receivedBytes = startOffset;
+    await pumpBody(
+      task,
+      response.stream,
+      sink,
+      startOffset: startOffset,
+      totalSize: totalSize,
+    );
+  }
 
-    // Process response stream
-    await for (final chunk in response.stream) {
+  /// Longest gap between progress notifies while bytes stream in.
+  static const progressNotifyInterval = Duration(milliseconds: 100);
+
+  /// Writes [body] into [sink], updating [task] on every chunk but notifying
+  /// listeners at most once per [progressNotifyInterval]. Settings and the
+  /// Model Manager page rebuild on every notify, and Windows sockets hand back
+  /// thousands of small chunks a second; a notify per chunk starved the UI
+  /// thread until dragging the window crawled. State changes (start, pause,
+  /// complete, fail) still notify immediately from their own call sites.
+  @visibleForTesting
+  Future<void> pumpBody(
+    DownloadTask task,
+    Stream<List<int>> body,
+    IOSink sink, {
+    required int startOffset,
+    required int totalSize,
+  }) async {
+    int receivedBytes = startOffset;
+    final sinceNotify = Stopwatch()..start();
+
+    await for (final chunk in body) {
       if (task.state != DownloadTaskState.downloading) {
         // Download was paused or cancelled
         await sink.close();
@@ -403,13 +429,16 @@ class DownloadManager extends ChangeNotifier {
       receivedBytes += chunk.length;
 
       task.updateProgress(receivedBytes, totalSize);
-      notifyListeners();
+      if (sinceNotify.elapsed >= progressNotifyInterval) {
+        sinceNotify.reset();
+        notifyListeners();
+      }
     }
 
     await sink.flush();
     await sink.close();
 
-    // Final progress update
+    // Final progress update; _executeDownload notifies once the task settles.
     task.updateProgress(receivedBytes, totalSize);
   }
 

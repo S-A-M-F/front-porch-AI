@@ -46,6 +46,10 @@ class HFModelCard extends StatefulWidget {
   /// Set of already downloaded filenames.
   final Set<String> downloadedFiles;
 
+  /// Fires on download progress ticks; only rows with a file in flight
+  /// listen, so a tick redraws one row rather than the card.
+  final Listenable? progressTicks;
+
   const HFModelCard({
     super.key,
     required this.model,
@@ -54,6 +58,7 @@ class HFModelCard extends StatefulWidget {
     required this.onDownload,
     this.downloadingFiles = const {},
     this.downloadedFiles = const {},
+    this.progressTicks,
   });
 
   @override
@@ -78,7 +83,18 @@ class _HFModelCardState extends State<HFModelCard>
       parent: _expandController,
       curve: Curves.easeInOut,
     );
+    _expandController.addStatusListener(_onExpandStatus);
   }
+
+  // Drops the quant rows once the collapse animation finishes.
+  void _onExpandStatus(AnimationStatus status) {
+    if (status.isDismissed && mounted) setState(() {});
+  }
+
+  /// A collapsed card builds no quant rows. SizeTransition lays its child out
+  /// at full size even at zero height, so a page of collapsed results was
+  /// mounting and laying out every file's row on each scroll and resize.
+  bool get _showsQuantRows => _isExpanded || !_expandController.isDismissed;
 
   @override
   void dispose() {
@@ -213,20 +229,22 @@ class _HFModelCardState extends State<HFModelCard>
                   sizeFactor: _expandAnimation,
                   // Old axisAlignment: -1 (vertical) per the SDK migration formula.
                   alignment: Alignment.topLeft,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerOf(context),
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(12),
-                        bottomRight: Radius.circular(12),
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: _buildQuantList(),
-                  ),
+                  child: _showsQuantRows
+                      ? Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceContainerOf(context),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(12),
+                              bottomRight: Radius.circular(12),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: _buildQuantList(),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -283,6 +301,7 @@ class _HFModelCardState extends State<HFModelCard>
               downloadTask: widget.downloadingFiles[file.filename],
               isDownloaded: widget.downloadedFiles.contains(file.filename),
               onDownload: widget.onDownload,
+              progressTicks: widget.progressTicks,
             ),
           )
           .toList(),

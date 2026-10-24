@@ -108,4 +108,67 @@ void main() {
       );
     }, _RealHttpOverrides());
   });
+
+  test('progress ticks do not notify ModelManager listeners', () async {
+    // The whole Model Manager page and Settings listen to ModelManager; a
+    // rebuild per tick pinned the UI thread on Windows during a download.
+    // Its own pair, and only notifies raised inside a download tick count:
+    // ModelManager's model-folder scan also notifies when it lands, which can
+    // be mid-test on a busy runner.
+    final ticking = _TickFlaggingDownloads(targetDir: storage.modelsDir.path);
+    final watched = ModelManager(storage, ticking);
+    addTearDown(() {
+      watched.dispose();
+      ticking.dispose();
+    });
+    final task = DownloadTask(
+      url: 'https://example.com/tick.gguf',
+      filename: 'tick.gguf',
+      targetDir: root.path,
+    )..start();
+    var downloadTicks = 0;
+    var tickNotifies = 0;
+    ticking.addListener(() => downloadTicks++);
+    watched.addListener(() {
+      if (ticking.inTick) tickNotifies++;
+    });
+
+    Stream<List<int>> slowBody() async* {
+      for (var i = 0; i < 3; i++) {
+        await Future<void>.delayed(
+          DownloadManager.progressNotifyInterval * 1.5,
+        );
+        yield List<int>.filled(1024, 7);
+      }
+    }
+
+    await ticking.pumpBody(
+      task,
+      slowBody(),
+      File(p.join(root.path, 'tick.gguf.part')).openWrite(),
+      startOffset: 0,
+      totalSize: 3 * 1024,
+    );
+
+    expect(downloadTicks, greaterThanOrEqualTo(2));
+    expect(tickNotifies, 0);
+  });
+}
+
+/// Marks while it notifies, so a test can tell a ModelManager notify caused
+/// by a progress tick from one caused by anything else.
+class _TickFlaggingDownloads extends DownloadManager {
+  _TickFlaggingDownloads({required super.targetDir});
+
+  bool inTick = false;
+
+  @override
+  void notifyListeners() {
+    inTick = true;
+    try {
+      super.notifyListeners();
+    } finally {
+      inTick = false;
+    }
+  }
 }
