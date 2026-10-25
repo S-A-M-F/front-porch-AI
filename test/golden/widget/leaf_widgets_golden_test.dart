@@ -79,8 +79,6 @@ Widget _realismForm() => RealismFormSection(
   onEmotionChanged: (_) {},
   emotionIntensity: 'moderate',
   onEmotionIntensityChanged: (_) {},
-  nsfwCooldownEnabled: false,
-  onNsfwCooldownChanged: (_) {},
   chaosModeEnabled: false,
   onChaosModeChanged: (_) {},
   realismVerificationEnabled: true,

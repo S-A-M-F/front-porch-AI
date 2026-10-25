@@ -25,12 +25,11 @@ import 'package:front_porch_ai/ui/widgets/identity_chip_lists.dart';
 import 'realism_form_controls.dart';
 import 'recovery_block.dart';
 
-/// Afterglow, Chaos and Realism Verification switches (engine on).
+/// Afterglow recovery, Chaos and Realism Verification (engine on). Afterglow
+/// itself has no switch here: Porch Life is the one gate.
 class RealismOptionalFeaturesCard extends StatelessWidget {
   const RealismOptionalFeaturesCard({
     super.key,
-    required this.nsfwCooldownEnabled,
-    required this.onNsfwCooldownChanged,
     required this.chaosModeEnabled,
     required this.onChaosModeChanged,
     required this.realismVerificationEnabled,
@@ -39,7 +38,6 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
     required this.onRealismVerificationMaxReprocessesChanged,
     required this.realismVerificationStrictness,
     required this.onRealismVerificationStrictnessChanged,
-    required this.showNsfwCooldownToggle,
     required this.showChaosToggle,
     required this.showVerificationToggle,
     this.recovery,
@@ -50,8 +48,6 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
     this.showChargenSuggestion = false,
   });
 
-  final bool nsfwCooldownEnabled;
-  final ValueChanged<bool> onNsfwCooldownChanged;
   final bool chaosModeEnabled;
   final ValueChanged<bool> onChaosModeChanged;
   final bool realismVerificationEnabled;
@@ -60,15 +56,14 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
   final ValueChanged<int>? onRealismVerificationMaxReprocessesChanged;
   final int realismVerificationStrictness;
   final ValueChanged<int>? onRealismVerificationStrictnessChanged;
-  final bool showNsfwCooldownToggle;
   final bool showChaosToggle;
   final bool showVerificationToggle;
 
-  /// Recovery block (recovery overhaul PR 2). Rendered under the Afterglow
-  /// row only when a caller supplies the value + setter (the group editors
-  /// pass neither: per ruling, members follow their own cards, and the
-  /// block would be a lie there), the 18+ themes are on, and Afterglow is
-  /// on. With Afterglow off the settings stay on the card, hidden.
+  /// Recovery block (recovery overhaul PR 2). Rendered only when a caller
+  /// supplies the value + setter (the group editors pass neither: per
+  /// ruling, members follow their own cards, and the block would be a lie
+  /// there) and Porch Life Afterglow is on (which needs 18+). With Afterglow
+  /// off the settings stay on the card, hidden.
   final RecoveryProfile? recovery;
   final ValueChanged<RecoveryProfile>? onRecoveryChanged;
   final String sex;
@@ -79,11 +74,9 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showRecovery =
-        showNsfwCooldownToggle &&
-        nsfwCooldownEnabled &&
         recovery != null &&
         onRecoveryChanged != null &&
-        adultThemesEnabledOf(context);
+        afterglowEnabledOf(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -95,27 +88,16 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          if (showNsfwCooldownToggle) ...[
-            buildRealismToggleRow(
-              icon: Icons.thermostat,
-              label: 'Afterglow (intimacy pacing)',
-              subtitle: 'Realistic arousal/refractory mechanics',
-              value: nsfwCooldownEnabled,
-              onChanged: onNsfwCooldownChanged,
-              context: context,
+          if (showRecovery) ...[
+            RecoveryBlock(
+              recovery: recovery!,
+              sex: sex,
+              intimateInto: intimateInto,
+              intimateNotInto: intimateNotInto,
+              onChanged: onRecoveryChanged!,
+              showChargenSuggestion: showChargenSuggestion,
             ),
-            if (showRecovery) ...[
-              const SizedBox(height: 12),
-              RecoveryBlock(
-                recovery: recovery!,
-                sex: sex,
-                intimateInto: intimateInto,
-                intimateNotInto: intimateNotInto,
-                onChanged: onRecoveryChanged!,
-                showChargenSuggestion: showChargenSuggestion,
-              ),
-              const SizedBox(height: 4),
-            ],
+            const SizedBox(height: 4),
             if (showChaosToggle)
               Divider(
                 color:
@@ -139,7 +121,7 @@ class RealismOptionalFeaturesCard extends StatelessWidget {
           // Realism Verification toggle (last optional; independent of needs).
           // Uses same _toggleRow + card styling. Sliders for passes/strictness are in Details dialog per spec.
           if (showVerificationToggle) ...[
-            if (showChaosToggle || showNsfwCooldownToggle)
+            if (showChaosToggle || showRecovery)
               Divider(
                 color:
                     (context.creatorPalette?.line ??

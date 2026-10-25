@@ -132,14 +132,16 @@ export function ChatToolsChaos({ t, toggle }: { t: ToolsState; toggle: ToolsTogg
   );
 }
 
-export function ChatToolsNsfw({ t, toggle }: { t: ToolsState; toggle: ToolsToggle }) {
+// No switch here: Porch Life Afterglow (with 18+ on) is the one gate, and
+// the section is simply absent while it is off, like the desktop Lust bar.
+export function ChatToolsNsfw({ t }: { t: ToolsState }) {
+  if (!t.nsfw.cooldownEnabled) return null;
   return (
     <details className="tool-section">
       <summary>NSFW</summary>
       <div className="tool-body">
         <div className="stat-line"><span>Lust</span><span className="muted">{t.nsfw.arousalTier} · {t.nsfw.arousalLevel}</span></div>
-        <Toggle label={t.group ? 'NSFW Enhancements (all members)' : 'NSFW Enhancements'} value={t.nsfw.cooldownEnabled} onChange={(v) => toggle('nsfwCooldown', v)} />
-        {t.nsfw.cooldownEnabled && t.nsfw.refractoryMinutesRemaining > 0 && (
+        {t.nsfw.refractoryMinutesRemaining > 0 && (
           <div className="stat-line"><span className="muted">{t.nsfw.refractoryLabel}</span></div>
         )}
       </div>

@@ -106,7 +106,7 @@ void main() {
     await repo.addCharacter(guest);
     await chat.setActiveCharacter(host);
     await chat.setRealismEnabled(true);
-    await chat.setNsfwCooldownEnabled(true);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
     await chat.joinSceneGuest(guest);
     await settle();
 

@@ -307,6 +307,7 @@ extension ChatServiceWiringRealism on ChatService {
       setGroupValue: (charId, key, v) =>
           _groupStore.memberForWrite(charId).setValue(key, v),
       isClockRunning: () => _clockRunning,
+      afterglowOn: () => _storageService.realismSettings.afterglowEnabled,
     );
   }
 

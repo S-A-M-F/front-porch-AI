@@ -143,11 +143,6 @@ class RealismStep extends StatelessWidget {
                   state.realismEmotionIntensity = v;
                   state.notify();
                 },
-                nsfwCooldownEnabled: state.realismNsfwCooldown,
-                onNsfwCooldownChanged: (v) {
-                  state.realismNsfwCooldown = v;
-                  state.notify();
-                },
                 recovery: state.realismRecovery,
                 onRecoveryChanged: (v) {
                   state.realismRecovery = v;

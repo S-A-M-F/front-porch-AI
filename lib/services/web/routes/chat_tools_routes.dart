@@ -142,8 +142,6 @@ class WebChatToolsRoutes {
         await _facade.setChaosEnabled(value);
       case 'chaosNsfw':
         await _facade.setChaosNsfw(value);
-      case 'nsfwCooldown':
-        await _facade.setNsfwCooldown(value);
       case 'passageOfTime':
         await _facade.setPassageOfTime(value);
       case 'summaryPaused':

@@ -111,8 +111,13 @@ void main() {
     ).addCharacter(character);
     await chatService.setActiveCharacter(character);
 
-    // The refractory rides the Lust system — must be on for this chat.
-    await chatService.setNsfwCooldownEnabled(true);
+    // The refractory rides the Lust system: Porch Life Afterglow, the one
+    // switch (it seeds 18+ on with it).
+    // ignore: use_build_context_synchronously — ctx is the root element.
+    await Provider.of<StorageService>(
+      ctx,
+      listen: false,
+    ).realismSettings.setNsfwCooldownDefault(true);
 
     // ignore: use_build_context_synchronously — ctx is the root element.
     Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => const ChatPage()));
@@ -277,7 +282,11 @@ void main() {
         listen: false,
       ).addCharacter(character);
       await chatService.setActiveCharacter(character);
-      await chatService.setNsfwCooldownEnabled(true);
+      // ignore: use_build_context_synchronously — ctx is the root element.
+      await Provider.of<StorageService>(
+        ctx,
+        listen: false,
+      ).realismSettings.setNsfwCooldownDefault(true);
 
       // ignore: use_build_context_synchronously — ctx is the root element.
       Navigator.of(

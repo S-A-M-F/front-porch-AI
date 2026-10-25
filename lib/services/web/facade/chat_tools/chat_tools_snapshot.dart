@@ -98,9 +98,8 @@ class ChatToolsSnapshot {
         'cooldownTurns': chaos.cooldownTurns,
       },
       'nsfw': {
-        'cooldownEnabled': _chat.activeGroup != null
-            ? _chat.isGroupNsfwEnabled
-            : nsfw.nsfwCooldownEnabled,
+        // Porch Life Afterglow (18+ on), live: the one gate, no chat toggle.
+        'cooldownEnabled': nsfw.nsfwCooldownEnabled,
         // The desktop chip's own words, ready-made, so the phone cannot
         // drift from them (story minutes, or replies with the clock off).
         'refractoryMinutesRemaining': nsfw.refractoryMinutesRemaining,

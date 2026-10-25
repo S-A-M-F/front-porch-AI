@@ -70,11 +70,14 @@ void main() {
     expect(value, 'curoius');
     expect(rebuilds, greaterThan(1), reason: 'the parent must have rebuilt');
 
-    final controller = tester.widget<TextField>(find.byType(TextField)).controller!;
+    final controller = tester
+        .widget<TextField>(find.byType(TextField))
+        .controller!;
     expect(
       controller.selection.baseOffset,
       4,
-      reason: 'the rebuild must not drag the caret to the end of the text — '
+      reason:
+          'the rebuild must not drag the caret to the end of the text — '
           'that is what made mid-word editing impossible',
     );
     expect(controller.text, 'curoius');
@@ -103,8 +106,6 @@ void main() {
             onEmotionChanged: (_) {},
             emotionIntensity: 'mild',
             onEmotionIntensityChanged: (_) {},
-            nsfwCooldownEnabled: false,
-            onNsfwCooldownChanged: (_) {},
             chaosModeEnabled: false,
             onChaosModeChanged: (_) {},
             ambitions: const [],
@@ -142,7 +143,8 @@ void main() {
       expect(
         identical(before[i], after[i]),
         isTrue,
-        reason: 'field $i was handed a fresh controller by build(), which '
+        reason:
+            'field $i was handed a fresh controller by build(), which '
             'discards the caret and any IME composing region',
       );
     }

@@ -73,6 +73,11 @@ class NsfwService {
   /// story minutes while it runs, replies while it is off.
   final bool Function() _isClockRunning;
 
+  /// Porch Life Afterglow (with 18+ on), live. When supplied it IS the gate
+  /// and the stored per-chat / per-member flag below only rides the save
+  /// wire, so a chat made before Afterglow was switched on obeys the switch.
+  final bool Function()? _afterglowOn;
+
   // Owned state (moved verbatim from ChatService).
   bool _nsfwCooldownEnabled = false;
   Refractory _refractory = Refractory.none;
@@ -84,13 +89,15 @@ class NsfwService {
     required this.getGroupValue,
     required this.setGroupValue,
     bool Function()? isClockRunning,
-  }) : _isClockRunning = isClockRunning ?? _clockOn;
+    bool Function()? afterglowOn,
+  }) : _isClockRunning = isClockRunning ?? _clockOn,
+       _afterglowOn = afterglowOn;
 
   static bool _clockOn() => true;
 
   // ── Public surface (ChatService delegates + direct test/UI callers) ──────
 
-  bool get nsfwCooldownEnabled => _nsfwCooldownEnabled;
+  bool get nsfwCooldownEnabled => _afterglowOn?.call() ?? _nsfwCooldownEnabled;
   int get arousalLevel => _arousalLevel;
 
   Refractory get refractory => _refractory;

@@ -154,10 +154,6 @@ class _GroupRealismNeedsTabState extends State<GroupRealismNeedsTab> {
 
             const SizedBox(height: 14),
 
-            GroupNsfwEnhancementsCard(controller: _controller),
-
-            const SizedBox(height: 14),
-
             // Passage of Time + Chaos (two-column-ish or stacked)
             GroupTimeAndChaosCard(cs: cs, controller: _controller),
 

@@ -116,7 +116,7 @@ void main() {
       )..dbId = 'char-refr-legacy',
     );
     await chat.setRealismEnabled(true);
-    await chat.setNsfwCooldownEnabled(true);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
     await chat.sendMessage('Evening.');
     await settle();
     final id = chat.currentSessionId!;
@@ -176,7 +176,7 @@ void main() {
       groupRepo: GroupChatRepository(storage, db),
     );
     await chat.setRealismEnabled(true);
-    await chat.setNsfwCooldownEnabled(true);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
     CharacterCard member(String name) =>
         chat.groupCharacters.firstWhere((c) => c.name == name);
     chat.setNextCharacter(member('Ada'));
@@ -240,7 +240,7 @@ void main() {
       )..dbId = 'char-refr-v59',
     );
     await chat.setRealismEnabled(true);
-    await chat.setNsfwCooldownEnabled(true);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
     await chat.sendMessage('Evening.');
     await settle();
     final id = chat.currentSessionId!;
@@ -288,7 +288,7 @@ void main() {
         )..dbId = 'char-refr-v60',
       );
       await chat.setRealismEnabled(true);
-      await chat.setNsfwCooldownEnabled(true);
+      await storage.realismSettings.setNsfwCooldownDefault(true);
       await chat.sendMessage('Evening.');
       await settle();
       final id = chat.currentSessionId!;

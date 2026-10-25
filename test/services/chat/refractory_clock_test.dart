@@ -97,7 +97,7 @@ void main() {
       )..dbId = 'char-refr-mara',
     );
     await chat.setRealismEnabled(true);
-    await chat.setNsfwCooldownEnabled(true);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
   });
 
   tearDown(() async {
@@ -127,6 +127,29 @@ void main() {
     await chat.sendMessage(text);
     await settle();
   }
+
+  // 2026-10-24, found on a fresh install: a chat opened before Porch Life
+  // Afterglow was on stored "off", and only the per-chat NSFW Enhancements
+  // toggle (now removed) could flip it, so turning Afterglow on did nothing.
+  // Porch Life Afterglow, with 18+ on, is the one live gate.
+  test('a chat stored with Afterglow off obeys Porch Life turned on later; '
+      'Porch Life off or 18+ off turns it off', () async {
+    nsfw().seedFromV2OrExt(nsfwCooldownEnabled: false);
+    expect(
+      nsfw().nsfwCooldownEnabled,
+      isTrue,
+      reason: 'the stored per-chat "off" must not outvote Porch Life',
+    );
+    llm.refractoryTurns = 5;
+    await send('The wave crests and breaks over us both.', climax: true);
+    expect(nsfw().refractoryMinutesRemaining, 75, reason: 'the climax landed');
+
+    await storage.realismSettings.setNsfwCooldownDefault(false);
+    expect(nsfw().nsfwCooldownEnabled, isFalse);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
+    await storage.realismSettings.setAdultThemesEnabled(false);
+    expect(nsfw().nsfwCooldownEnabled, isFalse, reason: 'Afterglow needs 18+');
+  });
 
   group('clock on', () {
     test('75 min set at climax from refractory_turns 5; a 20-minute beat '
@@ -344,7 +367,7 @@ void main() {
         )..dbId = 'char-refr-mara',
       );
       await chat.setRealismEnabled(true);
-      await chat.setNsfwCooldownEnabled(true);
+      await storage.realismSettings.setNsfwCooldownDefault(true);
     });
 
     test(
@@ -535,7 +558,7 @@ void main() {
         )..dbId = 'char-refr-tess',
       );
       await chat.setRealismEnabled(true);
-      await chat.setNsfwCooldownEnabled(true);
+      await storage.realismSettings.setNsfwCooldownDefault(true);
     }
 
     test(
@@ -605,28 +628,25 @@ void main() {
       },
     );
 
-    test(
-      'clock off: two replies of 15 age a 30-minute tail to none',
-      () async {
-        await useCard(mode: kRecoveryModeHard);
-        chat.setPassageOfTimeEnabled(false);
-        llm.refractoryTurns = 4; // lock 60 (4 replies), tail 30 (2 replies)
-        nsfw().setArousalLevel(80);
-        await send('The wave crests over us both.', climax: true);
-        expect(nsfw().refractoryMinutesRemaining, 60);
-        await send('One.'); // tick at send: 45
-        await send('Two.'); // 30
-        await send('Three.'); // 15
-        await send('Four.'); // 0 — the lock ends THIS beat, tail starts frozen
-        expect(nsfw().refractoryMinutesRemaining, 0);
-        expect(nsfw().refractoryTailMinutes, 30, reason: 'frozen at seed');
-        await send('Five.'); // tail 15
-        expect(nsfw().refractoryTailMinutes, 15);
-        await send('Six.'); // tail 0
-        expect(nsfw().refractoryTailMinutes, 0);
-        expect(nsfw().refractory, Refractory.none);
-      },
-    );
+    test('clock off: two replies of 15 age a 30-minute tail to none', () async {
+      await useCard(mode: kRecoveryModeHard);
+      chat.setPassageOfTimeEnabled(false);
+      llm.refractoryTurns = 4; // lock 60 (4 replies), tail 30 (2 replies)
+      nsfw().setArousalLevel(80);
+      await send('The wave crests over us both.', climax: true);
+      expect(nsfw().refractoryMinutesRemaining, 60);
+      await send('One.'); // tick at send: 45
+      await send('Two.'); // 30
+      await send('Three.'); // 15
+      await send('Four.'); // 0 — the lock ends THIS beat, tail starts frozen
+      expect(nsfw().refractoryMinutesRemaining, 0);
+      expect(nsfw().refractoryTailMinutes, 30, reason: 'frozen at seed');
+      await send('Five.'); // tail 15
+      expect(nsfw().refractoryTailMinutes, 15);
+      await send('Six.'); // tail 0
+      expect(nsfw().refractoryTailMinutes, 0);
+      expect(nsfw().refractory, Refractory.none);
+    });
 
     test('regen of a tailed beat rewinds the tail minutes exactly', () async {
       await useCard(mode: kRecoveryModeHard);

@@ -30,8 +30,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:provider/provider.dart';
+
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/widgets/realism_form_section/realism_optional_features_card.dart';
 import 'package:front_porch_ai/ui/widgets/realism_form_section/recovery_block.dart';
+
+import '../../golden/support/fakes_storage.dart';
 
 void main() {
   testWidgets('None / multiorgasmic hides the minutes slider and the '
@@ -88,6 +94,58 @@ void main() {
       findsOneWidget,
       reason: 'the old null-minutes hint still belongs to the judge presets',
     );
+  });
+
+  // 2026-10-24: the per-card Afterglow switch is gone; the editor shows the
+  // Recovery block under Porch Life Afterglow, which counts only with 18+ on.
+  testWidgets('the editor shows Recovery under Porch Life Afterglow, '
+      'never a per-card switch', (tester) async {
+    final storage = FakeStorageService();
+    addTearDown(storage.dispose);
+    await storage.realismSettings.setNsfwCooldownDefault(false);
+    await storage.realismSettings.setAdultThemesEnabled(true);
+
+    Future<void> pumpForm() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        ChangeNotifierProvider<StorageService>.value(
+          value: storage,
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: RealismOptionalFeaturesCard(
+                  chaosModeEnabled: false,
+                  onChaosModeChanged: (_) {},
+                  realismVerificationEnabled: false,
+                  onRealismVerificationChanged: (_) {},
+                  realismVerificationMaxReprocesses: 1,
+                  onRealismVerificationMaxReprocessesChanged: null,
+                  realismVerificationStrictness: 3,
+                  onRealismVerificationStrictnessChanged: null,
+                  showChaosToggle: true,
+                  showVerificationToggle: false,
+                  recovery: RecoveryProfile.auto,
+                  onRecoveryChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpForm();
+    expect(find.byType(RecoveryBlock), findsNothing, reason: 'Afterglow off');
+    expect(find.textContaining('Afterglow'), findsNothing);
+
+    await storage.realismSettings.setNsfwCooldownDefault(true);
+    await pumpForm();
+    expect(find.byType(RecoveryBlock), findsOneWidget);
+    expect(find.text('Afterglow (intimacy pacing)'), findsNothing);
+
+    await storage.realismSettings.setAdultThemesEnabled(false);
+    await pumpForm();
+    expect(find.byType(RecoveryBlock), findsNothing, reason: 'needs 18+');
   });
 }
 

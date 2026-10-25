@@ -83,8 +83,6 @@ class CreatorRealismStep extends StatelessWidget {
           emotionIntensity: d.realismEmotionIntensity,
           onEmotionIntensityChanged: (v) =>
               _set(() => d.realismEmotionIntensity = v),
-          nsfwCooldownEnabled: d.realismNsfwCooldown,
-          onNsfwCooldownChanged: (v) => _set(() => d.realismNsfwCooldown = v),
           recovery: d.realismRecovery,
           onRecoveryChanged: (v) => _set(() => d.realismRecovery = v),
           showChargenSuggestion: true,

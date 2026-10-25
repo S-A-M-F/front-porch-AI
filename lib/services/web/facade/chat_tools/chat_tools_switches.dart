@@ -19,8 +19,8 @@
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 
-/// The plain toggles: engine, needs, one-shot, chaos, NSFW cooldown,
-/// passage of time, Director, wiki base. Each writes the same setting the
+/// The plain toggles: engine, needs, one-shot, chaos, passage of time,
+/// Director, wiki base. Each writes the same setting the
 /// desktop row writes and pushes to the live chat where the desktop does.
 class ChatToolsSwitches {
   ChatToolsSwitches(this._ctx);
@@ -68,11 +68,6 @@ class ChatToolsSwitches {
 
   Future<void> setChaosNsfw(bool v) async {
     await _chat.setChaosNsfwEnabled(v);
-    _notify();
-  }
-
-  Future<void> setNsfwCooldown(bool v) async {
-    await _chat.setNsfwCooldownEnabled(v);
     _notify();
   }
 

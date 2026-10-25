@@ -23,7 +23,6 @@ class GroupRealismNeedsController extends ChangeNotifier {
   bool _realismEnabled = false;
   bool _chaosModeEnabled = false;
   bool _chaosNsfwEnabled = false;
-  bool _nsfwEnhancementsEnabled = false;
 
   // Group-wide Time & Day.
   String _groupTimeOfDay = 'morning';
@@ -67,7 +66,6 @@ class GroupRealismNeedsController extends ChangeNotifier {
   bool get realismEnabled => _realismEnabled;
   bool get chaosModeEnabled => _chaosModeEnabled;
   bool get chaosNsfwEnabled => _chaosNsfwEnabled;
-  bool get nsfwEnhancementsEnabled => _nsfwEnhancementsEnabled;
   String get groupTimeOfDay => _groupTimeOfDay;
   String? get groupStoryStartDate => _groupStoryStartDate;
   String? get groupStoryStartTime => _groupStoryStartTime;
@@ -80,10 +78,6 @@ class GroupRealismNeedsController extends ChangeNotifier {
     _realismEnabled = cs.realismEnabled;
     _chaosModeEnabled = cs.chaosModeService.chaosModeEnabled;
     _chaosNsfwEnabled = cs.chaosModeService.chaosNsfwEnabled;
-    // Group NSFW Enhancements (arousal/Lust + post-climax cooldowns). Uses the
-    // stable per-member group flag (the live nsfwService scalar is per-speaker
-    // volatile in groups); the write side propagates to every member.
-    _nsfwEnhancementsEnabled = cs.isGroupNsfwEnabled;
 
     // Group-wide Time & Day, plus the per-member seed blob the ENGINE reads on
     // a fresh chat (parseGroupRealismSeeds → GroupMemberRealism).
@@ -166,14 +160,6 @@ class GroupRealismNeedsController extends ChangeNotifier {
     _chaosNsfwEnabled = value;
     notifyListeners();
     chatService.setChaosNsfwEnabled(value);
-  }
-
-  void updateNsfwEnhancements(bool value) {
-    _nsfwEnhancementsEnabled = value;
-    notifyListeners();
-    // Same setter the sidebar gear uses; in a group it propagates the flag to
-    // every member's realism state (1:1 just sets the scalar).
-    chatService.setNsfwCooldownEnabled(value);
   }
 
   // ── Time & Day ──

@@ -16,7 +16,7 @@ import { CharacterStatsCard } from '../components/CharacterStatsCard';
 import { MacroField } from '../components/MacroField';
 import { LoreEntriesEditor, type LoreEntry } from '../components/LoreEntriesEditor';
 import { RealismFormSection } from '../components/realism/RealismFormSection';
-import { useAdultThemes } from '../components/realism/useAdultThemes';
+import { useAdultFlags } from '../components/realism/useAdultThemes';
 import { usePassageOfTime } from '../components/realism/usePassageOfTime';
 import { NeedsFormSection } from '../components/realism/NeedsFormSection';
 import { TokenBadge } from '../components/realism/controls';
@@ -70,7 +70,7 @@ const FIELDS: { key: keyof CharDetail; label: string; rows: number }[] = [
 ];
 
 export function CharacterEditPage() {
-  const adultThemes = useAdultThemes();
+  const { adult: adultThemes, afterglow } = useAdultFlags();
   const clockOn = usePassageOfTime();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -344,7 +344,7 @@ export function CharacterEditPage() {
       )}
 
       <h3 className="section-label">Realism Engine</h3>
-      <RealismFormSection v={rv} set={patch} showIntimate={adultThemes} />
+      <RealismFormSection v={rv} set={patch} showIntimate={adultThemes} afterglowOn={afterglow} />
 
       {rv.realismEnabled && (
         <>

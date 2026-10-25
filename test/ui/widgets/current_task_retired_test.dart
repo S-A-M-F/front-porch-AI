@@ -64,8 +64,6 @@ void main() {
               onEmotionChanged: (_) {},
               emotionIntensity: 'mild',
               onEmotionIntensityChanged: (_) {},
-              nsfwCooldownEnabled: false,
-              onNsfwCooldownChanged: (_) {},
               chaosModeEnabled: false,
               onChaosModeChanged: (_) {},
               ambitions: ambitions,
@@ -88,7 +86,8 @@ void main() {
     expect(
       find.textContaining('Current task', findRichText: true),
       findsNothing,
-      reason: 'the authoring surface is retired — a label left behind would '
+      reason:
+          'the authoring surface is retired — a label left behind would '
           'still invite authors to bake a per-chat errand into the card',
     );
     // The box carried three pieces of copy. Any one of them surviving means it
@@ -97,7 +96,8 @@ void main() {
     expect(
       find.textContaining('Find the missing artifact'),
       findsNothing,
-      reason: 'the placeholder taught the wrong lesson: it offered a per-chat '
+      reason:
+          'the placeholder taught the wrong lesson: it offered a per-chat '
           'errand as an example of a permanent card property',
     );
     expect(
@@ -114,7 +114,8 @@ void main() {
     expect(
       find.byType(ChipListEditor),
       findsOneWidget,
-      reason: 'chips, not a newline-encoded textarea — the whole point of the '
+      reason:
+          'chips, not a newline-encoded textarea — the whole point of the '
           'replacement',
     );
   });
