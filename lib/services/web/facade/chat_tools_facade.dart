@@ -160,8 +160,6 @@ class ChatToolsFacade {
 
   Future<void> setChaosNsfw(bool v) => _switches.setChaosNsfw(v);
 
-  Future<void> setNsfwCooldown(bool v) => _switches.setNsfwCooldown(v);
-
   Future<void> setPassageOfTime(bool v) => _switches.setPassageOfTime(v);
 
   Future<void> setDirectorMode(bool v) => _switches.setDirectorMode(v);

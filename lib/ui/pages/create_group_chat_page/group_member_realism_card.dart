@@ -84,12 +84,9 @@ class GroupMemberRealismCard extends StatelessWidget {
               onEmotionIntensityChanged: (v) => update({'emotionIntensity': v}),
               // These are group-level concepts (we already have the master Chaos toggle at the top of the section).
               // Forcing them off here prevents duplicate/confusing per-character toggles.
-              nsfwCooldownEnabled: false,
-              onNsfwCooldownChanged: (_) {},
               chaosModeEnabled: false,
               onChaosModeChanged: (_) {},
               // Hide the global-only toggles entirely from per-character optional features.
-              showNsfwCooldownToggle: false,
               showChaosToggle: false,
               showTimeAndDay: false,
               showMasterEnabledToggle: false,

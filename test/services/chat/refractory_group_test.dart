@@ -105,7 +105,7 @@ void main() {
       groupRepo: GroupChatRepository(storage, db),
     );
     await chat.setRealismEnabled(true);
-    await chat.setNsfwCooldownEnabled(true);
+    await storage.realismSettings.setNsfwCooldownDefault(true);
   });
 
   tearDown(() async {
@@ -209,5 +209,27 @@ void main() {
 
     await speak('Ada');
     expect(refractoryOf('Ada').minutes, 60, reason: 'Ada\'s own reply counts');
+  });
+
+  // 2026-10-24: a group whose members were saved with Afterglow off kept
+  // their stored "off" after Porch Life Afterglow went on; only the removed
+  // per-chat toggle could flip it. Porch Life (18+ on) is the one live gate.
+  test('members saved with Afterglow off obey Porch Life turned on later, '
+      'and 18+ off turns it off again', () async {
+    await storage.realismSettings.setNsfwCooldownDefault(false);
+    await speak('Ada', line: 'Evening.');
+    expect(chat.isGroupNsfwEnabled, isFalse);
+
+    await storage.realismSettings.setNsfwCooldownDefault(true);
+    expect(
+      chat.isGroupNsfwEnabled,
+      isTrue,
+      reason: 'the stored per-member "off" must not outvote Porch Life',
+    );
+    await speak('Bea', line: 'The wave crests.', climax: true, turns: 4);
+    expect(refractoryOf('Bea').minutes, 60, reason: 'the climax landed');
+
+    await storage.realismSettings.setAdultThemesEnabled(false);
+    expect(chat.isGroupNsfwEnabled, isFalse, reason: 'Afterglow needs 18+');
   });
 }

@@ -62,11 +62,8 @@ class GroupMemberRealismEditor extends StatelessWidget {
       onEmotionIntensityChanged: (v) => onUpdate({'emotionIntensity': v}),
       // Group-level concepts (there's a master Chaos toggle at the top of the
       // section) — forced off + hidden to avoid duplicate per-member toggles.
-      nsfwCooldownEnabled: false,
-      onNsfwCooldownChanged: (_) {},
       chaosModeEnabled: false,
       onChaosModeChanged: (_) {},
-      showNsfwCooldownToggle: false,
       showChaosToggle: false,
       showTimeAndDay: false,
       showMasterEnabledToggle: false,

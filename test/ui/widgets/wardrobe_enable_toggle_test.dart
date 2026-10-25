@@ -71,8 +71,6 @@ void main() {
             onEmotionChanged: (_) {},
             emotionIntensity: 'mild',
             onEmotionIntensityChanged: (_) {},
-            nsfwCooldownEnabled: false,
-            onNsfwCooldownChanged: (_) {},
             chaosModeEnabled: false,
             onChaosModeChanged: (_) {},
             worn: worn,

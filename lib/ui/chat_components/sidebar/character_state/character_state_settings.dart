@@ -26,18 +26,14 @@ import '../sidebar_tokens.dart';
 
 /// The Character State gear flyout — an inline inset panel (not a popup menu,
 /// which would dismiss on every toggle tap) collecting the simulation
-/// switches that used to be scattered through realism_section and the inline
-/// group NSFW toggle: Needs Simulation, One-Shot Eval, and NSFW Enhancements
-/// (the arousal system — its settings home after
-/// the Lust bar moved in among the bond bars). Manual time nudging lives
-/// ONLY on the TimeStrip's chevrons (a duplicate row here was removed —
-/// user feedback 2026-07-03).
+/// switches that used to be scattered through realism_section: Needs
+/// Simulation and One-Shot Eval. Manual time nudging lives ONLY on the
+/// TimeStrip's chevrons (a duplicate row here was removed — user feedback
+/// 2026-07-03).
 ///
-/// NSFW visibility split-brain (documented at chat_service_group_settings):
-/// group READ uses the stable per-member flag [ChatService.isGroupNsfwEnabled]
-/// (the live nsfwService scalar is per-speaker-volatile in groups); 1:1 READ
-/// uses the scalar; WRITE is always [ChatService.setNsfwCooldownEnabled],
-/// which propagates to every member in a group.
+/// No arousal switch: the old per-chat "NSFW Enhancements" row overrode
+/// Porch Life, so turning Afterglow on there did nothing for an existing
+/// chat. Porch Life Afterglow (with 18+ on) is now the one gate.
 class CharacterStateSettings extends StatelessWidget {
   final ChatService chat;
   final bool isGroup;
@@ -52,9 +48,6 @@ class CharacterStateSettings extends StatelessWidget {
   Widget build(BuildContext context) {
     // Listening on purpose: one-shot eval lives on StorageService.
     final storage = Provider.of<StorageService>(context);
-    final nsfwOn = isGroup
-        ? chat.isGroupNsfwEnabled
-        : chat.nsfwService.nsfwCooldownEnabled;
 
     return Container(
       padding: SidebarTokens.wellPadding,
@@ -102,21 +95,6 @@ class CharacterStateSettings extends StatelessWidget {
             onChanged: chat.isGenerating
                 ? null
                 : (val) => storage.realismSettings.setOneShotMode(val),
-          ),
-          const SizedBox(height: 10),
-          _toggleRow(
-            context,
-            icon: Icons.local_fire_department,
-            label: 'NSFW Enhancements',
-            caption:
-                'Tracks arousal (the Lust bar above) with post-climax '
-                'refractory cooldowns.'
-                '${isGroup ? ' Applies to every group member.' : ''}',
-            value: nsfwOn,
-            accent: AppColors.lustAccentOf(context),
-            onChanged: chat.isGenerating
-                ? null
-                : (val) => chat.setNsfwCooldownEnabled(val),
           ),
         ],
       ),

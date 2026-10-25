@@ -241,6 +241,11 @@ class RealismSettings with SettingsBase, TimeSkipBridgeSetting {
   /// stays true even if Afterglow is enabled later in the same session.
   bool get adultThemesEnabled => _adultThemesExplicit ?? _nsfwCooldownDefault;
 
+  /// The one live Afterglow gate (arousal, the Lust bar, climax, refractory):
+  /// the Porch Life switch, and only while 18+ themes are on. There is no
+  /// per-chat or per-card switch any more; the stored flags only seed.
+  bool get afterglowEnabled => adultThemesEnabled && _nsfwCooldownDefault;
+
   /// One-Shot Eval mode. [OneShotMode.auto] (the default) fuses the judges
   /// into one call on remote backends that have already proven native tool
   /// calls, and stays on the multi-call path everywhere else — the resolution

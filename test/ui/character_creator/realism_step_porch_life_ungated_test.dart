@@ -157,7 +157,9 @@ void main() {
       expect(find.text('Long-Term Bond'), findsOneWidget);
       expect(find.text('Trust Level'), findsOneWidget);
       expect(find.text('Starting Emotion'), findsOneWidget);
-      expect(find.text('Afterglow (intimacy pacing)'), findsOneWidget);
+      // 2026-10-24: no per-card Afterglow switch any more; Porch Life
+      // Afterglow (with 18+ on) is the one gate.
+      expect(find.text('Afterglow (intimacy pacing)'), findsNothing);
       expect(
         find.text('Realism Verification (Director/Verifier)'),
         findsOneWidget,

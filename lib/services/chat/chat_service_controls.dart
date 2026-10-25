@@ -67,35 +67,6 @@ extension ChatServiceControls on ChatService {
     notifyListeners();
   }
 
-  Future<void> setNsfwCooldownEnabled(bool enabled) async {
-    _nsfwService.setNsfwCooldownEnabled(enabled);
-    // In a group the flag is PER-CHARACTER (each speaker's eval reloads it via
-    // loadNsfwScalarsForSpeaker), so the chat-wide toggle must be written into
-    // EVERY member's _groupRealism entry — otherwise members keep their stale
-    // (off) per-char flag and arousal is never evaluated for them. (1:1 just uses
-    // the scalar above; this loop is a no-op there.)
-    if (_activeGroup != null) {
-      for (final c in _groupCharacters) {
-        final id = _getCharacterIdFromCard(c);
-        final entry = _groupStore.memberForWrite(id);
-        entry.nsfwCooldownEnabled = enabled;
-        // Parity with 1:1: NsfwService.setNsfwCooldownEnabled(false) zeroes
-        // the scalar arousal + cooldowns, so disabling must clear each
-        // member's persisted values too — otherwise re-enabling resumed
-        // members from stale arousal/cooldowns while a 1:1 chat restarted
-        // fresh. (Also the documented escape hatch: toggling off and on
-        // resets a chat's lust state to neutral in BOTH modes.)
-        if (!enabled) {
-          entry
-            ..arousal = 0
-            ..refractory = Refractory.none;
-        }
-      }
-    }
-    await _saveChat();
-    notifyListeners();
-  }
-
   Future<void> _setPassageOfTimeEnabledImpl(bool enabled) async {
     await _storageService.realismSettings.setPassageOfTimeDefault(enabled);
     _timeService.markClockGateSource('porch_life');

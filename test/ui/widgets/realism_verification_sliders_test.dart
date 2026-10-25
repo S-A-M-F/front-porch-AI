@@ -45,8 +45,6 @@ class _HostState extends State<_Host> {
           onEmotionChanged: (_) {},
           emotionIntensity: 'mild',
           onEmotionIntensityChanged: (_) {},
-          nsfwCooldownEnabled: false,
-          onNsfwCooldownChanged: (_) {},
           chaosModeEnabled: false,
           onChaosModeChanged: (_) {},
           realismVerificationEnabled: verify,

@@ -37,6 +37,7 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/storage/settings/realism_settings.dart';
+import 'package:front_porch_ai/ui/chat_components/sidebar/character_state/character_state_settings.dart';
 import 'package:front_porch_ai/ui/settings/tabs/porch_life_tab.dart';
 
 import '../../golden/support/fakes.dart';
@@ -165,6 +166,44 @@ void main() {
     );
     expect(find.text('After Dark'), findsNothing);
   });
+
+  // 2026-10-24: the chat sidebar gear carried an old per-chat "NSFW
+  // Enhancements" switch that overrode Porch Life, so Afterglow turned on
+  // here did nothing for an existing chat. Porch Life is the one switch.
+  for (final isGroup in [false, true]) {
+    testWidgets('the chat sidebar gear has no Afterglow / NSFW switch '
+        '(${isGroup ? 'group' : '1:1'})', (tester) async {
+      final storage = _AdultStorage();
+      final chat = FakeChatService();
+      addTearDown(() {
+        storage.dispose();
+        chat.dispose();
+      });
+      await storage.realismSettings.setNsfwCooldownDefault(true);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<StorageService>.value(value: storage),
+            ChangeNotifierProvider<ChatService>.value(value: chat),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: CharacterStateSettings(chat: chat, isGroup: isGroup),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('One-Shot Eval'), findsOneWidget, reason: 'baseline');
+      expect(find.textContaining('NSFW'), findsNothing);
+      expect(find.textContaining('Afterglow'), findsNothing);
+      expect(find.byType(Switch), findsOneWidget, reason: 'Needs only');
+    });
+  }
 
   testWidgets('Growth Rings is a row on the tab, per the sketch', (
     tester,
