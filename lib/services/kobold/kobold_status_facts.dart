@@ -78,6 +78,7 @@ class KoboldStatusFacts {
         kvQuant: b.kvQuant,
         mlock: measured?.mlock ?? b.mlockEnabled,
         rocmFlashAttentionFailed: b.rocmFlashAttentionFailed,
+        flashAttentionRiskAccepted: b.gemma4VulkanFlashAttention,
       ),
       model: KoboldModelFacts(
         isMoe: info.isMoe,

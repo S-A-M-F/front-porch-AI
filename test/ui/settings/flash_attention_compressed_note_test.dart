@@ -7,6 +7,7 @@
 // runs with it on. A line under the switch says so whenever that is the
 // case. The real Settings page, with the real stored settings.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:front_porch_ai/services/services.dart';
@@ -64,5 +65,40 @@ void main() {
     );
     await settle(tester);
     expect(line(), findsNothing, reason: 'a full-size cache: the switch rules');
+  });
+
+  testWidgets('on Vulkan, Gemma 4 has its own flash attention switch, off, '
+      'under the crash warning', (tester) async {
+    final amd = HardwareInfo(
+      gpuName: 'AMD Radeon RX 6900 XT',
+      vramMb: 16368,
+      ramMb: 65536,
+      vendor: 'AMD',
+    );
+    final rig = await mountSettings(tester, lastUsedIsB: true, hardware: amd);
+    await openTab(tester, 'Advanced');
+    await tapVisible(tester, find.text('Advanced Launch Options'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await settle(tester);
+
+    final toggle = find.byKey(const ValueKey('gemma4-vulkan-flash-attention'));
+    expect(toggle, findsOneWidget);
+    expect(find.text(kKoboldFlashAttentionCrashWarning), findsOneWidget);
+    expect(tester.widget<Switch>(toggle).value, isFalse);
+    expect(rig.store.backendSettings.gemma4VulkanFlashAttention, isFalse);
+
+    await tapVisible(tester, toggle);
+    await settle(tester);
+    expect(rig.store.backendSettings.gemma4VulkanFlashAttention, isTrue);
+    expect(tester.widget<Switch>(toggle).value, isTrue);
+  });
+
+  testWidgets('off Vulkan there is no Gemma 4 switch', (tester) async {
+    await openLaunchOptions(tester, flash: true, cache: KvQuant.f16);
+    expect(
+      find.byKey(const ValueKey('gemma4-vulkan-flash-attention')),
+      findsNothing,
+    );
+    expect(find.text(kKoboldFlashAttentionCrashWarning), findsNothing);
   });
 }

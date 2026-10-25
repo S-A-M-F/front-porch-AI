@@ -31,18 +31,38 @@ extension KcppsEditorFit on KcppsEditorController {
   /// MMQ only does anything on CUDA and the ROCm build.
   bool get mmqApplies => draft.backend == KoboldGpuBackend.cuda;
 
-  bool get flashAttentionRuns => koboldFlashAttentionRuns(
+  /// Flash attention runs for the form as it stands: ticked is the say-so
+  /// for a pairing that crashed in testing ([flashAttentionRisky]).
+  bool get flashAttentionRuns =>
+      flashAttentionRunsIf(riskAccepted: draft.flashAttention);
+
+  /// The flash attention box can be ticked: everywhere but a ROCm machine
+  /// where it already died.
+  bool get flashAttentionAllowed => flashAttentionRunsIf(riskAccepted: true);
+
+  bool flashAttentionRunsIf({required bool riskAccepted}) =>
+      koboldFlashAttentionRuns(
+        backend: draft.backend,
+        rocm: rocm,
+        architecture: info?.architecture,
+        rocmFailedBefore: storage.backendSettings.rocmFlashAttentionFailed,
+        riskAccepted: riskAccepted,
+      );
+
+  /// Gemma 4 on Vulkan: the box carries [kKoboldFlashAttentionCrashWarning].
+  bool get flashAttentionRisky => koboldFlashAttentionRisky(
     backend: draft.backend,
-    rocm: rocm,
     architecture: info?.architecture,
-    rocmFailedBefore: storage.backendSettings.rocmFlashAttentionFailed,
   );
 
+  /// Why the box cannot be ticked, or null. A risky pairing has its
+  /// warning instead.
   String? get flashAttentionNote => koboldFlashAttentionNote(
     backend: draft.backend,
     rocm: rocm,
     architecture: info?.architecture,
     rocmFailedBefore: storage.backendSettings.rocmFlashAttentionFailed,
+    riskAccepted: true,
   );
 
   /// The preset says nothing about sliding window and the model has it:

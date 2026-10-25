@@ -265,6 +265,7 @@ Future<Map<String, dynamic>> koboldLaunchMap({
     rocm: gpu.rocm,
     architecture: info?.architecture,
     rocmFailedBefore: b.rocmFlashAttentionFailed,
+    riskAccepted: b.gemma4VulkanFlashAttention,
   );
   if (note != null) onNote?.call(note);
   final config = koboldAppConfig(
@@ -282,6 +283,7 @@ Future<Map<String, dynamic>> koboldLaunchMap({
       kvQuant: b.kvQuant,
       mlock: knobs?.mlock ?? b.mlockEnabled,
       rocmFlashAttentionFailed: b.rocmFlashAttentionFailed,
+      flashAttentionRiskAccepted: b.gemma4VulkanFlashAttention,
     ),
     model: KoboldModelFacts(
       isMoe: info?.isMoe ?? false,
@@ -289,6 +291,14 @@ Future<Map<String, dynamic>> koboldLaunchMap({
       architecture: info?.architecture,
     ),
   );
+  // Turned on by the user: if KoboldCpp stops, the log says what to undo.
+  if (config.flashAttention &&
+      koboldFlashAttentionRisky(
+        backend: gpu.backend,
+        architecture: info?.architecture,
+      )) {
+    onNote?.call('Flash attention is on. $kKoboldFlashAttentionCrashWarning');
+  }
   final tuned = await _tunedForMachine(
     config.copyWith(useMmap: knobs?.mmap),
     info: info,

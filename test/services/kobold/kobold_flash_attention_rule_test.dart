@@ -98,4 +98,68 @@ void main() {
       isNull,
     );
   });
+
+  test('Gemma 4 on Vulkan turned on by the user runs flash attention and '
+      'its compressed cache, and the launch has no "off" note', () {
+    final auto = kcppsMap(
+      koboldAppConfig(
+        modelPath: '/m/a.gguf',
+        settings: const KoboldAppSettings(
+          contextSize: 16384,
+          batchSize: 512,
+          layersManual: false,
+          manualLayers: 0,
+          backend: KoboldGpuBackend.vulkan,
+          gpuId: 0,
+          rocm: false,
+          flashAttention: true,
+          kvQuant: KvQuant.q8_0,
+          mlock: false,
+          flashAttentionRiskAccepted: true,
+        ),
+        model: const KoboldModelFacts(architecture: 'gemma4'),
+      ),
+    );
+    expect(auto['noflashattention'], isFalse);
+    expect(auto['quantkv'], 'q8_0');
+
+    // A preset's own box is the say-so: ticked runs it, unticked does not.
+    for (final ticked in [true, false]) {
+      final preset = kcppsMap(
+        KcppsDraft(
+          name: 'Mine',
+          modelPath: '/m/a.gguf',
+          backend: KoboldGpuBackend.vulkan,
+          kvQuant: KvQuant.q8_0,
+          flashAttention: ticked,
+        ).toConfig(architecture: 'gemma4'),
+      );
+      expect(preset['noflashattention'], !ticked, reason: 'ticked $ticked');
+      expect(preset['quantkv'], ticked ? 'q8_0' : 'f16');
+    }
+
+    expect(
+      koboldFlashAttentionNote(
+        backend: KoboldGpuBackend.vulkan,
+        rocm: false,
+        architecture: 'gemma4',
+        riskAccepted: true,
+      ),
+      isNull,
+    );
+    expect(
+      koboldFlashAttentionRisky(
+        backend: KoboldGpuBackend.vulkan,
+        architecture: 'gemma4',
+      ),
+      isTrue,
+    );
+    expect(
+      koboldFlashAttentionRisky(
+        backend: KoboldGpuBackend.cuda,
+        architecture: 'gemma4',
+      ),
+      isFalse,
+    );
+  });
 }

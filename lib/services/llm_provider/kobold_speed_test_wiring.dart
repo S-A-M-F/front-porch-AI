@@ -167,6 +167,7 @@ class KoboldSpeedTestWiring {
           rocm: gpu.rocm,
           architecture: info.architecture,
           rocmFailedBefore: b.rocmFlashAttentionFailed,
+          riskAccepted: b.gemma4VulkanFlashAttention,
         ),
       ),
       load: _kobold.loadTookFor(model) ?? koboldGuessLoad(bytes),

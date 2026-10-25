@@ -254,4 +254,72 @@ void main() {
     expect(saved['quantkv'], 'q8_0');
     expect(saved['noflashattention'], isFalse);
   });
+
+  testWidgets('Gemma 4 on Vulkan: flash attention starts off but can be '
+      'ticked, under the crash warning, and then the cache compressed', (
+    tester,
+  ) async {
+    final editor = await open(
+      tester,
+      model: gemma4,
+      flash: true,
+      cache: KvQuant.q8_0,
+      hardware: _amd,
+    );
+    final warning = find.byKey(
+      const ValueKey('kcpps-flash-attention-crash-warning'),
+    );
+    expect(warning, findsOneWidget);
+    expect(find.text(kKoboldFlashAttentionCrashWarning), findsOneWidget);
+    expect(flashBox(tester).value, isFalse);
+    expect(flashBox(tester).onChanged, isNotNull);
+
+    // Unticked, compression stays out of reach.
+    await tester.ensureVisible(size('4-bit'));
+    await tester.pump();
+    await tester.tap(size('4-bit'));
+    await tester.pump();
+    expect(editor.draft.kvQuant, KvQuant.f16);
+
+    final box = find.byKey(const ValueKey('kcpps-flash-attention'));
+    await tester.ensureVisible(box);
+    await tester.pump();
+    await tester.tap(box);
+    await tester.pump();
+    expect(flashBox(tester).value, isTrue);
+    expect(warning, findsOneWidget, reason: 'the warning stays beside it');
+
+    await tester.ensureVisible(size('4-bit'));
+    await tester.pump();
+    await tester.tap(size('4-bit'));
+    await tester.pump();
+    expect(editor.draft.kvQuant, KvQuant.q4_0);
+
+    final saved = await save(tester, editor);
+    expect(saved['noflashattention'], isFalse);
+    expect(saved['quantkv'], 'q4_0');
+  });
+
+  testWidgets('Gemma 4 on Vulkan with its Settings switch on: a new preset '
+      'starts as auto mode runs it, flash attention on', (tester) async {
+    await tester.runAsync(
+      () => storage.backendSettings.setGemma4VulkanFlashAttention(true),
+    );
+    final editor = await open(
+      tester,
+      model: gemma4,
+      flash: true,
+      cache: KvQuant.q8_0,
+      hardware: _amd,
+    );
+    expect(editor.draft.kvQuant, KvQuant.q8_0);
+    expect(flashBox(tester).value, isTrue);
+    expect(find.text(kKoboldFlashAttentionCrashWarning), findsOneWidget);
+  });
+
+  testWidgets('no crash warning for Gemma 4 off Vulkan', (tester) async {
+    await open(tester, model: gemma4, flash: true, cache: KvQuant.q8_0);
+    expect(find.text(kKoboldFlashAttentionCrashWarning), findsNothing);
+    expect(flashBox(tester).value, isTrue);
+  });
 }
