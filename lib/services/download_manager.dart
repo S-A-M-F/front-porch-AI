@@ -17,12 +17,12 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/download_transfer.dart';
+import 'package:front_porch_ai/utils/utils.dart';
 
 /// Manages a queue of model downloads with support for:
 /// - Multiple concurrent downloads (configurable, default: 3)
@@ -95,8 +95,25 @@ class DownloadManager extends ChangeNotifier {
   double get overallSpeed =>
       activeDownloads.fold<double>(0, (s, t) => s + t.speedBytesPerSec);
 
-  DownloadManager({required String targetDir, this.maxConcurrent = 3})
-    : _targetDir = targetDir {
+  /// Moves the bytes; owns Range resume, the free-space check and the
+  /// progress throttle.
+  final DownloadTransfer _transfer;
+
+  /// Extra request headers per URL (the HuggingFace token).
+  set headersFor(Map<String, String> Function(Uri url)? value) =>
+      _transfer.headersFor = value;
+
+  DownloadManager({
+    required String targetDir,
+    this.maxConcurrent = 3,
+    FreeDiskBytes? freeBytes,
+    int segmentMinBytes = 32 * 1024 * 1024,
+  }) : _targetDir = targetDir,
+       _transfer = DownloadTransfer(
+         freeBytes: freeBytes,
+         segmentMinBytes: segmentMinBytes,
+         progressEvery: progressNotifyInterval,
+       ) {
     _ensureTargetDir();
     _startProcessing();
   }
@@ -157,7 +174,7 @@ class DownloadManager extends ChangeNotifier {
         return existing; // Already in queue
       } else if (existing.state == DownloadTaskState.paused ||
           existing.state == DownloadTaskState.failed) {
-        existing.retry();
+        _requeue(existing);
         _actionController.add(const DownloadAction.resume());
         notifyListeners();
         return existing;
@@ -201,7 +218,7 @@ class DownloadManager extends ChangeNotifier {
     if (task == null) return false;
     if (!task.state.canResume) return false;
 
-    task.resume();
+    _requeue(task);
     _actionController.add(const DownloadAction.start());
     notifyListeners();
     return true;
@@ -246,7 +263,7 @@ class DownloadManager extends ChangeNotifier {
   void resumeAll() {
     for (final task in _queue) {
       if (task.state.canResume) {
-        task.resume();
+        _requeue(task);
       }
     }
     _actionController.add(const DownloadAction.start());
@@ -259,24 +276,21 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Processes the download queue.
-  Future<void> _processQueue(DownloadAction action) async {
-    // Count active downloads
-    final activeCount = activeDownloads.length;
+  /// Puts a paused or failed task back in line, keeping its `.part` file
+  /// so the next transfer resumes with a Range request.
+  void _requeue(DownloadTask task) {
+    task.resume();
+    task.state = DownloadTaskState.pending;
+  }
 
-    // If we're at capacity, don't start new downloads
-    if (activeCount >= maxConcurrent) return;
-
-    // Find pending tasks to start
-    final pending = _queue
-        .where((t) => t.state == DownloadTaskState.pending)
-        .toList();
-
-    final slotsAvailable = maxConcurrent - activeCount;
-    final toStart = pending.take(slotsAvailable).toList();
-
-    for (final task in toStart) {
-      await _executeDownload(task);
+  /// Starts pending tasks while slots are free. Each runs on its own; a
+  /// task leaves `pending` synchronously in [_executeDownload], so two
+  /// passes never start the same one.
+  void _processQueue(DownloadAction action) {
+    for (final task in _queue.toList()) {
+      if (activeDownloads.length >= maxConcurrent) return;
+      if (task.state != DownloadTaskState.pending) continue;
+      unawaited(_executeDownload(task));
     }
   }
 
@@ -286,127 +300,66 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _downloadFile(task);
+      final outcome = await _transfer.run(task, onProgress: notifyListeners);
+      if (outcome == TransferOutcome.stopped) {
+        // Paused keeps its .part for resume; cancelled drops it now that
+        // the sink is closed (Windows cannot delete an open file).
+        if (task.state == DownloadTaskState.cancelled) task.restartFromZero();
+        return;
+      }
 
-      // Verify if SHA256 is expected
       if (task.expectedSha256 != null) {
         task.state = DownloadTaskState.verifying;
+        task.progress = 0;
         notifyListeners();
-
-        final actualHash = await _calculateSha256(task.targetPath);
-        if (actualHash != task.expectedSha256) {
-          task.fail(
-            'SHA256 mismatch: expected ${task.expectedSha256}, got $actualHash',
-          );
-          notifyListeners();
-          // Try next in queue
-          _actionController.add(const DownloadAction.start());
+        final size = task.totalBytes;
+        final actual = await fileSha256(
+          task.tempPath,
+          onProgress: (hashed) {
+            if (size > 0) task.progress = hashed / size;
+            notifyListeners();
+          },
+        );
+        if (task.state != DownloadTaskState.verifying) return;
+        if (actual != task.expectedSha256!.toLowerCase()) {
+          task.restartFromZero();
+          task.fail('Checksum mismatch: the file arrived damaged');
           return;
         }
       }
 
       task.complete();
+    } on DownloadSpaceException catch (e) {
+      task.fail(e.message);
     } catch (e) {
       task.fail('Download failed: $e');
 
-      // Auto-retry if under max retries
       if (task.retryCount < task.maxRetries) {
-        await Future.delayed(Duration(seconds: 2)); // Brief delay before retry
+        await Future.delayed(const Duration(seconds: 2));
+        // The user may have paused, cancelled or removed it meanwhile.
+        if (task.state != DownloadTaskState.failed || !_queue.contains(task)) {
+          return;
+        }
         task.retry();
         await _executeDownload(task);
         return;
       }
     } finally {
       notifyListeners();
-      // Process next in queue
-      _actionController.add(const DownloadAction.start());
+      if (!_actionController.isClosed) {
+        _actionController.add(const DownloadAction.start());
+      }
     }
   }
 
-  /// Downloads a file with Range request support for resume.
-  Future<void> _downloadFile(DownloadTask task) async {
-    final tempFile = File(task.tempPath);
-    final request = http.Request('GET', Uri.parse(task.url));
-
-    // Add Range header if resuming
-    final range = task.rangeHeader;
-    if (range != null) {
-      request.headers['Range'] = range;
-    }
-
-    final response = await request.send();
-
-    if (response.statusCode == 416) {
-      // Range not satisfiable - file might have changed or been deleted on server
-      // Start from scratch
-      try {
-        await tempFile.delete();
-      } catch (_) {
-        // Ignore delete errors
-      }
-      return _downloadFile(task);
-    }
-
-    if (response.statusCode != 200 && response.statusCode != 206) {
-      throw Exception('HTTP ${response.statusCode} for ${task.url}');
-    }
-
-    // Get total file size from Content-Range or Content-Length
-    int totalSize;
-    int startOffset = 0;
-
-    if (response.statusCode == 206) {
-      // Partial content - parse Content-Range
-      final contentRange = response.headers['content-range'];
-      if (contentRange != null) {
-        // Format: "bytes 12345-67890/67891"
-        final match = RegExp(
-          r'bytes (\d+)-(\d+)/(\d+)',
-        ).firstMatch(contentRange);
-        if (match != null) {
-          startOffset = int.parse(match.group(1)!);
-          totalSize = int.parse(match.group(3)!);
-        } else {
-          totalSize = int.parse(response.headers['content-length'] ?? '0');
-          startOffset = task.bytesDownloaded;
-        }
-      } else {
-        totalSize = int.parse(response.headers['content-length'] ?? '0');
-        startOffset = task.bytesDownloaded;
-      }
-    } else {
-      // Full content
-      totalSize = int.parse(response.headers['content-length'] ?? '0');
-      startOffset = 0;
-    }
-
-    // Update task with total size
-    if (totalSize > 0) {
-      task.totalBytes = totalSize;
-    }
-
-    // Open file for writing (append mode if resuming)
-    final sink = tempFile.openWrite(
-      mode: startOffset > 0 ? FileMode.append : FileMode.write,
-    );
-    await pumpBody(
-      task,
-      response.stream,
-      sink,
-      startOffset: startOffset,
-      totalSize: totalSize,
-    );
-  }
-
-  /// Longest gap between progress notifies while bytes stream in.
+  /// Longest gap between progress notifies while bytes stream in. Settings
+  /// and the Model Manager rebuild on every notify; state changes (start,
+  /// pause, complete, fail) still notify at once from their own call sites.
   static const progressNotifyInterval = Duration(milliseconds: 100);
 
-  /// Writes [body] into [sink], updating [task] on every chunk but notifying
-  /// listeners at most once per [progressNotifyInterval]. Settings and the
-  /// Model Manager page rebuild on every notify, and Windows sockets hand back
-  /// thousands of small chunks a second; a notify per chunk starved the UI
-  /// thread until dragging the window crawled. State changes (start, pause,
-  /// complete, fail) still notify immediately from their own call sites.
+  /// Writes [body] into [sink] the way a single-connection transfer does
+  /// ([pumpBytes]), notifying at most once per [progressNotifyInterval], and
+  /// closes the sink.
   @visibleForTesting
   Future<void> pumpBody(
     DownloadTask task,
@@ -415,44 +368,34 @@ class DownloadManager extends ChangeNotifier {
     required int startOffset,
     required int totalSize,
   }) async {
-    int receivedBytes = startOffset;
-    final sinceNotify = Stopwatch()..start();
-
-    await for (final chunk in body) {
-      if (task.state != DownloadTaskState.downloading) {
-        // Download was paused or cancelled
-        await sink.close();
-        return;
-      }
-
-      sink.add(chunk);
-      receivedBytes += chunk.length;
-
-      task.updateProgress(receivedBytes, totalSize);
-      if (sinceNotify.elapsed >= progressNotifyInterval) {
-        sinceNotify.reset();
-        notifyListeners();
-      }
+    try {
+      final received = await pumpBytes(
+        task,
+        body,
+        sink,
+        startOffset: startOffset,
+        totalSize: totalSize,
+        onProgress: notifyListeners,
+        every: progressNotifyInterval,
+      );
+      if (received != null) await sink.flush();
+    } finally {
+      await sink.close();
     }
-
-    await sink.flush();
-    await sink.close();
-
-    // Final progress update; _executeDownload notifies once the task settles.
-    task.updateProgress(receivedBytes, totalSize);
   }
 
-  /// Calculates SHA256 hash of a file.
-  Future<String> _calculateSha256(String filePath) async {
-    final file = File(filePath);
-    final bytes = await file.readAsBytes();
-    // Note: For production, consider using crypto package for SHA256
-    // This is a placeholder - actual SHA256 would require dart:crypto
-    return jsonEncode(bytes.take(100).toList()); // Placeholder
+  bool _disposed = false;
+
+  /// A transfer can outlive the manager (app shutdown, a test tearDown);
+  /// its late progress ticks must not reach a disposed notifier.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _stopProcessing();
     super.dispose();
   }

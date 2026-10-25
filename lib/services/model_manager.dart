@@ -25,6 +25,10 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
+import 'package:front_porch_ai/services/hf_readme.dart';
+import 'package:front_porch_ai/services/hf_repo_files.dart';
+import 'package:front_porch_ai/services/hf_search.dart';
+import 'package:front_porch_ai/services/projector_pairing.dart';
 import 'package:front_porch_ai/utils/utils.dart'; // GGUFModelInfo + parser, StartupTrace
 import 'package:front_porch_ai/models/models.dart';
 
@@ -39,8 +43,12 @@ class ModelManager extends ChangeNotifier {
   final StorageService _storageService;
   final DownloadManager _downloadManager;
 
-  /// Raw list of local model file entities.
+  /// Local models the user picks: every GGUF except a split model's later
+  /// parts and vision projectors.
   List<FileSystemEntity> _models = [];
+
+  /// Every GGUF file in the models folder, parts and projectors included.
+  List<String> _allGgufPaths = [];
 
   /// Status message for import operations.
   String _statusMessage = '';
@@ -60,8 +68,8 @@ class ModelManager extends ChangeNotifier {
 
   /// Set of downloaded filenames (for UI checkmarks).
   Set<String> get downloadedFilenames {
-    return _models
-        .map((e) => e.path.split(Platform.pathSeparator).last)
+    return _allGgufPaths
+        .map((p) => p.split(Platform.pathSeparator).last)
         .toSet();
   }
 
@@ -80,7 +88,12 @@ class ModelManager extends ChangeNotifier {
     _init();
     _storageService.addListener(_onStorageChanged);
     _downloadManager.addListener(_onDownloadChanged);
+    _downloadManager.headersFor = _hfHeaders;
   }
+
+  /// The user's HuggingFace token, for requests to HuggingFace itself only.
+  Map<String, String> _hfHeaders(Uri url) => _storageService.backendSettings.hf
+      .headersFor(url, Uri.parse(hfBaseUrl).host);
 
   // StorageService notifies on EVERY settings mutation, but a full recursive
   // model-directory rescan (synchronous listSync on the UI isolate) only
@@ -126,6 +139,20 @@ class ModelManager extends ChangeNotifier {
     }
     if (discovered.isNotEmpty) {
       unawaited(refreshModels());
+      unawaited(_pairProjectors());
+    }
+  }
+
+  /// Gives each newly downloaded model the vision projector downloaded
+  /// from the same repo (see [ProjectorPairing]).
+  Future<void> _pairProjectors() async {
+    final presets = _storageService.presetSettings;
+    final pairs = ProjectorPairing.pairs(
+      _downloadManager.completedDownloads,
+      existing: presets.modelMmprojMap,
+    );
+    for (final e in pairs.entries) {
+      await presets.setModelMmproj(e.key, e.value);
     }
   }
 
@@ -163,9 +190,18 @@ class ModelManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _storageService.removeListener(_onStorageChanged);
     _downloadManager.removeListener(_onDownloadChanged);
     super.dispose();
+  }
+
+  bool _disposed = false;
+
+  /// A folder scan runs off the UI isolate and can finish after dispose.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   Future<void> _init() async {
@@ -185,13 +221,19 @@ class ModelManager extends ChangeNotifier {
         // big or networked model dirs). Entities rebuilt from paths — File
         // objects don't cross isolates.
         final paths = await compute(_scanGgufPathsSync, modelDir.path);
-        _models = [for (final p in paths) File(p)];
+        _allGgufPaths = paths;
+        _models = [
+          for (final p in paths)
+            if (GgufSplit.isListedModel(p)) File(p),
+        ];
       } catch (e) {
         print('AG_DEBUG: Error scanning models: $e');
         _models = [];
+        _allGgufPaths = [];
       }
     } else {
       _models = [];
+      _allGgufPaths = [];
     }
     notifyListeners();
     StartupTrace.mark(
@@ -240,70 +282,86 @@ class ModelManager extends ChangeNotifier {
   @visibleForTesting
   static String hfBaseUrl = 'https://huggingface.co';
 
-  /// Searches HuggingFace for models matching the query.
-  /// Returns typed [HFModel] objects.
-  Future<List<HFModel>> searchHFModels(String query, {int limit = 20}) async {
-    final encoded = Uri.encodeComponent(query);
-    final url = Uri.parse(
-      '$hfBaseUrl/api/models?search=$encoded&filter=gguf,text-generation&limit=$limit&full=true',
-    );
+  /// Searches HuggingFace for GGUF repos matching the query, roleplay tunes
+  /// first. See [HfSearch] for the filter and ranking.
+  Future<List<HFModel>> searchHFModels(
+    String query, {
+    int limit = HfSearch.shown,
+  }) => searchHFModelsFiltered(query, limit: limit);
+
+  /// [searchHFModels] with the search tab's sort and filters.
+  Future<List<HFModel>> searchHFModelsFiltered(
+    String query, {
+    int limit = HfSearch.shown,
+    HfSearchOptions options = const HfSearchOptions(),
+  }) async {
+    final url = HfSearch.searchUri(hfBaseUrl, query, sort: options.sort);
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url, headers: _hfHeaders(url));
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        return data
-            .map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>))
-            .toList();
+        return HfSearch.rank(
+          data
+              .map((m) => HFModel.fromSearchResult(m as Map<String, dynamic>))
+              .toList(),
+          limit: limit,
+          options: options,
+        );
       }
+      print('HF Search Error: HTTP ${response.statusCode}');
     } catch (e) {
       print('HF Search Error: $e');
     }
     return [];
   }
 
-  /// Gets the list of GGUF files for a HuggingFace repository.
-  /// Returns typed [HFModelFile] objects.
-  Future<List<HFModelFile>> getModelFiles(String repoId) async {
-    final url = Uri.parse('$hfBaseUrl/api/models/$repoId/tree/main');
+  /// Every GGUF file in a HuggingFace repo, subfolders included.
+  Future<List<HFModelFile>> getModelFiles(String repoId) async =>
+      (await listModelFiles(repoId)).files;
 
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data
-            .where((f) => f['path'].toString().endsWith('.gguf'))
-            .map(
-              (f) => HFModelFile.fromApiMap(
-                f as Map<String, dynamic>,
-                repoId,
-                baseUrl: hfBaseUrl,
-              ),
-            )
-            .toList();
-      }
-    } catch (e) {
-      print('HF Files Error: $e');
-    }
-    return [];
-  }
+  /// The repo's GGUF files, or why there are none (gated, gone, offline).
+  Future<HfFilesResult> listModelFiles(String repoId) => HfRepoFiles.list(
+    hfBaseUrl,
+    repoId,
+    headers: _hfHeaders(Uri.parse(hfBaseUrl)),
+  );
 
-  /// Fetches files for multiple repositories concurrently.
-  /// Returns a map of repoId -> HFModel with files populated.
+  /// The repo's model card (README and facts), with the user's token.
+  Future<HfReadme> fetchModelCard(String repoId) => HfReadme.fetch(
+    hfBaseUrl,
+    repoId,
+    headers: _hfHeaders(Uri.parse(hfBaseUrl)),
+  );
+
+  /// Fetches files for multiple repositories, a few at a time.
+  /// Returns a map of repoId -> HFModel with files populated, in [models]
+  /// order.
   Future<Map<String, HFModel>> fetchFilesForModels(List<HFModel> models) async {
-    final results = <String, HFModel>{};
+    const concurrency = 6;
+    final fetched = List<HFModel>.of(models);
+    var next = 0;
 
-    for (final model in models) {
-      try {
-        final files = await getModelFiles(model.id);
-        results[model.id] = model.withFiles(files);
-      } catch (e) {
-        print('Failed to fetch files for ${model.id}: $e');
-        results[model.id] = model; // Return model without files
+    Future<void> worker() async {
+      while (next < models.length) {
+        final i = next++;
+        final model = models[i];
+        try {
+          final listed = await listModelFiles(model.id);
+          fetched[i] = model.withFiles(listed.files, problem: listed.problem);
+        } catch (e) {
+          print('Failed to fetch files for ${model.id}: $e');
+        }
       }
     }
 
-    return results;
+    await Future.wait(
+      List.generate(
+        concurrency.clamp(1, models.isEmpty ? 1 : models.length),
+        (_) => worker(),
+      ),
+    );
+    return {for (final m in fetched) m.id: m};
   }
 
   /// Adds a model file to the download queue.
@@ -311,10 +369,17 @@ class ModelManager extends ChangeNotifier {
   DownloadTask queueDownload(HFModelFile file) {
     return _downloadManager.addDownload(
       url: file.downloadUrl,
-      filename: file.filename,
+      filename: file.localFilename,
       repoId: file.repoId,
+      expectedSha256: file.sha256,
     );
   }
+
+  /// Queues every part of [quant]; the parts land side by side under their
+  /// basenames, which is how KoboldCpp finds a split model's other parts.
+  List<DownloadTask> queueQuant(HfQuant quant) => [
+    for (final part in quant.parts) queueDownload(part),
+  ];
 
   /// Pauses a download by task ID.
   bool pauseDownload(String taskId) {

@@ -223,7 +223,7 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                   ModelManagerSearchTab(
                     controller: _search,
                     modelManager: modelManager,
-                    availableVram: availableVram,
+                    availableVram: hardware.hardwareInfo?.vramMb ?? 0,
                   ),
                 ],
               ),

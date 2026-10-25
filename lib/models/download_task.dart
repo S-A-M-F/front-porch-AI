@@ -79,6 +79,9 @@ class DownloadTask {
   /// Full path to the temporary partial download file.
   String get tempPath => '$targetDir/.$filename.part';
 
+  /// Segment progress of a parallel download, beside the partial file.
+  String get segmentsPath => '$targetDir/.$filename.part.json';
+
   /// Current state of the download.
   DownloadTaskState state;
 
@@ -214,7 +217,7 @@ class DownloadTask {
       case DownloadTaskState.failed:
         return 'Failed: ${errorMessage ?? "Unknown error"}';
       case DownloadTaskState.verifying:
-        return 'Verifying integrity...';
+        return 'Verifying integrity... ${(progress * 100).round()}%';
       case DownloadTaskState.cancelled:
         return 'Cancelled';
     }
@@ -355,6 +358,23 @@ class DownloadTask {
       return 'bytes=$_resumeOffset-';
     }
     return null;
+  }
+
+  /// Throws away the partial file and the resume offset, so the next
+  /// request asks for the whole file. Used when the server refuses the
+  /// Range (HTTP 416) or a finished file fails its checksum.
+  void restartFromZero() {
+    _resumeOffset = 0;
+    bytesDownloaded = 0;
+    progress = 0.0;
+    try {
+      for (final path in [tempPath, segmentsPath]) {
+        final file = File(path);
+        if (file.existsSync()) file.deleteSync();
+      }
+    } catch (e) {
+      errorMessage = 'Could not remove the partial file: $e';
+    }
   }
 
   /// Serializes this task to a map for persistence.

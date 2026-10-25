@@ -63,6 +63,8 @@ class SettingsSnapshot {
       'remoteApiUrl': b.remoteApiUrl,
       'remoteModelName': b.remoteModelName,
       'hasApiKey': b.remoteApiKey.isNotEmpty,
+      // Whether a HuggingFace token is saved; the token itself never leaves.
+      'hasHfToken': _storage.backendSettings.hf.hasToken,
       'remoteApiUrlsWithKeys': b.remoteApiUrlsWithKeys,
       // Slot → last model per host, so a provider switch restores it.
       // Additive: an older PWA ignores it.

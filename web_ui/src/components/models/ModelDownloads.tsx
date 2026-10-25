@@ -6,12 +6,46 @@
 // clear-completed, an overall progress bar, and per-task size / ETA / errors.
 // Progress is polled (1.2s) only while something is active.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api/client';
-import { type HFModel, type HFFile, type Download, type DownloadsState, fmtSize, fmtEta } from './types';
+import { type HFModel, type HFFile, type HFFilesProblem, type Download, type DownloadsState, fmtSize, fmtEta } from './types';
+import { ModelCardDialog } from './ModelCardDialog';
 
 const EMPTY: DownloadsState = { downloads: [], overallProgress: 0, overallSpeed: 0, activeCount: 0 };
 const ACTIVE = new Set(['downloading', 'pending', 'verifying']);
+
+// The host's HfSort / HfSizeBucket names; the labels match the desktop filter row.
+const SORTS = [
+  ['downloads', 'Most downloaded'],
+  ['likes', 'Most liked'],
+  ['newest', 'Recently updated'],
+  ['trending', 'Trending'],
+] as const;
+const SIZES = [
+  ['any', 'Any size'],
+  ['small', 'Up to 13B'],
+  ['medium', '14B to 34B'],
+  ['large', '35B and up'],
+] as const;
+type Filters = { sort: string; rp: boolean; size: string };
+
+// The desktop card's wording for an empty file list.
+const PROBLEM_TEXT: Record<HFFilesProblem | 'none', string> = {
+  gated: 'Gated repo — accept its licence on huggingface.co, then add a HuggingFace token in Settings → Backend',
+  notFound: 'This repo is gone or was renamed',
+  network: 'Could not load the file list — check your connection',
+  none: 'No GGUF files available',
+};
+const DEFAULT_FILTERS: Filters = { sort: 'downloads', rp: false, size: 'any' };
+
+/** The search URL; filters at their defaults are left off so it reads like an old PWA's. */
+function hfSearchPath(q: string, f: Filters): string {
+  const params = new URLSearchParams({ q });
+  if (f.sort !== DEFAULT_FILTERS.sort) params.set('sort', f.sort);
+  if (f.rp) params.set('rp', '1');
+  if (f.size !== DEFAULT_FILTERS.size) params.set('size', f.size);
+  return `/api/backend/hf/search?${params.toString().replace(/\+/g, '%20')}`;
+}
 
 export function ModelDownloads({
   query,
@@ -27,7 +61,11 @@ export function ModelDownloads({
   const [results, setResults] = useState<HFModel[]>([]);
   const [searching, setSearching] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The repo whose model card is open, if any.
+  const [cardRepo, setCardRepo] = useState<string | null>(null);
   const [files, setFiles] = useState<HFFile[]>([]);
+  // Shown instead of "Loading files…" once an expand comes back empty.
+  const [filesNote, setFilesNote] = useState<string | null>(null);
   const [dl, setDl] = useState<DownloadsState>(EMPTY);
 
   const loadDownloads = useCallback(
@@ -45,19 +83,36 @@ export function ModelDownloads({
     return () => clearInterval(t);
   }, [hasActive, loadDownloads]);
 
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  // Bumped per search / expand: an answer that arrives after a newer request is dropped.
+  const searchSeq = useRef(0);
+  const filesSeq = useRef(0);
+
   const search = useCallback(
-    (q: string) => {
+    (q: string, f: Filters = filters) => {
       const t = q.trim();
       if (!t) return;
+      const seq = ++searchSeq.current;
       setSearching(true);
       setExpanded(null);
-      api.get<{ models: HFModel[] }>(`/api/backend/hf/search?q=${encodeURIComponent(t)}`)
-        .then((r) => setResults(r.models))
-        .catch((e) => onError(e instanceof ApiError ? e.message : 'Search failed'))
-        .finally(() => setSearching(false));
+      api.get<{ models: HFModel[] }>(hfSearchPath(t, f))
+        .then((r) => {
+          if (seq === searchSeq.current) setResults(r.models);
+        })
+        .catch((e) => {
+          if (seq === searchSeq.current) onError(e instanceof ApiError ? e.message : 'Search failed');
+        })
+        .finally(() => {
+          if (seq === searchSeq.current) setSearching(false);
+        });
     },
-    [onError],
+    [onError, filters],
   );
+
+  const changeFilters = (f: Filters) => {
+    setFilters(f);
+    if (query.trim()) search(query, f);
+  };
 
   // A recommended-chip click (HardwarePanel) bumps searchNonce → run that search.
   useEffect(() => {
@@ -72,9 +127,17 @@ export function ModelDownloads({
     }
     setExpanded(id);
     setFiles([]);
-    api.get<{ files: HFFile[] }>(`/api/backend/hf/files?repoId=${encodeURIComponent(id)}`)
-      .then((r) => setFiles(r.files))
-      .catch(() => setFiles([]));
+    setFilesNote(null);
+    const seq = ++filesSeq.current;
+    api.get<{ files: HFFile[]; problem?: HFFilesProblem | null }>(`/api/backend/hf/files?repoId=${encodeURIComponent(id)}`)
+      .then((r) => {
+        if (seq !== filesSeq.current) return;
+        setFiles(r.files);
+        if (r.files.length === 0) setFilesNote(PROBLEM_TEXT[r.problem ?? 'none']);
+      })
+      .catch(() => {
+        if (seq === filesSeq.current) setFilesNote(PROBLEM_TEXT.network);
+      });
   };
 
   // Every queue mutation returns the fresh DownloadsState — just swap it in.
@@ -124,32 +187,91 @@ export function ModelDownloads({
         />
         <button className="primary" disabled={searching} onClick={() => search(query)}>{searching ? '…' : 'Search'}</button>
       </div>
+      <div className="hf-filters" data-testid="hf-filters">
+        <select
+          aria-label="Sort results"
+          value={filters.sort}
+          onChange={(e) => changeFilters({ ...filters, sort: e.target.value })}
+        >
+          {SORTS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        </select>
+        <label className="hf-rp-only">
+          <input type="checkbox" checked={filters.rp} onChange={(e) => changeFilters({ ...filters, rp: e.target.checked })} />
+          Roleplay only
+        </label>
+        <select
+          aria-label="Model size"
+          value={filters.size}
+          onChange={(e) => changeFilters({ ...filters, size: e.target.value })}
+        >
+          {SIZES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        </select>
+      </div>
 
       <ul className="hf-list">
         {results.map((m) => (
           <li key={m.id} className="card hf-row">
             <button className="hf-head" onClick={() => expand(m.id)}>
               <strong>{m.name}</strong>
-              <span className="muted small">{m.author} · ♥ {m.likes} · ↓ {m.downloads}</span>
+              <span className="muted small">
+                {m.author} · ♥ {m.likes} · ↓ {m.downloads}
+                {m.roleplay && <span className="badge hf-rp">Roleplay</span>}
+              </span>
             </button>
+            {expanded === m.id && (
+              <div className="hf-card-row">
+                <button type="button" className="ghost small-btn" onClick={() => setCardRepo(m.id)}>
+                  📄 Model card
+                </button>
+              </div>
+            )}
             {expanded === m.id && (
               <ul className="file-list">
                 {files.length === 0 ? (
-                  <li className="muted small">Loading files…</li>
+                  <li className="muted small" data-testid="hf-files-note">{filesNote ?? 'Loading files…'}</li>
                 ) : (
-                  files.map((f) => (
-                    <li key={f.filename}>
-                      <span className="small">{f.filename} <span className="muted">({fmtSize(f.sizeBytes)} · {f.quant})</span></span>
-                      <button className="icon-btn" title="Download" onClick={() => download(f)}>⬇</button>
-                    </li>
-                  ))
+                  <>
+                    {files.filter((f) => f.kind !== 'projector').map((f) => (
+                      <FileRow key={f.filename} f={f} onDownload={download} />
+                    ))}
+                    {files.some((f) => f.kind === 'projector') && (
+                      <li className="muted small hf-addon-head">
+                        Vision add-on — lets the model see images; paired with what you download from this repo
+                      </li>
+                    )}
+                    {files.filter((f) => f.kind === 'projector').map((f) => (
+                      <FileRow key={f.filename} f={f} onDownload={download} />
+                    ))}
+                  </>
                 )}
               </ul>
             )}
           </li>
         ))}
       </ul>
+      {cardRepo && <ModelCardDialog repoId={cardRepo} onClose={() => setCardRepo(null)} />}
     </section>
+  );
+}
+
+/** One quant: name (with its part count), size and the desktop's VRAM fit line. */
+function FileRow({ f, onDownload }: { f: HFFile; onDownload: (f: HFFile) => void }) {
+  const name = f.parts && f.parts > 1 ? `${f.title ?? f.filename} · ${f.parts} parts` : (f.title ?? f.filename);
+  const incomplete = f.complete === false;
+  return (
+    <li className={`hf-file fit-${f.fit ?? 'unknown'}`}>
+      <span className="small">
+        {name}
+        {f.bestFit && <span className="badge hf-best">Best fit</span>}
+        <span className="muted"> ({fmtSize(f.sizeBytes)} · {f.quant})</span>
+        {f.fitText && <span className="hf-fit muted">{f.fitText}</span>}
+      </span>
+      {incomplete ? (
+        <span className="muted small" title="Incomplete upload: not every part is on HuggingFace yet">⊘</span>
+      ) : (
+        <button className="icon-btn" title="Download" onClick={() => onDownload(f)}>⬇</button>
+      )}
+    </li>
   );
 }
 

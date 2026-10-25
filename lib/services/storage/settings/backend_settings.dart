@@ -27,6 +27,7 @@ import 'settings_base.dart';
 import 'preset_settings.dart'; // for parseKcppsFile (static)
 import 'remote_api_key_vault.dart';
 import 'remote_model_memory.dart';
+import 'hf_settings.dart';
 import 'worker_backend_settings.dart';
 
 /// Backend, remote API, reasoning, Kobold launch flags, model/kcpps paths,
@@ -48,6 +49,9 @@ class BackendSettings
   RemoteApiKeyVault _remoteApiKeys = RemoteApiKeyVault();
 
   RemoteModelMemory _remoteApiModels = RemoteModelMemory.decode(null);
+
+  /// The model downloader's HuggingFace token; same prefs as this group.
+  final HfSettings hf = HfSettings();
 
   bool _reasoningEnabled = false;
   String _reasoningEffort = 'medium';
@@ -157,6 +161,9 @@ class BackendSettings
   int get gpuLayers => _gpuLayers;
 
   void load() {
+    hf
+      ..initializeBase(prefs, notify)
+      ..load();
     _backendType = prefs?.getString(k('backend_type')) ?? 'kobold';
     _remoteApiKey = prefs?.getString(k('remote_api_key')) ?? '';
     _remoteApiUrl =

@@ -19,6 +19,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/ui/theme/accent_colors.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 import 'package:front_porch_ai/ui/theme/download_status_colors.dart';
 import 'package:front_porch_ai/ui/widgets/hf_quant_row.dart';
@@ -46,6 +47,13 @@ class HFModelCard extends StatefulWidget {
   /// Set of already downloaded filenames.
   final Set<String> downloadedFiles;
 
+  /// Queues a whole quant (every part of a split one). Without it a tap
+  /// falls back to [onDownload] with the quant's first file.
+  final ValueChanged<HfQuant>? onDownloadQuant;
+
+  /// Opens the repo's model card; no button without it.
+  final ValueChanged<String>? onShowModelCard;
+
   /// Fires on download progress ticks; only rows with a file in flight
   /// listen, so a tick redraws one row rather than the card.
   final Listenable? progressTicks;
@@ -58,6 +66,8 @@ class HFModelCard extends StatefulWidget {
     required this.onDownload,
     this.downloadingFiles = const {},
     this.downloadedFiles = const {},
+    this.onDownloadQuant,
+    this.onShowModelCard,
     this.progressTicks,
   });
 
@@ -181,12 +191,24 @@ class _HFModelCardState extends State<HFModelCard>
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                widget.model.author,
-                                style: TextStyle(
-                                  color: AppColors.textTertiary(context),
-                                  fontSize: 12,
-                                ),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      widget.model.author,
+                                      style: TextStyle(
+                                        color: AppColors.textTertiary(context),
+                                        fontSize: 12,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (widget.model.isRoleplay) ...[
+                                    const SizedBox(width: 8),
+                                    _roleplayBadge(),
+                                  ],
+                                ],
                               ),
                             ],
                           ),
@@ -242,13 +264,53 @@ class _HFModelCardState extends State<HFModelCard>
                             horizontal: 16,
                             vertical: 8,
                           ),
-                          child: _buildQuantList(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.onShowModelCard != null)
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                    onPressed: () => widget.onShowModelCard!(
+                                      widget.model.id,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.description_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Model card'),
+                                  ),
+                                ),
+                              _buildQuantList(),
+                            ],
+                          ),
                         )
                       : const SizedBox.shrink(),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _roleplayBadge() {
+    final gold = AccentColors.goldOf(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: gold.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AccentColors.goldEdgeOf(context)),
+      ),
+      child: Text(
+        'Roleplay',
+        style: TextStyle(
+          color: gold,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -272,6 +334,16 @@ class _HFModelCardState extends State<HFModelCard>
     );
   }
 
+  static String _problemText(HfFilesProblem? problem) => switch (problem) {
+    HfFilesProblem.gated =>
+      'Gated repo — accept its licence on huggingface.co, then add a '
+          'HuggingFace token in Settings → Backend',
+    HfFilesProblem.notFound => 'This repo is gone or was renamed',
+    HfFilesProblem.network =>
+      'Could not load the file list — check your connection',
+    null => 'No GGUF files available',
+  };
+
   Widget _buildQuantList() {
     final files = widget.model.files;
     if (files.isEmpty) {
@@ -279,32 +351,76 @@ class _HFModelCardState extends State<HFModelCard>
         padding: const EdgeInsets.all(16),
         child: Center(
           child: Text(
-            'No GGUF files available',
+            _problemText(widget.model.filesProblem),
+            textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textTertiary(context)),
           ),
         ),
       );
     }
 
-    // Sort by size (smallest first)
-    final sorted = List<HFModelFile>.from(files)
-      ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+    // Smallest first; split parts are one row, projectors listed apart.
+    final quants = HfQuant.group(files);
+    final models = [
+      for (final q in quants)
+        if (!q.isProjector) q,
+    ];
+    final projectors = [
+      for (final q in quants)
+        if (q.isProjector) q,
+    ];
+    final best = HfQuant.bestFit(
+      models,
+      vramMb: widget.availableVramMb,
+      contextSize: widget.contextSize,
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: sorted
-          .map(
-            (file) => HFQuantRow(
-              file: file,
-              availableVramMb: widget.availableVramMb,
-              contextSize: widget.contextSize,
-              downloadTask: widget.downloadingFiles[file.filename],
-              isDownloaded: widget.downloadedFiles.contains(file.filename),
-              onDownload: widget.onDownload,
-              progressTicks: widget.progressTicks,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final q in models) _quantRow(q, bestFit: identical(q, best)),
+        if (projectors.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 2),
+            child: Text(
+              'Vision add-on — lets the model see images; '
+              'paired with what you download from this repo',
+              style: TextStyle(
+                color: AppColors.textSecondary(context),
+                fontSize: 11,
+              ),
             ),
-          )
-          .toList(),
+          ),
+          for (final q in projectors) _quantRow(q, bestFit: false),
+        ],
+      ],
+    );
+  }
+
+  Widget _quantRow(HfQuant q, {required bool bestFit}) {
+    final tasks = [
+      for (final name in q.localFilenames) ?widget.downloadingFiles[name],
+    ];
+    final String? title = q.isSplit
+        ? '${q.title} · ${q.parts.length} parts'
+        : (q.primary.filename.contains('/') ? q.primary.basename : null);
+    return HFQuantRow(
+      file: q.combined,
+      title: title,
+      bestFit: bestFit,
+      unavailableReason: q.isComplete
+          ? null
+          : 'Incomplete upload: ${q.parts.length} of ${q.partsExpected} '
+                'parts are on HuggingFace',
+      availableVramMb: widget.availableVramMb,
+      contextSize: widget.contextSize,
+      downloadTask: tasks.firstOrNull,
+      isDownloaded: q.localFilenames.every(widget.downloadedFiles.contains),
+      progressTicks: widget.progressTicks,
+      onDownload: (_) => widget.onDownloadQuant != null
+          ? widget.onDownloadQuant!(q)
+          : widget.onDownload(q.primary),
     );
   }
 }

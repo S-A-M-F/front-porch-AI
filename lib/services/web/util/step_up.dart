@@ -86,6 +86,13 @@ bool workerPathWriteNeedsStepUp(
 }
 
 /// Tavily / search key is credential-grade, same as a remote API key.
+/// Setting the HuggingFace token (it reaches gated repos as the user).
+/// Clearing it needs no password: that only takes access away.
+bool hfTokenWriteNeedsStepUp(Map<String, dynamic> body) {
+  final token = body['hfToken']?.toString();
+  return token != null && token.trim().isNotEmpty;
+}
+
 bool searchApiKeyWriteNeedsStepUp(Map<String, dynamic> body) {
   final realism = body['realism'];
   if (realism is! Map) return false;

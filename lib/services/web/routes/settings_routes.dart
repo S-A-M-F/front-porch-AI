@@ -72,7 +72,8 @@ class WebSettingsRoutes {
           currentWorkerModelPath: _facade.currentWorkerKoboldModelPath,
           currentWorkerKcppsPath: _facade.currentWorkerKoboldKcppsPath,
         ) ||
-        searchApiKeyWriteNeedsStepUp(body)) {
+        searchApiKeyWriteNeedsStepUp(body) ||
+        hfTokenWriteNeedsStepUp(body)) {
       final denied = await denyUnlessSteppedUp(
         auth: _deps.auth,
         body: body,

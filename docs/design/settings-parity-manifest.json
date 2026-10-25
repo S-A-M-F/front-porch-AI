@@ -122,6 +122,12 @@
       "dartMarker": "KoboldKeepRecentRow",
       "webMarker": "Keep recent chats ready"
     },
+    "hfToken": {
+      "section": "backend",
+      "dart": "lib/ui/settings/tabs/backend/hf_token_section.dart",
+      "dartMarker": "HuggingFace token",
+      "webMarker": "HuggingFace token"
+    },
     "aboutLicense": {
       "section": "advanced",
       "dart": "lib/ui/settings/tabs/general_tab.dart",
