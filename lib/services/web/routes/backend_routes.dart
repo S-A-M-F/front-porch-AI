@@ -53,6 +53,7 @@ class WebBackendRoutes {
       router.get('/api/backend/models-folder', _modelsFolder);
       router.get('/api/backend/hf/search', _hfSearch);
       router.get('/api/backend/hf/files', _hfFiles);
+      router.get('/api/backend/hf/card', _hfCard);
       router.get('/api/backend/downloads', _downloads);
       router.post('/api/backend/downloads', _queueDownload);
       // Bulk controls registered before the <taskId> route — single-segment
@@ -193,6 +194,12 @@ class WebBackendRoutes {
     final repoId = r.url.queryParameters['repoId'] ?? '';
     if (repoId.isEmpty) return JsonResponse.badRequest('repoId is required');
     return JsonResponse.ok(await _backend!.modelFiles(repoId));
+  }
+
+  Future<shelf.Response> _hfCard(shelf.Request r) async {
+    final repoId = r.url.queryParameters['repoId'] ?? '';
+    if (repoId.isEmpty) return JsonResponse.badRequest('repoId is required');
+    return JsonResponse.ok(await _backend!.modelCard(repoId));
   }
 
   Future<shelf.Response> _deleteModel(shelf.Request r) async {

@@ -25,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
+import 'package:front_porch_ai/services/hf_readme.dart';
 import 'package:front_porch_ai/services/hf_repo_files.dart';
 import 'package:front_porch_ai/services/hf_search.dart';
 import 'package:front_porch_ai/services/projector_pairing.dart';
@@ -301,6 +302,13 @@ class ModelManager extends ChangeNotifier {
 
   /// The repo's GGUF files, or why there are none (gated, gone, offline).
   Future<HfFilesResult> listModelFiles(String repoId) => HfRepoFiles.list(
+    hfBaseUrl,
+    repoId,
+    headers: _hfHeaders(Uri.parse(hfBaseUrl)),
+  );
+
+  /// The repo's model card (README and facts), with the user's token.
+  Future<HfReadme> fetchModelCard(String repoId) => HfReadme.fetch(
     hfBaseUrl,
     repoId,
     headers: _hfHeaders(Uri.parse(hfBaseUrl)),

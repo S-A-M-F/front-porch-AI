@@ -41,6 +41,7 @@ export 'expression_pack_jpeg_check.dart';
 export 'expression_pack_prepare.dart';
 export 'expression_pack_service.dart';
 export 'expression_pack_normalizer.dart';
+export 'hf_readme.dart';
 export 'hf_repo_files.dart';
 export 'hf_search.dart';
 export 'model_fetch.dart';

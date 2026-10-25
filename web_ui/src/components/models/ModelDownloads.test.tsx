@@ -139,3 +139,40 @@ describe('ModelDownloads file list', () => {
     expect(container.querySelector('[data-testid="hf-files-note"]')!.textContent).toContain('Gated repo');
   });
 });
+
+describe('ModelDownloads model card', () => {
+  it('opens the repo card from an expanded result, with its facts and markdown', async () => {
+    get.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/backend/hf/search')) return { models: [MODELS[0]] };
+      if (path.startsWith('/api/backend/hf/files')) return { files: [], problem: null };
+      if (path.startsWith('/api/backend/hf/card')) {
+        return {
+          repoId: MODELS[0].id,
+          markdown: '# Dark Scarlett\n\nPassion ignited.',
+          license: 'apache-2.0',
+          baseModels: ['ReadyArt/Dark-Scarlett-27B-v3.0'],
+          lastModified: '2026-10-01T00:00:00Z',
+          problem: null,
+        };
+      }
+      return { downloads: [], overallProgress: 0, overallSpeed: 0, activeCount: 0 };
+    });
+    await act(async () => {
+      root.render(
+        createElement(ModelDownloads, { query: 'Scarlett', setQuery: () => {}, searchNonce: 1, onError: () => {} }),
+      );
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.hf-head')!.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.hf-card-row button')!.click();
+    });
+
+    expect(get).toHaveBeenCalledWith(`/api/backend/hf/card?repoId=${encodeURIComponent(MODELS[0].id)}`);
+    const dialog = document.querySelector('[data-testid="model-card-dialog"]')!;
+    expect(dialog.textContent).toContain('Licence: apache-2.0');
+    expect(dialog.textContent).toContain('Original: ReadyArt/Dark-Scarlett-27B-v3.0');
+    expect(dialog.querySelector('.model-card-md')!.textContent).toContain('Passion ignited.');
+  });
+});

@@ -26,6 +26,7 @@ import 'package:front_porch_ai/ui/pages/model_manager/model_search_controller.da
 import 'package:front_porch_ai/ui/pages/model_manager/model_search_filters.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
 import 'package:front_porch_ai/ui/widgets/hf_model_card.dart';
+import 'package:front_porch_ai/ui/widgets/hf_readme_dialog.dart';
 
 /// The Model Manager's "Search / Download" tab: HuggingFace search bar,
 /// error strip, and the result cards with their queue-download buttons. The
@@ -216,6 +217,11 @@ class ModelManagerSearchTab extends StatelessWidget {
                       onDownload: (file) =>
                           _onDownload(context, HfQuant.group([file]).single),
                       onDownloadQuant: (quant) => _onDownload(context, quant),
+                      onShowModelCard: (repoId) => showHfReadme(
+                        context,
+                        repoId: repoId,
+                        load: modelManager.fetchModelCard,
+                      ),
                       downloadingFiles: modelManager.downloadingFiles,
                       downloadedFiles: modelManager.downloadedFilenames,
                     );

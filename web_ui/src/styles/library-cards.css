@@ -129,6 +129,16 @@
 .hf-fit { display: block; font-size: 0.75rem; }
 .hf-file.fit-exceeds .hf-fit { color: var(--danger); }
 .hf-addon-head { margin-top: 8px; }
+.hf-card-row { display: flex; justify-content: flex-end; padding: 0 10px; }
+.model-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.model-card-repo { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.model-card-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.model-card-md { max-height: 60vh; overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; overflow-wrap: anywhere; }
+.model-card-md pre { overflow-x: auto; padding: 8px; border-radius: 6px; background: color-mix(in srgb, var(--border) 35%, transparent); }
+.model-card-md .mc-table { overflow-x: auto; }
+.model-card-md table { border-collapse: collapse; font-size: 0.8rem; }
+.model-card-md th, .model-card-md td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; }
+.model-card-md blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border); }
 .file-list { padding: 0 10px 10px; }
 .file-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .image-result { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }

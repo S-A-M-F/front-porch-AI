@@ -51,6 +51,9 @@ class HFModelCard extends StatefulWidget {
   /// falls back to [onDownload] with the quant's first file.
   final ValueChanged<HfQuant>? onDownloadQuant;
 
+  /// Opens the repo's model card; no button without it.
+  final ValueChanged<String>? onShowModelCard;
+
   const HFModelCard({
     super.key,
     required this.model,
@@ -60,6 +63,7 @@ class HFModelCard extends StatefulWidget {
     this.downloadingFiles = const {},
     this.downloadedFiles = const {},
     this.onDownloadQuant,
+    this.onShowModelCard,
   });
 
   @override
@@ -243,7 +247,26 @@ class _HFModelCardState extends State<HFModelCard>
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    child: _buildQuantList(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.onShowModelCard != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () =>
+                                  widget.onShowModelCard!(widget.model.id),
+                              icon: const Icon(
+                                Icons.description_outlined,
+                                size: 16,
+                              ),
+                              label: const Text('Model card'),
+                            ),
+                          ),
+                        _buildQuantList(),
+                      ],
+                    ),
                   ),
                 ),
               ],

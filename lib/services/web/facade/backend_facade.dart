@@ -227,6 +227,10 @@ class BackendFacade {
         .toList();
   }
 
+  /// The repo's model card for the phone; see [HfReadme].
+  Future<Map<String, dynamic>> modelCard(String repoId) async =>
+      (await _models.fetchModelCard(repoId)).toJson();
+
   /// `{files, problem}`; see [HfFilesView].
   Future<Map<String, dynamic>> modelFiles(String repoId) async =>
       HfFilesView.toJson(

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api/client';
 import { type HFModel, type HFFile, type HFFilesProblem, type Download, type DownloadsState, fmtSize, fmtEta } from './types';
+import { ModelCardDialog } from './ModelCardDialog';
 
 const EMPTY: DownloadsState = { downloads: [], overallProgress: 0, overallSpeed: 0, activeCount: 0 };
 const ACTIVE = new Set(['downloading', 'pending', 'verifying']);
@@ -60,6 +61,8 @@ export function ModelDownloads({
   const [results, setResults] = useState<HFModel[]>([]);
   const [searching, setSearching] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The repo whose model card is open, if any.
+  const [cardRepo, setCardRepo] = useState<string | null>(null);
   const [files, setFiles] = useState<HFFile[]>([]);
   // Shown instead of "Loading files…" once an expand comes back empty.
   const [filesNote, setFilesNote] = useState<string | null>(null);
@@ -216,6 +219,13 @@ export function ModelDownloads({
               </span>
             </button>
             {expanded === m.id && (
+              <div className="hf-card-row">
+                <button type="button" className="ghost small-btn" onClick={() => setCardRepo(m.id)}>
+                  📄 Model card
+                </button>
+              </div>
+            )}
+            {expanded === m.id && (
               <ul className="file-list">
                 {files.length === 0 ? (
                   <li className="muted small" data-testid="hf-files-note">{filesNote ?? 'Loading files…'}</li>
@@ -239,6 +249,7 @@ export function ModelDownloads({
           </li>
         ))}
       </ul>
+      {cardRepo && <ModelCardDialog repoId={cardRepo} onClose={() => setCardRepo(null)} />}
     </section>
   );
 }
