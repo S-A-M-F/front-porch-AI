@@ -1,11 +1,13 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/services/download_manager.dart';
+import 'package:front_porch_ai/services/download_transfer.dart';
 import 'package:front_porch_ai/models/download_task.dart';
 
 void main() {
@@ -762,6 +764,39 @@ void main() {
       expect(notifies, greaterThanOrEqualTo(2));
     });
   });
+
+  group('DownloadManager stalled connections', () {
+    test('a connection that goes quiet fails the attempt instead of '
+        'hanging the download forever', () async {
+      final dir = await Directory.systemTemp.createTemp('fpai_stall_');
+      addTearDown(() => dir.delete(recursive: true));
+      final task = DownloadTask(
+        url: 'https://example.com/m.gguf',
+        filename: 'm.gguf',
+        targetDir: dir.path,
+      )..start();
+      final quiet = StreamController<List<int>>();
+      addTearDown(quiet.close);
+      quiet.add(List<int>.filled(1024, 7)); // then nothing, never done
+      final sink = File(task.tempPath).openWrite();
+
+      await expectLater(
+        pumpBytes(
+          task,
+          quiet.stream,
+          sink,
+          startOffset: 0,
+          totalSize: 4096,
+          onProgress: () {},
+          every: const Duration(milliseconds: 100),
+          stall: const Duration(milliseconds: 300),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      await sink.close();
+      expect(task.bytesDownloaded, 1024);
+    }, timeout: const Timeout(Duration(seconds: 10)));
+  });
 }
 
 Future<void> _until(
@@ -843,14 +878,16 @@ class _ByteServer {
         if (i >= cutAt) return; // hang up mid-body: the client sees a drop
         res.add(_bytes.sublist(i, (i + 8192).clamp(0, end)));
         served += (i + 8192).clamp(0, end) - i;
-        await res.flush();
+        // On Linux a flush to a client that hung up can stay pending
+        // forever instead of throwing; a stuck flush is that hang-up.
+        await res.flush().timeout(const Duration(seconds: 2));
         if (chunkDelay > Duration.zero) await Future<void>.delayed(chunkDelay);
       }
     } catch (_) {
       // The client hung up (pause or cancel); that is the point.
     } finally {
       try {
-        await res.close();
+        await res.close().timeout(const Duration(seconds: 2));
       } catch (_) {}
       openResponses--;
     }

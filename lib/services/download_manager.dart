@@ -310,8 +310,16 @@ class DownloadManager extends ChangeNotifier {
 
       if (task.expectedSha256 != null) {
         task.state = DownloadTaskState.verifying;
+        task.progress = 0;
         notifyListeners();
-        final actual = await fileSha256(task.tempPath);
+        final size = task.totalBytes;
+        final actual = await fileSha256(
+          task.tempPath,
+          onProgress: (hashed) {
+            if (size > 0) task.progress = hashed / size;
+            notifyListeners();
+          },
+        );
         if (task.state != DownloadTaskState.verifying) return;
         if (actual != task.expectedSha256!.toLowerCase()) {
           task.restartFromZero();

@@ -23,6 +23,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'package:front_porch_ai/models/models.dart';
+import 'package:front_porch_ai/services/download_transfer.dart'
+    show stallTimeout;
 
 /// One byte range of a segmented download: `[start, end)`, [done] bytes in.
 class Segment {
@@ -185,7 +187,7 @@ class SegmentedTransfer {
     }
 
     try {
-      await for (final chunk in response.stream) {
+      await for (final chunk in response.stream.timeout(stallTimeout)) {
         if (_halt) break;
         final room = seg.end - seg.next - buffer.length;
         buffer.add(chunk.length > room ? chunk.sublist(0, room) : chunk);

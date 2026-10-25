@@ -217,7 +217,7 @@ class DownloadTask {
       case DownloadTaskState.failed:
         return 'Failed: ${errorMessage ?? "Unknown error"}';
       case DownloadTaskState.verifying:
-        return 'Verifying integrity...';
+        return 'Verifying integrity... ${(progress * 100).round()}%';
       case DownloadTaskState.cancelled:
         return 'Cancelled';
     }

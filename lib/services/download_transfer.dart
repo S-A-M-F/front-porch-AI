@@ -237,6 +237,11 @@ class DownloadTransfer {
   }
 }
 
+/// A connection that sends nothing for this long is treated as dead: the
+/// attempt fails and the download's retry resumes it. Without it a stalled
+/// socket hung a download forever.
+const Duration stallTimeout = Duration(seconds: 60);
+
 /// Writes [body] into [sink] for [task], updating its progress on every
 /// chunk but calling [onProgress] at most once per [every]: HuggingFace and
 /// Windows sockets hand back thousands of small chunks a second, and a
@@ -251,10 +256,11 @@ Future<int?> pumpBytes(
   required int totalSize,
   required void Function() onProgress,
   required Duration every,
+  Duration stall = stallTimeout,
 }) async {
   var received = startOffset;
   final sinceTick = Stopwatch()..start();
-  await for (final chunk in body) {
+  await for (final chunk in body.timeout(stall)) {
     if (task.state != DownloadTaskState.downloading) return null;
     sink.add(chunk);
     received += chunk.length;
