@@ -68,10 +68,11 @@ class ModelSearchController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final results = await modelManager.searchHFModels(
-        query,
-        options: _options,
-      );
+      // The plain search keeps its long-standing entry point (test doubles
+      // of ModelManager override it); filters take the filtered one.
+      final results = _options.isDefault
+          ? await modelManager.searchHFModels(query)
+          : await modelManager.searchHFModelsFiltered(query, options: _options);
       if (!current()) return;
 
       if (results.isEmpty) {

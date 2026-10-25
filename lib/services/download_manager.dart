@@ -112,6 +112,7 @@ class DownloadManager extends ChangeNotifier {
        _transfer = DownloadTransfer(
          freeBytes: freeBytes,
          segmentMinBytes: segmentMinBytes,
+         progressEvery: progressNotifyInterval,
        ) {
     _ensureTargetDir();
     _startProcessing();
@@ -340,6 +341,38 @@ class DownloadManager extends ChangeNotifier {
       if (!_actionController.isClosed) {
         _actionController.add(const DownloadAction.start());
       }
+    }
+  }
+
+  /// Longest gap between progress notifies while bytes stream in. Settings
+  /// and the Model Manager rebuild on every notify; state changes (start,
+  /// pause, complete, fail) still notify at once from their own call sites.
+  static const progressNotifyInterval = Duration(milliseconds: 100);
+
+  /// Writes [body] into [sink] the way a single-connection transfer does
+  /// ([pumpBytes]), notifying at most once per [progressNotifyInterval], and
+  /// closes the sink.
+  @visibleForTesting
+  Future<void> pumpBody(
+    DownloadTask task,
+    Stream<List<int>> body,
+    IOSink sink, {
+    required int startOffset,
+    required int totalSize,
+  }) async {
+    try {
+      final received = await pumpBytes(
+        task,
+        body,
+        sink,
+        startOffset: startOffset,
+        totalSize: totalSize,
+        onProgress: notifyListeners,
+        every: progressNotifyInterval,
+      );
+      if (received != null) await sink.flush();
+    } finally {
+      await sink.close();
     }
   }
 

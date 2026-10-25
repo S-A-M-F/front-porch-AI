@@ -208,7 +208,7 @@ class BackendFacade {
     String query, [
     Map<String, String> filters = const {},
   ]) async {
-    final results = await _models.searchHFModels(
+    final results = await _models.searchHFModelsFiltered(
       query,
       options: HfSearchOptions.fromQuery(filters),
     );

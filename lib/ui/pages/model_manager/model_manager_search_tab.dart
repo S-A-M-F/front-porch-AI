@@ -61,6 +61,8 @@ class ModelManagerSearchTab extends StatelessWidget {
     final contextSize = Provider.of<StorageService>(
       context,
     ).backendSettings.contextSize;
+    final downloadingFiles = modelManager.downloadingFiles;
+    final downloadedFiles = modelManager.downloadedFilenames;
     return Column(
       children: [
         // Search bar
@@ -222,8 +224,11 @@ class ModelManagerSearchTab extends StatelessWidget {
                         repoId: repoId,
                         load: modelManager.fetchModelCard,
                       ),
-                      downloadingFiles: modelManager.downloadingFiles,
-                      downloadedFiles: modelManager.downloadedFilenames,
+                      downloadingFiles: downloadingFiles,
+                      downloadedFiles: downloadedFiles,
+                      // ModelManager only notifies on queue state changes;
+                      // the row of a file in flight redraws on these ticks.
+                      progressTicks: modelManager.downloadManager,
                     );
                   },
                 ),

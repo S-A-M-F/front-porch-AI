@@ -28,6 +28,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:front_porch_ai/models/download_task.dart';
 import 'package:front_porch_ai/models/hf_model.dart';
 import 'package:front_porch_ai/ui/widgets/hf_quant_row.dart';
 
@@ -151,6 +152,47 @@ void main() {
 
       expect(find.text('Larger than your VRAM'), findsNothing);
       expect(downloaded, [file]);
+    });
+  });
+
+  group('HFQuantRow download progress', () {
+    testWidgets('a progress tick redraws the bar with no parent rebuild', (
+      tester,
+    ) async {
+      final file = _file(sizeBytes: 1024 * 1024 * 1024);
+      final task = DownloadTask(
+        url: file.downloadUrl,
+        filename: file.filename,
+        targetDir: '.',
+      )..start();
+      final ticks = ValueNotifier(0);
+      addTearDown(ticks.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HFQuantRow(
+              file: file,
+              availableVramMb: 16384,
+              contextSize: 16384,
+              downloadTask: task,
+              onDownload: (_) {},
+              progressTicks: ticks,
+            ),
+          ),
+        ),
+      );
+      double barValue() => tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value!;
+      expect(barValue(), 0);
+
+      // ModelManager no longer notifies on ticks, so the page above the row
+      // does not rebuild; the row must pick the new progress up itself.
+      task.updateProgress(512, 1024);
+      ticks.value++;
+      await tester.pump();
+
+      expect(barValue(), 0.5);
     });
   });
 }

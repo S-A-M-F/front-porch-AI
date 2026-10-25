@@ -169,6 +169,23 @@ describe('a download', () => {
     };
   };
 
+  // Answers [running] until the test calls finish(), then [done]. A
+  // counted sequence at a 5 ms poll let a slow runner read past the
+  // running percent before the test ever saw it.
+  const held = (running: unknown, done: unknown) => {
+    let over = false;
+    return {
+      routes: {
+        'POST /api/image/civitai/download': job(),
+        'GET /api/image/civitai/download/status': () => (over ? done : running),
+        'POST /api/image/civitai/download/cancel': { cancelled: true },
+      },
+      finish: () => {
+        over = true;
+      },
+    };
+  };
+
   it('is asked of the computer with only what it needs, and never with a key', async () => {
     await open({}, routes([job({ state: 'done', percent: 100 })]));
     await search();
@@ -207,17 +224,16 @@ describe('a download', () => {
   });
 
   it('stops saying it is downloading once it is done, while the file is being picked', async () => {
-    const p = await open(
-      { onInstalled: vi.fn(() => new Promise<string>(() => {})) },
-      routes([job({ percent: 50 }), job({ state: 'done', percent: 100 })]),
-    );
+    const status = held(job({ percent: 50 }), job({ state: 'done', percent: 100 }));
+    const p = await open({ onInstalled: vi.fn(() => new Promise<string>(() => {})) }, status.routes);
     await search();
 
     click('portrait.safetensors');
     await until(() => (container.querySelector('progress[aria-label="Download progress"]') as HTMLProgressElement | null)?.value === 50);
     expect(text()).toContain('Downloading on your computer…');
 
-    await new Promise((r) => setTimeout(r, 60));
+    status.finish();
+    await until(() => (p.onInstalled as ReturnType<typeof vi.fn>).mock.calls.length > 0);
     await settle();
 
     expect(p.onInstalled).toHaveBeenCalled();

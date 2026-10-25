@@ -691,6 +691,77 @@ void main() {
       expect(seen['cdn'], isNull);
     });
   });
+
+  group('DownloadManager progress notifies', () {
+    late Directory tempDir;
+    late DownloadManager manager;
+    late DownloadTask task;
+    late int notifies;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('fpai_download_pump_');
+      manager = DownloadManager(targetDir: tempDir.path);
+      task = DownloadTask(
+        url: 'https://example.com/model.gguf',
+        filename: 'model.gguf',
+        targetDir: tempDir.path,
+      )..start();
+      notifies = 0;
+      manager.addListener(() => notifies++);
+    });
+
+    tearDown(() async {
+      manager.dispose();
+      await tempDir.delete(recursive: true);
+    });
+
+    File partFile() =>
+        File('${tempDir.path}${Platform.pathSeparator}model.gguf.part');
+
+    test('a burst of small chunks does not notify once per chunk', () async {
+      const chunkCount = 2000;
+      const chunkSize = 1024;
+      final body = Stream<List<int>>.fromIterable(
+        List.generate(chunkCount, (_) => List<int>.filled(chunkSize, 7)),
+      );
+
+      await manager.pumpBody(
+        task,
+        body,
+        partFile().openWrite(),
+        startOffset: 0,
+        totalSize: chunkCount * chunkSize,
+      );
+
+      // Every byte still lands on the task and on disk.
+      expect(task.bytesDownloaded, chunkCount * chunkSize);
+      expect(task.progress, 1.0);
+      expect(await partFile().length(), chunkCount * chunkSize);
+      // A notify per chunk rebuilt Settings thousands of times a second.
+      expect(notifies, lessThan(10));
+    });
+
+    test('a slow stream still reports progress while it runs', () async {
+      Stream<List<int>> slowBody() async* {
+        for (var i = 0; i < 3; i++) {
+          await Future<void>.delayed(
+            DownloadManager.progressNotifyInterval * 1.5,
+          );
+          yield List<int>.filled(1024, 7);
+        }
+      }
+
+      await manager.pumpBody(
+        task,
+        slowBody(),
+        partFile().openWrite(),
+        startOffset: 0,
+        totalSize: 3 * 1024,
+      );
+
+      expect(notifies, greaterThanOrEqualTo(2));
+    });
+  });
 }
 
 Future<void> _until(

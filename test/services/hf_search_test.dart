@@ -275,6 +275,12 @@ class _ScriptedModels implements ModelManager {
   Future<List<HFModel>> searchHFModels(
     String query, {
     int limit = HfSearch.shown,
+  }) => searchHFModelsFiltered(query);
+
+  @override
+  Future<List<HFModel>> searchHFModelsFiltered(
+    String query, {
+    int limit = HfSearch.shown,
     HfSearchOptions options = const HfSearchOptions(),
   }) {
     asked.add((query, options));
@@ -283,9 +289,8 @@ class _ScriptedModels implements ModelManager {
 
   @override
   Future<Map<String, HFModel>> fetchFilesForModels(
-    List<HFModel> models, {
-    int concurrency = 6,
-  }) async => {for (final m in models) m.id: m};
+    List<HFModel> models,
+  ) async => {for (final m in models) m.id: m};
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

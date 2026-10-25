@@ -59,6 +59,10 @@ class HFQuantRow extends StatelessWidget {
   /// button is replaced by a marker with this as its tooltip.
   final String? unavailableReason;
 
+  /// Fires on download progress ticks. While [downloadTask] is set, only the
+  /// progress bar and status line rebuild on a tick.
+  final Listenable? progressTicks;
+
   const HFQuantRow({
     super.key,
     required this.file,
@@ -70,6 +74,7 @@ class HFQuantRow extends StatelessWidget {
     this.title,
     this.bestFit = false,
     this.unavailableReason,
+    this.progressTicks,
   });
 
   @override
@@ -197,25 +202,14 @@ class HFQuantRow extends StatelessWidget {
                 ),
 
                 // Download progress if active
-                if (downloadTask != null) ...[
-                  const SizedBox(height: 6),
-                  LinearProgressIndicator(
-                    value: downloadTask!.progress,
-                    minHeight: 3,
-                    backgroundColor: InkColors.trackOf(context),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _getFitStatusColor(context, fitStatus),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    downloadTask!.statusString,
-                    style: TextStyle(
-                      color: AppColors.textTertiary(context),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
+                if (downloadTask != null)
+                  progressTicks == null
+                      ? _buildProgress(context, fitStatus)
+                      : ListenableBuilder(
+                          listenable: progressTicks!,
+                          builder: (context, _) =>
+                              _buildProgress(context, fitStatus),
+                        ),
               ],
             ),
           ),
@@ -245,6 +239,31 @@ class HFQuantRow extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+
+  Widget _buildProgress(BuildContext context, VramFitStatus? fitStatus) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          value: downloadTask!.progress,
+          minHeight: 3,
+          backgroundColor: InkColors.trackOf(context),
+          valueColor: AlwaysStoppedAnimation<Color>(
+            _getFitStatusColor(context, fitStatus),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          downloadTask!.statusString,
+          style: TextStyle(
+            color: AppColors.textTertiary(context),
+            fontSize: 10,
+          ),
+        ),
+      ],
     );
   }
 

@@ -194,6 +194,10 @@ class HfSearchOptions {
   final bool roleplayOnly;
   final HfSizeBucket size;
 
+  /// No filter chosen: the plain search.
+  bool get isDefault =>
+      sort == HfSort.downloads && !roleplayOnly && size == HfSizeBucket.any;
+
   HfSearchOptions copyWith({
     HfSort? sort,
     bool? roleplayOnly,

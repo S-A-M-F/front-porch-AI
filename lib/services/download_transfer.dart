@@ -57,7 +57,7 @@ class DownloadTransfer {
   DownloadTransfer({
     this.headersFor,
     FreeDiskBytes? freeBytes,
-    this.progressEvery = const Duration(milliseconds: 250),
+    this.progressEvery = const Duration(milliseconds: 100),
     this.segmentCount = 8,
     this.segmentMinBytes = 32 * 1024 * 1024,
   }) : freeBytes = freeBytes ?? freeDiskBytes;
@@ -209,28 +209,24 @@ class DownloadTransfer {
     final sink = File(
       task.tempPath,
     ).openWrite(mode: startOffset > 0 ? FileMode.append : FileMode.write);
-    var received = startOffset;
-    var lastTick = DateTime.now();
+    final int received;
     try {
-      await for (final chunk in response.stream) {
-        if (task.state != DownloadTaskState.downloading) {
-          return TransferOutcome.stopped;
-        }
-        sink.add(chunk);
-        received += chunk.length;
-        task.updateProgress(received, totalSize);
-        final now = DateTime.now();
-        if (now.difference(lastTick) >= progressEvery) {
-          lastTick = now;
-          onProgress();
-        }
-      }
+      final pumped = await pumpBytes(
+        task,
+        response.stream,
+        sink,
+        startOffset: startOffset,
+        totalSize: totalSize,
+        onProgress: onProgress,
+        every: progressEvery,
+      );
+      if (pumped == null) return TransferOutcome.stopped;
+      received = pumped;
       await sink.flush();
     } finally {
       await sink.close();
     }
 
-    task.updateProgress(received, totalSize);
     if (totalSize > 0 && received < totalSize) {
       throw HttpException(
         'Connection closed at ${formatBytes(received)} of '
@@ -239,4 +235,35 @@ class DownloadTransfer {
     }
     return TransferOutcome.finished;
   }
+}
+
+/// Writes [body] into [sink] for [task], updating its progress on every
+/// chunk but calling [onProgress] at most once per [every]: HuggingFace and
+/// Windows sockets hand back thousands of small chunks a second, and a
+/// notify per chunk rebuilt the Model Manager until the window crawled.
+/// Returns the byte count reached, or null when the task left `downloading`
+/// (pause or cancel) mid-stream. The caller owns the sink.
+Future<int?> pumpBytes(
+  DownloadTask task,
+  Stream<List<int>> body,
+  IOSink sink, {
+  required int startOffset,
+  required int totalSize,
+  required void Function() onProgress,
+  required Duration every,
+}) async {
+  var received = startOffset;
+  final sinceTick = Stopwatch()..start();
+  await for (final chunk in body) {
+    if (task.state != DownloadTaskState.downloading) return null;
+    sink.add(chunk);
+    received += chunk.length;
+    task.updateProgress(received, totalSize);
+    if (sinceTick.elapsed >= every) {
+      sinceTick.reset();
+      onProgress();
+    }
+  }
+  task.updateProgress(received, totalSize);
+  return received;
 }
