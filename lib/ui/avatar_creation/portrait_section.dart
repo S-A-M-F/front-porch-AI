@@ -27,6 +27,7 @@ import 'package:front_porch_ai/ui/theme/creator_palette.dart';
 
 import 'avatar_creation_controller.dart';
 import 'engine_strip.dart';
+import 'portrait_preview.dart';
 import 'upload_tag_dialog.dart';
 
 /// "Portrait — pick a source": the upload/generate/none segments, the upload
@@ -35,9 +36,16 @@ import 'upload_tag_dialog.dart';
 /// generate flow's engine strip + prompt. Portrait source and expression
 /// generation are deliberately INDEPENDENT sections (locked decision k).
 class PortraitSection extends StatelessWidget {
-  const PortraitSection({super.key, required this.controller});
+  const PortraitSection({
+    super.key,
+    required this.controller,
+    required this.onZoom,
+  });
 
   final AvatarCreationController controller;
+
+  /// Opens the full-size viewer on the generated portrait's bytes.
+  final void Function(BuildContext context, Uint8List bytes) onZoom;
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +81,7 @@ class PortraitSection extends StatelessWidget {
           if (c.portraitBytes != null &&
               c.stage != AvatarRunStage.portraitReview) ...[
             const SizedBox(height: 10),
-            _portraitPreview(context, c),
+            PortraitPreview(bytes: c.portraitBytes!, onZoom: onZoom),
           ],
         ],
         if (c.source == PortraitSource.upload) ...[
@@ -311,32 +319,6 @@ class PortraitSection extends StatelessWidget {
                     AppColors.formAccentOf(context),
               ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _portraitPreview(BuildContext context, AvatarCreationController c) {
-    return Row(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.memory(
-            c.portraitBytes!,
-            width: 64,
-            height: 80,
-            fit: BoxFit.cover,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          'Saved & set as the card image.',
-          style: TextStyle(
-            color:
-                context.creatorPalette?.prose ??
-                AppColors.textSecondary(context),
-            fontSize: 11.5,
           ),
         ),
       ],

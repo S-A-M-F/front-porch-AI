@@ -128,7 +128,7 @@ class _AvatarGenerationPanelState extends State<AvatarGenerationPanel> {
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PortraitSection(controller: _c),
+          PortraitSection(controller: _c, onZoom: _showPortraitFullSize),
           // Veto gate: its own card right above the expressions, so the
           // portrait is reviewed (and regenerated) before the pack config —
           // not buried under it in the bottom progress card.
