@@ -33,59 +33,85 @@ class PortraitPreview extends StatelessWidget {
   /// Opens the full-size viewer on [bytes].
   final void Function(BuildContext context, Uint8List bytes) onZoom;
 
+  /// Below this width the caption goes under the thumbnail.
+  static const double _sideBySideMin = 240;
+
   @override
   Widget build(BuildContext context) {
-    final muted =
-        context.creatorPalette?.muted ?? AppColors.textTertiary(context);
-    return Row(
-      children: [
-        Semantics(
-          button: true,
-          label: 'Portrait. Click to zoom in',
-          child: MouseRegion(
-            cursor: SystemMouseCursors.zoomIn,
-            child: GestureDetector(
-              key: const ValueKey('portrait-preview'),
-              onTap: () => onZoom(context, bytes),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  bytes,
-                  width: 96,
-                  height: 120,
-                  fit: BoxFit.cover,
-                ),
-              ),
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Never wider than the column it sits in, so a narrow window
+        // shrinks the thumbnail instead of overflowing.
+        final width = box.maxWidth < 96 ? box.maxWidth : 96.0;
+        final thumb = _thumb(width);
+        final caption = _caption(context);
+        if (box.maxWidth < _sideBySideMin) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [thumb, const SizedBox(height: 6), caption],
+          );
+        }
+        return Row(
+          children: [
+            thumb,
+            const SizedBox(width: 10),
+            Expanded(child: caption),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _thumb(double width) => Semantics(
+    button: true,
+    label: 'Portrait. Click to zoom in',
+    child: MouseRegion(
+      cursor: SystemMouseCursors.zoomIn,
+      child: Builder(
+        builder: (context) => GestureDetector(
+          key: const ValueKey('portrait-preview'),
+          onTap: () => onZoom(context, bytes),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(
+              bytes,
+              width: width,
+              height: width * 1.25,
+              fit: BoxFit.cover,
             ),
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Saved & set as the card image.',
-                style: TextStyle(
-                  color:
-                      context.creatorPalette?.prose ??
-                      AppColors.textSecondary(context),
-                  fontSize: 11.5,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.zoom_in, size: 14, color: muted),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Click to zoom in',
-                    style: TextStyle(color: muted, fontSize: 11),
-                  ),
-                ],
-              ),
-            ],
+      ),
+    ),
+  );
+
+  Widget _caption(BuildContext context) {
+    final muted =
+        context.creatorPalette?.muted ?? AppColors.textTertiary(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Saved & set as the card image.',
+          style: TextStyle(
+            color:
+                context.creatorPalette?.prose ??
+                AppColors.textSecondary(context),
+            fontSize: 11.5,
           ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Icon(Icons.zoom_in, size: 14, color: muted),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                'Click to zoom in',
+                style: TextStyle(color: muted, fontSize: 11),
+              ),
+            ),
+          ],
         ),
       ],
     );

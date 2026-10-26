@@ -53,6 +53,7 @@ import 'package:front_porch_ai/services/expression_pack_qc.dart'
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/avatar_creation/avatar_creation_controller.dart';
+import 'package:front_porch_ai/ui/avatar_creation/portrait_preview.dart';
 import 'package:front_porch_ai/ui/avatar_creation/portrait_section.dart';
 
 void _setupPathProviderMock() {
@@ -628,6 +629,37 @@ void main() {
       expect(find.text('Click to zoom in'), findsOneWidget);
       await tester.tap(preview);
       await tester.pump();
+      expect(zoomed, [bytes]);
+    });
+
+    testWidgets('a narrow column stacks the caption under a smaller '
+        'thumbnail instead of overflowing', (tester) async {
+      final zoomed = <Uint8List>[];
+      final bytes = _realPng();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 90,
+                child: PortraitPreview(
+                  bytes: bytes,
+                  onZoom: (_, b) => zoomed.add(b),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final preview = find.byKey(const ValueKey('portrait-preview'));
+      expect(tester.getSize(preview).width, 90);
+      expect(
+        tester.getTopLeft(find.text('Saved & set as the card image.')).dy,
+        greaterThan(tester.getBottomLeft(preview).dy),
+      );
+      await tester.tap(preview);
       expect(zoomed, [bytes]);
     });
   });
