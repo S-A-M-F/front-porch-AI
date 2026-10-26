@@ -24,6 +24,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/director/director.dart'
     show kDirectorQuickBeats;
+import 'package:front_porch_ai/services/chat/scene/scene_resolver.dart';
 import 'package:front_porch_ai/services/web/facade/chat/chat_message_chips.dart';
 import 'package:front_porch_ai/services/web/facade/chat_realism_read.dart';
 import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
@@ -307,6 +308,11 @@ class ChatStateSnapshot {
       'toolSupport': _chat.toolSupportJson,
       // Per-chat theme overrides (preset + font/color/background/border).
       'themeOverrides': _chat.sessionThemeOverrides.toJson(),
+      // The Ambient Stage's scene: the story's weather as the colour strings
+      // the PWA paints behind the bubbles, for both brightnesses so the PWA
+      // paints its own mode (docs/design/ambient-stage.md). Null when
+      // Ambient scene is Off or the chat has no weather. Additive.
+      'scene': sceneWireFor(_chat),
       // Per-chat system prompt source (1:1 only) and, while a new chat
       // waits on it, the picker's prompts. Additive; omitted in groups.
       'promptSource': ?_chat.promptSourceJson,
