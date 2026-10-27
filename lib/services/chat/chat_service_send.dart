@@ -116,7 +116,13 @@ extension ChatServiceSend on ChatService {
       _setGuestStatus(testing, isError: true);
       return;
     }
-    final lookup = parseLookupForce(text);
+    // `/skip 8h` at the end is the exact skip; the line goes without it.
+    final skipTag = SkipTag.parse(text);
+    if (skipTag.error != null) {
+      _setGuestStatus(skipTag.error, isError: true);
+      return;
+    }
+    final lookup = parseLookupForce(skipTag.body);
     if (lookup.attempted) {
       final block =
           lookup.error ??
@@ -131,13 +137,17 @@ extension ChatServiceSend on ChatService {
         return;
       }
     }
-    final outbound = lookup.accepted ? lookup.userText : text;
+    final outbound = lookup.accepted ? lookup.userText : skipTag.body;
     final trimmed = outbound.trim();
     final command =
         !lookup.accepted &&
         imageBytes == null &&
         trimmed.startsWith('/') &&
         _characterRepository != null;
+    if (command && skipTag.present) {
+      _setGuestStatus(kSkipAfterCommand, isError: true);
+      return;
+    }
     final previousSend = _sendChain;
     final sendGate = Completer<void>();
     _sendChain = sendGate.future;
@@ -212,6 +222,19 @@ extension ChatServiceSend on ChatService {
 
     // User is interacting — clear any pending auto-response state
     _pendingIdleCue = null;
+
+    // A message that is only `/skip …` moves the clock and sends nothing,
+    // like the calendar does.
+    if (skipTag.present && trimmed.isEmpty && imageBytes == null) {
+      final to = skipTag.verdict!.landing(_timeService.clock);
+      if (!_clockRunning || to == null) {
+        _setGuestStatus(kSkipNeedsClock, isError: true);
+        return;
+      }
+      await setStoryClock(to);
+      _setGuestStatus('Skipped ahead to ${_timeService.displayClock}.');
+      return;
+    }
 
     // ── Slash Command Handling (delegated to leaf) ──────────────────────
     // Skipped when a photo is attached: an attach makes the intent "send a
@@ -356,30 +379,6 @@ extension ChatServiceSend on ChatService {
       // is now continuing (regen of that AI reply still re-injects until here).
       unawaited(_porchMemoryImport.clearAfterAcceptedUserTurn());
 
-      // ── OOC Time-Skip Detection ───────────────────────────────────────────
-      // PoT is the only clock driver. Honour an OOC skip whenever the
-      // story clock is live, engine on or off.
-      if (_clockRunning) {
-        final before = _timeService.clock;
-        final skipped = await _timeService.detectOocTimeSkip(outbound);
-        await _episodeCrumbs.maybeMint(before, _timeService.clock);
-        // A day or more (this line, or the calendar since the last turn):
-        // settle the moment the scene left; a skip line also gets the
-        // narrator to fill in the gap before anyone replies.
-        if (_timeService.bodyBeatLivedOwed) {
-          LongSkipSettle(_realismScope()).settle();
-        }
-        if (skipped >= kLongSkipMinutes) {
-          final stillHere = await _bridgeLongSkip(
-            from: before,
-            skipped: skipped,
-            skipLine: userMsg,
-            token: sessionToken,
-          );
-          if (!stillHere) return;
-        }
-      }
-
       // ── Direct-address turn routing (both cast surfaces) ─────────────────
       // 1:1: "@Evelyn …" anywhere (or a vocative — "Evelyn - can you clarify…")
       // routes this turn to the GUEST via the parity-safe guest path; the host
@@ -425,6 +424,49 @@ extension ChatServiceSend on ChatService {
       // The request phase adopts the swap into the turn's restore machinery;
       // the cancel return below and the callMode setter release an orphaned one.
       if (addressedGuest == null) _enterCallEvalModelSwap();
+
+      // ── The player's time skip ──────────────────────────────────────────
+      // PoT is the only clock driver. The skip reader reads the line (or a
+      // `/skip` says it exactly) whenever the story clock is live, engine
+      // on or off, before anything scores or answers it, and after the call
+      // model swap so a voice call reads it on the fast model too.
+      if (_clockRunning) {
+        final before = _timeService.clock;
+        final skipped = await _buildPlayerSkip().apply(
+          outbound,
+          exact: skipTag.verdict,
+          recent: recentExchange(
+            _messages.sublist(0, _messages.length - 1),
+            take: 4,
+          ),
+          stale: () => _sceneChanged(sessionToken),
+        );
+        if (_sceneChanged(sessionToken)) {
+          _exitCallEvalModelSwap();
+          return;
+        }
+        await _episodeCrumbs.maybeMint(before, _timeService.clock);
+        // A day or more (this line, or the calendar since the last turn):
+        // settle the moment the scene left; a skip line also gets the
+        // narrator to fill in the gap before anyone replies.
+        if (_timeService.bodyBeatLivedOwed) {
+          LongSkipSettle(_realismScope()).settle();
+        }
+        if (skipped >= kLongSkipMinutes) {
+          final stillHere = await _bridgeLongSkip(
+            from: before,
+            skipped: skipped,
+            skipLine: userMsg,
+            token: sessionToken,
+          );
+          if (!stillHere) {
+            _exitCallEvalModelSwap();
+            return;
+          }
+        }
+      } else if (skipTag.present) {
+        _setGuestStatus(kSkipNeedsClock, isError: true);
+      }
 
       // Check objective task completion BEFORE generating response
       // so the AI gets the updated task in its prompt
