@@ -63,6 +63,7 @@ extension ChatServiceSend on ChatService {
     if (_photoTurnInFlight) return 'The last photo is still being read.';
     if (_isGenerating) return 'A reply is still being written.';
     if (_narrating) return 'The narrator is still setting the scene.';
+    if (_skipAsked) return kSkipAskPending;
     return null;
   }
 
@@ -111,6 +112,11 @@ extension ChatServiceSend on ChatService {
     if (_isGenerating) return;
     // The narrator's beat is about to append and start the reply.
     if (_narrating) return;
+    // A send parked on "Did time pass?" owns the turn (another screen).
+    if (_skipAsked) {
+      _setGuestStatus(kSkipAskPending, isError: true);
+      return;
+    }
     final testing = sendRefusal(text, withImage: imageBytes != null);
     if (testing != null) {
       _setGuestStatus(testing, isError: true);
@@ -440,6 +446,7 @@ extension ChatServiceSend on ChatService {
             take: 4,
           ),
           stale: () => _sceneChanged(sessionToken),
+          ask: (question) => _askSkip(question, sessionToken),
         );
         if (_sceneChanged(sessionToken)) {
           _exitCallEvalModelSwap();
