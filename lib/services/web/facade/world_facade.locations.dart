@@ -19,6 +19,7 @@
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/services/world_store/world_store.dart';
 
 /// The locations-tree surface of the web relay (slice 4, twin of slice 3's
 /// desktop UI): candidate lists and reach sets the PWA renders but must
@@ -79,6 +80,46 @@ class WorldLocationsRelay {
   /// nearest enabled ancestor if it inherits, null on a lore-only
   /// chain). Same walk the chat clock uses — the UI never re-decides.
   String? climateAuthorId(String id) => _worlds.climateAuthorFor(id)?.id;
+
+  /// The starred place chats attached to [id] start in, or null when they
+  /// start in the world itself (nothing starred, or the star went stale).
+  /// Resolved here so the PWA's attach picker never re-decides it.
+  String? startingPlaceId(String id) {
+    final start = _worlds.startingPlaceFor(id);
+    return start == null || start.id == id ? null : start.id;
+  }
+
+  /// The editor's starting place for [world]: `{placeId}` picks a place
+  /// inside it, `{name, description}` creates one. Absent, blank, or a
+  /// world that is itself a place inside another: no change to its star.
+  StartingPlaceChoice? startingChoiceFrom(Map<String, dynamic> f, World world) {
+    final raw = f['startingPlace'];
+    if (raw is! Map || world.parentWorldId != null) return null;
+    final id = raw['placeId']?.toString() ?? '';
+    if (id.isNotEmpty) return StartAtExistingPlace(id);
+    final name = raw['name']?.toString().trim() ?? '';
+    if (name.isEmpty) return null;
+    return StartAtNewPlace(
+      name,
+      description: raw['description']?.toString() ?? '',
+    );
+  }
+
+  /// Star [placeRef] as where chats attached to [worldRef] start; null or
+  /// empty clears it. False when the world is unknown. The repository's
+  /// refusal (a place outside the world) escapes as its StateError.
+  Future<bool> setDefaultPlace(String worldRef, String? placeRef) async {
+    final world = _worlds.resolveWorld(worldRef);
+    if (world == null) return false;
+    final place = (placeRef == null || placeRef.isEmpty)
+        ? null
+        : _worlds.resolveWorld(placeRef);
+    if (placeRef != null && placeRef.isNotEmpty && place == null) {
+      throw StateError(kWorldDefaultPlaceOutside);
+    }
+    await _worlds.setDefaultPlace(world, place?.id);
+    return true;
+  }
 }
 
 /// Review #596 cache honesty, extracted so the facade stays a coordinator:

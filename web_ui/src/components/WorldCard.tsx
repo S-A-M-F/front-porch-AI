@@ -30,6 +30,9 @@ export interface WorldSummary {
   /** World from Character (additive): the character the world was built
    * from, for the "from <character>" tag. Provenance only, never a link. */
   sourceCharacterName?: string | null;
+  /** The starred place chats attached to this world start in, resolved by
+   * the relay (null when they start in the world itself). Additive. */
+  defaultPlaceId?: string | null;
 }
 
 /** Deterministic hue (0-359) from a world name, so a given world always renders
@@ -52,6 +55,10 @@ export function WorldCard({
   onNewInside,
   selected,
   onSelected,
+  starred,
+  onStar,
+  startsAtName,
+  missingStart,
 }: {
   world: WorldSummary;
   busy: boolean;
@@ -64,6 +71,15 @@ export function WorldCard({
   onNewInside?: () => void;
   selected?: boolean;
   onSelected?: (on: boolean) => void;
+  /** Places inside a world: the starting-place star (desktop parity with
+   * the place card's star). No star without onStar. */
+  starred?: boolean;
+  onStar?: () => void;
+  /** Root cards: name of the starred place chats start at. */
+  startsAtName?: string | null;
+  /** Root cards with places but no starting place yet (an older world, or
+   * its starred place was deleted): ask for one. */
+  missingStart?: boolean;
 }) {
   const h = hueFromName(world.name);
   const accent: CSSProperties = {
@@ -158,6 +174,20 @@ export function WorldCard({
           )}
         </div>
         <div className="wsg-world-actions">
+          {onStar && (
+            <button
+              className={`icon-btn wsg-place-star${starred ? ' wsg-place-star--on' : ''}`}
+              title={starred ? 'Chats in this world start here' : 'Start chats in this world here'}
+              aria-label={
+                starred ? `Chats start at ${world.name}` : `Start chats at ${world.name}`
+              }
+              aria-pressed={starred === true}
+              disabled={busy}
+              onClick={onStar}
+            >
+              {starred ? '★' : '☆'}
+            </button>
+          )}
           {onNewInside && (
             <button
               className="icon-btn"
@@ -184,6 +214,16 @@ export function WorldCard({
       <p className={`wsg-world-desc${world.description.trim() ? '' : ' empty'}`}>
         {world.description.trim() || 'No description'}
       </p>
+      {startsAtName && (
+        <p className="wsg-starts-at" data-testid="world-starts-at">
+          ★ Chats start at {startsAtName}
+        </p>
+      )}
+      {!startsAtName && missingStart && (
+        <p className="wsg-starts-at wsg-starts-at--missing" data-testid="world-starts-at-missing">
+          ☆ Star a place below: chats start there
+        </p>
+      )}
 
       <div className="wsg-world-foot">
         <span className="wsg-entry-chip">

@@ -7,6 +7,7 @@
 // verb the grouped library exists for.
 
 import 'package:flutter/material.dart';
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/ui/pages/worlds/world_library_rows.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
@@ -17,6 +18,7 @@ class WorldLibraryRootCard extends StatelessWidget {
     super.key,
     required this.section,
     required this.directCount,
+    this.startingPlace,
     required this.collapsed,
     required this.onToggleCollapsed,
     required this.onNewInside,
@@ -32,6 +34,9 @@ class WorldLibraryRootCard extends StatelessWidget {
   // while each continent's own chip counts deeper; the subtree is not
   // summed into the root's number.
   final int directCount;
+  // Where chats attached to this world start (the starred place), or the
+  // root itself when nothing is starred: then no line is shown.
+  final World? startingPlace;
   final bool collapsed;
   final VoidCallback onToggleCollapsed;
   final VoidCallback onNewInside;
@@ -51,6 +56,7 @@ class WorldLibraryRootCard extends StatelessWidget {
     final worldColor = WorldColors.getColorForWorld(root.name);
     final entries = root.lorebook.entries.length;
     final total = directCount;
+    final hasStart = startingPlace != null && startingPlace!.id != root.id;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
       child: Container(
@@ -162,6 +168,38 @@ class WorldLibraryRootCard extends StatelessWidget {
                           ? AppColors.textTertiary(context)
                           : AppColors.textSecondary(context),
                     ),
+                  ),
+                  // Every world with places has a starting place; an older
+                  // world (or one whose starred place was deleted) is asked
+                  // for one rather than silently starting at the world.
+                  const SizedBox(height: 6),
+                  Row(
+                    key: Key('starting-place-${root.id}'),
+                    children: [
+                      Icon(
+                        hasStart
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        size: 14,
+                        color: hasStart ? accent : AppColors.logError,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          hasStart
+                              ? 'Chats start at ${startingPlace!.name}'
+                              : 'Star a place below: chats start there',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: hasStart
+                                ? AppColors.textSecondary(context)
+                                : AppColors.logError,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Row(

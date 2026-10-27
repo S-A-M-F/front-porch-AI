@@ -20,6 +20,7 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/services/world_store/world_store.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.locations.dart';
 import 'package:front_porch_ai/services/web/facade/world_summary_json.dart';
@@ -69,16 +70,16 @@ class WorldFacade {
     characterIds: characterIds,
   );
 
-  // Locations-tree relay surface (slice 4): candidate law + reach set.
-  late final WorldLocationsRelay _locations = WorldLocationsRelay(_worlds);
+  // Locations-tree relay surface: candidate law, reach set, starting place.
+  late final WorldLocationsRelay locations = WorldLocationsRelay(_worlds);
 
   /// See [WorldLocationsRelay.parentCandidates].
   List<Map<String, dynamic>> parentCandidates(String forNameOrId) =>
-      _locations.parentCandidates(forNameOrId);
+      locations.parentCandidates(forNameOrId);
 
   /// See [WorldLocationsRelay.reachable].
   List<Map<String, dynamic>> reachable(String? primaryId) =>
-      _locations.reachable(primaryId);
+      locations.reachable(primaryId);
 
   List<Map<String, dynamic>> list() {
     // Build a single name→dbId index so the per-world map below is O(1) and we
@@ -96,7 +97,7 @@ class WorldFacade {
       for (final w in _worlds.placeWorlds)
         worldSummaryJson(
           w,
-          locations: _locations,
+          locations: locations,
           linkedCharacterId:
               w.linkedCharacterId ??
               (w.linkedCharacterName != null
@@ -121,30 +122,7 @@ class WorldFacade {
   Map<String, dynamic>? detail(String nameOrId) {
     final w = _worlds.resolveWorld(nameOrId);
     if (w == null || isCharacterLinkedWorld(w)) return null;
-    return {
-      'id': w.id,
-      'name': w.name,
-      'description': w.description,
-      if (w.climateEnabled)
-        'biomeId': (w.biomeJson != null && w.biomeJson!.isNotEmpty)
-            ? 'custom'
-            : (w.biomeId ?? 'temperate'),
-      if (w.climateEnabled) 'biome': Biome.tryParse(w.biomeJson)?.toJson(),
-      'injectDescription': w.injectDescription,
-      'climateEnabled': w.climateEnabled,
-      'coverImage': w.coverImage,
-      'linkedCharacterName': w.linkedCharacterName,
-      'linkedCharacterId': w.linkedCharacterId,
-      'entries': lorebookEntriesToJson(w.lorebook),
-      if (w.climateEnabled) 'atmosphere': w.atmosphere.name,
-      if (w.climateEnabled) 'gravity': w.gravity.name,
-      // Slice 4 web twin: the editor preselects "Part of" and shows the
-      // inherit-or-own radios from this. Additive.
-      'parentWorldId': w.parentWorldId,
-      // Slice 5 (additive): same keys as the list rows.
-      'locationCount': _locations.locationCount(w.id),
-      'climateAuthorId': _locations.climateAuthorId(w.id),
-    };
+    return worldDetailJson(w, locations: locations);
   }
 
   /// Create or update a world by id when provided; rename is name-only.
@@ -181,11 +159,9 @@ class WorldFacade {
     } else {
       world.name = name;
     }
-    // Review #596 cache honesty, whole-field edition: this World IS the
-    // repository cache's instance. Every field written below must come
-    // back out if the save fails or the law refuses — the snapshot/
-    // restore pair lives in [WorldSaveSnapshot] so this file stays a
-    // coordinator, not a second god file in the making.
+    // Review #596 cache honesty: this World IS the repository cache's
+    // instance, so every field written below comes back out if the save
+    // fails or the law refuses ([WorldSaveSnapshot]).
     final snapshot = WorldSaveSnapshot.take(world);
 
     world.description = f['description']?.toString() ?? '';
@@ -245,11 +221,16 @@ class WorldFacade {
           Lorebook(entries: []);
     }
     try {
-      await _worlds.saveWorld(world);
+      // The editor's starting place rides the same save (desktop parity).
+      await saveWorldWithStartingPlace(
+        _worlds,
+        world,
+        locations.startingChoiceFrom(f, world),
+        isNew: existing == null,
+      );
     } catch (e) {
-      // ANY failure — the law's StateError or a DB fault — restores the
-      // complete prior state (desktop #592 discipline; the parent-only
-      // rollback this replaces left every other field as a ghost).
+      // ANY failure (the law's StateError or a DB fault) restores the
+      // complete prior state: desktop #592 discipline, no ghost fields.
       snapshot.restore();
       rethrow;
     }

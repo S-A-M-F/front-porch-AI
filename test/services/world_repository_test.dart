@@ -22,6 +22,9 @@ import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/services/world_envelopes.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
+import 'package:front_porch_ai/services/world_store/world_store.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_mint.dart';
 
 void _setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
@@ -922,5 +925,344 @@ void main() {
         expect(names, isNot(contains('Beta')), reason: 'budget dies honestly');
       },
     );
+  });
+
+  group('WorldRepository starting place (the star)', () {
+    late AppDatabase db;
+    late StorageService storage;
+    late WorldRepository repo;
+
+    setUp(() async {
+      _setupPathProviderMock();
+      SharedPreferences.setMockInitialValues({});
+      storage = StorageService();
+      await storage.initialized;
+      db = AppDatabase.forTesting();
+      repo = WorldRepository(storage, db);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    Future<model.World> seed(
+      String name, {
+      String? parent,
+      bool climate = false,
+    }) async {
+      final w = model.World(
+        name: name,
+        lorebook: Lorebook(entries: []),
+        climateEnabled: climate,
+        parentWorldId: parent,
+      );
+      await repo.saveWorld(w);
+      return w;
+    }
+
+    test('a new chat attached to a starred world starts at the place, with '
+        'the world still in its chain', () async {
+      final town = await seed('Bletchfield', climate: true);
+      final tea = await seed('Tea Rooms', parent: town.id);
+      await seed('Town Hall', parent: town.id);
+      await repo.setDefaultPlace(town, tea.id);
+
+      await repo.applyTemplateWorldsToChat('chat-star', ['Bletchfield']);
+
+      final slots = await repo.getChatWorldAttachments('chat-star');
+      // The Tea Rooms inherit their climate (climate off on the row), yet
+      // take the Setting: the author starred them as where scenes begin.
+      expect(slots.primaryId, tea.id);
+      expect(slots.loreIds, isEmpty);
+      expect(repo.climateAuthorFor(slots.primaryId!)?.id, town.id);
+    });
+
+    test(
+      'a lore-only world with a star still gives the chat a Setting',
+      () async {
+        final realm = await seed('Neokosmos');
+        final court = await seed('Hrive Court', parent: realm.id);
+
+        await repo.applyTemplateWorldsToChat('chat-before', [realm.id]);
+        expect(
+          (await repo.getChatWorldAttachments('chat-before')).primaryId,
+          isNull,
+          reason: 'no star: a lore-only world stays lore, as before',
+        );
+
+        await repo.setDefaultPlace(realm, court.id);
+        await repo.applyTemplateWorldsToChat('chat-after', [realm.id]);
+        expect(
+          (await repo.getChatWorldAttachments('chat-after')).primaryId,
+          court.id,
+        );
+      },
+    );
+
+    test(
+      'a fork (startAtStar false) keeps the world itself as Setting',
+      () async {
+        final town = await seed('Bletchfield', climate: true);
+        final tea = await seed('Tea Rooms', parent: town.id);
+        await repo.setDefaultPlace(town, tea.id);
+
+        await repo.applyTemplateWorldsToChat('chat-fork', [
+          town.id,
+        ], startAtStar: false);
+
+        expect(
+          (await repo.getChatWorldAttachments('chat-fork')).primaryId,
+          town.id,
+        );
+      },
+    );
+
+    test(
+      'a star whose place moved out of the world resolves to the world',
+      () async {
+        final town = await seed('Bletchfield', climate: true);
+        final elsewhere = await seed('Elsewhere', climate: true);
+        final tea = await seed('Tea Rooms', parent: town.id);
+        await repo.setDefaultPlace(town, tea.id);
+
+        tea.parentWorldId = elsewhere.id;
+        await repo.saveWorld(tea);
+
+        expect(repo.startingPlaceFor(town.id)?.id, town.id);
+        await repo.applyTemplateWorldsToChat('chat-stale', [town.id]);
+        expect(
+          (await repo.getChatWorldAttachments('chat-stale')).primaryId,
+          town.id,
+        );
+      },
+    );
+
+    test('starring refuses a place outside the world and keeps the old star; '
+        'the star survives a reload of a lore-only world', () async {
+      final realm = await seed('Neokosmos');
+      final court = await seed('Hrive Court', parent: realm.id);
+      final stranger = await seed('Atlantis');
+      await repo.setDefaultPlace(realm, court.id);
+
+      await expectLater(
+        repo.setDefaultPlace(realm, stranger.id),
+        throwsA(isA<StateError>()),
+      );
+      expect(realm.defaultPlaceId, court.id);
+
+      final reloaded = WorldRepository(storage, db);
+      await reloaded.ready;
+      expect(reloaded.startingPlaceFor('Neokosmos')?.id, court.id);
+
+      await repo.setDefaultPlace(realm, null);
+      expect(repo.startingPlaceFor(realm.id)?.id, realm.id);
+    });
+
+    test('export then import keeps the star on the imported copy of the '
+        'place', () async {
+      final town = await seed('Bletchport');
+      final quarter = await seed('Town Quarter', parent: town.id);
+      final room = await seed('Back Room', parent: quarter.id);
+      await repo.setDefaultPlace(town, room.id);
+
+      final imported = await repo.importWorldJson(repo.fpWorldJson(town));
+
+      final start = repo.startingPlaceFor(imported.id)!;
+      expect(start.id, isNot(room.id), reason: 'the copy, not the original');
+      expect(start.sourceId, room.id);
+      expect(repo.chainFor(start.id).last.id, imported.id);
+    });
+  });
+
+  group('World from Wiki mint: where chats start', () {
+    late AppDatabase db;
+    late WorldRepository repo;
+
+    setUp(() async {
+      _setupPathProviderMock();
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.initialized;
+      db = AppDatabase.forTesting();
+      repo = WorldRepository(storage, db);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    model.World root(String name) => model.World(
+      name: name,
+      lorebook: Lorebook(entries: []),
+    );
+    model.World placeWorld(WorldPlaceWrite p, String parentId) => model.World(
+      name: p.name,
+      description: p.description,
+      lorebook: Lorebook(entries: []),
+      climateEnabled: false,
+      parentWorldId: parentId,
+    );
+    WorldPlaceWrite write(String name, {String parent = ''}) => WorldPlaceWrite(
+      name: name,
+      parentName: parent,
+      description: '$name prose.',
+      entries: const [],
+    );
+
+    test('a tree mint stars the written place the author picked', () async {
+      final start = WorldStartPick()..placeName = 'The Quay';
+      addTearDown(start.dispose);
+      final why = await mintWorldFromWiki(
+        repo,
+        root: root('Harborside'),
+        tree: WorldWriteTree(
+          root: write('Harborside'),
+          places: [write('Lantern Market'), write('The Quay')],
+        ),
+        start: start,
+        placeWorld: placeWorld,
+      );
+
+      expect(why, isNull);
+      final world = repo.worldByName('Harborside')!;
+      expect(repo.startingPlaceFor(world.id)?.name, 'The Quay');
+      expect(repo.chainFor('The Quay').last.id, world.id);
+    });
+
+    test(
+      'a flat mint creates the named starting place inside the world',
+      () async {
+        final start = WorldStartPick();
+        addTearDown(start.dispose);
+        start.nameController.text = 'The Green';
+        start.descController.text = 'Sheep and a well.';
+        expect(start.problem(const []), isNull);
+
+        final why = await mintWorldFromWiki(
+          repo,
+          root: root('Maple Run'),
+          tree: null,
+          start: start,
+          placeWorld: placeWorld,
+        );
+
+        expect(why, isNull);
+        final world = repo.worldByName('Maple Run')!;
+        final green = repo.startingPlaceFor(world.id)!;
+        expect(green.name, 'The Green');
+        expect(green.description, 'Sheep and a well.');
+        expect(green.parentWorldId, world.id);
+        expect(green.climateEnabled, isFalse, reason: 'inherits the weather');
+      },
+    );
+
+    test('with no starting place the pick refuses', () {
+      final start = WorldStartPick();
+      addTearDown(start.dispose);
+      expect(start.problem(const []), kWorldStartingPlaceRequired);
+      expect(start.problem(const ['The Quay']), kWorldStartingPlacePick);
+    });
+  });
+
+  group('saveWorldWithStartingPlace', () {
+    late AppDatabase db;
+    late WorldRepository repo;
+
+    setUp(() async {
+      _setupPathProviderMock();
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.initialized;
+      db = AppDatabase.forTesting();
+      repo = WorldRepository(storage, db);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('a new world is saved with its new starting place inside it, '
+        'starred', () async {
+      final world = model.World(
+        name: 'Bletchfield',
+        lorebook: Lorebook(entries: []),
+      );
+      final place = await saveWorldWithStartingPlace(
+        repo,
+        world,
+        const StartAtNewPlace('Tea Rooms', description: 'Steam.'),
+        isNew: true,
+      );
+
+      expect(place!.parentWorldId, world.id);
+      expect(repo.startingPlaceFor(world.id)?.id, place.id);
+      final rows = await db.getAllWorlds();
+      expect(
+        rows.map((r) => r.name),
+        containsAll(['Bletchfield', 'Tea Rooms']),
+      );
+    });
+
+    test(
+      'a starting place outside the world is refused and nothing moves',
+      () async {
+        final town = model.World(
+          name: 'Town',
+          lorebook: Lorebook(entries: []),
+        );
+        await repo.saveWorld(town);
+        final stranger = model.World(
+          name: 'Elsewhere',
+          lorebook: Lorebook(entries: []),
+        );
+        await repo.saveWorld(stranger);
+
+        await expectLater(
+          saveWorldWithStartingPlace(
+            repo,
+            town,
+            StartAtExistingPlace(stranger.id),
+            isNew: false,
+          ),
+          throwsA(isA<StateError>()),
+        );
+        expect(town.defaultPlaceId, isNull);
+      },
+    );
+
+    test('the rule: new worlds name one, worlds with places pick one, older '
+        'worlds with none may stay', () {
+      expect(
+        startingPlaceRejection(null, isNew: true, hasPlaces: false),
+        kWorldStartingPlaceRequired,
+      );
+      expect(
+        startingPlaceRejection(
+          const StartAtNewPlace('  '),
+          isNew: true,
+          hasPlaces: false,
+        ),
+        kWorldStartingPlaceRequired,
+      );
+      expect(
+        startingPlaceRejection(null, isNew: false, hasPlaces: true),
+        kWorldStartingPlacePick,
+      );
+      expect(
+        startingPlaceRejection(null, isNew: false, hasPlaces: false),
+        isNull,
+      );
+      expect(
+        startingPlaceRejection(
+          const StartAtExistingPlace('p'),
+          isNew: false,
+          hasPlaces: true,
+        ),
+        isNull,
+      );
+    });
   });
 }
