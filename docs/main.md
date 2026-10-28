@@ -2,6 +2,28 @@
 
 These notes feed the in-app "Update Available" dialog for stable releases on `main`.
 
+## v1.6.1 — Cloudy with a Chance of Porch
+
+Worlds got places, the sky got weather, and the clock learned to read.
+
+- 🗺️ **Places inside worlds.** A world now holds its towns, buildings and rooms. The Worlds grid shows worlds only, each saying how many places it holds and where its chats start, and opening one lists its places right under it: star the starting place, add, edit, move or delete, with rooms tucked under their building. A place shares its world's lore and weather unless you give it its own. Deleting a world takes its places with it. Characters and groups link whole worlds. Places travel inside `.fpworld` files and Stoop cards. Desktop and phone.
+
+- 🚶 **The scene moves with the story.** The Places breadcrumb in a chat moves the scene, and when the story names somewhere new, a Scene suggestion offers to go there. One tap turns a named arrival into a real place inside the world.
+
+- 🌍 **Seven starter worlds, with pictures.** Seven ready-made worlds with places inside, each with a painted cover, from the frozen Whitereach to the lantern-lit market in Harborside.
+
+- 📖 **World from Wiki, rebuilt, and World from Character.** The wiki wizard reads a whole world, not a cast list: pick how deep to go and the moment in the story, watch a progress panel that says what it's doing, and review every card before you mint (rewrite, drop, keep or add). Full depth writes up to sixty cards, with factions carrying their members. A second source builds a world from a character and its chats, as Facts only, Faithful or Creative.
+
+- ⛈️ **The Ambient Stage.** The chat takes on the story's weather: a tint, then rain with depth, snow, drifting clouds, layered fog and lightning. A place with a picture paints it behind the bubbles, and moving between places plays the weather on the way. Scene sound adds weather loops and thunder that duck under speech. Bubbles turn see-through while the scene paints. All of it is in Settings → Appearance.
+
+- ⏩ **Time skips read like you meant them.** A short model read now works out how far "we slept eight hours" or "two weeks later" moves the clock, and where it lands. End a message with `/skip 8h`, `/skip 2d` or `/skip morning` for an exact jump. When a skip is unclear, a "Did time pass?" question offers the best guess and the alternatives. Skips the reply writes count in full, and a night the reply carries everyone through wakes them rested, in groups too.
+
+- 📥 **A new model downloader.** Search tuned for roleplay models, with filters, a model card, every file in a repo (split and subfolder quants and vision add-ons included), a real check of what context fits, the best fit picked for your card, an optional HuggingFace token for gated models, and faster, safer downloads. The Model Manager stays smooth on Windows while it downloads.
+
+- 💬 **Prompts that stay put.** A saved-prompt picker for both prompt slots, with the built-ins read-only. One Group system prompt covers every group, and every group turn uses one tidy layout. Director rules survive custom prompts, and converting a 1:1 to a group keeps your persona.
+
+- 🧹 **Smaller fixes.** Click a generated portrait in the creator to see it full size. Gemma 4 on Vulkan can run flash attention, with a warning. Linux no longer aborts at launch when GStreamer's playbin is missing. Porch Life's Afterglow switch is the one Lust gate. One-Shot Eval sits above the tool pill, and a card's Needs switch reaches chats that already exist. A guest you `/join` into a 1:1 shows its Promote button, and promoting it keeps the chat's world and place. On the phone, an older chat update never overwrites a newer one.
+
 ## v1.6.0 — Fifty Shades of Porch
 
 Paint it your colour, call the shots, and let the story keep its own time.

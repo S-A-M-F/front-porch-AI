@@ -15,16 +15,16 @@
 
 **A local-first AI companion for character chat & roleplay — Windows, macOS, and Linux.** Runs fully offline with local LLMs (KoboldCpp, oMLX, LM Studio, …), driven by a living **Realism Engine** (emotion, trust, needs, memory, pockets) with built-in **TTS and image generation** — and supports remote APIs like OpenRouter, Nano-GPT, and OpenAI with no lock-in when you want them. Open-source (**AGPL-3.0**). Built as a home for people who lost theirs when Backyard AI killed its desktop app.
 
-> ### 🎨 New in 1.6.0 — Fifty Shades of Porch
-> Paint it your colour, call the shots, and let the story keep its own time.
+> ### ⛅ New in 1.6.1 — Cloudy with a Chance of Porch
+> Worlds got places, the sky got weather, and the clock learned to read.
 >
-> - **Make the porch yours.** Eight app themes, light and dark, a custom accent, fonts and corners, and the phone follows along.
-> - **Director Mode, rebuilt.** Cue, whisper, scene goals, a narrator, beats and a run budget, with Away and Back for any cast member.
-> - **Find in chat** with Ctrl+F (⌘F), and **time skips that make sense**, bridged by a narrator card.
-> - **Goals keep up with the story**, **mood with bite**, and **Afterglow** (18+) that follows the character.
-> - **Images in bulk** with a Batch tab, a better **Character Creator**, and a look at **the prompt behind any reply**.
+> - **Places inside worlds.** Towns, buildings and rooms that share their world's lore and weather, and a scene that moves with the story.
+> - **Seven starter worlds.** Ready-made, with places inside and painted covers.
+> - **World from Wiki, rebuilt.** Pick a depth and a story moment and review every card, or build a world from a character and its chats.
+> - **The Ambient Stage.** The chat takes on the story's weather: rain, snow, fog, lightning and scene sound.
+> - **Time skips read like you meant them.** `/skip 8h` for an exact jump, and a "Did time pass?" question when it's unclear.
 >
-> Plus editors that ask before dropping unsaved work, more varied Chaos, a Waifu Coder that finishes its turns, and the phone's Settings in the desktop's sections. The in-app What's New has all sixteen.
+> Plus a new model downloader and prompts that stay put. The in-app What's New has all nine.
 
 ## 🕯️ Why Does This Exist?
 
