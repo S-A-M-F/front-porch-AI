@@ -52,35 +52,27 @@ extension ChatServiceImpersonate on ChatService {
       // Build prompt the same way _generateResponse does
       // Path B clean hierarchy (same as the main generation path)
       String systemPrompt;
-      if (_activeGroup != null && _activeGroup!.systemPrompt.isNotEmpty) {
-        systemPrompt = _activeGroup!.systemPrompt;
-      } else if (_activeGroup != null) {
-        systemPrompt = _observerMode
-            ? observerModeSystemPrompt
-            : defaultGroupSystemPrompt;
+      if (_activeGroup != null) {
+        systemPrompt = _groupBasePrompt;
       } else {
         // All backends speak the OpenAI chat protocol now (KoboldCpp via its
         // /v1/chat/completions door), so use the chat-style default prompt.
         systemPrompt = _resolveOneToOneBase(speakingCharacter);
       }
 
-      if (_activeGroup != null) {
-        final groupCharPrompt = getSystemPromptForGroupCharacter(
-          speakingCharacter,
-        ).trim();
-        if (groupCharPrompt.isNotEmpty) {
-          systemPrompt +=
-              '\n\n[Group-specific instructions for ${speakingCharacter.name}]\n$groupCharPrompt';
-        } else if (speakingCharacter.systemPrompt.isNotEmpty) {
-          systemPrompt +=
-              '\n\n[Specific instructions for ${speakingCharacter.name}]\n${speakingCharacter.systemPrompt.trim()}';
-        }
-      }
-
+      // A group keeps the reply path's system head (base, additions, the
+      // mode's FPAI rules). The answered character's card instructions are
+      // theirs, not the user's, so they stay out.
       if (_amendmentsAllowed) {
         systemPrompt = _storageService.generationSettings
             .withSystemPromptAddition(systemPrompt);
       }
+      if (_activeGroup != null) {
+        systemPrompt = withGroupSceneRules(systemPrompt, directing: _directing);
+      }
+      // Directing, the user's next line is a stage direction, not a line
+      // spoken in a scene they are not in.
+      final directorNote = _activeGroup != null && _directing;
 
       // Lorebook via the shared injector — the same positioned buckets the
       // main generation path uses. Read-only: impersonation never scans or
@@ -105,6 +97,10 @@ extension ChatServiceImpersonate on ChatService {
           memberNames: [for (final ch in _groupCharacters) ch.name],
           userName: userName,
           observerMode: _observerMode,
+          visitorNames: {
+            for (final ch in _groupCharacters)
+              if (ch.isLite) ch.name,
+          },
         );
       } else {
         personaBlock =
@@ -116,11 +112,17 @@ extension ChatServiceImpersonate on ChatService {
       );
 
       // User persona — inject user's self-description + learned facts
-      final userPersonaBlock = await _buildUserPersonaBlock(userName);
+      final userPersonaBlock = _directing
+          ? ''
+          : await _buildUserPersonaBlock(userName);
 
+      // Same shared-scene rule as the reply path: the group's scenario,
+      // else the anchor member's original one.
       String rawScenario = '';
-      if (_activeGroup != null && _activeGroup!.scenario.isNotEmpty) {
-        rawScenario = _activeGroup!.scenario;
+      if (_activeGroup != null) {
+        rawScenario = _activeGroup!.scenario.isNotEmpty
+            ? _activeGroup!.scenario
+            : (_groupCharacters.firstOrNull?.scenario ?? '');
       } else {
         rawScenario = _growthDesk.effectiveScenario(speakingCharacter);
       }
@@ -131,7 +133,9 @@ extension ChatServiceImpersonate on ChatService {
       // Suffix + prefix rule: a typed start is an incomplete USER line
       // (Continue-shaped). Character examples / post-history few-shot the
       // character's voice and often repeat "do not write for the user".
-      final suffix = impersonateSuffix(userName: userName, prefix: prefix);
+      final suffix = directorNote
+          ? impersonateDirectorSuffix(prefix: prefix)
+          : impersonateSuffix(userName: userName, prefix: prefix);
       const mesExampleBlock = '';
       var postHistoryBlock = _amendmentsAllowed
           ? _storageService.generationSettings.withPostHistoryAddition('')
@@ -180,19 +184,39 @@ extension ChatServiceImpersonate on ChatService {
         macroCtx,
         section: 'postHistory',
       );
-      final identity = impersonateIdentityBlock(
-        userName: userName,
-        characterName: speakingCharacter.name,
-      );
-      final cardFrame = impersonateCardFrame(
-        userName: userName,
-        characterName: speakingCharacter.name,
-      );
-      final prefixRule = impersonatePrefixRule(
-        userName: userName,
-        characterName: speakingCharacter.name,
-        prefix: prefix,
-      );
+      // Same pass as the reply path: the note is the user's text and may
+      // name {{char}} or {{user}}.
+      if (authorNoteBlock.isNotEmpty) {
+        authorNoteBlock = _macroResolver.resolve(
+          authorNoteBlock,
+          macroCtx,
+          section: 'authorNote',
+        );
+      }
+      final identity = directorNote
+          ? impersonateDirectorBlock(userName: userName)
+          : impersonateIdentityBlock(
+              userName: userName,
+              characterName: speakingCharacter.name,
+            );
+      final cardFrame = directorNote
+          ? ''
+          : _activeGroup != null
+          ? impersonateGroupFrame(
+              userName: userName,
+              characterName: speakingCharacter.name,
+            )
+          : impersonateCardFrame(
+              userName: userName,
+              characterName: speakingCharacter.name,
+            );
+      final prefixRule = directorNote
+          ? impersonateDirectorPrefixRule(prefix: prefix)
+          : impersonatePrefixRule(
+              userName: userName,
+              characterName: speakingCharacter.name,
+              prefix: prefix,
+            );
       systemPrompt = '$identity$cardFrame$systemPrompt';
 
       // ── Context Shift: budget-aware history trimming ──
@@ -223,6 +247,10 @@ extension ChatServiceImpersonate on ChatService {
         ),
         loreExTop,
         loreExBottom,
+        postHistoryBlock,
+        loreAnTop,
+        authorNoteBlock,
+        loreAnBottom,
       ]);
       plan.add(id: 'lore.before', text: afterHistory[0]);
       plan.add(id: 'growth', text: afterHistory[1]);
@@ -230,10 +258,10 @@ extension ChatServiceImpersonate on ChatService {
       plan.add(id: 'scenario', text: afterHistory[3]);
       plan.add(id: 'lore.ex_top', text: afterHistory[4]);
       plan.add(id: 'lore.ex_bottom', text: afterHistory[5]);
-      plan.add(id: 'post_history', text: postHistoryBlock);
-      plan.add(id: 'lore.an_top', text: loreAnTop);
-      plan.add(id: 'author_note', text: authorNoteBlock);
-      plan.add(id: 'lore.an_bottom', text: loreAnBottom);
+      plan.add(id: 'post_history', text: afterHistory[6]);
+      plan.add(id: 'lore.an_top', text: afterHistory[7]);
+      plan.add(id: 'author_note', text: afterHistory[8]);
+      plan.add(id: 'lore.an_bottom', text: afterHistory[9]);
       plan.add(id: 'lore.depth', text: loreDepthJoined, rendered: false);
       plan.add(id: 'impersonate', text: prefixRule);
       plan.add(id: 'suffix', text: suffix);
@@ -341,8 +369,13 @@ extension ChatServiceImpersonate on ChatService {
         );
         final sanitized = sanitizeOutput(accumulated, rules);
         if (sanitized != accumulated) {
+          accumulated = sanitized;
           onToken(sanitized);
         }
+      }
+      if (directorNote) {
+        final note = closeDirectorNote(accumulated, prefix: prefix);
+        if (note != accumulated) onToken(note);
       }
     } catch (e) {
       debugPrint('[ChatService] Impersonate error: $e');

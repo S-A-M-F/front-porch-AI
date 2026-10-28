@@ -34,6 +34,8 @@ import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/dialogs/dialogs.dart';
 import 'package:front_porch_ai/ui/image_studio/image_studio.dart';
 
+import 'chat_page_scene_location_dialogs.dart';
+
 /// The Chance Time wheel, over the chat.
 void showChanceTimeOverlay(BuildContext context) {
   showDialog(
@@ -52,8 +54,11 @@ class ChatScenePrompts {
   final File? Function(ChatService chat, CharacterCard card) coverFor;
 
   bool _showingGuestDetection = false;
+  bool _showingPlaceMove = false;
+  bool _showingPlaceMint = false;
   bool _showingGuestPicker = false;
   bool _showingImageReview = false;
+  bool _showingSkip = false;
 
   /// Handle one ChatService notification. [context] is the mounted chat
   /// page's; [onGuestAvatarReady] gets the image path of a guest whose
@@ -76,6 +81,24 @@ class ChatScenePrompts {
         (_) => _showGuestDetectionDialog(context, chat),
       );
     }
+    // Slice 6: the clock judge flagged an arrival — ask, never assume.
+    if (chat.pendingPlaceMove != null && !_showingPlaceMove) {
+      _showingPlaceMove = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showPlaceMoveDialog(context, chat),
+      );
+    }
+    // Slice 7: the judge heard a NAMED new place — offer the mint.
+    // The two locations asks never stack: a mint waits for the move
+    // to be answered (the move flow re-checks when it returns).
+    if (chat.pendingPlaceMove == null &&
+        chat.pendingPlaceMint != null &&
+        !_showingPlaceMint) {
+      _showingPlaceMint = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showPlaceMintDialog(context, chat),
+      );
+    }
     // Scene Guest `/join` picker — same pending-flag pattern.
     if (chat.pendingGuestPickerFilter != null && !_showingGuestPicker) {
       _showingGuestPicker = true;
@@ -88,6 +111,13 @@ class ChatScenePrompts {
       _showingImageReview = true;
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _showImagePromptReviewDialog(context, chat),
+      );
+    }
+    // "Did time pass?" — the send waits on it (#629).
+    if (chat.pendingSkip != null && !_showingSkip) {
+      _showingSkip = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showSkipConfirm(context, chat),
       );
     }
     // A guest's background portrait finished — the page evicts its stale
@@ -128,6 +158,28 @@ class ChatScenePrompts {
     }
   }
 
+  Future<void> _showSkipConfirm(BuildContext context, ChatService chat) async {
+    final question = chat.pendingSkip;
+    if (question == null || !context.mounted) {
+      _showingSkip = false;
+      return;
+    }
+    final answer = await showSkipConfirmDialog(
+      context,
+      question: question,
+      changes: chat,
+      isLive: () => identical(chat.pendingSkip, question),
+    );
+    _showingSkip = false;
+    if (identical(chat.pendingSkip, question)) {
+      chat.answerSkip(answer);
+    } else if (chat.pendingSkip != null && context.mounted) {
+      // A newer question took this one's place while it closed.
+      _showingSkip = true;
+      await _showSkipConfirm(context, chat);
+    }
+  }
+
   Future<void> _showImagePromptReviewDialog(
     BuildContext context,
     ChatService chat,
@@ -144,6 +196,35 @@ class ChatScenePrompts {
     );
     _showingImageReview = false;
     chat.resolveImagePromptReview(result);
+  }
+
+  Future<void> _showPlaceMintDialog(
+    BuildContext context,
+    ChatService chat,
+  ) async {
+    try {
+      await showPlaceMintFlow(context, chat);
+    } finally {
+      // The one-shot guard must release even if the flow throws, or a
+      // second proposal this chat never gets a dialog (review #607
+      // blocker class).
+      _showingPlaceMint = false;
+    }
+  }
+
+  Future<void> _showPlaceMoveDialog(
+    BuildContext context,
+    ChatService chat,
+  ) async {
+    try {
+      await showPlaceMoveFlow(context, chat);
+    } finally {
+      _showingPlaceMove = false;
+    }
+    if (chat.pendingPlaceMint != null && !_showingPlaceMint) {
+      _showingPlaceMint = true;
+      await _showPlaceMintDialog(context, chat);
+    }
   }
 
   Future<void> _showGuestDetectionDialog(

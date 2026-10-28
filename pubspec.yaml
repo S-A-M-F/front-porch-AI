@@ -40,12 +40,12 @@ dependencies:
   desktop_drop: ^0.8.4
   cross_file: ^0.3.5
   path_provider: ^2.1.5
-  archive: ^4.3.0
+  archive: ^4.5.2
   google_fonts: ^8.2.1
   image: ^4.12.0
   # Pure-Dart Draw Things gRPC client (replaces the Python dt_grpc_client
   # sidecar; the sidecar remains as automatic fallback for one release cycle).
-  grpc: ^5.0.0
+  grpc: ^5.2.0
   flat_buffers: ^25.0.0
   ffi: ^2.1.3
   crypto: ^3.0.6
@@ -94,6 +94,10 @@ dependencies:
   riverpod_annotation: ^4.0.6
   flutter_markdown_plus: ^1.0.12
   flutter_secure_storage: ^11.2.0
+  # The Ambient Stage behind the chat (docs/design/ambient-stage.md): weather
+  # tint now, particles and sprites later. Pure Dart, MIT, in-process
+  # (maintainer-approved dep 2026-10-26).
+  flame: ^1.38.2
 
 dev_dependencies:
   flutter_test:
@@ -132,6 +136,13 @@ flutter:
     - assets/images/
     - assets/backgrounds/
     - assets/audio/
+    # The Ambient Stage's scene sound (synthesised, CC0; provenance in
+    # assets/audio/scene/LICENSE.md). Directory entries are non-recursive.
+    # The web server also serves these to the PWA as /audio/scene/<file>.
+    - assets/audio/scene/
+    # Starter worlds offered on the Worlds page (.fpworld envelopes plus
+    # index.json; written by tools/gen_starter_worlds.mjs).
+    - assets/worlds/starter/
     # React PWA (built from web_ui/ by `npm run build`). Served by the web
     # server (lib/services/web) from assets/web_app. Directory entries are
     # non-recursive, so the Vite assets/ subdir is listed explicitly.

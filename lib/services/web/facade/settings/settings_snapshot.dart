@@ -63,6 +63,8 @@ class SettingsSnapshot {
       'remoteApiUrl': b.remoteApiUrl,
       'remoteModelName': b.remoteModelName,
       'hasApiKey': b.remoteApiKey.isNotEmpty,
+      // Whether a HuggingFace token is saved; the token itself never leaves.
+      'hasHfToken': _storage.backendSettings.hf.hasToken,
       'remoteApiUrlsWithKeys': b.remoteApiUrlsWithKeys,
       // Slot → last model per host, so a provider switch restores it.
       // Additive: an older PWA ignores it.
@@ -135,6 +137,14 @@ class SettingsSnapshot {
       // General-tab extras the Generation card on web also hosts.
       'systemPrompt': g.systemPrompt,
       'additionalSystemPrompt': g.additionalSystemPrompt,
+      'groupSystemPrompt': g.groupSystemPrompt,
+      'builtInGroupSystemPrompt': defaultGroupSystemPrompt,
+      // The Settings prompt slots' picks and the shared pool (built-ins kept
+      // out, as on the desktop). Additive.
+      'systemPromptName': _storage.presetSettings.oneToOneSlotName,
+      'groupSystemPromptName': _storage.presetSettings.groupSlotName,
+      'savedPrompts': userSavedPrompts(_storage.presetSettings.savedPrompts),
+      'builtInSystemPrompts': [for (final b in kOneToOneBuiltIns) b.toJson()],
       'additionalPostHistoryInstructions': g.additionalPostHistoryInstructions,
       'bannedPhrases': _storage.realismSettings.bannedPhrases,
       // Ambitions + the promise ledger. Both work with the Realism Engine off,
@@ -169,6 +179,9 @@ class SettingsSnapshot {
         'wikiSavedUrls': _storage.webSearchSettings.savedWikiUrls,
         'sceneGuestDetectionEnabled':
             _storage.realismSettings.sceneGuestDetectionEnabled,
+        // Slice 6 (additive): the PWA mirrors the Porch Life switch.
+        'sceneSuggestionsEnabled':
+            _storage.realismSettings.sceneSuggestionsEnabled,
         'adultThemesEnabled': _storage.realismSettings.adultThemesEnabled,
         'weatherEnabled': _storage.realismSettings.weatherEnabled,
         'weatherFahrenheit': _storage.realismSettings.weatherFahrenheit,
@@ -200,6 +213,18 @@ class SettingsSnapshot {
       // The resolved app theme (mode + both token maps). The web never
       // computes a palette; it paints these. Additive.
       'theme': webThemeWire(_storage.appearance),
+      // Appearance → Ambient scene: what the stage paints over the chat
+      // background. Additive; the PWA paints the chat state's `scene`.
+      'ambientScene': _storage.appearance.ambientScene.key,
+      'pauseEffectsWhileGenerating':
+          _storage.appearance.pauseEffectsWhileGenerating,
+      // Appearance → Scene sound and its volume (0 to 1). Additive; the
+      // chat state's `scene.sound` carries the same pair to the chat page.
+      'sceneSound': _storage.appearance.sceneSound,
+      'sceneSoundVolume': _storage.appearance.sceneSoundVolume,
+      // Bubble Opacity as the desktop paints it: the stored value, else the
+      // Ambient scene's default. Additive; an older PWA ignores the key.
+      'bubbleOpacity': _storage.uiSettings.bubbleOpacity,
       ...readWorkerSettings(_storage, _llm),
     };
   }

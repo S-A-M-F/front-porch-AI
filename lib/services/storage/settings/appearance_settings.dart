@@ -37,6 +37,10 @@ class AppearanceSettings with SettingsBase {
   Color? _accent;
   UiFont _font = UiFont.inter;
   UiCorners _corners = UiCorners.standard;
+  AmbientScene _ambientScene = AmbientScene.off;
+  bool _pauseEffectsWhileGenerating = true;
+  bool _sceneSound = false;
+  double _sceneSoundVolume = 0.5;
   Brightness _platformBrightness =
       PlatformDispatcher.instance.platformBrightness;
 
@@ -50,6 +54,21 @@ class AppearanceSettings with SettingsBase {
   Color? get accentOverride => _accent;
   UiFont get font => _font;
   UiCorners get corners => _corners;
+
+  /// What the Ambient Stage paints over the chat background.
+  AmbientScene get ambientScene => _ambientScene;
+
+  /// Whether the stage's moving weather stops while a reply is generating,
+  /// so a local model on the same GPU has it to itself. On by default.
+  bool get pauseEffectsWhileGenerating => _pauseEffectsWhileGenerating;
+
+  /// Whether the story's weather is heard as well as seen: rain, wind,
+  /// birds or crickets under the chat, thunder after a storm's flash. Off
+  /// by default.
+  bool get sceneSound => _sceneSound;
+
+  /// The scene sound's volume, 0 to 1; half by default.
+  double get sceneSoundVolume => _sceneSoundVolume;
 
   /// The brightness in force now; [AppThemeMode.system] follows the OS.
   bool get isDark => switch (_mode) {
@@ -117,7 +136,15 @@ class AppearanceSettings with SettingsBase {
     _accent = parseAccentHex(prefs?.getString(k('accent_override')));
     _font = UiFont.fromKey(prefs?.getString(k('ui_font')));
     _corners = UiCorners.fromKey(prefs?.getString(k('ui_radius')));
+    _ambientScene = AmbientScene.fromKey(prefs?.getString(k('ambient_scene')));
+    _pauseEffectsWhileGenerating =
+        prefs?.getBool(k('ambient_pause_generating')) ?? true;
+    _sceneSound = prefs?.getBool(k('scene_sound')) ?? false;
+    _sceneSoundVolume = _unit(prefs?.getDouble(k('scene_sound_volume')), 0.5);
   }
+
+  static double _unit(double? value, double fallback) =>
+      value == null || value.isNaN ? fallback : value.clamp(0.0, 1.0);
 
   Future<void> setTheme(AppThemeId value) async {
     if (_theme == value) return;
@@ -158,6 +185,36 @@ class AppearanceSettings with SettingsBase {
     if (_corners == value) return;
     _corners = value;
     await prefs?.setString(k('ui_radius'), value.key);
+    notify();
+  }
+
+  Future<void> setAmbientScene(AmbientScene value) async {
+    if (_ambientScene == value) return;
+    _ambientScene = value;
+    await prefs?.setString(k('ambient_scene'), value.key);
+    notify();
+  }
+
+  Future<void> setPauseEffectsWhileGenerating(bool value) async {
+    if (_pauseEffectsWhileGenerating == value) return;
+    _pauseEffectsWhileGenerating = value;
+    await prefs?.setBool(k('ambient_pause_generating'), value);
+    notify();
+  }
+
+  Future<void> setSceneSound(bool value) async {
+    if (_sceneSound == value) return;
+    _sceneSound = value;
+    await prefs?.setBool(k('scene_sound'), value);
+    notify();
+  }
+
+  /// Held to 0..1; a value off the end is stored at the end.
+  Future<void> setSceneSoundVolume(double value) async {
+    final v = _unit(value, _sceneSoundVolume);
+    if (_sceneSoundVolume == v) return;
+    _sceneSoundVolume = v;
+    await prefs?.setDouble(k('scene_sound_volume'), v);
     notify();
   }
 

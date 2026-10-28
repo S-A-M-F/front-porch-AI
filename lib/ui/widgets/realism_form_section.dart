@@ -56,8 +56,6 @@ class RealismFormSection extends StatelessWidget {
   final ValueChanged<String> onEmotionChanged;
   final String emotionIntensity;
   final ValueChanged<String> onEmotionIntensityChanged;
-  final bool nsfwCooldownEnabled;
-  final ValueChanged<bool> onNsfwCooldownChanged;
   final bool chaosModeEnabled;
   final ValueChanged<bool> onChaosModeChanged;
 
@@ -150,7 +148,6 @@ class RealismFormSection extends StatelessWidget {
   final Widget? needsFormSection;
 
   // Visibility controls (for group creator where some features are global only)
-  final bool showNsfwCooldownToggle;
   final bool showChaosToggle;
   final bool showTimeAndDay;
   final bool showMasterEnabledToggle;
@@ -173,8 +170,6 @@ class RealismFormSection extends StatelessWidget {
     required this.onEmotionChanged,
     required this.emotionIntensity,
     required this.onEmotionIntensityChanged,
-    required this.nsfwCooldownEnabled,
-    required this.onNsfwCooldownChanged,
     required this.chaosModeEnabled,
     required this.onChaosModeChanged,
     this.ambitions,
@@ -220,7 +215,6 @@ class RealismFormSection extends StatelessWidget {
     this.realismVerificationStrictness = 3,
     this.onRealismVerificationStrictnessChanged,
     this.needsFormSection,
-    this.showNsfwCooldownToggle = true,
     this.showChaosToggle = true,
     this.showTimeAndDay = true,
     this.showMasterEnabledToggle = true,
@@ -351,8 +345,6 @@ class RealismFormSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           RealismOptionalFeaturesCard(
-            nsfwCooldownEnabled: nsfwCooldownEnabled,
-            onNsfwCooldownChanged: onNsfwCooldownChanged,
             chaosModeEnabled: chaosModeEnabled,
             onChaosModeChanged: onChaosModeChanged,
             realismVerificationEnabled: realismVerificationEnabled,
@@ -364,7 +356,6 @@ class RealismFormSection extends StatelessWidget {
             realismVerificationStrictness: realismVerificationStrictness,
             onRealismVerificationStrictnessChanged:
                 onRealismVerificationStrictnessChanged,
-            showNsfwCooldownToggle: showNsfwCooldownToggle,
             showChaosToggle: showChaosToggle,
             showVerificationToggle: showVerificationToggle,
             recovery: recovery,

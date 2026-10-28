@@ -48,8 +48,6 @@ Widget _harness() => MaterialApp(
               onEmotionChanged: (_) {},
               emotionIntensity: 'mild',
               onEmotionIntensityChanged: (_) {},
-              nsfwCooldownEnabled: false,
-              onNsfwCooldownChanged: (_) {},
               chaosModeEnabled: false,
               onChaosModeChanged: (_) {},
               ambitions: const [],

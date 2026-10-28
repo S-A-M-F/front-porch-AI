@@ -18,6 +18,7 @@
 
 import 'dart:async';
 
+import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/capability/capability.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/utils/utils.dart';
@@ -201,8 +202,16 @@ class BackendFacade {
   };
 
   // ── HuggingFace browser + downloader ─────────────────────────────────────
-  Future<List<Map<String, dynamic>>> searchHf(String query) async {
-    final results = await _models.searchHFModels(query);
+  /// [filters] is the request's query map (`sort`, `rp`, `size`); an older
+  /// PWA sends none and gets the default search.
+  Future<List<Map<String, dynamic>>> searchHf(
+    String query, [
+    Map<String, String> filters = const {},
+  ]) async {
+    final results = await _models.searchHFModelsFiltered(
+      query,
+      options: HfSearchOptions.fromQuery(filters),
+    );
     return results
         .map(
           (m) => {
@@ -212,37 +221,37 @@ class BackendFacade {
             'likes': m.likes,
             'downloads': m.downloads,
             'description': m.description,
+            'roleplay': m.isRoleplay,
           },
         )
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> modelFiles(String repoId) async {
-    final files = await _models.getModelFiles(repoId);
-    return files
-        .map(
-          (f) => {
-            'filename': f.filename,
-            'sizeBytes': f.sizeBytes,
-            'repoId': f.repoId,
-            'quant': f.quantType.name,
-          },
-        )
-        .toList();
-  }
+  /// The repo's model card for the phone; see [HfReadme].
+  Future<Map<String, dynamic>> modelCard(String repoId) async =>
+      (await _models.fetchModelCard(repoId)).toJson();
+
+  /// `{files, problem}`; see [HfFilesView].
+  Future<Map<String, dynamic>> modelFiles(String repoId) async =>
+      HfFilesView.toJson(
+        await _models.listModelFiles(repoId),
+        vramMb: _hardware?.hardwareInfo?.vramMb ?? 0,
+        contextSize: _storage.backendSettings.contextSize,
+      );
 
   /// Queue a GGUF file for download. The client supplies repoId + filename; we
   /// re-resolve the typed [HFModelFile] so the download has the correct URL/hash.
   /// Returns the new task id, or null if the file isn't found in the repo.
+  /// Any part of a split quant names the whole quant: every part is queued.
   Future<String?> queueDownload(String repoId, String filename) async {
-    final files = await _models.getModelFiles(repoId);
-    for (final f in files) {
-      if (f.filename == filename) {
+    final quants = HfQuant.group(await _models.getModelFiles(repoId));
+    for (final q in quants) {
+      if (q.parts.any((f) => f.filename == filename)) {
         // Downloading a model IS local intent — fetch the managed engine
         // alongside it (same trigger as the desktop Models page; no-op when
         // installed/downloading/remote).
         unawaited(_llm.backendManager.ensureEngineInstalled());
-        return _models.queueDownload(f).id;
+        return _models.queueQuant(q).first.id;
       }
     }
     return null;

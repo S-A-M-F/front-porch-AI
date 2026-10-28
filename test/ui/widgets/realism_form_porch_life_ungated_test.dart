@@ -33,8 +33,6 @@ Widget _form({required bool enabled}) => MaterialApp(
         onEmotionChanged: (_) {},
         emotionIntensity: 'mild',
         onEmotionIntensityChanged: (_) {},
-        nsfwCooldownEnabled: false,
-        onNsfwCooldownChanged: (_) {},
         chaosModeEnabled: false,
         onChaosModeChanged: (_) {},
         ambitions: const [],
@@ -71,10 +69,7 @@ void main() {
     expect(find.text('Short-Term Bond'), findsNothing);
     expect(find.text('Starting Emotion'), findsNothing);
     expect(find.text('Afterglow (intimacy pacing)'), findsNothing);
-    expect(
-      find.text('Realism Verification (Director/Verifier)'),
-      findsNothing,
-    );
+    expect(find.text('Realism Verification (Director/Verifier)'), findsNothing);
   });
 
   testWidgets('engine-only seeds appear only when the switch is on', (
@@ -85,7 +80,9 @@ void main() {
 
     expect(find.text('Short-Term Bond'), findsOneWidget);
     expect(find.text('Starting Emotion'), findsOneWidget);
-    expect(find.text('Afterglow (intimacy pacing)'), findsOneWidget);
+    // 2026-10-24: no per-card Afterglow switch any more; Porch Life
+    // Afterglow (with 18+ on) is the one gate.
+    expect(find.text('Afterglow (intimacy pacing)'), findsNothing);
     expect(find.text('Pockets & Wardrobe'), findsOneWidget);
     expect(find.text('Chaos Mode (Chance Time)'), findsOneWidget);
   });

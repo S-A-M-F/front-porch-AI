@@ -33,6 +33,7 @@ class KoboldAppSettings {
     required this.kvQuant,
     required this.mlock,
     this.rocmFlashAttentionFailed = false,
+    this.flashAttentionRiskAccepted = false,
   });
 
   final int contextSize;
@@ -52,6 +53,10 @@ class KoboldAppSettings {
 
   /// KoboldCpp on ROCm died on this machine with flash attention on.
   final bool rocmFlashAttentionFailed;
+
+  /// The user turned flash attention on for a pairing that crashed in
+  /// testing ([koboldFlashAttentionRisky]). Off, it runs without.
+  final bool flashAttentionRiskAccepted;
 }
 
 /// What is known about the model being launched.
@@ -72,19 +77,34 @@ class KoboldModelFacts {
   final bool expertsShareGpuMemory;
 }
 
-/// Whether KoboldCpp can run flash attention for this model here. Two
-/// exceptions, both seen on real engines (2026-10-04): on Vulkan, KoboldCpp
-/// 1.122.1 loads Gemma 4 and dies on its first prompt with it on (off, it
-/// runs); and a ROCm machine where it already died with it on is not asked
-/// again. ROCm is otherwise allowed: on an RX 6900 XT it ran every model
-/// tested, faster and in less memory.
+/// Said beside every flash attention switch for a pairing that crashed in
+/// testing ([koboldFlashAttentionRisky]).
+const String kKoboldFlashAttentionCrashWarning =
+    'Gemma 4 on Vulkan: in testing this has caused KoboldCpp to crash.';
+
+/// Gemma 4 on Vulkan: KoboldCpp 1.122.1 loaded it and died on its first
+/// prompt with flash attention on (off, it ran; 2026-10-04). Not forbidden:
+/// it runs without unless the user turns it on, with
+/// [kKoboldFlashAttentionCrashWarning] beside the switch.
+bool koboldFlashAttentionRisky({
+  required KoboldGpuBackend backend,
+  String? architecture,
+}) => backend == KoboldGpuBackend.vulkan && architecture == 'gemma4';
+
+/// Whether KoboldCpp runs flash attention for this model here. Two
+/// exceptions: a pairing that crashed in testing ([koboldFlashAttentionRisky])
+/// runs without unless [riskAccepted], and a ROCm machine where it already
+/// died with it on is not asked again. ROCm is otherwise allowed: on an
+/// RX 6900 XT it ran every model tested, faster and in less memory.
 bool koboldFlashAttentionRuns({
   required KoboldGpuBackend backend,
   required bool rocm,
   String? architecture,
   bool rocmFailedBefore = false,
+  bool riskAccepted = false,
 }) =>
-    !(backend == KoboldGpuBackend.vulkan && architecture == 'gemma4') &&
+    !(koboldFlashAttentionRisky(backend: backend, architecture: architecture) &&
+        !riskAccepted) &&
     !(rocm && rocmFailedBefore);
 
 /// Why [koboldFlashAttentionRuns] said no, in plain words, or null.
@@ -93,15 +113,17 @@ String? koboldFlashAttentionNote({
   required bool rocm,
   String? architecture,
   bool rocmFailedBefore = false,
+  bool riskAccepted = false,
 }) {
-  if (backend == KoboldGpuBackend.vulkan && architecture == 'gemma4') {
-    return 'Flash attention is off for Gemma 4 on Vulkan: KoboldCpp stops on '
-        'its first reply with it on. Cache compression needs it, so the '
-        'cache is full size.';
-  }
   if (rocm && rocmFailedBefore) {
     return 'Flash attention is off: KoboldCpp stopped on this machine with it '
         'on. Cache compression needs it, so the cache is full size.';
+  }
+  if (!riskAccepted &&
+      koboldFlashAttentionRisky(backend: backend, architecture: architecture)) {
+    return 'Flash attention is off for Gemma 4 on Vulkan: in testing it has '
+        'caused KoboldCpp to crash. It can be turned on in Advanced Launch '
+        'Options. Cache compression needs it, so the cache is full size.';
   }
   return null;
 }
@@ -148,6 +170,7 @@ KoboldLaunchConfig koboldAppConfig({
     rocm: settings.rocm,
     architecture: model.architecture,
     rocmFailedBefore: settings.rocmFlashAttentionFailed,
+    riskAccepted: settings.flashAttentionRiskAccepted,
   );
   final pair = koboldFlashAndCache(
     runs: runs,
@@ -227,6 +250,7 @@ KoboldLaunchConfig koboldGeneratedPreset({
   bool flashAttention = true,
   bool rocm = false,
   bool rocmFlashAttentionFailed = false,
+  bool flashAttentionRiskAccepted = false,
   int? manualLayers,
   int moeCpuLayers = 0,
   bool? mmq,
@@ -243,6 +267,7 @@ KoboldLaunchConfig koboldGeneratedPreset({
       rocm: rocm,
       architecture: architecture,
       rocmFailedBefore: rocmFlashAttentionFailed,
+      riskAccepted: flashAttentionRiskAccepted,
     ),
     flashAttention: flashAttention,
     kvQuant: kvQuant,

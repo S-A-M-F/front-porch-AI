@@ -19,7 +19,12 @@
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
+import 'package:front_porch_ai/services/chat/scene/scene_backdrop.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/services/world_store/world_store.dart';
 import 'package:front_porch_ai/services/web/util/lorebook_json.dart';
+import 'package:front_porch_ai/services/web/facade/world_facade.locations.dart';
+import 'package:front_porch_ai/services/web/facade/world_summary_json.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 import 'package:front_porch_ai/services/web/facade/world_facade.import.dart';
 
@@ -38,7 +43,7 @@ class WorldFacade {
   final ChatService? _chat;
   final GroupChatRepository? _groups;
 
-  late final WorldImporter _importer = WorldImporter(
+  late final WorldImporter importer = WorldImporter(
     _worlds,
     _characters,
     _chat,
@@ -47,7 +52,7 @@ class WorldFacade {
 
   /// See [WorldImporter.importWorld].
   Future<bool> importWorld(Map<String, dynamic> json) =>
-      _importer.importWorld(json);
+      importer.importWorld(json);
 
   /// See [WorldImporter.importLorebook].
   Future<Map<String, dynamic>?> importLorebook(
@@ -57,7 +62,7 @@ class WorldFacade {
     String? name,
     String? description,
     List<String> characterIds = const [],
-  }) => _importer.importLorebook(
+  }) => importer.importLorebook(
     json,
     dryRun: dryRun,
     destination: destination,
@@ -65,6 +70,17 @@ class WorldFacade {
     description: description,
     characterIds: characterIds,
   );
+
+  // Locations-tree relay surface: candidate law, reach set, starting place.
+  late final WorldLocationsRelay locations = WorldLocationsRelay(_worlds);
+
+  /// See [WorldLocationsRelay.parentCandidates].
+  List<Map<String, dynamic>> parentCandidates(String forNameOrId) =>
+      locations.parentCandidates(forNameOrId);
+
+  /// See [WorldLocationsRelay.reachable].
+  List<Map<String, dynamic>> reachable(String? primaryId) =>
+      locations.reachable(primaryId);
 
   List<Map<String, dynamic>> list() {
     // Build a single name→dbId index so the per-world map below is O(1) and we
@@ -80,26 +96,15 @@ class WorldFacade {
     // Places only in the authoring list (character-linked clones purged).
     return [
       for (final w in _worlds.placeWorlds)
-        {
-          'id': w.id,
-          'name': w.name,
-          'description': w.description,
-          'entryCount': w.lorebook.entries.length,
-          if (w.climateEnabled)
-            'biomeId': (w.biomeJson != null && w.biomeJson!.isNotEmpty)
-                ? 'custom'
-                : (w.biomeId ?? 'temperate'),
-          'injectDescription': w.injectDescription,
-          'climateEnabled': w.climateEnabled,
-          'coverImage': w.coverImage,
-          'hasCover': w.coverImage != null && w.coverImage!.isNotEmpty,
-          'linkedCharacterName': w.linkedCharacterName,
-          'linkedCharacterId':
+        worldSummaryJson(
+          w,
+          locations: locations,
+          linkedCharacterId:
               w.linkedCharacterId ??
               (w.linkedCharacterName != null
                   ? idByName[w.linkedCharacterName!]
                   : null),
-        },
+        ),
     ];
   }
 
@@ -118,24 +123,18 @@ class WorldFacade {
   Map<String, dynamic>? detail(String nameOrId) {
     final w = _worlds.resolveWorld(nameOrId);
     if (w == null || isCharacterLinkedWorld(w)) return null;
-    return {
-      'id': w.id,
-      'name': w.name,
-      'description': w.description,
-      if (w.climateEnabled)
-        'biomeId': (w.biomeJson != null && w.biomeJson!.isNotEmpty)
-            ? 'custom'
-            : (w.biomeId ?? 'temperate'),
-      if (w.climateEnabled) 'biome': Biome.tryParse(w.biomeJson)?.toJson(),
-      'injectDescription': w.injectDescription,
-      'climateEnabled': w.climateEnabled,
-      'coverImage': w.coverImage,
-      'linkedCharacterName': w.linkedCharacterName,
-      'linkedCharacterId': w.linkedCharacterId,
-      'entries': lorebookEntriesToJson(w.lorebook),
-      if (w.climateEnabled) 'atmosphere': w.atmosphere.name,
-      if (w.climateEnabled) 'gravity': w.gravity.name,
-    };
+    return worldDetailJson(w, locations: locations);
+  }
+
+  /// A place's cover picture as bytes for `GET /api/worlds/cover`, the
+  /// chat page's backdrop (`sceneBackdropWire`). Null for an unknown place
+  /// or one without a stored picture. Ids only: the chat state hands the
+  /// PWA the id, never a path.
+  ({List<int> bytes, String contentType})? coverFor(String id) {
+    final w = _worlds.worldById(id);
+    final cover = w?.coverImage;
+    if (cover == null || cover.isEmpty) return null;
+    return sceneBackdropBytes(cover);
   }
 
   /// Create or update a world by id when provided; rename is name-only.
@@ -164,19 +163,57 @@ class WorldFacade {
       try {
         await _worlds.renameWorld(existing, name);
       } on StateError {
-        return false;
+        // Review #596: report the collision, don't let the route guess.
+        // renameWorld checks the DB before mutating, so nothing to roll
+        // back here — but the cache name must not have moved.
+        throw StateError('A world named "$name" already exists.');
       }
     } else {
       world.name = name;
     }
+    // Review #596 cache honesty: this World IS the repository cache's
+    // instance, so every field written below comes back out if the save
+    // fails or the law refuses ([WorldSaveSnapshot]).
+    final snapshot = WorldSaveSnapshot.take(world);
+
     world.description = f['description']?.toString() ?? '';
     if (f.containsKey('climateEnabled')) {
       world.climateEnabled = f['climateEnabled'] == true;
     }
     // Lorebook-only worlds do not need a valid biome to save.
-    if (world.climateEnabled && !_applyClimate(world, f)) return false;
+    if (world.climateEnabled && !_applyClimate(world, f)) {
+      // Review #596: a bad climate throws its own sentence (was: false
+      // -> the route's 'name is required' lie).
+      snapshot.restore();
+      throw StateError(
+        'The custom climate is not valid — fix overlapping or missing '
+        'season data.',
+      );
+    }
     if (f.containsKey('injectDescription')) {
       world.injectDescription = f['injectDescription'] == true;
+    }
+    // World from Character (additive): the PWA passes the root's
+    // provenance from the wizard's done event. Absent keys keep what the
+    // row has; the desktop stamps the same two fields.
+    if (f.containsKey('sourceId')) {
+      final sourceId = f['sourceId']?.toString().trim() ?? '';
+      world.sourceId = sourceId.isEmpty ? null : sourceId;
+    }
+    if (f['placeTraits'] is Map) {
+      world.placeTraits.addAll(
+        Map<String, dynamic>.from(f['placeTraits'] as Map),
+      );
+    }
+    // Slice 4 web twin: "Part of" changes the parent. Absent key keeps
+    // the row's parent (same upsert discipline as the climate fields);
+    // an explicit null or '' detaches it to its own world. The unknown/
+    // cycle law still runs inside saveWorld and its StateError escapes
+    // to the route, which answers 400 with the law's own sentence —
+    // the PWA must never be able to persist what the desktop refuses.
+    if (f.containsKey('parentWorldId')) {
+      final parent = f['parentWorldId']?.toString().trim();
+      world.parentWorldId = (parent == null || parent.isEmpty) ? null : parent;
     }
     if (f.containsKey('coverImage')) {
       final raw = f['coverImage']?.toString();
@@ -195,14 +232,34 @@ class WorldFacade {
           buildLorebookFromJson(f['entries'], bookFields: f) ??
           Lorebook(entries: []);
     }
-    await _worlds.saveWorld(world);
+    try {
+      // The editor's starting place rides the same save (desktop parity).
+      await saveWorldWithStartingPlace(
+        _worlds,
+        world,
+        locations.startingChoiceFrom(f, world),
+        isNew: existing == null,
+      );
+    } catch (e) {
+      // ANY failure (the law's StateError or a DB fault) restores the
+      // complete prior state: desktop #592 discipline, no ghost fields.
+      snapshot.restore();
+      rethrow;
+    }
     return true;
   }
 
-  Future<bool> delete(String nameOrId) async {
+  /// [onPlacesDeleted] reports how many places inside the world went with
+  /// it (web twin of the desktop confirm's count). Optional — callers that
+  /// only care about success keep the bool contract.
+  Future<bool> delete(
+    String nameOrId, {
+    void Function(int placesDeleted)? onPlacesDeleted,
+  }) async {
     final w = _worlds.resolveWorld(nameOrId);
     if (w == null) return false;
-    await _worlds.deleteWorld(w);
+    final gone = await _worlds.deleteWorld(w);
+    onPlacesDeleted?.call(gone);
     return true;
   }
 
@@ -224,6 +281,8 @@ class WorldFacade {
         'places': <Map<String, dynamic>>[],
         'lorePlaces': <Map<String, dynamic>>[],
         'climateAuthors': false,
+        'climateAuthorName': null,
+        'reachable': <Map<String, dynamic>>[],
         'weatherOff': 'no_setting',
         'climateId': 'temperate',
         'climateDisplayName': Biome.temperate.displayName,
@@ -237,6 +296,7 @@ class WorldFacade {
     final ids = chat.chatWorldIds;
 
     Map<String, dynamic> placeJson(World w, {required String role}) {
+      final parentId = w.parentWorldId;
       return {
         'id': w.id,
         'name': w.name,
@@ -248,6 +308,12 @@ class WorldFacade {
               : (w.biomeId ?? 'temperate'),
         'hasCustomClimate': w.climateEnabled && w.biomeJson != null,
         'description': w.description,
+        // Slice 4 web twin: "inside X" breadcrumbs on Setting and Lore
+        // tiles read these (desktop cards' parity, mockup p3).
+        'parentWorldId': parentId,
+        'parentName': parentId == null || parentId.isEmpty
+            ? null
+            : _worlds.resolveWorld(parentId)?.name,
       };
     }
 
@@ -269,7 +335,13 @@ class WorldFacade {
     // Older clients: flat places list (primary first, then lore).
     final places = <Map<String, dynamic>>[?primaryPlace, ...lorePlaces];
 
-    final climateAuthors = primaryWorldAllowsClimate(primaryWorld);
+    // The Setting's chain author owns climate (locations slice 2) — the
+    // same resolution the desktop weather gate uses. A location inherits;
+    // the custom dropdown entry stays `world:<climate-author-id>`.
+    final climateAuthor = primaryId == null
+        ? null
+        : _worlds.climateAuthorFor(primaryId);
+    final climateAuthors = climateAuthor != null;
     final String? weatherOff = primaryId == null
         ? 'no_setting'
         : (!climateAuthors ? 'setting_lore_only' : null);
@@ -282,22 +354,32 @@ class WorldFacade {
       'places': places,
       'lorePlaces': lorePlaces,
       'climateAuthors': climateAuthors,
+      // Slice 4 web twin: the PWA names the weather author on an
+      // inheriting Setting ("Weather from <name>", desktop parity) and
+      // fills the "Move the scene" dropdown from the ONE Dart reach law
+      // — no second TypeScript implementation of the rule.
+      'climateAuthorName': climateAuthor?.name,
+      // Additive: the top-level world whose weather-off switch silences
+      // this Setting (weatherOff stays 'setting_lore_only' for old clients).
+      'weatherOffWorldName': primaryId == null
+          ? null
+          : weatherOffRootOf(_worlds.chainFor(primaryId))?.name,
+      'reachable': reachable(primaryId),
       'weatherOff': ?weatherOff,
       'climateId': climate.id,
       'climateDisplayName': climate.displayName,
       'climateFeel': climate.feel,
       'dayCount': chat.timeService.dayCount,
-      // Built-ins + Primary custom only (never lore climate-on).
+      // Built-ins + the climate AUTHOR's custom only (never lore climate-on).
       'climateOptions': [
         if (climateAuthors) ...[
           for (final b in Biome.builtIns)
             {'id': b.id, 'displayName': b.displayName},
-          if (primaryWorld != null &&
-              primaryWorld.biomeJson != null &&
-              Biome.tryParse(primaryWorld.biomeJson) != null)
+          if (climateAuthor.biomeJson != null &&
+              Biome.tryParse(climateAuthor.biomeJson) != null)
             {
-              'id': 'world:${primaryWorld.id}',
-              'displayName': '${primaryWorld.name} (custom)',
+              'id': 'world:${climateAuthor.id}',
+              'displayName': '${climateAuthor.name} (custom)',
             },
         ],
       ],
@@ -350,8 +432,12 @@ class WorldFacade {
       return {'ok': false, 'error': 'No active chat'};
     }
     final primaryId = chat.chatPrimaryWorldId;
-    final primary = primaryId == null ? null : _worlds.resolveWorld(primaryId);
-    if (!primaryWorldAllowsClimate(primary)) {
+    // The chain author owns the switch (locations slice 2): a location
+    // setting may change climate because its parent authors one.
+    final author = primaryId == null
+        ? null
+        : _worlds.climateAuthorFor(primaryId);
+    if (author == null) {
       return {
         'ok': false,
         'error': primaryId == null
@@ -361,9 +447,9 @@ class WorldFacade {
     }
     Biome? biome = Biome.builtInById(biomeId);
     if (biome == null && biomeId.startsWith('world:')) {
-      // Custom climate only from the Primary setting.
+      // Custom climate only from the chain's climate author.
       final w = _worlds.resolveWorld(biomeId.substring(6));
-      if (w != null && w.id == primaryId) {
+      if (w != null && w.id == author.id) {
         biome = Biome.tryParse(w.biomeJson)?.withId('world:${w.id}');
       }
     }

@@ -35,6 +35,22 @@ extension ChatServiceAccessorsLiving on ChatService {
   /// stamps (journal cards, calendars) keep the calendar `dayCount`.
   int get storyDayCount => _timeService.morningAnchoredDayCount;
 
+  /// The app's appearance choices, read live by the Ambient Stage
+  /// (`sceneTokensFor`) so the chat page and the web chat state agree.
+  AppearanceSettings get appearance => _storageService.appearance;
+
+  /// The picture behind the chat: the Setting place's cover, or the nearest
+  /// ancestor's, read live from the Setting's chain so a scene move paints
+  /// the new place at once (`sceneBackdropOf`). Null when the chat has no
+  /// Setting or no place in its chain has a picture, and the chat keeps the
+  /// background it chose. Independent of the Ambient scene level: the
+  /// picture is the ground the weather paints on, not part of the weather.
+  SceneBackdrop? get sceneBackdrop {
+    final primaryId = _chatPlaceSlots.primaryId;
+    if (primaryId == null) return null;
+    return sceneBackdropOf(_worldRepository.chainFor(primaryId));
+  }
+
   /// Pure recompute from existing state — nothing stored, so save/load and
   /// group re-entry agree for free. Gate: a MOVING clock + the global toggle.
   /// Weather is deterministic math over the day count and needs no eval of its
@@ -43,17 +59,20 @@ extension ChatServiceAccessorsLiving on ChatService {
   /// always told users weather depends on Passage of Time. Consumed by the
   /// injection leaf, the needs decay modifiers, the sidebar TimeStrip, and the
   /// web facade — one source.
+
   DailyWeather? get _currentWeatherImpl {
     if (!_clockRunning || !_storageService.realismSettings.weatherEnabled) {
       return null;
     }
-    // Primary owns weather. Empty Primary OR climate-off Primary ⇒ off.
-    // Lore climate-on (e.g. Mars in Lore) never turns weather on.
+    // The Setting's chain owns weather (locations slice 2): the nearest
+    // climate-enabled ancestor authors it. Empty chain OR an all-lore-only
+    // chain ⇒ off. Lore climate-on (e.g. Mars in Lore) never turns weather
+    // on — a chain walk only ever reaches the Setting's own ancestors.
     final primaryId = _chatPlaceSlots.primaryId;
-    final primary = primaryId == null
-        ? null
-        : _worldRepository.resolveWorld(primaryId);
-    if (!primaryWorldAllowsClimate(primary)) {
+    final chain = primaryId == null
+        ? const <World>[]
+        : _worldRepository.chainFor(primaryId);
+    if (!chainAllowsClimate(chain)) {
       return null;
     }
     final seed = _currentSessionId;
@@ -135,7 +154,7 @@ extension ChatServiceAccessorsLiving on ChatService {
     return [
       if (host != null) ChatParticipant(card: host, isHost: true),
       for (final g in _sceneGuest.cards)
-        ChatParticipant(card: g, isHost: false),
+        ChatParticipant(card: g, isHost: false, isSceneGuest: true),
     ];
   }
 

@@ -113,7 +113,11 @@ void main() {
       // v60: sessions.refractory_tail_minutes + refractory_tail_total — the
       //      warmth tail (Afterglow PR 4). Guarded by the v60 round-trip in
       //      test/services/chat/refractory_legacy_load_test.dart.
-      expect(db.schemaVersion, 60);
+      // v61: worlds.parent_world_id — locations within worlds (slice 1).
+      //      Guarded by the chain / cycle / re-root group in
+      //      test/services/world_repository_test.dart and by
+      //      test/database/repair_covers_ladder_columns_test.
+      expect(db.schemaVersion, 61);
     });
 
     test('journal_memories table exists and round-trips (v35)', () async {

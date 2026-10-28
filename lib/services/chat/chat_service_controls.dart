@@ -67,35 +67,6 @@ extension ChatServiceControls on ChatService {
     notifyListeners();
   }
 
-  Future<void> setNsfwCooldownEnabled(bool enabled) async {
-    _nsfwService.setNsfwCooldownEnabled(enabled);
-    // In a group the flag is PER-CHARACTER (each speaker's eval reloads it via
-    // loadNsfwScalarsForSpeaker), so the chat-wide toggle must be written into
-    // EVERY member's _groupRealism entry — otherwise members keep their stale
-    // (off) per-char flag and arousal is never evaluated for them. (1:1 just uses
-    // the scalar above; this loop is a no-op there.)
-    if (_activeGroup != null) {
-      for (final c in _groupCharacters) {
-        final id = _getCharacterIdFromCard(c);
-        final entry = _groupStore.memberForWrite(id);
-        entry.nsfwCooldownEnabled = enabled;
-        // Parity with 1:1: NsfwService.setNsfwCooldownEnabled(false) zeroes
-        // the scalar arousal + cooldowns, so disabling must clear each
-        // member's persisted values too — otherwise re-enabling resumed
-        // members from stale arousal/cooldowns while a 1:1 chat restarted
-        // fresh. (Also the documented escape hatch: toggling off and on
-        // resets a chat's lust state to neutral in BOTH modes.)
-        if (!enabled) {
-          entry
-            ..arousal = 0
-            ..refractory = Refractory.none;
-        }
-      }
-    }
-    await _saveChat();
-    notifyListeners();
-  }
-
   Future<void> _setPassageOfTimeEnabledImpl(bool enabled) async {
     await _storageService.realismSettings.setPassageOfTimeDefault(enabled);
     _timeService.markClockGateSource('porch_life');
@@ -145,6 +116,38 @@ extension ChatServiceControls on ChatService {
     // must not leave the switch ON and the strip empty.
     notifyListeners();
     await _saveChat();
+  }
+
+  /// The character editor is the 1:1 Needs switch now that the chat sidebar
+  /// has none. A save that moves the card's choice away from [before] applies
+  /// it to every 1:1 chat with that character: the open one live, the others
+  /// through their stored flag, which hydrate reads on open. A save that
+  /// leaves the choice alone touches no chat, so fixing a typo never flips
+  /// Needs. Group chats keep their own switch in Group Settings → Needs.
+  Future<void> followCardNeedsChoice(
+    CharacterCard card, {
+    required bool? before,
+  }) async {
+    final after = card.frontPorchExtensions?.needsSimChoice;
+    if (after == null || after == before) return;
+    final dbId = card.dbId;
+    final active = _activeCharacter;
+    if (_activeGroup == null &&
+        active != null &&
+        (identical(active, card) || (dbId != null && active.dbId == dbId))) {
+      await setNeedsSimEnabled(after);
+    }
+    if (dbId == null) return;
+    // The open chat's row too: its own save skips a chat with no messages.
+    for (final s in await _db.getSessionsForCharacter(dbId)) {
+      if (s.groupId != null || s.needsSimEnabled == after) continue;
+      await _db.patchSession(
+        SessionsCompanion(
+          id: drift.Value(s.id),
+          needsSimEnabled: drift.Value(after),
+        ),
+      );
+    }
   }
 
   /// Per-chat Objectives switch (v45). Off means the quests stop running: no

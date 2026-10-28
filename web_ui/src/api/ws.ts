@@ -14,6 +14,8 @@ export type WsEvent = {
   name?: string;
   // `settings_changed`: the desktop's resolved app theme (theme/appTheme.ts).
   theme?: unknown;
+  // `settings_changed`: the bubble opacity the desktop paints (theme/bubbleOpacity.ts).
+  bubbleOpacity?: unknown;
   error?: string;
   // `chargen_error`: the same text as `error` (additive), the provider's
   // own words when a backend refused the request.
@@ -44,6 +46,9 @@ export type WsEvent = {
   scanDepth?: number;
   tokenBudget?: number;
   entries?: unknown;
+  // `world_wiki_done` slice 8: root book (tree save) and per-place books.
+  root?: unknown;
+  places?: unknown;
   // `processing` event (Realism + Objective engine overlay): which engine is
   // running + the live eval stream text.
   active?: boolean;

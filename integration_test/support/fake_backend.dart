@@ -152,6 +152,13 @@ class FakeBackendServer {
   /// Mac, red on the macOS and Windows CI runners.
   String? failChatCompletionContaining;
 
+  /// The skip reader's answer (`skip`, `minutes`, `until`, `gap`); null
+  /// answers "no skip".
+  Map<String, Object>? skipReaderVerdict;
+
+  /// Prompts the skip reader was sent, in order.
+  final List<String> skipReaderPrompts = [];
+
   /// Conversation turns rejected via [failNextChatCompletion].
   int chatFailuresServed = 0;
 
@@ -580,6 +587,30 @@ class FakeBackendServer {
       eval['user_climaxed'] = climax && userClimaxVerdict;
       if (climax) climaxVerdictsServed++;
     }
+    // The skip reader, asked before the reply when a line talks about
+    // time. A given verdict: no skip unless a suite sets [skipReaderVerdict].
+    if (lastContent.contains('You keep the story clock for a roleplay')) {
+      skipReaderPrompts.add(lastContent);
+      // 'the lantern gutters' (only the web "Did time pass?" journey sends
+      // it) reads as the next morning, slept, so a line that also counts
+      // eight hours disagrees and the question is asked.
+      eval.addAll(
+        skipReaderVerdict ??
+            (lastContent.toLowerCase().contains('the lantern gutters')
+                ? const {
+                    'skip': true,
+                    'minutes': 0,
+                    'until': 'morning',
+                    'gap': 'slept',
+                  }
+                : const {
+                    'skip': false,
+                    'minutes': 0,
+                    'until': '',
+                    'gap': 'none',
+                  }),
+      );
+    }
     if (lastContent.contains('emotion_intensity')) {
       eval['emotion'] = 'happy';
       eval['emotion_intensity'] = 'moderate';
@@ -597,6 +628,39 @@ class FakeBackendServer {
       eval['posture'] = 'standing';
       eval['minutes_elapsed'] = 5;
       eval['new_day'] = false;
+      // Slice 7 mint journey: when the prompt OFFERS scene_place (the
+      // Scene suggestions switch is on and the setting has relatives),
+      // answer with a named arrival that is not in the offered list —
+      // the exact shape that must route to the mint dialog, not a move.
+      if (lastContent.contains('"scene_place"')) {
+        eval['scene_place'] = 'new';
+        eval['new_place_name'] = 'The Salt Garden';
+        eval['new_place_descriptor'] = 'hedged beds beside the tideline';
+      }
+    }
+    // Place-mint draft (slice 7). The PlaceFactory prompt is the only
+    // one asking for 'lore_entries'; answer with three so the cap
+    // 3-5 passes and the mint journey exercises the real save law.
+    if (lastContent.contains('"lore_entries"')) {
+      eval['short_description'] =
+          'A small courtyard of salt-bleached stone by the tideline.';
+      eval['lore_entries'] = [
+        {
+          'name': 'Salt walls',
+          'keys': 'salt,wall',
+          'content': 'The walls weep brine.',
+        },
+        {
+          'name': 'Well',
+          'keys': 'well',
+          'content': 'A stone well in the centre.',
+        },
+        {
+          'name': 'Gate',
+          'keys': 'gate',
+          'content': 'An iron gate to the harbour.',
+        },
+      ];
     }
     // Glance pass (21bfd8c3). Same trap as climax above: unmatched key
     // falls through to CHAT, bumps chatRequests, clobbers lastChatBody —

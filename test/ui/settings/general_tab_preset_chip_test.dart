@@ -85,12 +85,17 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 100));
 
-      final chip = find.widgetWithText(ActionChip, '🖥️ KoboldCPP');
-      expect(chip, findsOneWidget);
-      await tester.ensureVisible(chip);
+      // The preset chips became the one-to-one slot's Reset to built-in
+      // menu; the same guard runs through it.
+      final reset = find.text('Reset to built-in').first;
+      await tester.ensureVisible(reset);
       // NOT pumpAndSettle: the spell-check row's spinner is an infinite
       // animation while its platform lookup is pending.
       await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(reset);
+      await tester.pump(const Duration(milliseconds: 300));
+      final chip = find.text('KoboldCpp default');
+      expect(chip, findsOneWidget);
       await tester.tap(chip);
       await tester.pump();
 

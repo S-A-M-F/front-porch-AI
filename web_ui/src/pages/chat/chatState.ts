@@ -14,6 +14,7 @@ import {
   type Message,
   type Realism,
 } from '../../components/chatTypes';
+import { type PendingSkip } from '../../components/SkipConfirmSheet';
 
 export interface ChatState {
   character: { name: string; id: string } | null;
@@ -59,17 +60,33 @@ export interface ChatState {
   stoppedReply?: { notice: string; canRetry: boolean } | null;
   pendingDetection?: string | null;
   pendingPicker?: { filter: string; full: boolean } | null;
+  // Slice 6 (additive): a suggested scene move awaiting the author —
+  // the PWA twin of the desktop confirm dialog. Answering is one POST
+  // to /api/chat/place-move; the flag clears on the next snapshot.
+  pendingPlaceMove?: { id: string; name: string } | null;
+  // Slice 7 (additive): a proposed NAMED new place from the clock
+  // judge's 'new' answer. Answered via POST /api/chat/place-mint.
+  pendingMint?: { name: string; descriptor: string; settingName?: string } | null;
   // Chaos "Chance Time" park state: while pending, the engine is frozen waiting
   // for the user to accept their fate (event is pre-resolved server-side).
   chanceTime?: { pending: boolean; event?: string };
   // Crafted /image prompt parked for review (review setting on) — the modal
   // resolves it via POST /api/chat/image-review.
   imagePromptReview?: string;
+  // "Did time pass?" (#629, additive): the send waits on it; the sheet
+  // answers via POST /api/chat/skip-confirm.
+  pendingSkip?: PendingSkip | null;
   // Current model's tool-calling verdict (desktop sidebar pill parity);
   // retest via POST /api/chat/tool-test.
   toolSupport?: ToolSupport;
   // Per-chat theme overrides (preset + font/color/background/border).
   themeOverrides?: ChatThemeOverrides;
+  // The Ambient Stage: the story's weather as colour strings the chat view
+  // paints behind the bubbles (additive; null or absent means no scene).
+  scene?: unknown;
+  // The Setting place's picture behind the chat: who it belongs to and
+  // where to fetch it (additive; null or absent means the theme background).
+  sceneBackdrop?: { placeId: string; placeName: string; url: string } | null;
   // Per-chat system prompt source (1:1 only) and the new-chat picker's
   // prompts while a new chat waits on it (additive; omitted in groups).
   promptSource?: PromptSourceState;

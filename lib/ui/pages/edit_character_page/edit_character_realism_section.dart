@@ -106,8 +106,6 @@ class EditCharacterRealismSection extends StatelessWidget {
           emotionIntensity: d.realismEmotionIntensity,
           onEmotionIntensityChanged: (v) =>
               _edit(() => d.realismEmotionIntensity = v),
-          nsfwCooldownEnabled: d.realismNsfwCooldown,
-          onNsfwCooldownChanged: (v) => _edit(() => d.realismNsfwCooldown = v),
           recovery: d.recovery,
           onRecoveryChanged: (v) => _edit(() => d.recovery = v),
           sex: d.sex,

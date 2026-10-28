@@ -21,5 +21,6 @@ export 'settings/stt_settings.dart';
 export 'settings/tool_verdict_settings.dart';
 export 'settings/tts_settings.dart';
 export 'settings/ui_settings.dart';
+export 'settings/hf_settings.dart';
 export 'settings/web_search_settings.dart';
 export 'settings/web_server_settings.dart';

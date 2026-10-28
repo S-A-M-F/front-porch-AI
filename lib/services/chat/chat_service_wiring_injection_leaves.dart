@@ -82,19 +82,29 @@ extension ChatServiceWiringInjectionLeaves on ChatService {
   TimeInjection _buildTimeInjection() =>
       TimeInjection(timeService: _timeService);
 
-  /// Climate from the Primary setting only (Living Worlds).
-  /// Lore attachments never author the schedule default. Group.worldIds
-  /// ghost removed — decided empty stays empty. Temperate is a schedule
-  /// placeholder only; the weather gate stays off when Primary is empty
-  /// or climate-off.
-  Biome get _worldDefaultBiome {
-    final id = _chatPlaceSlots.primaryId;
-    if (id == null) return Biome.temperate;
-    final w = _worldRepository.resolveWorld(id);
-    if (w == null || !w.climateEnabled) return Biome.temperate;
+  /// Climate from the Setting's chain author (Living Worlds, locations
+  /// slice 2): a location inherits the nearest climate-enabled ancestor;
+  /// the custom-climate dropdown id is `world:<climate-author-id>`. Lore
+  /// attachments never author the schedule default. Group.worldIds ghost
+  /// removed — decided empty stays empty. Temperate is a schedule
+  /// placeholder only; the weather gate stays off when the chain has no
+  /// climate author.
+  /// The full biome an authoring world speaks: built-in id, custom JSON
+  /// renamed `world:<id>`, or temperate when it carries no climate data.
+  /// One definition for the schedule default and for the changeover spans
+  /// a Setting swap records, so the two can never disagree.
+  Biome _biomeOfAuthor(World w) {
     if (w.biomeId == null && w.biomeJson == null) return Biome.temperate;
     final b = Biome.resolve(biomeId: w.biomeId, biomeJson: w.biomeJson);
     return w.biomeJson != null ? b.withId('world:${w.id}') : b;
+  }
+
+  Biome get _worldDefaultBiome {
+    final id = _chatPlaceSlots.primaryId;
+    if (id == null) return Biome.temperate;
+    final w = _worldRepository.climateAuthorFor(id);
+    if (w == null) return Biome.temperate;
+    return _biomeOfAuthor(w);
   }
 
   Biome _biomeAtDay(int day) => _biomeSchedule.biomeAt(day);

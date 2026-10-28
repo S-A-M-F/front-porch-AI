@@ -36,6 +36,7 @@ mixin KoboldLaunchFields on SettingsBase {
   bool _gpuLayersNoteSeen = false;
   KvQuant? _kvQuantNamed;
   bool _rocmFlashAttentionFailed = false;
+  bool _gemma4VulkanFlashAttention = false;
   bool _batchAutomatic = true;
   Set<String> _keeperFailed = const {};
   int _idleUnloadMinutes = 0;
@@ -267,6 +268,17 @@ mixin KoboldLaunchFields on SettingsBase {
     if (_rocmFlashAttentionFailed) await setRocmFlashAttentionFailed(false);
   }
 
+  /// Flash attention for Gemma 4 on Vulkan, which crashed KoboldCpp in
+  /// testing: off (the default) runs those models without it, whatever the
+  /// Flash Attention switch says.
+  bool get gemma4VulkanFlashAttention => _gemma4VulkanFlashAttention;
+
+  Future<void> setGemma4VulkanFlashAttention(bool value) async {
+    _gemma4VulkanFlashAttention = value;
+    await prefs?.setBool(k('gemma4_vulkan_flash_attention'), value);
+    notify();
+  }
+
   /// False (the default, for everyone): KoboldCpp fits the model to the
   /// card itself. True: the stored `gpu_layers` number is sent as typed.
   bool get gpuLayersManual => _gpuLayersManual;
@@ -305,6 +317,8 @@ mixin KoboldLaunchFields on SettingsBase {
     _kvQuantNamed = named == null ? null : KvQuant.parse(named);
     _rocmFlashAttentionFailed =
         prefs?.getBool(k('rocm_flash_attention_failed')) ?? false;
+    _gemma4VulkanFlashAttention =
+        prefs?.getBool(k('gemma4_vulkan_flash_attention')) ?? false;
     // Auto for everyone who never chose a batch; a batch chosen before Auto
     // existed is kept.
     _batchAutomatic =

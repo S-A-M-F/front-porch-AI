@@ -14,14 +14,22 @@ import { api } from '../../api/client';
 // adult controls from someone who has not opted in, not to flash them for a
 // frame. Nothing typed is lost either way — the values stay on the card, the
 // same as flipping the master switch on desktop.
-export function useAdultThemes(): boolean {
-  const [on, setOn] = useState(false);
+//
+// `afterglow` is Porch Life Afterglow, which counts only while 18+ is on
+// (desktop RealismSettings.afterglowEnabled). There is no per-card Afterglow
+// switch: the character's Recovery block shows when this is on.
+export function useAdultFlags(): { adult: boolean; afterglow: boolean } {
+  const [flags, setFlags] = useState({ adult: false, afterglow: false });
   useEffect(() => {
     let alive = true;
     api
-      .get<{ realism?: { adultThemesEnabled?: boolean } }>('/api/settings')
+      .get<{ realism?: { adultThemesEnabled?: boolean; nsfwCooldownDefault?: boolean } }>(
+        '/api/settings',
+      )
       .then((s) => {
-        if (alive) setOn(s.realism?.adultThemesEnabled === true);
+        if (!alive) return;
+        const adult = s.realism?.adultThemesEnabled === true;
+        setFlags({ adult, afterglow: adult && s.realism?.nsfwCooldownDefault === true });
       })
       .catch(() => {
         /* stay hidden — see above */
@@ -30,5 +38,5 @@ export function useAdultThemes(): boolean {
       alive = false;
     };
   }, []);
-  return on;
+  return flags;
 }

@@ -16,6 +16,7 @@ export 'image_gen_enable_section.dart';
 export 'kobold_idle_unload_row.dart';
 export 'kobold_keep_recent_row.dart';
 export 'launch_choice_row.dart';
+export 'flash_attention_crash_warning.dart';
 export 'launch_options_notice.dart';
 export 'legacy_cleanup_card.dart';
 export 'photo_understanding_card.dart';
@@ -33,3 +34,5 @@ export 'tools_folder_note.dart';
 export 'skills_folder_note.dart';
 
 export 'global_prompt_additions.dart';
+export 'group_system_prompt_field.dart';
+export 'prompt_slot_card.dart';

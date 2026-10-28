@@ -97,3 +97,202 @@ button.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transpar
   width: 56px; height: 56px; flex: none; object-fit: cover;
   border-radius: var(--radius); border: 1px solid var(--border);
 }
+
+/* ── World from Wiki progress panel (what the host is doing, with the time taken) ── */
+.world-progress { display: flex; flex-direction: column; gap: 6px; }
+.world-progress-now { display: flex; align-items: flex-start; gap: 10px; margin: 0; }
+.world-progress-text { flex: 1; line-height: 1.35; }
+.world-progress-elapsed { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.world-progress-spin {
+  width: 14px; height: 14px; margin-top: 3px; flex-shrink: 0; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: world-progress-turn 0.9s linear infinite;
+}
+@keyframes world-progress-turn { to { transform: rotate(360deg); } }
+.world-progress-log { list-style: none; margin: 0; padding: 0 0 0 24px; display: flex; flex-direction: column; gap: 2px; }
+.world-progress-at { font-variant-numeric: tabular-nums; opacity: 0.8; margin-right: 6px; }
+@media (prefers-reduced-motion: reduce) { .world-progress-spin { animation: none; } }
+
+/* ── World from Wiki · the Review step before Mint ─────────────────── */
+.world-review { display: flex; flex-direction: column; gap: 16px; }
+.world-review-findings, .world-review-direction, .world-review-add {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 16px;
+  border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border);
+}
+.world-review-direction { border-color: var(--accent); }
+.world-review-add { border-style: dashed; border-color: var(--accent); }
+.world-review-findings-head { display: flex; align-items: center; gap: 10px; }
+.world-review-findings-head .world-review-link { margin-left: auto; }
+.world-review-findings ul { margin: 0; padding-left: 20px; line-height: 1.5; }
+.world-review-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.world-review-scope label { display: inline-flex; align-items: center; gap: 6px; }
+.world-review-scope .world-review-outline { margin-left: auto; }
+.world-review-outline {
+  background: transparent; border: 1.5px solid var(--accent); color: var(--accent);
+  font-weight: 700; border-radius: 12px; min-height: 44px; padding: 0 18px;
+}
+.world-review-link {
+  background: none; border: 0; padding: 4px 8px; color: var(--accent); font-weight: 700; min-height: 36px;
+}
+.world-review-link.muted { color: var(--muted); }
+.world-review-more { align-self: center; }
+.world-review-place { display: flex; flex-direction: column; gap: 12px; }
+.world-review-place-head {
+  display: flex; align-items: flex-end; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.world-review-place-head > div { flex: 1; min-width: 0; }
+.world-review-place-head p { margin: 4px 0 0; }
+.world-review-place-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 1.1rem; }
+.world-review-chip {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-2);
+  border: 1px solid var(--border); color: var(--muted); font-weight: 400;
+}
+.world-review-add-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.world-review-add-row input { flex: 1 1 180px; }
+.world-review-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 900px) { .world-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.world-review-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); min-width: 0;
+}
+.world-review-card.noting { border-color: var(--accent); }
+.world-review-card.pinned { opacity: 0.85; }
+.world-review-card textarea { width: 100%; box-sizing: border-box; line-height: 1.45; }
+.world-review-card-head { display: flex; align-items: center; gap: 8px; }
+.world-review-grow { flex: 1; }
+.world-review-pin {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); display: grid; place-items: center; padding: 0;
+}
+.world-review-pin.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.world-review-keys { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.world-review-key {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; padding: 3px 9px;
+  border-radius: 999px; border: 1px solid var(--border); color: var(--text); background: transparent;
+}
+.world-review-key button { background: none; border: 0; color: var(--muted); padding: 0 2px; min-height: 0; line-height: 1; }
+.world-review-key.add { border-style: dashed; color: var(--muted); min-height: 0; cursor: pointer; }
+.world-review-key-input { width: 170px; font-size: 0.85rem; padding: 4px 8px; }
+.world-review-verdict { margin: 0; font-size: 0.78rem; line-height: 1.35; }
+.world-review-verdict.passed { color: var(--ok); }
+.world-review-verdict.rewritten { color: var(--studio-honey, var(--accent)); }
+.world-review-verdict.failing { color: var(--danger); }
+.world-review-verdict.kept { color: var(--muted); }
+.world-review-note {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px;
+  border: 1px dashed var(--accent);
+}
+.world-review-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.world-progress-step { margin: 0 0 0 24px; font-variant-numeric: tabular-nums; }
+
+/* ── World from Wiki · the uplift: cards, tiles, pills, the shelf ─────── */
+.wfw-book { display: flex; flex-direction: column; gap: 16px; }
+.wfw-book.dimmed { opacity: 0.45; pointer-events: none; }
+.wfw-card {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 18px;
+  border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border);
+}
+.wfw-card-head { display: flex; align-items: center; gap: 10px; }
+.wfw-badge {
+  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); flex-shrink: 0;
+}
+.wfw-grow-right { margin-left: auto; }
+.wfw-grow { flex: 1; }
+.wfw-two { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 760px) { .wfw-two { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.wfw-moment {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.wfw-moment-head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.wfw-moment-head strong { color: var(--text); }
+.wfw-chip {
+  font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-2);
+  border: 1px solid var(--border); color: var(--muted); font-weight: 400; white-space: nowrap;
+}
+.wfw-chip.accent { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: transparent; color: var(--accent); }
+.wfw-tiles { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 760px) { .wfw-tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.wfw-tile {
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 12px 14px; text-align: left;
+  border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit;
+  min-height: 44px;
+}
+.wfw-tile.on { border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.wfw-tile-title { display: flex; align-items: center; gap: 8px; }
+.wfw-tile .accent { color: var(--accent); }
+.wfw-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--border); flex-shrink: 0; }
+.wfw-dot.on { background: var(--accent); border-color: var(--accent); }
+.wfw-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wfw-pill {
+  font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 999px; min-height: 34px;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+}
+.wfw-pill.on { border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); font-weight: 700; }
+.wfw-toggle {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--border); color: var(--accent); margin: 0;
+}
+.wfw-toggle-text { display: flex; flex-direction: column; gap: 2px; flex: 1; color: var(--text); }
+.wfw-toggle input { width: 40px; height: 22px; accent-color: var(--accent); }
+.wfw-nav-next { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.wfw-shelf { display: flex; flex-direction: column; gap: 14px; }
+.wfw-shelf-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.wfw-shelf-head > div:first-child { flex: 1 1 260px; }
+.wfw-counts { display: flex; gap: 10px; flex-wrap: wrap; }
+.wfw-count {
+  display: flex; flex-direction: column; align-items: center; min-width: 76px; padding: 8px 14px;
+  border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border);
+}
+.wfw-count strong { font-size: 1.3rem; line-height: 1.1; }
+.wfw-count.accent strong { color: var(--accent); }
+.wfw-banner {
+  display: flex; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--surface-2);
+  border: 1px solid var(--border); line-height: 1.4;
+}
+.wfw-banner > span:first-child { color: var(--accent); }
+.wfw-group { display: flex; flex-direction: column; gap: 10px; }
+.wfw-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 1.05rem; }
+.wfw-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+@media (min-width: 760px) { .wfw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.wfw-shelf-card {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); margin: 0;
+}
+.wfw-shelf-card.on { border: 1.5px solid var(--accent); }
+.wfw-shelf-card input { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+.wfw-shelf-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.wfw-shelf-card-text .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.world-progress {
+  padding: 16px 18px; border-radius: 16px; background: var(--surface-2);
+  border: 1.5px solid var(--accent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.world-progress-now { align-items: flex-start; gap: 12px; }
+.world-progress-text { display: flex; flex-direction: column; gap: 2px; }
+.world-progress-text strong { font-size: 1.05rem; line-height: 1.3; }
+.world-progress-times { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.world-progress-elapsed { font-size: 1.35rem; font-weight: 700; }
+.world-progress-spin { width: 36px; height: 36px; border-width: 3px; margin-top: 0; }
+.world-progress-bar { height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; position: relative; margin-top: 12px; }
+.world-progress-bar span { position: absolute; top: 0; height: 100%; width: 28%; border-radius: 999px; background: var(--accent); animation: world-progress-sweep 1.8s ease-in-out infinite; }
+@keyframes world-progress-sweep { 0% { left: -30%; } 100% { left: 100%; } }
+.world-progress-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.world-progress-stage { font-size: 0.75rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.world-progress-stage.lit { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: transparent; color: var(--accent); font-weight: 700; }
+.world-progress-stop { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); font-weight: 700; border-radius: 10px; min-height: 36px; padding: 0 14px; }
+@media (prefers-reduced-motion: reduce) { .world-progress-bar span { animation: none; left: 36%; } }
+
+/* World from Character: the source card's tiles and rows, the mode tiles. */
+@media (min-width: 760px) { .wfw-tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .wfw-tiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.wfw-tile-row { flex-direction: row; align-items: center; gap: 10px; }
+.wfw-tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.wfw-tile-text strong, .wfw-tile-text .muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wfw-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.wfw-avatar-initials { display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+.wfw-card-wanted { border-color: var(--accent); }
+.wfw-chip.warn { background: color-mix(in srgb, var(--porch-terracotta) 16%, transparent); border-color: transparent; color: var(--porch-terracotta); }
+.wfw-warning { margin: 0; color: var(--porch-honey); line-height: 1.4; }
+.wfw-modes { display: flex; flex-direction: column; gap: 8px; }
+.wfw-modes .wfw-tile strong { color: var(--text); }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 import 'chat_places_panel.picker.dart';
@@ -51,20 +52,41 @@ class ChatPlaceEmptySettingCard extends StatelessWidget {
 }
 
 /// The chat's Setting place with Move-to-lore and Remove actions.
+/// Locations slice 3 adds the breadcrumb ("inside X") and the one-tap
+/// "Move the scene" dropdown of reachable places (self, parent, children,
+/// siblings — [reachablePlaces]). Moving demotes the old Setting to the top
+/// of Lore, exactly as replacing it from the attach picker does.
 class ChatPlaceSettingCard extends StatelessWidget {
   final ChatService chat;
   final World world;
   final List<String> loreIds;
+  // Library access for the reach list; null keeps today's card verbatim.
+  final WorldRepository? worlds;
 
   const ChatPlaceSettingCard({
     super.key,
     required this.chat,
     required this.world,
     required this.loreIds,
+    this.worlds,
   });
 
   @override
   Widget build(BuildContext context) {
+    final repo = worlds;
+    // Live view of the slots: a widget built one frame ago still holds the
+    // pre-move [loreIds]/[world], so every write below re-reads actual chat
+    // state rather than the closure capture. Two quick scene moves must
+    // not drop a place out of both slots (hostile review #592 M7).
+    List<String> liveLore() => chat.chatLoreWorldIds;
+    String? livePrimary() => chat.chatPrimaryWorldId;
+    final parentId = world.parentWorldId;
+    final parentWorld = (repo == null || parentId == null || parentId.isEmpty)
+        ? null
+        : repo.worldById(parentId);
+    final reach = repo == null
+        ? const <World>[]
+        : reachablePlaces(world, repo.placeWorlds, repo.worldById);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
@@ -75,62 +97,161 @@ class ChatPlaceSettingCard extends StatelessWidget {
           color: AppColors.formAccentOf(context).withValues(alpha: 0.40),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ChatPlaceRolePill(label: 'SETTING', accent: true),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              world.name,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary(context),
+          Row(
+            children: [
+              const ChatPlaceRolePill(label: 'SETTING', accent: true),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  world.name,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary(context),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
+              IconButton(
+                tooltip: 'Move to lore',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.arrow_downward,
+                  size: 16,
+                  color: AppColors.textTertiary(context),
+                ),
+                onPressed: chat.isGenerating
+                    ? null
+                    : () async {
+                        final ok = await confirmChatPlaceChange(
+                          context,
+                          title: 'Move to lore?',
+                          body:
+                              'Move to lore? Weather will turn off for this chat.',
+                        );
+                        if (!ok) return;
+                        await chat.setChatPlaceSlots(
+                          primaryId: null,
+                          loreIds: [
+                            world.id,
+                            for (final l in liveLore())
+                              if (l != world.id) l,
+                          ],
+                        );
+                      },
+              ),
+              IconButton(
+                tooltip: 'Remove setting',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.close,
+                  size: 16,
+                  color: AppColors.textTertiary(context),
+                ),
+                onPressed: chat.isGenerating
+                    ? null
+                    : () async {
+                        await chat.setChatPlaceSlots(
+                          primaryId: null,
+                          loreIds: liveLore(),
+                        );
+                      },
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Move to lore',
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.arrow_downward,
-              size: 16,
-              color: AppColors.textTertiary(context),
+          if (parentWorld != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 2, 8, 0),
+              child: Text(
+                'inside ${parentWorld.name}',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: AppColors.textTertiary(context),
+                ),
+              ),
             ),
-            onPressed: chat.isGenerating
-                ? null
-                : () async {
-                    final ok = await confirmChatPlaceChange(
-                      context,
-                      title: 'Move to lore?',
-                      body:
-                          'Move to lore? Weather will turn off for this chat.',
-                    );
-                    if (!ok) return;
-                    await chat.setChatPlaceSlots(
-                      primaryId: null,
-                      loreIds: [world.id, ...loreIds],
-                    );
-                  },
-          ),
-          IconButton(
-            tooltip: 'Remove setting',
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.close,
-              size: 16,
-              color: AppColors.textTertiary(context),
+          if (repo != null && reach.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 6, 8, 0),
+              child: DropdownButtonFormField<String>(
+                key: const Key('place-move-scene'),
+                // ignore: deprecated_member_use
+                value: world.id,
+                isExpanded: true,
+                menuMaxHeight: 320,
+                dropdownColor: AppColors.surfaceContainerOf(context),
+                decoration: InputDecoration(
+                  isDense: true,
+                  labelText: 'Move the scene',
+                  labelStyle: TextStyle(
+                    fontSize: 10.5,
+                    color: AppColors.textTertiary(context),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: AppColors.borderOf(context).withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: AppColors.textPrimary(context),
+                ),
+                items: [
+                  for (final r in reach)
+                    DropdownMenuItem(
+                      value: r.id,
+                      child: Text(
+                        r.id == world.id ? '${r.name} (here)' : r.name,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: chat.isGenerating
+                    ? null
+                    : (id) async {
+                        if (id == null) return;
+                        // Demote whatever the Setting is NOW (live), not the
+                        // world this widget was built for: after a fast A→B,
+                        // a stale closure demoting A would drop B from both
+                        // slots entirely.
+                        final old = livePrimary() ?? world.id;
+                        if (id == old) return;
+                        final target = repo.worldById(id);
+                        if (target == null) return;
+                        // Demote-on-replace, today's rule: the old place goes
+                        // to the top of Lore so its book stays live this scene.
+                        await chat.setChatPlaceSlots(
+                          primaryId: target.id,
+                          loreIds: [
+                            old,
+                            for (final l in liveLore())
+                              if (l != target.id && l != old) l,
+                          ],
+                        );
+                      },
+              ),
             ),
-            onPressed: chat.isGenerating
-                ? null
-                : () async {
-                    await chat.setChatPlaceSlots(
-                      primaryId: null,
-                      loreIds: loreIds,
-                    );
-                  },
-          ),
+          if (repo != null && reach.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 8, 0),
+              child: Text(
+                'The old place stays as a lore place for the rest of the scene.',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textTertiary(context),
+                  height: 1.3,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -144,6 +265,9 @@ class ChatPlaceLoreTile extends StatelessWidget {
   final ChatService chat;
   final String? primaryId;
   final List<String> loreIds;
+  // Parent place name (locations slice 3) — renders "inside X" under the
+  // tile name so a lore book from a tree reads as part of the tree.
+  final String? insideName;
 
   const ChatPlaceLoreTile({
     super.key,
@@ -152,6 +276,7 @@ class ChatPlaceLoreTile extends StatelessWidget {
     required this.chat,
     required this.primaryId,
     required this.loreIds,
+    this.insideName,
   });
 
   @override
@@ -180,13 +305,32 @@ class ChatPlaceLoreTile extends StatelessWidget {
             const ChatPlaceRolePill(label: 'LORE', accent: false),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                world.name,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textPrimary(context),
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    world.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textPrimary(context),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // Depth line for locations (mockup p3: "inside
+                  // Bletchfield · was the Setting"). The "was the
+                  // Setting" tail is the move flow's own state — the
+                  // breadcrumb here is the part the library owns.
+                  if (insideName != null)
+                    Text(
+                      'inside $insideName',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textTertiary(context),
+                      ),
+                    ),
+                ],
               ),
             ),
             IconButton(
@@ -200,12 +344,16 @@ class ChatPlaceLoreTile extends StatelessWidget {
               onPressed: chat.isGenerating
                   ? null
                   : () async {
+                      // Live slots: promoting B right after promoting A
+                      // must not drop A out of Lore with the stale capture
+                      // this tile was built with (review #592, M7 class).
+                      final livePrimary = chat.chatPrimaryWorldId;
                       final nextLore = [
-                        ?primaryId,
-                        for (final id in loreIds)
+                        ?livePrimary,
+                        for (final id in chat.chatLoreWorldIds)
                           if (id != world.id) id,
                       ];
-                      if (primaryId != null) {
+                      if (livePrimary != null) {
                         final ok = await confirmChatPlaceChange(
                           context,
                           title: 'Replace setting?',
@@ -232,9 +380,12 @@ class ChatPlaceLoreTile extends StatelessWidget {
                   ? null
                   : () async {
                       await chat.setChatPlaceSlots(
-                        primaryId: primaryId,
+                        // Re-read the Setting too: writing a stale
+                        // primaryId here would undo a scene move made
+                        // while this tile was on screen.
+                        primaryId: chat.chatPrimaryWorldId,
                         loreIds: [
-                          for (final id in loreIds)
+                          for (final id in chat.chatLoreWorldIds)
                             if (id != world.id) id,
                         ],
                       );

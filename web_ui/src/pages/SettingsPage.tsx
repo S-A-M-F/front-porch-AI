@@ -7,13 +7,16 @@ import { PersonaManager } from '../components/PersonaManager';
 import { ModelPicker } from '../components/ModelPicker';
 import { ChatColorsSettings } from '../components/ChatColorsSettings';
 import { ReadingSizeSettings } from '../components/ReadingSizeSettings';
+import { BubbleOpacitySettings } from '../components/BubbleOpacitySettings';
 import { FollowStreamingSettings } from '../components/FollowStreamingSettings';
 import { AppearanceSettings } from '../components/AppearanceSettings';
 import { MessageSideSettings } from '../components/MessageSideSettings';
 import { PorchLifeSettings } from '../components/PorchLifeSettings';
 import { PromptSettingsCard } from '../components/PromptSettingsCard';
+import type { BuiltInPrompt, SavedPrompt } from '../components/PromptSlot';
 import { ModelTransportCard } from '../components/ModelTransportCard';
 import { IdleUnloadSettings } from '../components/IdleUnloadSettings';
+import { HfTokenCard } from '../components/HfTokenCard';
 import { KeepRecentChatsSettings } from '../components/KeepRecentChatsSettings';
 import { applySpellCheckLang } from '../spellCheckLang';
 import {
@@ -46,6 +49,8 @@ interface Settings {
   remoteApiUrl: string;
   remoteModelName: string;
   hasApiKey: boolean;
+  /** A HuggingFace token is saved on the host. Absent on older hosts. */
+  hasHfToken?: boolean;
   remoteApiUrlsWithKeys?: string[];
   /** Slot → last model used on that host. Absent on older hosts. */
   remoteApiModels?: Record<string, string>;
@@ -78,6 +83,12 @@ interface Settings {
   spellCheckLanguages?: string[];
   systemPrompt?: string;
   additionalSystemPrompt?: string;
+  groupSystemPrompt?: string;
+  builtInGroupSystemPrompt?: string;
+  systemPromptName?: string | null;
+  groupSystemPromptName?: string | null;
+  savedPrompts?: SavedPrompt[];
+  builtInSystemPrompts?: BuiltInPrompt[];
   additionalPostHistoryInstructions?: string;
   bannedPhrases?: string[];
   workerBackend?: string;
@@ -118,6 +129,9 @@ const savedFields = (s: Settings) =>
     s.generation,
     s.systemPrompt,
     s.additionalSystemPrompt,
+    s.groupSystemPrompt ?? '',
+    s.systemPromptName ?? null,
+    s.groupSystemPromptName ?? null,
     s.additionalPostHistoryInstructions,
     s.bannedPhrases,
     s.workerBackend ?? '',
@@ -244,6 +258,10 @@ export function SettingsPage() {
         systemPrompt: s.systemPrompt,
         additionalSystemPrompt: s.additionalSystemPrompt,
         additionalPostHistoryInstructions: s.additionalPostHistoryInstructions,
+        ...(s.groupSystemPrompt !== undefined ? { groupSystemPrompt: s.groupSystemPrompt } : {}),
+        ...(s.savedPrompts !== undefined
+          ? { systemPromptName: s.systemPromptName ?? null, groupSystemPromptName: s.groupSystemPromptName ?? null }
+          : {}),
         bannedPhrases: s.bannedPhrases,
         workerBackend: s.workerBackend ?? '',
         workerRemoteApiUrl: s.workerRemoteApiUrl ?? '',
@@ -374,6 +392,7 @@ export function SettingsPage() {
           <FollowStreamingSettings />
           <AppearanceSettings />
           <ReadingSizeSettings />
+          <BubbleOpacitySettings />
           <ChatColorsSettings />
         </div>
 
@@ -381,6 +400,12 @@ export function SettingsPage() {
           systemPrompt={s.systemPrompt}
           additionalSystemPrompt={s.additionalSystemPrompt}
           additionalPostHistoryInstructions={s.additionalPostHistoryInstructions}
+          groupSystemPrompt={s.groupSystemPrompt}
+          builtInGroupSystemPrompt={s.builtInGroupSystemPrompt}
+          systemPromptName={s.systemPromptName}
+          groupSystemPromptName={s.groupSystemPromptName}
+          savedPrompts={s.savedPrompts}
+          builtInSystemPrompts={s.builtInSystemPrompts}
           patch={(p) => patch(p as Partial<Settings>)}
         />
 
@@ -583,6 +608,7 @@ export function SettingsPage() {
             <KeepRecentChatsSettings />
           </div>
         )}
+        <HfTokenCard hasToken={!!s.hasHfToken} totpEnabled={totpEnabled} />
       </div>
 
       <div className="settings-section" data-section="advanced">

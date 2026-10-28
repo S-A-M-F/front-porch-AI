@@ -213,3 +213,271 @@
 @media (max-width: 560px) {
   .place-traits-row { grid-template-columns: 1fr; }
 }
+
+/* ── Locations web twin (slice 4) ───────────────────────────────────────
+   Grouped library: filter pills, section headers with indented children,
+   tree tags, selection, the move dialog, and the prose preview. Colors
+   come from the same CSS variables as the rest of the sheet. */
+
+.wsg-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 4px;
+}
+.wsg-pill {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  border-radius: var(--radius-badge, 999px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2, inherit);
+  cursor: pointer;
+}
+.wsg-pill--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.wsg-pill--danger { color: var(--danger, var(--accent)); }
+.wsg-pill--move {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.wsg-section-label {
+  margin: 8px 0 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-2, inherit);
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}
+/* The library: one card per top-level world. A world's places open as a
+   full-width panel; dense flow lets the cards after it backfill its row,
+   so the panel lands directly under the row that holds its world. */
+.wsg-world-grid--library { grid-auto-flow: row dense; }
+.wsg-world-card--open { border-color: var(--accent); }
+.wsg-places-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-badge, 10px);
+  cursor: pointer;
+}
+.wsg-places-toggle--open {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.wsg-places-toggle-start {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2, var(--muted));
+}
+.wsg-places-toggle-caret { margin-left: auto; }
+.wsg-places-panel {
+  grid-column: 1 / -1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-card);
+}
+.wsg-places-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.wsg-places-head .wsg-starts-at { margin: 0; flex: 1 1 auto; }
+.wsg-places-head-actions { display: flex; gap: 6px; margin-left: auto; }
+.wsg-place-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.wsg-place-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 48px;
+  padding: 4px 4px 4px calc(4px + var(--place-depth, 0) * 28px);
+  border-radius: var(--radius-badge, 10px);
+}
+.wsg-place-row:hover { background: var(--surface-2); }
+.wsg-place-row--nested { border-left: 2px solid var(--border); margin-left: 14px; }
+.wsg-place-name {
+  flex: 0 1 200px;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.wsg-place-desc {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-2, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wsg-place-desc.empty { color: var(--faint); font-style: italic; }
+.wsg-place-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.wsg-place-tags .wsg-inside-tag,
+.wsg-place-tags .wsg-weather-tag { margin-left: 0; }
+.wsg-place-actions { display: flex; gap: 2px; margin-left: auto; }
+@media (max-width: 560px) {
+  /* A phone: the name keeps its line, the description drops under it. */
+  .wsg-place-name { flex: 1 1 auto; }
+  .wsg-place-desc { flex-basis: 100%; order: 5; white-space: normal; }
+  .wsg-place-row--nested { margin-left: 8px; }
+}
+.wsg-world-select { margin-right: 6px; accent-color: var(--accent); }
+.wsg-inside-tag,
+.wsg-weather-tag {
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: var(--radius-badge, 999px);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2, inherit);
+  white-space: nowrap;
+}
+.wsg-weather-tag--inherit { color: var(--text-2, inherit); }
+.wsg-weather-tag--own {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.wsg-place-star--on { color: var(--accent); }
+.wsg-starts-at {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-2, var(--muted));
+}
+.wsg-starts-at--missing { color: var(--danger); }
+.wsg-prose-preview {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 10px);
+  background: var(--surface-2);
+}
+.wsg-prose-preview-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.wsg-prose-preview-body {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-2, inherit);
+}
+.wsg-weather-off {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  background: color-mix(in srgb, var(--text-2, currentColor) 6%, transparent);
+}
+.wsg-weather-off strong { display: block; font-size: 0.85rem; margin-bottom: 4px; }
+.wsg-weather-off p { margin: 0; color: var(--text); }
+.wsg-weather-off-line { display: block; color: var(--text); }
+.wsg-paused-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--radius-badge, 999px);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.wsg-climate-dim { opacity: 0.72; margin-top: 8px; }
+.wsg-reparent-note {
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+  margin-top: 6px;
+}
+.wsg-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--scrim-ink) 55%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 16px;
+}
+.wsg-dialog { max-width: 380px; width: 100%; }
+.wsg-move-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+.wsg-move-target {
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-badge, 8px);
+  background: var(--surface-1, var(--surface-2));
+  color: inherit;
+  cursor: pointer;
+}
+.wsg-move-target:hover { border-color: var(--accent); }
+
+/* Starter worlds picker (StarterWorldsPicker.tsx). The list scrolls inside
+   the dialog so Close stays on screen in a short window. */
+.wsg-starter-modal { width: min(520px, 92vw); max-height: 88vh; }
+.wsg-starter-list {
+  display: flex; flex-direction: column; gap: 10px;
+  overflow-y: auto; min-height: 0; flex: 1 1 auto;
+}
+.wsg-starter-row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 10px);
+  background: var(--surface-2);
+}
+.wsg-starter-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.wsg-starter-meta .wsg-weather-tag { margin-left: 0; white-space: normal; }
+.wsg-starter-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.wsg-starter-foot [role="status"] { flex: 1; min-width: 0; }
+
+/* Places page head: five actions wrap onto more rows instead of squeezing
+   their labels or pushing the page sideways on a phone. */
+.wsg-page-head { flex-wrap: wrap; gap: 8px; }
+.wsg-head-actions { flex-wrap: wrap; justify-content: flex-end; }
+.wsg-head-actions button { white-space: nowrap; }
+.wsg-starter-modal:focus { outline: none; }

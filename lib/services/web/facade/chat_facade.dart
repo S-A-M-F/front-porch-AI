@@ -53,6 +53,9 @@ class ChatFacade {
   final File? Function(String name)? _resolveSavedImage;
 
   final ChatService _chat;
+
+  // Slice 7: scene-mint endpoints act through the chat's own seam.
+  ChatService get chat => _chat;
   final CharacterRepository _characters;
   final UserPersonaService? _personas;
   final StreamHub? _hub;
@@ -246,6 +249,17 @@ class ChatFacade {
   /// Clear a parked `/join` picker (web close without picking).
   void dismissGuestPicker() {
     _chat.dismissGuestPicker();
+    _notify();
+  }
+
+  /// Answer a suggested scene move: Move runs the desktop's manual
+  /// swap (the ONE setChatPlaceSlots writer); Stay records the decline.
+  Future<void> answerPlaceMove(bool accept) async {
+    if (accept) {
+      await _chat.acceptPlaceMove();
+    } else {
+      _chat.declinePlaceMove();
+    }
     _notify();
   }
 

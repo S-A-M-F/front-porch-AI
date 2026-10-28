@@ -9,6 +9,7 @@
 
 import { readFile } from 'node:fs/promises';
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
+import { sendLine } from './support/composer';
 import { expect, openRoute, SERIAL, test } from './support/fixtures';
 
 const REPLY = process.env.FPAI_REPLY ?? '';
@@ -113,9 +114,7 @@ async function openPorchChat(page: Page) {
 }
 
 async function send(page: Page, text: string) {
-  const box = page.locator('textarea.composer-input');
-  await box.fill(text);
-  await box.press('Enter');
+  await sendLine(page, text);
   await expect(rows(page).filter({ hasText: text })).toHaveCount(1);
   await waitIdle(page);
   await expect(lastRow(page).locator('.bubble.ai')).toContainText(REPLY);
@@ -1096,8 +1095,7 @@ test.describe.serial('Director Mode', { tag: SERIAL }, () => {
 
     const box = page.locator('textarea.composer-input');
     const strip = page.locator('.director-strip');
-    await box.fill('/join Porch Tester');
-    await box.press('Enter');
+    await sendLine(page, '/join Porch Tester');
     // The join settles after the send returns; stepping out before it lands
     // is refused as a busy turn.
     await expect(page.getByText('Porch Tester joined the scene')).toBeVisible();
@@ -1133,8 +1131,7 @@ test.describe.serial('Director Mode', { tag: SERIAL }, () => {
       })
       .toBe(4.5);
     await page.request.post('/api/chat/director/delay', { data: { seconds: Number(savedDelay) } });
-    await box.fill('The porch light flickers out.');
-    await box.press('Enter');
+    await sendLine(page, 'The porch light flickers out.');
     await waitIdle(page);
     const note = page.locator('.bubble.director-note', { hasText: 'The porch light flickers out.' });
     await expect(note).toContainText('Director');
@@ -1155,10 +1152,8 @@ test.describe.serial('Director Mode', { tag: SERIAL }, () => {
     await page.getByRole('button', { name: '+ New chat' }).click();
     await waitIdle(page);
 
-    const box = page.locator('textarea.composer-input');
     const strip = page.locator('.director-strip');
-    await box.fill('/join Porch Tester');
-    await box.press('Enter');
+    await sendLine(page, '/join Porch Tester');
     await expect(page.getByText('Porch Tester joined the scene')).toBeVisible();
     await waitIdle(page);
     await strip.getByRole('button', { name: 'Step out to direct' }).click();
@@ -1194,19 +1189,24 @@ test.describe.serial('Director Mode', { tag: SERIAL }, () => {
     await waitIdle(page);
     await expect(rows(page)).toHaveCount(before + 2);
     await expect(page.locator('.bubble.director-note').last()).toContainText('Director');
+    // The waitIdle above can pass before the server starts the cast's answer;
+    // a line sent while that answer streams stays in the box by design.
+    await waitIdle(page);
 
     // A whisper pins for one member and clears from the strip.
-    await box.fill('/whisper Porch Tester You hid the key.');
-    await box.press('Enter');
+    await sendLine(page, '/whisper Porch Tester You hid the key.');
     const whisper = strip.getByRole('note').filter({ hasText: 'Porch Tester: You hid the key.' });
     await expect(whisper).toBeVisible();
+    // The command's banner line comes a refresh after the pinned note. On a
+    // phone it replaces a two-line banner above the strip, so the ✕ moves up
+    // under a tap that lands then. Wait for it before tapping.
+    await expect(page.locator('.cast-banner')).toHaveText('Only Porch Tester knows this now.');
     await strip.getByRole('button', { name: 'Clear the whisper to Porch Tester' }).click();
     await expect(whisper).toHaveCount(0);
 
     // The narrator's beat lands as its own line, and the cast answers it.
     before = await rows(page).count();
-    await box.fill('/narrate a storm rolls in');
-    await box.press('Enter');
+    await sendLine(page, '/narrate a storm rolls in');
     await waitIdle(page);
     await expect(page.locator('.bubble.director-note', { hasText: 'Narrator' })).toBeVisible();
     await expect(rows(page)).toHaveCount(before + 2);
@@ -1224,10 +1224,8 @@ test.describe.serial('Director Mode', { tag: SERIAL }, () => {
     await page.getByRole('button', { name: '+ New chat' }).click();
     await waitIdle(page);
 
-    const box = page.locator('textarea.composer-input');
     const strip = page.locator('.director-strip');
-    await box.fill('/join Porch Tester');
-    await box.press('Enter');
+    await sendLine(page, '/join Porch Tester');
     await expect(page.getByText('Porch Tester joined the scene')).toBeVisible();
     await waitIdle(page);
     await strip.getByRole('button', { name: 'Step out to direct' }).click();
@@ -1495,5 +1493,334 @@ test('the theme follows the desktop, and a device can keep its own mode', { tag:
     await page.getByLabel('Theme on this device').selectOption('desktop');
     const back = await page.request.post('/api/settings', { data: { darkMode: was } });
     expect(back.ok(), `restoring Dark Mode: ${back.status()}`).toBe(true);
+  }
+});
+
+// Bubble opacity is the desktop's own setting: the phone's slider writes it,
+// this page's bubbles fade at once, and a reload reads the stored value back.
+test('bubble opacity set on the phone is the desktop setting and survives a reload', { tag: SERIAL }, async ({ page }) => {
+  const read = async () =>
+    ((await (await page.request.get('/api/settings')).json()) as { bubbleOpacity?: number }).bubbleOpacity;
+  const alpha = () =>
+    page.evaluate(() => document.documentElement.style.getPropertyValue('--chat-bubble-alpha'));
+  const was = (await read()) ?? 1;
+  const target = Math.abs(was - 0.45) < 0.01 ? 0.55 : 0.45;
+  await openRoute(page, '/settings');
+  const slider = page.getByLabel('Bubble opacity', { exact: true });
+  await expect(slider).toBeEnabled();
+  try {
+    await slider.fill(String(target));
+    await expect.poll(alpha).toBe(String(target));
+    await expect.poll(read, { message: 'the posted opacity round-trips' }).toBe(target);
+    await page.reload();
+    await expect(page.getByLabel('Bubble opacity', { exact: true })).toBeEnabled();
+    expect(Number(await page.getByLabel('Bubble opacity', { exact: true }).inputValue())).toBeCloseTo(target, 5);
+    await expect.poll(alpha).toBe(String(target));
+  } finally {
+    const back = await page.request.post('/api/settings', { data: { bubbleOpacity: was } });
+    expect(back.ok(), `restoring Bubble opacity: ${back.status()}`).toBe(true);
+  }
+});
+
+test(
+  'locations on the phone: the library groups, the law speaks over the wire, delete takes the places with it',
+  { tag: SERIAL },
+  async ({ page, acceptConfirms }) => {
+    // ── Seed through the relay (same POST the editor saves with) ─────────
+    const list = async () =>
+      ((await (await page.request.get('/api/worlds')).json()) as {
+        worlds: { id?: string; name: string; parentWorldId?: string | null }[];
+      }).worlds;
+    for (const w of await list()) {
+      if (w.name.startsWith('Journey '))
+        await page.request.post(`/api/worlds/${encodeURIComponent(w.name)}/delete`);
+    }
+    const root = await page.request.post('/api/worlds', {
+      data: {
+        name: 'Journey Bletchport',
+        description: 'Harbour lamps and salt wind.',
+        climateEnabled: true,
+        create: true,
+      },
+    });
+    expect(root.ok(), 'create the root place').toBe(true);
+    const rootId = (await list()).find((w) => w.name === 'Journey Bletchport')!.id!;
+    const child = await page.request.post('/api/worlds', {
+      data: {
+        name: 'Journey Lighthouse',
+        description: 'Warm lamplight over cold rope and tar.',
+        climateEnabled: false,
+        parentWorldId: rootId,
+        create: true,
+      },
+    });
+    expect(child.ok(), 'create the place inside it').toBe(true);
+
+    // The law is server-side: an unknown parent answers 400 with its own
+    // sentence — the phone cannot persist what the desktop would refuse.
+    const bad = await page.request.post('/api/worlds', {
+      data: { name: 'Journey Orphan', parentWorldId: 'no-such-world', create: true },
+    });
+    expect(bad.status()).toBe(400);
+    expect(((await bad.json()) as { error: string }).error).toContain(
+      'no longer exists',
+    );
+
+    // ── The library: the world gets a card, its place is a row ──────────
+    await openRoute(page, '/worlds');
+    const card = page
+      .locator('.wsg-world-card')
+      .filter({ hasText: 'Journey Bletchport' });
+    await expect(card).toHaveCount(1);
+    await expect(
+      page.locator('.wsg-world-name', { hasText: /^Journey Lighthouse$/ }),
+      'a place never gets a card of its own',
+    ).toHaveCount(0);
+    const toggle = card.locator('[data-testid="world-places-toggle"]');
+    await expect(toggle).toContainText('1 place');
+    await toggle.click();
+    const panel = page.getByRole('region', { name: 'Places in Journey Bletchport' });
+    const placeRow = panel.locator('li[data-place="Journey Lighthouse"]');
+    await expect(placeRow.locator('.wsg-weather-tag--inherit')).toHaveText('Inherits weather');
+    // A place never exports alone; the world's card exports the whole tree.
+    await expect(placeRow.locator('[title^="Export"]')).toHaveCount(0);
+    await expect(card.locator('[title="Export .fpworld"]')).toHaveCount(1);
+    await expect(
+      page.getByRole('button', { name: 'Model-made', exact: true }),
+    ).toBeVisible();
+
+    // ── The editor pre-selects the parent, offer from the law endpoint ──
+    await placeRow.locator('[title="Edit"]').click();
+    await expect(page.locator('select[aria-label="Part of"]')).toHaveValue(rootId);
+    await expect(page.getByText('Inherit from Journey Bletchport')).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // ── Add a place inside: the editor speaks of a place in its parent ──
+    await panel.getByRole('button', { name: '＋ Add a place', exact: true }).click();
+    await expect(page.locator('.world-edit h3')).toHaveText('Add a place to Journey Bletchport');
+    await expect(page.getByRole('button', { name: 'Add place', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // ── Delete takes the whole place tree, and SAYS so first ────────────
+    let confirmText = '';
+    page.on('dialog', (d) => (confirmText = d.message()));
+    acceptConfirms(true);
+    await card.locator('[title="Delete"]').click();
+    await expect
+      .poll(() => list().then((ws) => ws.some((w) => w.name === 'Journey Bletchport')), {
+        message: 'the root is deleted',
+      })
+      .toBe(false);
+    expect(confirmText, 'the confirm names the places before they go').toContain(
+      'The 1 place inside it will be deleted too.',
+    );
+    expect(
+      (await list()).some((w) => w.name === 'Journey Lighthouse'),
+      'the place went with its world, not into the library on its own',
+    ).toBe(false);
+    await expect(
+      page.locator('.wsg-world-name', { hasText: /^Journey Lighthouse$/ }),
+    ).toHaveCount(0);
+  },
+);
+/** Open a world card's places panel. Going back to /worlds can keep the
+ *  page mounted with the panel still open, so a blind click would close it. */
+async function showPlaces(card: Locator) {
+  const toggle = card.locator('[data-testid="world-places-toggle"]');
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
+test(
+  'starter worlds: the picker adds Harborside with its places, and the library shows them',
+  { tag: SERIAL },
+  async ({ page }) => {
+    type Row = { id?: string; name: string; parentWorldId?: string | null };
+    const list = async () =>
+      ((await (await page.request.get('/api/worlds')).json()) as { worlds: Row[] }).worlds;
+    const names = ['Harborside', 'The Quay', 'Lantern Street Market', 'Lighthouse Point'];
+    const ours = (w: Row) => names.some((n) => w.name === n || w.name.startsWith(`${n} (`));
+    const cleanup = async () => {
+      for (const w of await list()) {
+        if (ours(w)) await page.request.post(`/api/worlds/${encodeURIComponent(w.name)}/delete`);
+      }
+    };
+    await cleanup();
+    try {
+      await openRoute(page, '/worlds');
+      await page.locator('[data-testid="worlds-starter"]').click();
+      const dialog = page.getByRole('dialog', { name: 'Starter worlds' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('[data-testid^="starter-row-"]')).toHaveCount(7);
+      const row = dialog.locator('[data-testid="starter-row-harborside"]');
+      await expect(row).toContainText('Temperate');
+      await expect(row).toContainText('3 places');
+      await row.getByRole('button', { name: 'Add Harborside', exact: true }).click();
+      await expect(row).toContainText('Added as "Harborside".');
+      await expect(
+        row.getByRole('button', { name: 'Add Harborside again', exact: true }),
+      ).toBeVisible();
+
+      // Persisted through the importer: one root, its three places under it.
+      await expect
+        .poll(async () => (await list()).filter((w) => w.name === 'Harborside').length, {
+          message: 'one Harborside root',
+        })
+        .toBe(1);
+      const rows = await list();
+      const rootId = rows.find((w) => w.name === 'Harborside')!.id;
+      expect(
+        rows
+          .filter((w) => w.parentWorldId === rootId)
+          .map((w) => w.name)
+          .sort(),
+      ).toEqual(['Lantern Street Market', 'Lighthouse Point', 'The Quay']);
+
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(dialog).toBeHidden();
+      // The page took the refreshed list: no reload needed to see it.
+      const card = page.locator('.wsg-world-card').filter({ hasText: 'Harborside' });
+      await expect(card).toHaveCount(1);
+      await showPlaces(card);
+      await expect(page.getByRole('region', { name: 'Places in Harborside' })).toContainText(
+        'The Quay',
+      );
+
+      // And it is a stored world, not page state.
+      await openRoute(page, '/worlds');
+      await showPlaces(page.locator('.wsg-world-card').filter({ hasText: 'Harborside' }));
+      await expect(page.getByRole('region', { name: 'Places in Harborside' })).toContainText(
+        'Lighthouse Point',
+      );
+    } finally {
+      await cleanup();
+    }
+  },
+);
+test('both Settings prompt slots pick from one pool of saved prompts, never a built-in', { tag: SERIAL }, async ({ page, allowHttp, acceptConfirms }) => {
+  // The taken-name refusal is a 409 on purpose.
+  allowHttp((url, status) => status === 409 && /\/api\/saved-prompts(\?|$)/.test(url));
+  type Saved = { name: string; content: string };
+  type S = {
+    systemPrompt?: string; groupSystemPrompt?: string;
+    systemPromptName?: string | null; groupSystemPromptName?: string | null;
+    savedPrompts?: Saved[];
+  };
+  const read = async () => (await (await page.request.get('/api/settings')).json()) as S;
+  const original = await read();
+  const name = 'E2E Porch Novel';
+  try {
+    await openRoute(page, '/settings');
+    const one = page.locator('[data-section="general"] [data-testid="fallback-system-prompt"]');
+    const group = page.locator('[data-section="general"] [data-testid="group-system-prompt"]');
+    await one.getByRole('textbox', { name: 'Fallback system prompt', exact: true }).fill('E2E novel style.');
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText('Not saved');
+    await one.getByRole('button', { name: 'Save as new…', exact: true }).click();
+    await one.getByRole('textbox', { name: 'New prompt name', exact: true }).fill(name);
+    await one.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(name);
+
+    // The group slot loads the same prompt; the built-ins are not in the list.
+    const pick = group.locator('select');
+    await expect(pick.locator('option', { hasText: 'Group default' })).toHaveCount(0);
+    await pick.selectOption({ label: name });
+    const groupBox = group.getByRole('textbox', { name: 'Group system prompt', exact: true });
+    await expect(groupBox).toHaveValue('E2E novel style.');
+    await groupBox.fill('E2E novel style, for a crowd.');
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(`${name} (edited)`);
+    await group.getByRole('button', { name: `Save to “${name}”`, exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(`${name} (edited)`);
+
+    // Save as new never overwrites.
+    await group.getByRole('button', { name: 'Save as new…', exact: true }).click();
+    await group.getByRole('textbox', { name: 'New prompt name', exact: true }).fill(name);
+    await group.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(group.getByRole('alert')).toContainText('already have a prompt called');
+
+    // Reset to built-in, then Undo, keeps the pick.
+    await group.getByRole('button', { name: 'Reset to built-in', exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText('Built-in: Group default');
+    await group.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPromptName).toBe(name);
+    const after = await read();
+    expect(after.systemPromptName).toBe(name);
+    expect(after.groupSystemPrompt).toBe('E2E novel style, for a crowd.');
+    expect(after.savedPrompts?.find((p) => p.name === name)?.content).toBe('E2E novel style, for a crowd.');
+
+    await page.reload();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText(name);
+
+    // Deleting from one slot lets go of both slots' picks, on screen and saved.
+    await one.locator('select').selectOption({ label: name });
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText(name);
+    acceptConfirms(true);
+    await group.getByRole('button', { name: `Delete “${name}”`, exact: true }).click();
+    await expect(group.getByTestId('group-system-prompt-badge')).toHaveText('Not saved');
+    await expect(one.getByTestId('fallback-system-prompt-badge')).toHaveText('Not saved');
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect.poll(async () => (await read()).groupSystemPromptName ?? null).toBeNull();
+    expect((await read()).systemPromptName ?? null).toBeNull();
+  } finally {
+    await page.request.post('/api/saved-prompts/delete', { data: { name } });
+    expect((await page.request.post('/api/settings', { data: {
+      systemPrompt: original.systemPrompt ?? '',
+      groupSystemPrompt: original.groupSystemPrompt ?? '',
+      systemPromptName: original.systemPromptName ?? null,
+      groupSystemPromptName: original.groupSystemPromptName ?? null,
+    }})).ok()).toBe(true);
+  }
+});
+
+// "Did time pass?" (#629): a line whose skip the reader reads one way and a
+// plain count another way waits on the player. The fake backend reads
+// 'the lantern gutters' as the next morning, slept; the line also counts
+// eight hours, so the sheet asks, best guess first. Picking 8 hours lands
+// the story clock at 9:40, not 8:00, and the line still gets its reply.
+test('a skip the reader is unsure of asks "Did time pass?", and the pick moves the clock', { tag: SERIAL }, async ({ page, allowHttp }) => {
+  allowHttp((url, status) => status === 409 && url.includes('/api/chat/skip-confirm'));
+  type Realism = { realism?: { passageOfTimeDefault?: boolean } };
+  const before = ((await (await page.request.get('/api/settings')).json()) as Realism).realism
+    ?.passageOfTimeDefault;
+  const setPot = (on: boolean) =>
+    page.request.post('/api/settings', { data: { realism: { passageOfTimeDefault: on } } });
+  expect((await setPot(true)).ok()).toBe(true);
+  try {
+    await openPorchChat(page);
+    await page.locator('.conversations-btn').click();
+    await page.getByRole('button', { name: '+ New chat' }).click();
+    await waitIdle(page);
+    const clock = await page.request.post('/api/chat/tools/time', {
+      data: { setClock: '2026-08-22T01:40:00' },
+    });
+    expect(clock.ok(), `setting the clock: ${clock.status()}`).toBe(true);
+
+    const line = 'The lantern gutters out, and we sleep eight hours on the porch swing.';
+    await sendLine(page, line);
+    const sheet = page.getByRole('dialog', { name: 'Did time pass?' });
+    await expect(sheet).toBeVisible({ timeout: 60_000 });
+    await expect(sheet).toContainText("It's 1:40 AM now.");
+    await expect(sheet.getByRole('button', { name: 'Next morning · 8:00 AM' })).toHaveAttribute('aria-pressed', 'true');
+    await sheet.getByRole('button', { name: '8 hours · 9:40 AM' }).click();
+    await sheet.getByRole('button', { name: 'Skip to 9:40 AM' }).click();
+    await expect(sheet).toBeHidden();
+
+    await expect(rows(page).filter({ hasText: line })).toHaveCount(1);
+    await waitIdle(page);
+    await expect(lastRow(page).locator('.bubble.ai')).toContainText(REPLY);
+    const tools = (await (await page.request.get('/api/chat/tools')).json()) as {
+      time: { storyClock: string };
+    };
+    expect(tools.time.storyClock).toMatch(/^2026-08-22T09:40/);
+
+    // Answered, the question is gone for every client.
+    const late = await page.request.post('/api/chat/skip-confirm', { data: {} });
+    expect(late.status()).toBe(409);
+  } finally {
+    await setPot(before ?? false);
   }
 });

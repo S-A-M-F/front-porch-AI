@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
+import 'package:flutter/foundation.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf_router/shelf_router.dart';
 
@@ -35,6 +36,17 @@ class WebWorldRoutes {
     // swallowed as a world name.
     router.post('/api/worlds/import', _import);
     router.post('/api/worlds/climate/check', _climateCheck);
+    // Bundled starter worlds; static prefix, registered before the
+    // '<name>' captures like /import.
+    router.get('/api/worlds/starter', _starterIndex);
+    router.post('/api/worlds/starter/<id>/import', _importStarter);
+    // Static suffix; register before the '<name>' captures, same
+    // discipline as /import above (slice 4 web twin: "Part of" picker).
+    router.get('/api/worlds/parent-candidates', _parentCandidates);
+    // The chat backdrop's picture (scene_backdrop.dart); static suffix,
+    // registered before the '<name>' captures like the rest.
+    router.get('/api/worlds/cover', _cover);
+    router.post('/api/worlds/default-place', _setDefaultPlace);
     router.post('/api/lorebook/import', _importLorebook);
     router.get('/api/chat/places', _chatPlaces);
     router.post('/api/chat/places', _setChatPlaces);
@@ -117,6 +129,23 @@ class WebWorldRoutes {
     return JsonResponse.ok(result);
   }
 
+  /// The cover bytes behind the chat page. The URL carries the picture's
+  /// version (`sceneBackdropWire`), so the browser may keep it for good
+  /// and a re-saved cover is a new URL.
+  shelf.Response _cover(shelf.Request request) {
+    final id = request.url.queryParameters['id']?.trim() ?? '';
+    if (id.isEmpty) return JsonResponse.badRequest('id is required');
+    final cover = _facade.coverFor(id);
+    if (cover == null) return JsonResponse.error(404, 'No picture');
+    return shelf.Response.ok(
+      cover.bytes,
+      headers: {
+        'Content-Type': cover.contentType,
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      },
+    );
+  }
+
   shelf.Response _detail(shelf.Request request, String name) {
     final detail = _facade.detail(Uri.decodeComponent(name));
     if (detail == null) return JsonResponse.error(404, 'World not found');
@@ -133,14 +162,59 @@ class WebWorldRoutes {
     if ((body['name']?.toString().trim() ?? '').isEmpty) {
       return JsonResponse.badRequest(kPlaceNameRequired);
     }
-    final ok = await _facade.save(body);
-    if (!ok) return JsonResponse.badRequest('name is required');
+    try {
+      final ok = await _facade.save(body);
+      if (!ok) return JsonResponse.badRequest('name is required');
+    } on StateError catch (e) {
+      // The unknown-parent / cycle law's own sentence, not shelf's bare
+      // 500 (slice 4): the PWA's Part-of save must hear exactly what the
+      // desktop dialog would have shown.
+      return JsonResponse.badRequest(e.message);
+    }
     return JsonResponse.ok({'worlds': _facade.list()});
   }
 
   Future<shelf.Response> _delete(shelf.Request request, String name) async {
-    final ok = await _facade.delete(Uri.decodeComponent(name));
+    var placesDeleted = 0;
+    final ok = await _facade.delete(
+      Uri.decodeComponent(name),
+      onPlacesDeleted: (n) => placesDeleted = n,
+    );
     if (!ok) return JsonResponse.error(404, 'World not found');
+    return JsonResponse.ok({
+      'worlds': _facade.list(),
+      'placesDeleted': placesDeleted,
+    });
+  }
+
+  /// GET `/api/worlds/parent-candidates?for=<nameOrId>` — the candidate
+  /// list for the PWA's "Part of" picker; empty `for` = a create.
+  shelf.Response _parentCandidates(shelf.Request request) {
+    final forId = request.url.queryParameters['for'] ?? '';
+    return JsonResponse.ok({'candidates': _facade.parentCandidates(forId)});
+  }
+
+  /// POST `/api/worlds/default-place` `{worldId, placeId}` — star the place
+  /// chats attached to the world start in; a null or empty `placeId`
+  /// clears it. Answers the refreshed list, like save and delete.
+  Future<shelf.Response> _setDefaultPlace(shelf.Request request) async {
+    Map<String, dynamic> body;
+    try {
+      body = await RequestBody.readJsonMap(request);
+    } catch (_) {
+      return JsonResponse.badRequest('Invalid JSON body');
+    }
+    final worldId = body['worldId']?.toString() ?? '';
+    if (worldId.isEmpty) return JsonResponse.badRequest('worldId is required');
+    try {
+      final ok = await _facade.locations.setDefaultPlace(
+        worldId,
+        body['placeId']?.toString(),
+      );
+      if (!ok) return JsonResponse.error(404, 'World not found');
+    } on StateError catch (e) {
+      return JsonResponse.badRequest(e.message);
+    }
     return JsonResponse.ok({'worlds': _facade.list()});
   }
 
@@ -165,6 +239,31 @@ class WebWorldRoutes {
     return JsonResponse.ok({'worlds': _facade.list()});
   }
 
+  /// GET `/api/worlds/starter`: the bundled starter worlds the picker
+  /// lists (desktop reads the same index through StarterWorlds).
+  Future<shelf.Response> _starterIndex(shelf.Request request) async =>
+      JsonResponse.ok({'starters': await _facade.importer.starterIndex()});
+
+  /// POST `/api/worlds/starter/<id>/import`: add one starter world with its
+  /// places through the file importer's path. Answers with the new root
+  /// and the refreshed list, the list in the same shape /import returns.
+  Future<shelf.Response> _importStarter(
+    shelf.Request request,
+    String id,
+  ) async {
+    try {
+      final root = await _facade.importer.importStarter(id);
+      if (root == null) return JsonResponse.error(404, 'No such starter world');
+      return JsonResponse.ok({
+        'world': {'id': root.id, 'name': root.name},
+        'worlds': _facade.list(),
+      });
+    } catch (e) {
+      debugPrint('starter world import failed: $e');
+      return JsonResponse.error(500, 'Could not add that starter world');
+    }
+  }
+
   /// Export the named world as a downloadable Front Porch world JSON. The
   /// filename is sanitized to a safe charset so the (server-controlled but
   /// name-derived) Content-Disposition header can't be used for injection.
@@ -172,9 +271,11 @@ class WebWorldRoutes {
     final decoded = Uri.decodeComponent(name);
     final world = _facade.exportWorld(decoded);
     if (world == null) return JsonResponse.error(404, 'World not found');
-    final placeName = world['name']?.toString() ?? decoded;
-    final safe = placeName.replaceAll(RegExp(r'[^A-Za-z0-9 _\-]'), '_').trim();
-    final filename = safe.isEmpty ? 'place' : safe;
+    // A place id exports its whole world (the envelope is the root's), so
+    // the file is named for the world it holds, not the place asked for.
+    final worldName = world['name']?.toString() ?? decoded;
+    final safe = worldName.replaceAll(RegExp(r'[^A-Za-z0-9 _\-]'), '_').trim();
+    final filename = safe.isEmpty ? 'world' : safe;
     return JsonResponse.ok(
       world,
       extraHeaders: {

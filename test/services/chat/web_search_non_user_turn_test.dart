@@ -167,17 +167,14 @@ void main() {
       reason: 'the direct user send stays eligible',
     );
     expect(llm.streams, isNotEmpty);
+    // The after-lookup line rides the tail after the transcript (not the
+    // cached system head), so it is read from the user message.
     expect(
-      llm.streams
-          .where((s) => s.systemPrompt != null)
-          .single
-          .systemPrompt,
+      llm.streams.where((s) => s.systemPrompt != null).single.prompt,
       contains(kWebSearchCharacterLine),
     );
     expect(
-      llm.streams.where(
-        (s) => (s.systemPrompt ?? '').contains(kWebSearchCharacterLine),
-      ),
+      llm.streams.where((s) => s.prompt.contains(kWebSearchCharacterLine)),
       hasLength(1),
     );
     for (final extra in llm.streams.skip(1)) {
@@ -193,10 +190,7 @@ void main() {
     expect(chat.messages.last.sender, 'Rue', reason: 'the follow-up path ran');
     expect(llm.webSearchRounds, 1);
     expect(httpCalls, 0);
-    expect(
-      llm.streams.last.systemPrompt,
-      isNot(contains(kWebSearchCharacterLine)),
-    );
+    expect(llm.streams.last.prompt, isNot(contains(kWebSearchCharacterLine)));
   });
 
   test('Scene Guest generation neither advertises nor reaches HTTP', () async {
@@ -210,10 +204,7 @@ void main() {
     expect(httpCalls, 0);
     expect(llm.streams, isNotEmpty);
     expect(
-      llm.streams
-          .where((s) => s.systemPrompt != null)
-          .single
-          .systemPrompt,
+      llm.streams.where((s) => s.systemPrompt != null).single.prompt,
       isNot(contains(kWebSearchCharacterLine)),
     );
     for (final extra in llm.streams.skip(1)) {

@@ -38,6 +38,20 @@ List<Widget> launchEngineRows(
   required Color accent,
   required VoidCallback onRocmChanged,
 }) {
+  final b = storage.backendSettings;
+  final hardware = Provider.of<HardwareService>(context);
+  // Only a machine that launches on Vulkan has the Gemma 4 switch.
+  final vulkan =
+      hardware.hardwareInfo != null &&
+      koboldBackendFor(
+            hardware: hardware.hardwareInfo,
+            cublas: b.useCublas,
+            vulkan: b.useVulkan,
+            rocm: b.useRocm,
+            metal: b.useMetal,
+            gpuId: b.gpuId,
+          ).backend ==
+          KoboldGpuBackend.vulkan;
   return [
     if (storage.backendSettings.presetOwnsContext) ...[
       LaunchOptionsNotice(
@@ -48,7 +62,7 @@ List<Widget> launchEngineRows(
       const SizedBox(height: 12),
     ],
     AccelerationSection(
-      hardwareService: Provider.of<HardwareService>(context),
+      hardwareService: hardware,
       onRocmChanged: onRocmChanged,
     ),
     const SizedBox(height: 4),
@@ -60,7 +74,7 @@ List<Widget> launchEngineRows(
       accent: accent,
       label: 'Flash Attention',
       tooltip:
-          'Faster attention math, and less memory. ~20–40% speed boost on RTX/Apple Silicon. AMD (ROCm) follows this switch too: if KoboldCpp stops while answering with it on, the app turns it off and starts again. Gemma 4 on Vulkan always runs without it.',
+          'Faster attention math, and less memory. ~20–40% speed boost on RTX/Apple Silicon. AMD (ROCm) follows this switch too: if KoboldCpp stops while answering with it on, the app turns it off and starts again. Gemma 4 on Vulkan has its own switch, off by default.',
       value: storage.backendSettings.flashAttentionEnabled,
       recommended: true,
       onChanged: (v) => storage.backendSettings.setFlashAttentionEnabled(v),
@@ -80,6 +94,25 @@ List<Widget> launchEngineRows(
           ),
         ),
       ),
+    if (vulkan) ...[
+      _launchToggle(
+        context,
+        accent: accent,
+        label: 'Flash Attention for Gemma 4',
+        tooltip:
+            'Off: Gemma 4 runs without flash attention on Vulkan, whatever '
+            'the switch above says, and its chat memory stays full size.',
+        value: b.gemma4VulkanFlashAttention,
+        onChanged: (v) => b.setGemma4VulkanFlashAttention(v),
+        switchKey: const ValueKey('gemma4-vulkan-flash-attention'),
+      ),
+      const Padding(
+        padding: EdgeInsets.only(bottom: 4),
+        child: FlashAttentionCrashWarning(
+          key: ValueKey('gemma4-vulkan-flash-attention-warning'),
+        ),
+      ),
+    ],
     _launchToggle(
       context,
       accent: accent,
@@ -102,6 +135,7 @@ Widget _launchToggle(
   required bool value,
   required ValueChanged<bool> onChanged,
   bool recommended = false,
+  Key? switchKey,
 }) {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -154,7 +188,12 @@ Widget _launchToggle(
             ],
           ),
         ),
-        Switch(value: value, onChanged: onChanged, activeTrackColor: accent),
+        Switch(
+          key: switchKey,
+          value: value,
+          onChanged: onChanged,
+          activeTrackColor: accent,
+        ),
       ],
     ),
   );

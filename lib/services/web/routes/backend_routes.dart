@@ -53,6 +53,7 @@ class WebBackendRoutes {
       router.get('/api/backend/models-folder', _modelsFolder);
       router.get('/api/backend/hf/search', _hfSearch);
       router.get('/api/backend/hf/files', _hfFiles);
+      router.get('/api/backend/hf/card', _hfCard);
       router.get('/api/backend/downloads', _downloads);
       router.post('/api/backend/downloads', _queueDownload);
       // Bulk controls registered before the <taskId> route — single-segment
@@ -184,13 +185,21 @@ class WebBackendRoutes {
   Future<shelf.Response> _hfSearch(shelf.Request r) async {
     final q = r.url.queryParameters['q']?.trim() ?? '';
     if (q.isEmpty) return JsonResponse.ok({'models': []});
-    return JsonResponse.ok({'models': await _backend!.searchHf(q)});
+    return JsonResponse.ok({
+      'models': await _backend!.searchHf(q, r.url.queryParameters),
+    });
   }
 
   Future<shelf.Response> _hfFiles(shelf.Request r) async {
     final repoId = r.url.queryParameters['repoId'] ?? '';
     if (repoId.isEmpty) return JsonResponse.badRequest('repoId is required');
-    return JsonResponse.ok({'files': await _backend!.modelFiles(repoId)});
+    return JsonResponse.ok(await _backend!.modelFiles(repoId));
+  }
+
+  Future<shelf.Response> _hfCard(shelf.Request r) async {
+    final repoId = r.url.queryParameters['repoId'] ?? '';
+    if (repoId.isEmpty) return JsonResponse.badRequest('repoId is required');
+    return JsonResponse.ok(await _backend!.modelCard(repoId));
   }
 
   Future<shelf.Response> _deleteModel(shelf.Request r) async {

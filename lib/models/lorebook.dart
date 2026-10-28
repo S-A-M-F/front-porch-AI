@@ -41,6 +41,9 @@ class Lorebook {
     Map<String, dynamic>? extensions,
   }) : extensions = extensions ?? <String, dynamic>{};
 
+  /// Entries that can reach a prompt (switched on).
+  int get enabledEntryCount => entries.where((e) => e.enabled).length;
+
   /// Internal FPAI blob shape (what the DB columns store).
   Map<String, dynamic> toJson() {
     return {

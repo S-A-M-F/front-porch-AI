@@ -41,8 +41,12 @@ export 'expression_pack_jpeg_check.dart';
 export 'expression_pack_prepare.dart';
 export 'expression_pack_service.dart';
 export 'expression_pack_normalizer.dart';
+export 'hf_readme.dart';
+export 'hf_repo_files.dart';
+export 'hf_search.dart';
 export 'model_fetch.dart';
 export 'model_manager.dart';
+export 'projector_pairing.dart';
 export 'storage_service.dart';
 // The one settings TYPE consumers need by name (the sidebar's tri-state
 // control, the web facade/routes, the one-shot resolver). The settings
@@ -54,6 +58,8 @@ export 'group_chat_repository.dart';
 export 'group_card_service.dart';
 export 'group_card_exporter.dart';
 export 'world_repository.dart';
+export 'world_store/bare_place_setting_repair.dart' show LinkableWorlds;
+export 'starter_worlds.dart';
 export 'story_repository.dart';
 // The one rebind used by every flow that swaps the database file, plus the
 // liveDatabase() reader that keeps callers off the stale startup snapshot.
@@ -72,6 +78,7 @@ export 'llm_service.dart';
 export 'kobold_service.dart';
 export 'kobold_speed_test.dart';
 export 'chat_service.dart';
+export 'prompt_slots.dart';
 export 'backend_manager.dart';
 export 'opencode/opencode.dart';
 export 'open_router_service.dart';
@@ -90,6 +97,7 @@ export 'chat/reply_context.dart';
 export 'chat/token_alternatives.dart';
 
 // TTS / STT / media
+export 'audio_playback.dart';
 export 'tts_service.dart';
 export 'tts_voice_info.dart';
 export 'stt_service.dart';

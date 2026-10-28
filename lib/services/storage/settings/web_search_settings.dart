@@ -71,8 +71,18 @@ class WebSearchSettings with SettingsBase {
   final List<String> _savedWikiUrls = [];
   final Map<String, String> _wikiBySession = {};
   final Map<String, String> _wikiByCharacter = {};
+  int _worldWikiContextSize = 0;
+  int _worldWikiDepth = 1;
 
   bool get webSearchDefault => _webSearchDefault;
+
+  /// World from Wiki's own context window in tokens; 0 = the chat's
+  /// context. The wizard sizes every request from it (the Book step pick
+  /// on the desktop and the phone).
+  int get worldWikiContextSize => _worldWikiContextSize;
+
+  /// World from Wiki's depth pick: 0 quick, 1 full (default), 2 deep.
+  int get worldWikiDepth => _worldWikiDepth;
   String get searchApiKey => _searchApiKey;
   bool get hasApiKey => _searchApiKey.trim().isNotEmpty;
 
@@ -135,6 +145,8 @@ class WebSearchSettings with SettingsBase {
     _wikiByCharacter
       ..clear()
       ..addAll(_decodeWikiMap(prefs?.getString(k('wiki_url_by_character'))));
+    _worldWikiContextSize = prefs?.getInt(k('world_wiki_context_size')) ?? 0;
+    _worldWikiDepth = prefs?.getInt(k('world_wiki_depth')) ?? 1;
     await _migrateDefaultIntoSaved();
     final key = k(_apiKeyName);
     // Null prefs = in-memory sandbox. Never read the live macOS keychain.
@@ -162,6 +174,20 @@ class WebSearchSettings with SettingsBase {
       _searchApiKey = '';
       debugPrint('[WebSearch] keychain read failed (prefs empty): $e\n$st');
     }
+  }
+
+  Future<void> setWorldWikiContextSize(int value) async {
+    if (value < 0) return;
+    _worldWikiContextSize = value;
+    await prefs?.setInt(k('world_wiki_context_size'), value);
+    notify();
+  }
+
+  Future<void> setWorldWikiDepth(int value) async {
+    if (value < 0 || value > 2) return;
+    _worldWikiDepth = value;
+    await prefs?.setInt(k('world_wiki_depth'), value);
+    notify();
   }
 
   Future<void> setWebSearchDefault(bool value) async {

@@ -19,6 +19,11 @@ Map<String, dynamic> encodeFpWorld({
   Map<String, dynamic>? biome,
   String? author,
   String? appVersion,
+  // Slice 5: the root envelope carries its branch. Each item is itself a
+  // full world envelope (own climate_enabled, own nested locations), so
+  // an older app ignores the key and imports the root alone — the same
+  // additive rule every world field has followed.
+  List<Map<String, dynamic>>? locations,
 }) {
   final loreJson = world.lorebook.toJson();
   return {
@@ -36,6 +41,10 @@ Map<String, dynamic> encodeFpWorld({
     // Additive: older apps ignore unknown envelope keys (mixed-fleet rule).
     if (world.climateEnabled && world.placeTraits.isNotEmpty)
       'place_traits': world.placeTraits,
+    if (locations != null && locations.isNotEmpty) 'locations': locations,
+    // Additive: the starred place chats start in, by envelope id. The
+    // importer re-points it at the fresh local id of that location.
+    if (world.defaultPlaceId != null) 'default_place_id': world.defaultPlaceId,
     'meta': {
       if (author != null && author.isNotEmpty) 'author': author,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
@@ -69,7 +78,13 @@ class FpWorldPackage {
     required this.world,
     this.biome,
     this.formatVersion = kFpWorldFormatVersion,
+    // Slice 5: raw child envelopes from the root's `locations` array,
+    // kept as JSON so the repository imports them level by level (each
+    // child may itself nest deeper). Absent key on old envelopes = empty.
+    this.locations = const [],
   });
+
+  final List<Map<String, dynamic>> locations;
 }
 
 /// Parse .fpworld JSON, or a bare ST/Chub/FPAI lorebook as a degenerate world.
@@ -149,6 +164,14 @@ FpWorldPackage decodeFpWorld(Map<String, dynamic> json) {
       placeTraits: climateEnabled && json['place_traits'] is Map
           ? Map<String, dynamic>.from(json['place_traits'] as Map)
           : null,
-    ),
+    )..defaultPlaceId = json['default_place_id']?.toString(),
+    // Slice 5: hand the child envelopes to the importer verbatim; a
+    // non-list or missing key (every pre-slice-5 file) decodes empty,
+    // keeping old imports byte-for-byte unchanged.
+    locations: [
+      for (final item
+          in json['locations'] is List ? json['locations'] as List : const [])
+        if (item is Map) Map<String, dynamic>.from(item),
+    ],
   );
 }

@@ -17,7 +17,9 @@
 // along with Front Porch AI. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:front_porch_ai/services/chat/realism_tools/realism_tool_names.dart';
+import 'package:front_porch_ai/services/chat/realism_tools/place_mint_tool_schema.dart';
 import 'package:front_porch_ai/services/chat/realism_tools/afterglow_tool_schemas.dart';
+import 'package:front_porch_ai/services/chat/realism_tools/skip_reader_tool_schema.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
 Map<String, dynamic> _intField(String description) => {
@@ -272,6 +274,29 @@ final Map<String, Map<String, dynamic>> _sceneTimeFields = {
     'Whole days skipped ONLY when the reply explicitly narrates a jump of '
     'days or more ("a week later"). 0 otherwise.',
   ),
+  // Slice 6 (unconditional like serves_ambition above — a schema is a fixed
+  // contract per backend identity, not per turn): where the reply leaves
+  // the scene. The PROMPT lists the legal ids ONLY when Scene suggestions
+  // is on and the Setting has relatives; when it is not asked for, models
+  // simply omit it, and the parse treats absent, "same" and "" identically
+  // — never a move. It is in NO required list on purpose: tool models skip
+  // optional fields, and skipping here is the safe answer.
+  // Slice 7, same rules: the pair behind scene_place == "new", blank when
+  // not minting.
+  'new_place_name': _strField(
+    'Only with scene_place "new": the exact NAME of the place the '
+    'narration arrived at ("the Salt Garden"). Blank if it has no name.',
+  ),
+  'new_place_descriptor': _strField(
+    'Only with scene_place "new": one line on what the place is, drawn '
+    'from the narration. Blank when there is nothing to say.',
+  ),
+  'scene_place': _strField(
+    'Where the reply leaves the scene: "same", or one of the place ids '
+    'listed in the prompt. Report a move ONLY when the narration actually '
+    'arrives there; a plan or a mention is "same". Only asked for when '
+    'the setting has connected places.',
+  ),
 };
 
 /// The POST-generation posture pass (TimeService's `postureOnly` mode). It
@@ -302,6 +327,12 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalTools = [
       'continuous_instant': _sceneTimeFields['continuous_instant']!,
       'new_day': _sceneTimeFields['new_day']!,
       'days_elapsed': _sceneTimeFields['days_elapsed']!,
+      ...kJudgedJumpFields,
+      // Slice 6: in the schema always (fixed contract); asked for in the
+      // prompt only when Scene suggestions is on. Absent = 'same'.
+      'scene_place': _sceneTimeFields['scene_place']!,
+      'new_place_name': _sceneTimeFields['new_place_name']!,
+      'new_place_descriptor': _sceneTimeFields['new_place_descriptor']!,
     },
     const ['minutes_elapsed'],
   ),
@@ -322,6 +353,10 @@ final List<Map<String, dynamic>> kSceneTimeOnlyEvalToolsWithToday = [
       'continuous_instant': _sceneTimeFields['continuous_instant']!,
       'new_day': _sceneTimeFields['new_day']!,
       'days_elapsed': _sceneTimeFields['days_elapsed']!,
+      ...kJudgedJumpFields,
+      'scene_place': _sceneTimeFields['scene_place']!,
+      'new_place_name': _sceneTimeFields['new_place_name']!,
+      'new_place_descriptor': _sceneTimeFields['new_place_descriptor']!,
       'today_sentence': _todaySentenceField,
     },
     const ['minutes_elapsed', 'today_sentence'],
@@ -447,7 +482,11 @@ final Map<String, Map<String, Map<String, dynamic>>> realismToolFieldsByTool = {
   kNarrativeTool: _narrativeFields,
   kOneShotTool: {..._oneShotFields, 'today_sentence': _todaySentenceField},
   kNeedsImpactTool: _needsImpactFields,
-  kSceneTimeTool: {..._sceneTimeFields, 'today_sentence': _todaySentenceField},
+  kSceneTimeTool: {
+    ..._sceneTimeFields,
+    ...kJudgedJumpFields,
+    'today_sentence': _todaySentenceField,
+  },
   kExpressionTool: _expressionFields,
   kCastDetectTool: _castDetectFields,
   kClimaxToolName: kClimaxFields,
@@ -455,4 +494,6 @@ final Map<String, Map<String, Map<String, dynamic>>> realismToolFieldsByTool = {
   kReplyFactsToolName: kReplyFactsFields,
   kWithUserToolName: kWithUserFields,
   kCastFeelingsToolName: kCastFeelingsFields,
+  kPlaceMintTool: kPlaceMintFields,
+  kSkipReaderTool: kSkipReaderFields,
 };

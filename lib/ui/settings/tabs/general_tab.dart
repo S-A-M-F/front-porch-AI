@@ -21,10 +21,7 @@ import 'package:provider/provider.dart';
 
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
-import 'package:front_porch_ai/ui/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/settings/widgets/widgets.dart';
-import 'package:front_porch_ai/ui/settings/dialogs/prompt_save_dialog.dart';
-import 'package:front_porch_ai/ui/settings/dialogs/prompt_delete_dialog.dart';
 import 'package:front_porch_ai/ui/dialogs/update_dialog.dart';
 import 'package:front_porch_ai/ui/settings/tabs/general_tab/general_tab.dart';
 
@@ -38,12 +35,6 @@ class GeneralTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final storageService = Provider.of<StorageService>(context);
     final theme = Theme.of(context);
-    final shownPrompt = storageService.presetSettings.savedPrompts
-        .where(
-          (p) => p['content'] == storageService.generationSettings.systemPrompt,
-        )
-        .map((p) => p['name'])
-        .firstOrNull;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -197,119 +188,18 @@ class GeneralTab extends StatelessWidget {
           const SizedBox(height: 8),
           const PorchLifePointerCard(),
           const SizedBox(height: 24),
-          const SectionHeader('Fallback system prompt'),
-          const SizedBox(height: 8),
-          Text(
-            'Used in one-to-one chats when the character has no system prompt. Groups use their own prompt or a group default.',
-            style: TextStyle(color: AppColors.textSecondary(context)),
-          ),
-          const SizedBox(height: 8),
-          // Prompt library row simplified for smallest (full chips/load/save use the extracted dialogs)
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  // Shows the saved prompt whose text is in the box, else
-                  // the hint: a preset chip or a hand edit must not leave
-                  // the last pick's name on show. The key re-seeds it.
-                  key: ValueKey(shownPrompt),
-                  initialValue: shownPrompt,
-                  isExpanded: true,
-                  hint: const Text(
-                    'Load saved prompt...',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: AppColors.cardOf(context),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                  items: storageService.presetSettings.savedPrompts
-                      .map(
-                        (p) => DropdownMenuItem<String>(
-                          value: p['name'],
-                          child: Text(
-                            p['name']!,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (name) {
-                    if (name != null) {
-                      storageService.presetSettings.loadSavedPrompt(name, (p) {
-                        storageService.generationSettings.setSystemPrompt(p);
-                      });
-                      systemPromptController.text =
-                          storageService.generationSettings.systemPrompt;
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'Save current prompt',
-                icon: Icon(Icons.save, color: AppColors.logWarn),
-                onPressed: () => showSavePromptDialog(context, storageService),
-              ),
-              IconButton(
-                tooltip: 'Delete a saved prompt',
-                icon: Icon(Icons.delete_outline, color: AppColors.logError),
-                onPressed: () =>
-                    showDeletePromptDialog(context, storageService),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Built-in preset chips (simplified inline for smallest; full would use PresetChip widget)
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              SystemPromptPresetChip(
-                label: '📡 API Default',
-                prompt: defaultApiSystemPrompt,
-                storage: storageService,
-                systemPromptController: systemPromptController,
-              ),
-              SystemPromptPresetChip(
-                label: '🖥️ KoboldCPP',
-                prompt: defaultKoboldSystemPrompt,
-                storage: storageService,
-                systemPromptController: systemPromptController,
-              ),
-              SystemPromptPresetChip(
-                label: '👥 Group Chat',
-                prompt: defaultGroupSystemPrompt,
-                storage: storageService,
-                systemPromptController: systemPromptController,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AppTextField(
+          PromptSlotCard(
+            slot: PromptSlot.oneToOne,
             controller: systemPromptController,
-            maxLines: 5,
-            style: theme.textTheme.bodyMedium,
-            decoration: InputDecoration(
-              labelText: 'Fallback system prompt',
-              hintText: 'Used when a character has no system prompt...',
-              hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
-              filled: true,
-              fillColor: AppColors.cardOf(context),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onChanged: (val) =>
-                storageService.generationSettings.setSystemPrompt(val),
+            title: 'Fallback system prompt',
+            fieldLabel: 'Fallback system prompt',
+            helper:
+                'Used in one-to-one chats whose character card has no system '
+                'prompt of its own. Group chats use the Group system prompt '
+                'further down instead.',
           ),
+          const SizedBox(height: 24),
+          const GroupSystemPromptField(),
           const SizedBox(height: 24),
           const GlobalPromptAdditions(),
           const SizedBox(height: 24),

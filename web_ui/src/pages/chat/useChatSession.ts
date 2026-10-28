@@ -10,6 +10,8 @@ import { api } from '../../api/client';
 import { ChatSocket } from '../../api/ws';
 import { NO_PROCESSING, type Processing } from '../../components/ProcessingOverlay';
 import { resolveThemeColors } from '../../components/ChatThemeSettings';
+import { parseSceneWire, sceneCssVars } from '../../theme/sceneTokens';
+import { usePaintedThemeMode } from '../../theme/usePaintedThemeMode';
 import { type GenStatus } from '../../components/ChatMessageList';
 import { type SessionSummary } from '../../components/ConversationsDrawer';
 import { useAuth } from '../../auth/AuthContext';
@@ -64,12 +66,21 @@ export function useChatSession() {
   // reload repeatedly while the engines work.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Refreshes overlap (an action's own refresh, a debounced chat_updated, a
+  // WS frame) and can answer out of order. Only a snapshot newer than the
+  // last one applied may land, or an older answer reverts the screen (a
+  // cleared whisper reappears) until something refreshes again.
+  const refreshIssued = useRef(0);
+  const refreshApplied = useRef(0);
+
   const refresh = useCallback(async () => {
     const seqAtRequest = processingSeq.current;
+    const mine = ++refreshIssued.current;
     let s: ChatState;
     try {
       s = await api.get<ChatState>('/api/chat/state');
     } catch (e) {
+      if (mine < refreshApplied.current) return;
       // Never rethrow: every caller fires this and walks away, so a rejection
       // here used to be an unhandled promise AND a permanent spinner.
       const failure = describeChatLoadFailure(e);
@@ -78,6 +89,8 @@ export function useChatSession() {
       setLoadError(failure.message);
       return;
     }
+    if (mine < refreshApplied.current) return;
+    refreshApplied.current = mine;
     setLoadError('');
     if (!s.isGenerating) tokenGateRef.current.replyOver();
     setState(s);
@@ -288,19 +301,33 @@ export function useChatSession() {
       .catch(() => {});
   }, []);
 
-  // Apply per-chat theme overrides as CSS custom properties on the chat container.
+  // Apply per-chat theme overrides and the Ambient Stage's scene as CSS
+  // custom properties on the chat container. The scene is the desktop's
+  // colour strings for the mode this page paints, arranged into one
+  // background list; it paints behind the bubbles like the theme veil does
+  // (chat.css), and re-applies when this page changes mode.
+  const themeMode = usePaintedThemeMode();
   useEffect(() => {
-    const vars = resolveThemeColors(state?.themeOverrides ?? null);
+    const vars = {
+      ...resolveThemeColors(state?.themeOverrides ?? null),
+      ...sceneCssVars(parseSceneWire(state?.scene), themeMode),
+    };
     const el = document.querySelector('.chat-view') as HTMLElement | null;
     if (!el) return;
     Object.entries(vars).forEach(([k, v]) => el.style.setProperty(k, v));
     // Only veil the chat when a theme actually supplies a background scene.
     el.classList.toggle('has-theme-bg', '--chat-bg-image' in vars);
+    el.classList.toggle('has-scene', '--scene-layers' in vars);
+    // With a place picture up (SceneBackdrop), that layer carries the veil
+    // and the tint and the view's own backdrop stands down.
+    el.classList.toggle('has-scene-backdrop', !!state?.sceneBackdrop);
     return () => {
       Object.keys(vars).forEach((k) => el.style.removeProperty(k));
       el.classList.remove('has-theme-bg');
+      el.classList.remove('has-scene');
+      el.classList.remove('has-scene-backdrop');
     };
-  }, [state?.themeOverrides]);
+  }, [state?.themeOverrides, state?.scene, state?.sceneBackdrop, themeMode]);
 
   const stop = () => api.post('/api/chat/stop');
   // Chance Time: flip the teaser to the event card, then accept — which unfreezes

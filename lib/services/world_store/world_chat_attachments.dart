@@ -11,6 +11,7 @@ import 'package:front_porch_ai/database/database.dart';
 import 'package:front_porch_ai/models/models.dart' hide World;
 import 'package:front_porch_ai/models/world.dart' as model;
 import 'package:front_porch_ai/services/chat/chat.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/services/world_repository.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -59,12 +60,34 @@ class WorldChatAttachments {
     _repo.notify();
   }
 
-  Future<void> setFlat(String chatId, List<String> worldIds) async {
+  Future<void> setFlat(
+    String chatId,
+    List<String> worldIds, {
+    bool startAtStar = true,
+  }) async {
     // Seed-style flat write: first climate-enabled → Primary, rest → Lore.
     await _repo.ready;
+    // A world with a starred place starts the chat there: the place takes
+    // the world's slot (its chain still brings the world's lore and
+    // weather) and may hold the Setting even when the world is lore-only,
+    // because the author chose it as the start. An older link that names a
+    // place inside a world starts there the same way. Otherwise the Setting
+    // goes to the first id whose chain authors a climate, inherited or not.
+    final starts = <String>{};
+    final ids = <String>[];
+    for (final id in worldIds) {
+      final start = startAtStar ? _repo.startingPlaceFor(id) : null;
+      if (start != null && _isPlace(start)) {
+        starts.add(start.id);
+        ids.add(start.id);
+      } else {
+        ids.add(id);
+      }
+    }
     final slots = partitionLinkedPlaces(
-      worldIds: worldIds,
-      isClimateEnabled: (id) => _repo.worldById(id)?.climateEnabled ?? false,
+      worldIds: ids,
+      isClimateEnabled: (id) =>
+          starts.contains(id) || _repo.climateAuthorFor(id) != null,
     );
     await _repo.setChatWorldAttachments(
       chatId,
@@ -72,6 +95,8 @@ class WorldChatAttachments {
       loreIds: slots.loreIds,
     );
   }
+
+  bool _isPlace(model.World w) => topWorldOf(w, _repo.worldById).id != w.id;
 
   Future<void> markDecided(String chatId) =>
       _db().markChatWorldsInitialized(chatId);
@@ -127,8 +152,9 @@ class WorldChatAttachments {
 
   Future<void> applyTemplate(
     String chatId,
-    List<String> templateWorldIds,
-  ) async {
+    List<String> templateWorldIds, {
+    bool startAtStar = true,
+  }) async {
     // New-session seeding can fire moments after a cold launch; resolving
     // against a not-yet-loaded cache would silently seed nothing, permanently.
     await _repo.ready;
@@ -139,7 +165,7 @@ class WorldChatAttachments {
         '[Worlds] template had unresolved refs for chat $chatId: $unresolved',
       );
     }
-    await _repo.setChatWorlds(chatId, ids);
+    await _repo.setChatWorlds(chatId, ids, startAtStar: startAtStar);
   }
 
   Future<void> setBiome({
@@ -152,6 +178,19 @@ class WorldChatAttachments {
       effectiveFromDay: dayCount,
       biomeJson: biome.toJsonString(),
     );
+  }
+
+  /// Copy every climate changeover from [fromChatId] onto [toChatId], for a
+  /// new session that continues the same story (1:1 -> group conversion).
+  Future<void> copyBiomeSpans(String fromChatId, String toChatId) async {
+    final db = _db();
+    for (final s in await db.getBiomeSpansForChat(fromChatId)) {
+      await db.insertBiomeSpan(
+        chatId: toChatId,
+        effectiveFromDay: s.effectiveFromDay,
+        biomeJson: s.biomeJson,
+      );
+    }
   }
 
   Future<List<({int effectiveFromDay, String biomeJson})>> biomeSpanRows(

@@ -223,24 +223,28 @@ class _ModelManagerPageState extends State<ModelManagerPage>
                   ModelManagerSearchTab(
                     controller: _search,
                     modelManager: modelManager,
-                    availableVram: availableVram,
+                    availableVram: hardware.hardwareInfo?.vramMb ?? 0,
                   ),
                 ],
               ),
             ),
           ),
-          // Download queue panel at bottom
-          DownloadQueuePanel(
-            activeDownloads: modelManager.downloadManager.activeDownloads,
-            pendingDownloads: modelManager.downloadManager.pendingDownloads,
-            overallProgress: modelManager.downloadManager.overallProgress,
-            overallSpeed: modelManager.downloadManager.overallSpeed,
-            onPause: modelManager.pauseDownload,
-            onResume: modelManager.resumeDownload,
-            onCancel: modelManager.cancelDownload,
-            onPauseAll: modelManager.pauseAllDownloads,
-            onResumeAll: modelManager.resumeAllDownloads,
-            onClearCompleted: modelManager.clearCompletedDownloads,
+          // Download queue panel at bottom. It alone listens to progress
+          // ticks; ModelManager only notifies on queue state changes.
+          ListenableBuilder(
+            listenable: modelManager.downloadManager,
+            builder: (context, _) => DownloadQueuePanel(
+              activeDownloads: modelManager.downloadManager.activeDownloads,
+              pendingDownloads: modelManager.downloadManager.pendingDownloads,
+              overallProgress: modelManager.downloadManager.overallProgress,
+              overallSpeed: modelManager.downloadManager.overallSpeed,
+              onPause: modelManager.pauseDownload,
+              onResume: modelManager.resumeDownload,
+              onCancel: modelManager.cancelDownload,
+              onPauseAll: modelManager.pauseAllDownloads,
+              onResumeAll: modelManager.resumeAllDownloads,
+              onClearCompleted: modelManager.clearCompletedDownloads,
+            ),
           ),
         ],
       ),

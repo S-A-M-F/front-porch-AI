@@ -135,9 +135,15 @@ Future<LlmToolResponse?> sendOpenRouterToolCall({
       ),
     );
     if (response.statusCode == 429 || response.statusCode >= 500) {
-      // A provider hiccup is transient, not a capability verdict.
+      // A provider hiccup is transient, not a capability verdict. The body
+      // is the one place a gateway says why (an upstream error, a tool
+      // call it could not finish), so a clipped line of it rides along.
+      final err = openRouterApiErrorMessage(response.body, response.statusCode);
+      final detail = err == 'HTTP ${response.statusCode}'
+          ? ''
+          : ': ${err.length > 240 ? '${err.substring(0, 240)}…' : err}';
       throw LlmToolTransportException(
-        'tool call HTTP ${response.statusCode} (server busy/unavailable)',
+        'tool call HTTP ${response.statusCode} (server busy/unavailable)$detail',
       );
     }
     if (response.statusCode != 200) {
@@ -180,7 +186,17 @@ Future<LlmToolResponse?> sendOpenRouterToolCall({
         '(finish_reason=length) — likely truncated mid-think, no tool call',
       );
     }
-    return parseOpenAiToolResponse(response.body);
+    final parsed = parseOpenAiToolResponse(response.body);
+    if (parsed == null) {
+      // A server that has already begun a 200 (keep-alive whitespace on a
+      // slow non-streaming call, as oMLX does) can only report a late
+      // failure inside the body. Without this line that failure is silent.
+      debugPrint(
+        '[RemoteAPI] Tool call HTTP 200 carried no choices — '
+        '${openRouterApiErrorMessage(response.body, response.statusCode)}',
+      );
+    }
+    return parsed;
   } catch (e) {
     // Let callers classify killed connections as transport failures.
     debugPrint('[RemoteAPI] Tool call transport failure: $e');

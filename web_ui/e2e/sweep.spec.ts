@@ -27,9 +27,10 @@ let controlsSeen = 0;
 // The last four are the story engine's job starters: a sweep tap on one
 // launched a real run in the app, and every tap after it waited out
 // `settle`'s network-idle on a server that never went idle (screens 15 and
-// 18 timing out on CI).
+// 18 timing out on CI). Scout and skim start the world wizard's model run
+// (World from Character's Next is live once a character is picked).
 const SKIP =
-  /delet|remov|sign ?out|log ?out|revoke|reset|wipe|purge|clear|restart|stop|shut ?down|install|download|export|import|upload|backup|restore|disable|unlink|publish|submit|send|generat|continu|imperson|fork|swipe|regen|reprocess|revert|tailscale|pair|connect|scan|retest|spin|accept|attach|photo|mic\b|record|speak|play|save|apply|create|new|duplicat|move|start|run|write|enhanc|build|merge|extract|promot|join|exit|copy|autopilot|distill|outline|interview|share|pick a file|browse|choose file|refresh|reload|retry|try again|cancel all|pause|resume/i;
+  /scout|skim|delet|remov|sign ?out|log ?out|revoke|reset|wipe|purge|clear|restart|stop|shut ?down|install|download|export|import|upload|backup|restore|disable|unlink|publish|submit|send|generat|continu|imperson|fork|swipe|regen|reprocess|revert|tailscale|pair|connect|scan|retest|spin|accept|attach|photo|mic\b|record|speak|play|save|apply|create|new|duplicat|move|start|run|write|enhanc|build|merge|extract|promot|join|exit|copy|autopilot|distill|outline|interview|share|pick a file|browse|choose file|refresh|reload|retry|try again|cancel all|pause|resume/i;
 const CLOSE = /^(close|cancel|done|×|✕|✖|back|not now|dismiss|ok|got it)$/i;
 const MAX_CLICKS = 70;
 
@@ -65,6 +66,7 @@ const ROUTES: ((i: { character: string; story: string }) => string)[] = [
   () => '/create-group',
   () => '/worlds',
   () => '/worlds/from-wiki',
+  () => '/worlds/from-character',
   () => '/stories',
   () => '/stories/new',
   (i) => `/stories/${i.story}`,

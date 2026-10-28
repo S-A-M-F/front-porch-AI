@@ -24,6 +24,8 @@ import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/chat/director/director.dart'
     show kDirectorQuickBeats;
+import 'package:front_porch_ai/services/chat/scene/scene_backdrop.dart';
+import 'package:front_porch_ai/services/chat/scene/scene_resolver.dart';
 import 'package:front_porch_ai/services/web/facade/chat/chat_message_chips.dart';
 import 'package:front_porch_ai/services/web/facade/chat_realism_read.dart';
 import 'package:front_porch_ai/services/web/streaming/stream_hub.dart';
@@ -267,6 +269,23 @@ class ChatStateSnapshot {
               'canRetry': _chat.canRetryStoppedReply,
             },
       'pendingDetection': _chat.pendingGuestDetection?.name,
+      // Slice 6 (additive): a suggested scene move awaiting the author.
+      // The PWA shows the same dialog the desktop does; answering it is
+      // one POST. Absent key on an older desktop relay = no offer.
+      // Slice 7 (additive): a proposed NAMED new place awaiting the tap.
+      'pendingMint': _chat.pendingPlaceMint == null
+          ? null
+          : {
+              'name': _chat.pendingPlaceMint!.name,
+              'descriptor': _chat.pendingPlaceMint!.descriptor,
+              'settingName': _chat.pendingPlaceMint!.settingName,
+            },
+      'pendingPlaceMove': _chat.pendingPlaceMove == null
+          ? null
+          : {
+              'id': _chat.pendingPlaceMove!.id,
+              'name': _chat.pendingPlaceMove!.name,
+            },
       'pendingPicker': _chat.pendingGuestPickerFilter == null
           ? null
           : {
@@ -285,11 +304,31 @@ class ChatStateSnapshot {
       // Crafted /image prompt awaiting review (review setting on). The client
       // shows an edit modal and resolves via POST /api/chat/image-review.
       'imagePromptReview': ?_chat.pendingImagePromptReview,
+      // "Did time pass?" (#629): the send waits on it; the client shows a
+      // sheet and answers via POST /api/chat/skip-confirm. Additive.
+      'pendingSkip': ?_chat.pendingSkip?.toJson(),
       // Tool-calling verdict for the current backend+model (desktop sidebar
       // pill parity). Retest via POST /api/chat/tool-test. Additive field.
       'toolSupport': _chat.toolSupportJson,
       // Per-chat theme overrides (preset + font/color/background/border).
       'themeOverrides': _chat.sessionThemeOverrides.toJson(),
+      // The Ambient Stage's scene: the story's weather as the colour strings
+      // the PWA paints behind the bubbles, for both brightnesses so the PWA
+      // paints its own mode (docs/design/ambient-stage.md). Null when
+      // Ambient scene is Off or the chat has no weather. Additive.
+      'scene': sceneWireFor(_chat),
+      // The Setting place's picture behind the chat, by id and version,
+      // for the PWA to fetch from /api/worlds/cover and dissolve to on a
+      // scene move. Null when no place in the Setting's chain has one, and
+      // the PWA keeps its theme background. Additive.
+      'sceneBackdrop': () {
+        final backdrop = _chat.sceneBackdrop;
+        if (backdrop == null) return null;
+        return sceneBackdropWire(
+          backdrop,
+          condition: _chat.currentSegmentWeather?.condition.name,
+        );
+      }(),
       // Per-chat system prompt source (1:1 only) and, while a new chat
       // waits on it, the picker's prompts. Additive; omitted in groups.
       'promptSource': ?_chat.promptSourceJson,

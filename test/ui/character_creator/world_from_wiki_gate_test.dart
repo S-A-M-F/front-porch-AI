@@ -190,8 +190,8 @@ void main() {
       .widget<Text>(find.byKey(const Key('world-from-wiki-tools-copy')))
       .data!;
 
-  testWidgets('a model that is not running says so; once it runs the check '
-      'asks it, and a tool call unlocks Next', (tester) async {
+  testWidgets('a model that is not running says so; once it runs, Next asks '
+      'it, and a tool call lets the wizard go on', (tester) async {
     await open(tester);
 
     expect(explanation(tester), contains(_notRunning));
@@ -201,21 +201,36 @@ void main() {
 
     await modelStarts(tester);
 
-    expect(model.asked, 1, reason: "chat's own check asked the model");
+    // Changed 2026-10-23: the page asks nothing by itself (on oMLX or LM
+    // Studio a ping is a model load, and the maintainer wants no load until
+    // Next); Next is the press that asks. The old assertion pinned the
+    // page's own ask.
+    expect(model.asked, 0, reason: 'nothing asks until Next');
+    expect(explanation(tester), contains('Next checks it first'));
+    expect(next(tester).onPressed, isNotNull);
+
+    await tester.tap(find.byKey(const Key('world-from-wiki-next')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(model.asked, 1, reason: 'Next asked the model');
     expect(explanation(tester), _checking);
-    expect(next(tester).onPressed, isNull);
 
     await answer(tester, _calls);
 
     expect(chat.toolCallSupport, ToolCallSupport.supported);
+    final dynamic page = tester.state(find.byType(WorldFromWikiPage));
+    expect(page.worldState.currentStep, 1, reason: 'a tool call let Next go');
     expect(find.byKey(const Key('world-from-wiki-tools-copy')), findsNothing);
-    expect(next(tester).onPressed, isNotNull);
   });
 
-  testWidgets('a model that was tested and answered in words says it failed '
-      'the check and cannot be used, apart from "not tested"', (tester) async {
+  testWidgets('a model that answered in words says it failed the check, and '
+      'Next asks it again rather than trusting the "no"', (tester) async {
     await open(tester);
     await modelStarts(tester);
+    await tester.tap(find.byKey(const Key('world-from-wiki-next')));
+    await tester.pump();
+    await tester.pump();
     expect(explanation(tester), _checking);
 
     await answer(tester, _prose);
@@ -223,10 +238,35 @@ void main() {
     expect(chat.toolCallSupport, ToolCallSupport.unsupported);
     final text = explanation(tester);
     expect(text, startsWith(_failed));
-    expect(text, contains('Pick a different model'));
+    // Changed 2026-10-23: a failed verdict is asked again on Next (and
+    // Check now) rather than trusted. The old assertions pinned a dead end
+    // on a verdict that may be kept from another run, or filed while the
+    // server was still loading the model.
+    expect(text, contains('pick a different model'));
     expect(text, isNot(contains(_notRunning)));
     expect(text, isNot(contains('Checking')));
-    expect(next(tester).onPressed, isNull);
-    expect(find.byKey(const Key('world-from-wiki-tools-retest')), findsNothing);
+    expect(next(tester).onPressed, isNotNull, reason: 'Next asks again');
+    expect(
+      find.byKey(const Key('world-from-wiki-tools-retest')),
+      findsOneWidget,
+    );
+
+    // Next asks the model again and waits for its answer; a tool call now
+    // unlocks the wizard.
+    model.answer = Completer();
+    final askedBefore = model.asked;
+    await tester.tap(find.byKey(const Key('world-from-wiki-next')));
+    await tester.pump();
+    await tester.pump();
+    expect(model.asked, askedBefore + 1);
+    expect(explanation(tester), _checking);
+    await answer(tester, _calls);
+    expect(chat.toolCallSupport, ToolCallSupport.supported);
+    final dynamic page = tester.state(find.byType(WorldFromWikiPage));
+    expect(
+      page.worldState.currentStep,
+      1,
+      reason: 'the live answer, not the old verdict, is what Next goes by',
+    );
   });
 }

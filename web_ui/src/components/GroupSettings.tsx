@@ -104,7 +104,7 @@ export function GroupSettings({
         </label>
         <label>
           Group system prompt
-          <textarea rows={3} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} onBlur={() => save({ systemPrompt })} />
+          <textarea rows={3} value={systemPrompt} placeholder="Blank uses the Group system prompt in Settings" onChange={(e) => setSystemPrompt(e.target.value)} onBlur={() => save({ systemPrompt })} />
         </label>
         <label>
           Group scenario

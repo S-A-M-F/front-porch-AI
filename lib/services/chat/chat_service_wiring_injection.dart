@@ -218,8 +218,7 @@ extension ChatServiceWiringInjection on ChatService {
     if (currentPrimary == null) {
       final slots = partitionLinkedPlaces(
         worldIds: worldIds,
-        isClimateEnabled: (id) =>
-            _worldRepository.resolveWorld(id)?.climateEnabled ?? false,
+        isClimateEnabled: (id) => _worldRepository.climateAuthorFor(id) != null,
       );
       await setChatPlaceSlots(
         primaryId: slots.primaryId,
@@ -237,6 +236,14 @@ extension ChatServiceWiringInjection on ChatService {
   }) async {
     final sid = _currentSessionId;
     if (sid == null) return;
+    // A move that changes the climate author must not rewrite history:
+    // pin the old author's biome from day 1 (only if nothing is pinned
+    // there yet — a user's dropdown span at day 1 stays law), then let
+    // the new author take over from the current story day. Same
+    // ChatBiomeSpans machinery the climate dropdown uses.
+    final oldAuthorId = _chatPlaceSlots.primaryId == null
+        ? null
+        : _worldRepository.climateAuthorFor(_chatPlaceSlots.primaryId!)?.id;
     await _worldRepository.setChatWorldAttachments(
       sid,
       primaryId: primaryId,
@@ -245,6 +252,13 @@ extension ChatServiceWiringInjection on ChatService {
     final resolvedPrimary = (primaryId != null && primaryId.isNotEmpty)
         ? primaryId
         : null;
+    // Slice 6: any Setting change — accepted suggestion, manual dropdown,
+    // attach flow — retires the decline memory and any still-open offer,
+    // both of which were written AT the old place. ("Stay at the Tea
+    // Rooms" must not mean "never move anywhere, ever".)
+    if (resolvedPrimary != _chatPlaceSlots.primaryId) {
+      _sceneMoves.settingChanged();
+    }
     _chatPlaceSlots = ChatPlaceSlots(
       primaryId: resolvedPrimary,
       loreIds: List.unmodifiable([
@@ -252,6 +266,30 @@ extension ChatServiceWiringInjection on ChatService {
           if (id.isNotEmpty && id != resolvedPrimary) id,
       ]),
     );
+    final newAuthor = resolvedPrimary == null
+        ? null
+        : _worldRepository.climateAuthorFor(resolvedPrimary);
+    if (newAuthor != null && newAuthor.id != oldAuthorId) {
+      final day = _timeService.dayCount < 1 ? 1 : _timeService.dayCount;
+      if (oldAuthorId != null && day > 1) {
+        final rows = await _worldRepository.getChatBiomeSpanRows(sid);
+        if (!rows.any((r) => r.effectiveFromDay == 1)) {
+          final oldAuthor = _worldRepository.worldById(oldAuthorId);
+          if (oldAuthor != null) {
+            await _worldRepository.setChatBiome(
+              chatId: sid,
+              dayCount: 1,
+              biome: _biomeOfAuthor(oldAuthor),
+            );
+          }
+        }
+      }
+      await _worldRepository.setChatBiome(
+        chatId: sid,
+        dayCount: day,
+        biome: _biomeOfAuthor(newAuthor),
+      );
+    }
     await _reloadBiomeSchedule();
     notifyListeners();
   }
@@ -262,10 +300,10 @@ extension ChatServiceWiringInjection on ChatService {
     final sid = _currentSessionId;
     if (sid == null) return;
     final primaryId = _chatPlaceSlots.primaryId;
-    final primary = primaryId == null
-        ? null
-        : _worldRepository.resolveWorld(primaryId);
-    if (!primaryWorldAllowsClimate(primary)) return;
+    final chain = primaryId == null
+        ? const <World>[]
+        : _worldRepository.chainFor(primaryId);
+    if (!chainAllowsClimate(chain)) return;
     final day = _timeService.dayCount < 1 ? 1 : _timeService.dayCount;
     await _worldRepository.setChatBiome(
       chatId: sid,
@@ -297,12 +335,96 @@ extension ChatServiceWiringInjection on ChatService {
       chatLorebook: _loreTimedEffects.chatLorebook,
       groupLorebook: _activeGroupLorebook,
       chatWorldIds: _chatPlaceSlots.allIds,
+      // Place-rank context for inclusion-group nearest-wins (slice 2).
+      settingChain: _chatPlaceSlots.primaryId == null
+          ? const []
+          : _worldRepository.chainFor(_chatPlaceSlots.primaryId!),
       // Decided empty must stay empty — never ghost to group.worldIds.
       groupWorldNames: const [],
       resolveWorld: _worldRepository.resolveWorld,
       inherit: inherit,
       speaker: speaker,
     );
+  }
+
+  /// The judge's arrival answer, routed from the clock call (design: the
+  /// service only FLAGS). Ignores an id equal to the current Setting —
+  /// you are already there, and a stale tool model may say so.
+  void flagSuggestedPlaceMove(String id) {
+    if (id.isEmpty || id == chatPrimaryWorldId) return;
+    final name = _worldRepository.worldById(id)?.name ?? id;
+    _sceneMoves.pending = PendingPlaceMove(id: id, name: name);
+    notifyListeners();
+  }
+
+  /// The move the clock judge suggested and the author has not answered
+  /// yet — the chat page shows the confirm dialog while this is non-null.
+  PendingPlaceMove? get pendingPlaceMove => _sceneMoves.pending;
+
+  /// Move: run the manual path exactly as the Places dropdown does —
+  /// the old Setting demotes to the top of Lore so its book stays live
+  /// for the rest of the scene, and the biome-span machinery inside
+  /// [setChatPlaceSlots] pins the old weather for earlier days.
+  Future<void> acceptPlaceMove() async {
+    final move = _sceneMoves.pending;
+    if (move == null) return;
+    final old = chatPrimaryWorldId;
+    await setChatPlaceSlots(
+      primaryId: move.id,
+      loreIds: [
+        if (old != null && old != move.id) old,
+        for (final l in _chatPlaceSlots.loreIds)
+          if (l != move.id && l != old) l,
+      ],
+    );
+  }
+
+  /// Stay: dismiss the offer and remember the decline FOR THIS SETTING —
+  /// the same place is not re-offered until the scene moves (or the
+  /// author moves it), then arrival is honestly re-judged from there.
+  void declinePlaceMove() {
+    final move = _sceneMoves.pending;
+    if (move == null) return;
+    _sceneMoves.decline(move.id, chatPrimaryWorldId);
+    notifyListeners();
+  }
+
+  /// The "Did time pass?" question the send is waiting on, or null. The
+  /// desktop dialog and the web sheet show it while it is non-null.
+  PendingSkip? get pendingSkip => _skipGate.pending;
+
+  /// A send is parked on [pendingSkip]: it owns the turn, so no other send,
+  /// regen, swipe, Continue or delete starts until it is answered.
+  bool get _skipAsked => _skipGate.pending != null;
+
+  /// The player's answer to [pendingSkip]: a skip, [SkipVerdict.none] for
+  /// "no skip", or null to keep the reader's guess.
+  void answerSkip(SkipVerdict? verdict) {
+    if (_skipGate.answer(verdict)) notifyListeners();
+  }
+
+  /// Whether a web client is connected to answer [pendingSkip].
+  set skipConfirmWebAsker(bool Function() connected) =>
+      _skipWebAsker = connected;
+
+  /// Puts a shaky skip reading to whoever is at a chat screen. Null at once
+  /// in a voice call or with nobody there (pick E: Director auto-chat and
+  /// AFK never send through here anyway), so the guess applies. A chat
+  /// change under the question cancels it.
+  Future<SkipVerdict?> _askSkip(PendingSkip question, String? token) async {
+    if (_callMode || (_chatScreens == 0 && !_skipWebAsker())) return null;
+    final answer = _skipGate.ask(question);
+    notifyListeners();
+    void onChange() {
+      if (_sceneChanged(token) && _skipGate.cancel()) notifyListeners();
+    }
+
+    addListener(onChange);
+    try {
+      return await answer;
+    } finally {
+      removeListener(onChange);
+    }
   }
 
   /// Full chat-context MacroContext for prompt builds: card fields, group

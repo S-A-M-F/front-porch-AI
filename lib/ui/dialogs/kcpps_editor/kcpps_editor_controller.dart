@@ -255,9 +255,10 @@ class KcppsEditorController extends ChangeNotifier {
         mmprojPath: storage.presetSettings.modelMmprojMap[model] ?? '',
       );
       // Flash attention and the cache as a launch from these settings runs
-      // them: a compressed cache turns flash attention on where it can run.
+      // them: a compressed cache turns flash attention on where it can run,
+      // and Gemma 4 on Vulkan has it only once Settings turned it on.
       final pair = koboldFlashAndCache(
-        runs: flashAttentionRuns,
+        runs: flashAttentionRunsIf(riskAccepted: b.gemma4VulkanFlashAttention),
         flashAttention: draft.flashAttention,
         kvQuant: draft.kvQuant,
       );

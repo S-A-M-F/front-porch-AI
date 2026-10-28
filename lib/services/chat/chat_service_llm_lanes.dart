@@ -207,12 +207,19 @@ extension ChatServiceLlmLanes on ChatService {
 
   /// The tool-calling verdict for the one model a studio wizard runs on, from
   /// chat's own check (the same ping, filed in the same store the pill
-  /// reads). Asks that model when nothing has yet. [via] is the wizard's own
-  /// remote pick and [remoteModel] its name; both left out mean the chat
-  /// model.
-  StudioToolCheck toolCheckFor({LLMService? via, String remoteModel = ''}) {
-    final tester = _studioToolTesterFor(via, remoteModel)
-      ..onBackendMaybeChanged();
+  /// reads). With [autoAsk] it asks that model when nothing has yet; the
+  /// World from Wiki wizard passes false, because on oMLX or LM Studio a
+  /// ping loads the model, and the maintainer wants no load until Next
+  /// (its Next and Check now go through [retestToolsFor]). [via] is the
+  /// wizard's own remote pick and [remoteModel] its name; both left out
+  /// mean the chat model.
+  StudioToolCheck toolCheckFor({
+    LLMService? via,
+    String remoteModel = '',
+    bool autoAsk = true,
+  }) {
+    final tester = _studioToolTesterFor(via, remoteModel);
+    if (autoAsk) tester.onBackendMaybeChanged();
     return (
       support: _toolProbe.supportFor(_studioToolIdentity),
       testing: tester.isTesting,

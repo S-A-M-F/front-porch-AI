@@ -1,18 +1,20 @@
 // Copyright (C) 2026 Front Porch AI
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Chance Time, reprocess, persona, image-prompt review, message edit, and the
-// delete / fork confirms.
+// Chance Time, reprocess, persona, image-prompt review, "Did time pass?",
+// message edit, and the delete / fork confirms.
 // Drawers (conversations / theme / stats) stay on the page — they are layout.
 
+import { useState } from 'react';
 import { CharacterPicker } from '../../components/CharacterPicker';
 import { ReprocessNeedsModal } from '../../components/ReprocessNeedsModal';
 import { ChatPersonaModal } from '../../components/ChatPersonaModal';
 import { ChanceTimeModal } from '../../components/ChanceTimeModal';
 import { ImagePromptReviewModal } from '../../components/ImagePromptReviewModal';
+import { SkipConfirmSheet, type PendingSkip } from '../../components/SkipConfirmSheet';
 import { MessageEditModal } from '../../components/MessageEditModal';
 import { ConfirmDialog } from '../../components/library/LibraryDialogs';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 import { type Message } from '../../components/chatTypes';
 import { useReprocessNeeds } from './useReprocessNeeds';
 import type { PendingConfirm } from './useChatSend';
@@ -55,6 +57,11 @@ export function ChatOverlays(props: {
   onReveal: () => void;
   onAccept: () => void | Promise<void>;
   imagePromptReview?: string;
+  pendingSkip?: PendingSkip | null;
+  placeMove?: { id: string; name: string } | null;
+  placeMint?: { name: string; descriptor: string; settingName?: string } | null;
+  onAnswerPlaceMint?: (action: 'add_move' | 'add' | 'ignore') => void | Promise<void>;
+  onAnswerPlaceMove?: (accept: boolean) => void | Promise<void>;
   pendingConfirm: PendingConfirm | null;
   onConfirmPending: () => void | Promise<void>;
   onCancelPending: () => void;
@@ -145,6 +152,24 @@ export function ChatOverlays(props: {
         />
       )}
 
+      {props.placeMint && (
+        <PlaceMintModal
+          mint={props.placeMint}
+          onAnswer={(action) =>
+            void (props.onAnswerPlaceMint ?? (() => {}))(action)
+          }
+        />
+      )}
+
+      {props.placeMove && (
+        <PlaceMoveModal
+          move={props.placeMove}
+          onAnswer={(accept) => void (props.onAnswerPlaceMove ?? (() => {}))(accept)}
+        />
+      )}
+
+      {props.pendingSkip && <SkipConfirmOverlay pending={props.pendingSkip} />}
+
       {imagePromptReview && (
         <ImagePromptReviewModal
           prompt={imagePromptReview}
@@ -155,5 +180,82 @@ export function ChatOverlays(props: {
         />
       )}
     </>
+  );
+}
+
+/// The sheet posts its answer; a bad "Other…" keeps it open with the
+/// server's reason. Keyed by the question so a new one starts fresh.
+function SkipConfirmOverlay({ pending }: { pending: PendingSkip }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <SkipConfirmSheet
+      key={`${pending.line}|${pending.now}`}
+      pending={pending}
+      error={error}
+      onAnswer={(answer) => {
+        setError(null);
+        // A 409 means it was answered elsewhere; the next snapshot closes
+        // the sheet. Any other failure stays open and says why.
+        api.post('/api/chat/skip-confirm', answer).catch((e: unknown) => {
+          if (e instanceof ApiError && e.status === 409) return;
+          setError(e instanceof Error ? e.message : String(e));
+        });
+      }}
+    />
+  );
+}
+
+/// Slice 6: the web twin of the desktop PlaceMoveDialog — same question,
+/// same two answers, straight from the snapshot flag.
+export function PlaceMoveModal(props: {
+  move: { id: string; name: string };
+  onAnswer: (accept: boolean) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-label="The scene moved">
+      <div className="fp-card w-[420px] max-w-[92vw] p-5">
+        <div className="mb-2 font-semibold">🧭 The scene moved</div>
+        <p className="fp-dim">
+          The story reads as arriving at {props.move.name}. Move the scene there?
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="fp-btn" onClick={() => props.onAnswer(false)}>Stay</button>
+          <button className="fp-btn fp-btn-accent" onClick={() => props.onAnswer(true)}>Move there</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/// Slice 7: the web twin of the desktop mint dialog. Same question,
+/// the same three honest answers, straight from the snapshot flag.
+export function PlaceMintModal(props: {
+  mint: { name: string; descriptor: string; settingName?: string };
+  onAnswer: (action: 'add_move' | 'add' | 'ignore') => void;
+}) {
+  const { name, descriptor, settingName } = props.mint;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-label="A new place in the story">
+      <div className="fp-card w-[420px] max-w-[92vw] p-5">
+        <div className="mb-2 font-semibold">✨ A new place in the story</div>
+        <p className="fp-dim">
+          The story just described {name}
+          {descriptor ? ` — ${descriptor}` : ''}.{' '}
+          {settingName
+            ? `Save it as a place inside ${settingName}?`
+            : 'Save it as a place?'}
+        </p>
+        <p className="fp-faint mt-2 text-xs">
+          It arrives with a short description and a few lore entries written
+          from what the story showed, inheriting the setting's weather. You
+          can edit or delete it later like any place.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="fp-btn" onClick={() => props.onAnswer('ignore')}>Ignore</button>
+          <button className="fp-btn" onClick={() => props.onAnswer('add')}>Just add</button>
+          <button className="fp-btn fp-btn-accent" onClick={() => props.onAnswer('add_move')}>Add and move</button>
+        </div>
+      </div>
+    </div>
   );
 }

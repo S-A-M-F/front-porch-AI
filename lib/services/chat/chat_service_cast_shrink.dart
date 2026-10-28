@@ -221,7 +221,9 @@ extension ChatServiceCastShrink on ChatService {
     // regardless of realism so the NSFW toggle, passage-of-time, chaos, and the
     // note are not reset to defaults on collapse.
     _pockets = solePockets;
-    _nsfwService.setNsfwCooldownEnabled(soleNsfwEnabled);
+    // Seed, never setNsfwCooldownEnabled: its "off" zeroes the arousal just
+    // restored, and the live gate is Porch Life Afterglow anyway.
+    _nsfwService.seedFromV2OrExt(nsfwCooldownEnabled: soleNsfwEnabled);
     _chaosModeService.loadScalars(
       modeEnabled: soleChaosEnabled,
       pressure: soleChaosPressure,
@@ -304,8 +306,8 @@ extension ChatServiceCastShrink on ChatService {
 
     // Enable-flags (independent of realism; persist via _doSaveChat columns in
     // both modes) + author note + evolution + objectives carry REGARDLESS.
-    _nsfwService.setNsfwCooldownEnabled(
-      state['nsfwCooldownEnabled'] as bool? ?? false,
+    _nsfwService.seedFromV2OrExt(
+      nsfwCooldownEnabled: state['nsfwCooldownEnabled'] as bool? ?? false,
     );
     _chaosModeService.loadScalars(
       modeEnabled: state['chaosModeEnabled'] as bool? ?? false,

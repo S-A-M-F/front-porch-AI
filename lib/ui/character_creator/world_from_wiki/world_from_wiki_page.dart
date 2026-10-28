@@ -9,12 +9,21 @@ import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:front_porch_ai/ui/character_creator/character_creator.dart';
 import 'package:front_porch_ai/ui/character_creator/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/steps/steps.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_review_actions.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_source_actions.dart';
 import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_from_wiki_state.dart';
+import 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_wizard_source.dart';
 import 'package:front_porch_ai/ui/theme/studio_colors.dart';
+
+export 'package:front_porch_ai/ui/character_creator/world_from_wiki/world_wizard_source.dart';
 
 /// Studio wizard: wiki → lorebook cards → a real World in the library.
 class WorldFromWikiPage extends StatefulWidget {
-  const WorldFromWikiPage({super.key});
+  const WorldFromWikiPage({super.key, this.source = WorldWizardSource.wiki});
+
+  /// What the wizard builds from; From Character opens it with
+  /// [WorldWizardSource.character]. Same steps either way.
+  final WorldWizardSource source;
 
   @override
   State<WorldFromWikiPage> createState() => _WorldFromWikiPageState();
@@ -48,6 +57,15 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     super.initState();
     _chat = Provider.of<ChatService>(context, listen: false);
     _llm = Provider.of<LLMProvider>(context, listen: false);
+    worldState.wizardSource = widget.source;
+    if (widget.source.isCharacter) {
+      worldState.characterPick
+          .load(
+            repo: Provider.of<CharacterRepository>(context, listen: false),
+            stories: Provider.of<StoryPipelineService?>(context, listen: false),
+          )
+          .whenComplete(_tick);
+    }
     creatorState.loadSavedState();
     creatorState.addListener(_onCreator);
     worldState.addListener(_tick);
@@ -102,7 +120,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            '${worldState.nameController.text.trim()} saved to Worlds.',
+            '${worldState.nameController.text.trim()} minted into Worlds.',
           ),
         ),
       );
@@ -118,14 +136,29 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     switch (step) {
       case 0:
         nextLabel = 'Next: Book';
-        onNext = worldState.toolsReady
-            ? () {
+        // Next is the one press that may load a model: an unchecked model
+        // is asked here, not when it was picked, and a model that failed
+        // once is asked again rather than trusted to have failed.
+        final gate = worldState.toolsGate;
+        onNext =
+            gate == WorldToolsGate.ready ||
+                gate == WorldToolsGate.notChecked ||
+                gate == WorldToolsGate.failed
+            ? () async {
+                final ok = await worldState.ensureToolsChecked(
+                  chat: _chat,
+                  llm: _llm,
+                  creator: creatorState,
+                );
+                if (!ok || !mounted) return;
                 worldState.currentStep = 1;
                 worldState.notify();
               }
             : null;
       case 1:
-        nextLabel = worldState.lorebooksOn ? 'Scout wiki' : 'Next: Preview';
+        nextLabel = worldState.lorebooksOn
+            ? worldState.scoutLabel
+            : 'Next: Preview';
         onNext = busy
             ? null
             : () {
@@ -134,9 +167,15 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                   worldState.notify();
                   return;
                 }
+                final storage = Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                );
                 worldState.scout(
                   llm: Provider.of<LLMProvider>(context, listen: false),
                   creator: creatorState,
+                  contextTokens: worldWizardContextTokens(storage),
+                  depth: worldWizardDepth(storage),
                 );
               };
       case 2:
@@ -144,9 +183,15 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
         onNext = busy || worldState.signed.isEmpty
             ? null
             : () {
+                final storage = Provider.of<StorageService>(
+                  context,
+                  listen: false,
+                );
                 worldState.write(
                   llm: Provider.of<LLMProvider>(context, listen: false),
                   creator: creatorState,
+                  contextTokens: worldWizardContextTokens(storage),
+                  depth: worldWizardDepth(storage),
                 );
               };
       case 3:
@@ -195,20 +240,49 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
           ),
         );
       default:
-        nextLabel = 'Save World';
-        onNext = busy ? null : _saveAndFinish;
+        // Review: Back, the direction note's send-back, and Mint.
+        return WorldReviewNav(
+          state: worldState,
+          onBack: () {
+            worldState.currentStep = 3;
+            worldState.notify();
+          },
+          onSendBack: () => worldState.sendBackAround(
+            worldState.directionController.text,
+            wholeWorld: worldState.directionWholeWorld,
+          ),
+          onMint: _saveAndFinish,
+        );
     }
-    return CreatorNavBar(
-      busy: busy,
-      showBack: step > 0,
-      onBack: () {
-        worldState.currentStep = step - 1;
-        worldState.notify();
-      },
-      onNext: onNext,
-      nextLabel: nextLabel,
-      isLast: step >= 4,
-      nextKey: const Key('world-from-wiki-next'),
+    final hint = _navHint(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CreatorNavBar(
+          busy: busy,
+          showBack: step > 0,
+          onBack: () {
+            worldState.currentStep = step - 1;
+            worldState.notify();
+          },
+          onNext: onNext,
+          nextLabel: nextLabel,
+          isLast: step >= 4,
+          nextKey: const Key('world-from-wiki-next'),
+        ),
+        if (hint.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              hint,
+              key: const Key('world-from-wiki-nav-hint'),
+              style: TextStyle(
+                fontSize: 12,
+                color: StudioColors.mutedOf(context),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -256,7 +330,58 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     );
   }
 
-  static const _stepLabels = ['Setup', 'Book', 'Review', 'Write', 'Preview'];
+  static const _stepLabels = ['Setup', 'Book', 'Shelf', 'Write', 'Review'];
+
+  /// The app bar's second line: where the wizard stands, in a few words.
+  String _subtitle(BuildContext context) {
+    final name = worldState.nameController.text.trim();
+    final wiki = worldState.sourceLabel;
+    final storage = Provider.of<StorageService>(context, listen: false);
+    switch (worldState.currentStep) {
+      case 0:
+        return 'Pick the model that writes it';
+      case 1:
+        if (worldState.scouting) {
+          final tokens = worldWizardContextTokens(storage);
+          final verb = worldState.scoutLabel == 'Skim chat'
+              ? 'Skimming'
+              : 'Scouting';
+          return '$verb $wiki · ${worldWizardDepth(storage).label} · '
+              '${worldWikiContextLabel(tokens)}';
+        }
+        return widget.source.restingSubtitle;
+      case 2:
+        return [
+          if (name.isNotEmpty) name,
+          if (wiki.isNotEmpty) wiki,
+        ].join(' · ');
+      case 3:
+        return worldState.writing
+            ? 'Writing ${name.isEmpty ? 'the world' : name}…'
+            : 'Stopped';
+      default:
+        return '${name.isEmpty ? 'The world' : name} · review before you mint';
+    }
+  }
+
+  /// A line under the nav: how long the next press takes, in plain words.
+  String _navHint(BuildContext context) {
+    final storage = Provider.of<StorageService>(context, listen: false);
+    switch (worldState.currentStep) {
+      case 1:
+        if (!worldState.lorebooksOn) return '';
+        if (widget.source.isCharacter) {
+          return worldState.characterPick.hasChat
+              ? 'one pass per 50 messages, then the scout'
+              : 'the card goes straight onto the index, then the scout';
+        }
+        return 'Full on a remote model: ${worldWizardDepth(storage).timeHint.replaceFirst('About ', 'about ')}, with every step shown';
+      case 2:
+        return 'A few minutes per book on a remote model';
+      default:
+        return '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) =>
@@ -266,7 +391,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
     return Scaffold(
       backgroundColor: StudioColors.bgOf(context),
       appBar: AppBar(
-        toolbarHeight: 56,
+        toolbarHeight: 60,
         backgroundColor: StudioColors.sideOf(context),
         shape: Border(bottom: BorderSide(color: StudioColors.lineOf(context))),
         automaticallyImplyLeading: false,
@@ -278,29 +403,49 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
               dimension: 40,
               child: IconButton(
                 padding: EdgeInsets.zero,
-                icon: Icon(worldState.writing ? Icons.stop : Icons.arrow_back),
-                tooltip: worldState.writing ? 'Stop' : 'Back',
+                icon: Icon(
+                  worldState.writing || worldState.reviewing
+                      ? Icons.stop
+                      : Icons.arrow_back,
+                ),
+                tooltip: worldState.writing || worldState.reviewing
+                    ? 'Stop'
+                    : 'Back',
                 color: StudioColors.proseOf(context),
-                onPressed: worldState.writing
+                onPressed: worldState.writing || worldState.reviewing
                     ? worldState.abortWrite
                     : () => Navigator.of(context).pop(),
               ),
             ),
-            Icon(
-              Icons.menu_book_outlined,
-              color: StudioColors.amberOf(context),
-              size: 22,
-            ),
-            Text(
-              'World from Wiki',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: StudioColors.inkOf(context),
+            WorldIconBadge(icon: widget.source.icon, size: 36),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.source.title,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                      color: StudioColors.inkOf(context),
+                    ),
+                  ),
+                  Text(
+                    _subtitle(context),
+                    key: const Key('world-from-wiki-subtitle'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: StudioColors.mutedOf(context),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const Spacer(),
-            CreatorStepIndicator(
+            WorldStepIndicator(
               labels: _stepLabels,
               current: worldState.currentStep,
             ),
@@ -323,7 +468,7 @@ class _WorldFromWikiPageState extends State<WorldFromWikiPage> {
                   ? WorldFromWikiReviewStep(state: worldState)
                   : worldState.currentStep == 3
                   ? WorldFromWikiWriteStep(state: worldState)
-                  : WorldFromWikiPreviewStep(state: worldState),
+                  : WorldFromWikiReviewWorldStep(state: worldState),
             ),
           ),
           _nav(),

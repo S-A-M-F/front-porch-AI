@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:front_porch_ai/models/chat_place_slots.dart';
 import 'package:front_porch_ai/models/lorebook.dart';
 import 'package:front_porch_ai/models/world.dart';
+import 'package:front_porch_ai/services/chat/lorebook_collection.dart';
 import 'package:front_porch_ai/services/chat/prompt_injection/world_injection.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 
 void main() {
   World place({
@@ -60,8 +62,11 @@ void main() {
     final lore = [mars];
     expect(primaryWorldAllowsClimate(primary), isTrue);
     // Lore Mars must not appear as a climate author.
-    final customFromPrimary = primary.climateEnabled && primary.biomeJson != null;
-    final customFromLore = lore.any((w) => w.climateEnabled && w.biomeJson != null);
+    final customFromPrimary =
+        primary.climateEnabled && primary.biomeJson != null;
+    final customFromLore = lore.any(
+      (w) => w.climateEnabled && w.biomeJson != null,
+    );
     expect(customFromPrimary, isTrue);
     expect(customFromLore, isTrue); // file has climate — role still lore
     // Picker filter: Primary only.
@@ -104,10 +109,7 @@ void main() {
     // Replace with mars: demote earth to lore top.
     final next = ChatPlaceSlots(
       primaryId: 'mars',
-      loreIds: [
-        slots.primaryId!,
-        ...slots.loreIds,
-      ],
+      loreIds: [slots.primaryId!, ...slots.loreIds],
     );
     expect(next.primaryId, 'mars');
     expect(next.loreIds, ['earth', 'soul']);
@@ -118,5 +120,130 @@ void main() {
     expect(empty.primaryId, isNull);
     expect(empty.loreIds, isEmpty);
     expect(empty.allIds, isEmpty);
+  });
+
+  group('Location chain authoring (slice 2)', () {
+    World home(
+      String name, {
+      required bool climate,
+      String? parent,
+      List<LorebookEntry> entries = const [],
+    }) => World(
+      id: name.toLowerCase().replaceAll(' ', '-'),
+      name: name,
+      lorebook: Lorebook(
+        entries: [
+          ...entries,
+          LorebookEntry(key: 'lore-${name.length}', content: 'facts of $name'),
+        ],
+      ),
+      climateEnabled: climate,
+      parentWorldId: parent,
+    );
+
+    World? Function(String) index(Iterable<World> worlds) {
+      final byId = {for (final w in worlds) w.id: w};
+      return (ref) => byId[ref];
+    }
+
+    test('an inherited-climate location takes the parent as its author', () {
+      final town = home('Bletchfield', climate: true);
+      final cafe = home('Tea Rooms', climate: false, parent: town.id);
+      final chain = worldChain(cafe, index([town, cafe]));
+      expect(chain.map((w) => w.id), [cafe.id, town.id]);
+      expect(climateAuthorOf(chain)?.id, town.id);
+      expect(chainAllowsClimate(chain), isTrue);
+    });
+
+    test('continents author their own weather under a climate-on root', () {
+      final earth = home('Earth', climate: true);
+      final europe = home('Northern Europe', climate: true, parent: earth.id);
+      final sahel = home('Sahel', climate: true, parent: earth.id);
+      final all = index([earth, europe, sahel]);
+      expect(climateAuthorOf(worldChain(europe, all))?.id, europe.id);
+      expect(climateAuthorOf(worldChain(sahel, all))?.id, sahel.id);
+    });
+
+    test('a location that owns climate is the author for its subtree', () {
+      final town = home('Bletchfield', climate: true);
+      final cavern = home('Cavern', climate: true, parent: town.id);
+      final pool = home('Hot pool', climate: false, parent: cavern.id);
+      final chain = worldChain(pool, index([town, cavern, pool]));
+      expect(climateAuthorOf(chain)?.id, cavern.id);
+    });
+
+    test('a weather-off top-level world silences every place inside it', () {
+      final earth = home('Earth', climate: false);
+      final europe = home('Northern Europe', climate: true, parent: earth.id);
+      final oslo = home('Oslo', climate: false, parent: europe.id);
+      final sahel = home('Sahel', climate: true, parent: earth.id);
+      final all = index([earth, europe, oslo, sahel]);
+      for (final leaf in [europe, oslo, sahel]) {
+        final chain = worldChain(leaf, all);
+        expect(climateAuthorOf(chain), isNull, reason: leaf.name);
+        expect(chainAllowsClimate(chain), isFalse, reason: leaf.name);
+        expect(weatherOffRootOf(chain)?.id, earth.id, reason: leaf.name);
+      }
+      // The root itself says it with its own switch — no "off above" note.
+      expect(weatherOffRootOf(worldChain(earth, all)), isNull);
+      // Owned climates are kept, only paused: the switch lists them.
+      expect(
+        climateOwnersInside(earth.id, [
+          earth,
+          europe,
+          oslo,
+          sahel,
+        ], all).map((w) => w.id),
+        [europe.id, sahel.id],
+      );
+    });
+
+    test('an all-lore-only chain keeps weather off', () {
+      final earth = home('Earth', climate: false);
+      final city = home('City', climate: false, parent: earth.id);
+      final chain = worldChain(city, index([earth, city]));
+      expect(climateAuthorOf(chain), isNull);
+      expect(chainAllowsClimate(chain), isFalse);
+    });
+
+    test('ancestor books enumerate once — chain plus explicit Lore attach', () {
+      final town = home('Bletchfield', climate: true);
+      final cafe = home('Tea Rooms', climate: false, parent: town.id);
+      final lookup = index([town, cafe]);
+      final refs = collectLoreEntryRefs(
+        characters: const [],
+        // Town attached BOTH as the cafe's ancestor (walked from the leaf)
+        // and as an explicit Lore place — it must still enumerate once.
+        chatWorldIds: [cafe.id, town.id],
+        resolveWorld: lookup,
+        settingChain: worldChain(cafe, lookup),
+      );
+      expect(refs.where((r) => r.sourceLabel == 'world:Tea Rooms').length, 1);
+      expect(refs.where((r) => r.sourceLabel == 'world:Bletchfield').length, 1);
+      final cafeRef = refs.firstWhere(
+        (r) => r.sourceLabel == 'world:Tea Rooms',
+      );
+      final townRef = refs.firstWhere(
+        (r) => r.sourceLabel == 'world:Bletchfield',
+      );
+      expect(cafeRef.placeRank, 0);
+      expect(townRef.placeRank, 1);
+      expect(cafeRef.chainId, cafe.id);
+      expect(townRef.chainId, cafe.id);
+    });
+
+    test('a Lore place outside the chain carries no rank', () {
+      final town = home('Bletchfield', climate: true);
+      final mars = home('Mars', climate: true);
+      final refs = collectLoreEntryRefs(
+        characters: const [],
+        chatWorldIds: [town.id, mars.id],
+        resolveWorld: index([town, mars]),
+        settingChain: [town],
+      );
+      final marsRef = refs.firstWhere((r) => r.sourceLabel == 'world:Mars');
+      expect(marsRef.placeRank, isNull);
+      expect(marsRef.chainId, isNull);
+    });
   });
 }

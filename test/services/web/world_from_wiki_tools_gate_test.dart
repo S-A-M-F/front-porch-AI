@@ -23,6 +23,8 @@ import 'package:front_porch_ai/services/chat/pass_support.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/system_role_probe.dart';
 import 'package:front_porch_ai/services/web/facade/world_from_wiki_facade.dart';
+import 'package:front_porch_ai/services/web/facade/world_from_wiki_review_facade.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -149,27 +151,41 @@ void main() {
     expect(model.asked, 0);
   });
 
-  test('running: chat\'s check asks the model; a tool call opens the '
-      'wizard', () async {
+  // Changed 2026-10-23: reading the status no longer asks the model. The
+  // maintainer ruled the wizard must not load a model until Next — on oMLX
+  // and LM Studio a tool ping is a model load, and the wizard pinged the
+  // first model in the picker the moment the page opened. The phone's Next
+  // (scout) asks instead; the old pin (status → asked) is therefore false.
+  test('running: the status read asks nothing; Next (scout) asks the model '
+      'and a tool call opens the wizard', () async {
     model.ready = true;
     await facade.status();
     await _settle();
-    expect(model.asked, 1);
-    expect(await gate(), 'checking');
+    expect(model.asked, 0, reason: 'picking a model is not asking for one');
+    expect(await gate(), 'notChecked');
 
+    final pending = scout();
+    await _settle();
+    expect(model.asked, 1, reason: 'Next asks');
+    expect(await gate(), 'checking');
     model.answer.complete(_calls);
+    final result = await pending;
     await _settle();
 
     expect(chat.toolCallSupport, ToolCallSupport.supported);
     expect(await gate(), 'ready');
     expect((await facade.status())['toolsAdvertised'], isTrue);
+    // The gate opened: what refuses now is the sandbox's own backend (no
+    // real service behind the provider here), not the tools check.
+    expect(result['error'], isNot(contains('checked for tools')));
+    expect(result['error'], isNot(contains('tool-calling check')));
   });
 
+  // Changed 2026-10-23 (see above): Check now asks, the status read does not.
   test('tested and answered in words: failed, and Scout says why', () async {
     model.ready = true;
-    await facade.status();
-    await _settle();
     model.answer.complete(_prose);
+    await facade.testTools();
     await _settle();
 
     expect(chat.toolCallSupport, ToolCallSupport.unsupported);
@@ -195,11 +211,16 @@ void main() {
     await chat.testToolCalling();
     expect(chat.toolCallSupport, ToolCallSupport.unsupported);
 
+    // Changed 2026-10-23 (see above): Next asks, the status read does not.
     await facade.status();
+    await _settle();
+    expect(model.asked, 0);
+    final pending = scout();
     await _settle();
     expect(model.asked, 1, reason: "the wizard's model itself was asked");
     expect(await gate(), 'checking');
     model.answer.complete(_calls);
+    await pending;
     await _settle();
 
     expect(await gate(), 'ready', reason: "the helper's no is not borrowed");
@@ -215,9 +236,9 @@ void main() {
     await chat.testToolCalling();
     expect(chat.toolCallSupport, ToolCallSupport.supported);
 
-    await facade.status();
-    await _settle();
+    // Changed 2026-10-23 (see above): Check now asks, the status read does not.
     model.answer.complete(_prose);
+    await facade.testTools();
     await _settle();
     expect(await gate(), 'failed', reason: "the helper's yes is not borrowed");
 
@@ -228,11 +249,11 @@ void main() {
     expect(after['toolsGate'], 'ready');
   });
 
+  // Changed 2026-10-23 (see above): Check now asks, the status read does not.
   test('a model that passed and has since stopped is not ready', () async {
     model.ready = true;
-    await facade.status();
-    await _settle();
     model.answer.complete(_calls);
+    await facade.testTools();
     await _settle();
     expect(await gate(), 'ready');
 
@@ -240,5 +261,71 @@ void main() {
 
     expect(chat.toolCallSupport, ToolCallSupport.supported);
     expect(await gate(), 'notRunning');
+  });
+
+  test('the phone sees and sets the wizard\'s own context', () async {
+    final before = await facade.status();
+    expect(before['contextSize'], 0, reason: 'fresh install follows the chat');
+    expect(before['chatContextSize'], storage.backendSettings.contextSize);
+    expect(before['contextChoices'], kWorldWikiContextChoices);
+
+    final set = await facade.setContext({'contextSize': 65536});
+    expect(set['ok'], isTrue);
+    expect(set['contextSize'], 65536);
+    expect(storage.webSearchSettings.worldWikiContextSize, 65536);
+
+    final tooSmall = await facade.setContext({'contextSize': 4096});
+    expect(tooSmall['ok'], isFalse);
+    expect(tooSmall['error'], contains('$kWorldWikiContextFloor'));
+    final junk = await facade.setContext({'contextSize': 'lots'});
+    expect(junk['ok'], isFalse);
+    expect(
+      storage.webSearchSettings.worldWikiContextSize,
+      65536,
+      reason: 'a refused body changes nothing',
+    );
+
+    final back = await facade.setContext({'contextSize': 0});
+    expect(back['ok'], isTrue);
+    expect((await facade.status())['contextSize'], 0);
+
+    // Depth rides the same route; a bad one is refused, a missing one is
+    // left alone.
+    expect((await facade.status())['depth'], 1);
+    final deep = await facade.setContext({'depth': 2});
+    expect(deep['ok'], isTrue);
+    expect(deep['depth'], 2);
+    expect((deep['depthChoices'] as List).length, 3);
+    expect((await facade.setContext({'depth': 5}))['ok'], isFalse);
+    expect((await facade.setContext({}))['ok'], isFalse);
+    expect(storage.webSearchSettings.worldWikiDepth, 2);
+  });
+  test('the Review step\'s actions need a written world first', () async {
+    expect(facade.startRewrite({'name': 'Seireitei', 'note': 'x'}), {
+      'ok': false,
+      'error': 'Write the world first.',
+    });
+    expect(facade.startDirection({'note': 'x'}), {
+      'ok': false,
+      'error': 'Write the world first.',
+    });
+    expect(facade.startAdd({'name': 'Kurosaki Clinic'}), {
+      'ok': false,
+      'error': 'Write the world first.',
+    });
+    expect(
+      worldDirectionSummaryFor(
+        const WorldDirection(
+          add: [(name: 'Kurosaki Clinic', place: 'Karakura Town')],
+          drop: ['Aizen'],
+        ),
+        2,
+      ),
+      'Rewrote 2 entries, added Kurosaki Clinic, dropped 1.',
+    );
+    expect(
+      worldDirectionSummaryFor(const WorldDirection(), 0),
+      startsWith('Your note named nothing on the shelf'),
+    );
   });
 }

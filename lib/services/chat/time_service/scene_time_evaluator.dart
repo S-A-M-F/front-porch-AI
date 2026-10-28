@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:front_porch_ai/services/chat/pass_support.dart';
 import 'package:front_porch_ai/services/chat/realism_tools.dart';
 import 'package:front_porch_ai/services/chat/story_clock.dart';
+import 'package:front_porch_ai/services/chat/time_service/reply_jump.dart';
 import 'package:front_porch_ai/services/chat/time_service/time_clock_applier.dart';
 import 'package:front_porch_ai/services/chat/time_service/time_clock_state.dart';
 import 'package:front_porch_ai/services/chat/today_line_tag.dart';
@@ -32,17 +33,11 @@ int? _extractMinutes(String text) {
   return m == null ? null : int.tryParse(m.group(1)!);
 }
 
-int _extractDays(String text) {
-  final m = RegExp(r'"days_elapsed"\s*:\s*"?(\d+)').firstMatch(text);
-  return m == null ? 0 : int.tryParse(m.group(1)!) ?? 0;
+String? _extractScenePlace(String text) {
+  final v = judgedStringField(text, 'scene_place')?.trim();
+  if (v == null || v.isEmpty || v.toLowerCase() == 'same') return null;
+  return v;
 }
-
-/// The judge's days_elapsed counts only when the exchange names a span of
-/// days at all; like [newDayCorroboration] for new_day.
-final _daysCorroboration = RegExp(
-  r'\b(?:days?|weeks?|months?|years?|fortnights?)\b',
-  caseSensitive: false,
-);
 
 bool _extractContinuousInstant(
   String text,
@@ -62,6 +57,9 @@ class SceneTimeEvaluator {
     this.fireToolEval,
     this.probe,
     this.getBackendIdentity,
+    this.getScenePlaceOffer,
+    this.onScenePlace,
+    this.onNewPlace,
   });
 
   final TimeClockState state;
@@ -74,6 +72,24 @@ class SceneTimeEvaluator {
   final Object? fireToolEval;
   final ToolTransportProbe? probe;
   final String Function()? getBackendIdentity;
+
+  /// Slice 6: the places a suggested scene move may name THIS turn —
+  /// [id] for the wire, [label] for the prompt. Null/empty when the
+  /// Scene suggestions switch is off, the Setting has no relatives, or
+  /// the turn belongs to Director/AFK play; when empty the prompt never
+  /// asks and `scene_place` is inert. Served from the ONE reach law
+  /// (`world_chain.reachablePlaces`) — this file never re-decides.
+  final List<({String id, String label})>? Function()? getScenePlaceOffer;
+
+  /// Called with the offered place id when the judge reports an arrival
+  /// there. The evaluator NEVER moves the scene or touches the clock
+  /// slots (design: the service only flags; the user confirms).
+  final void Function(String id)? onScenePlace;
+
+  /// Slice 7: the scene_place == "new" flag — a NAMED place the reply
+  /// arrived at that is not in the library. (name, one-line descriptor)
+  /// out to the mint dialog; nothing mints here.
+  final void Function(String name, String descriptor)? onNewPlace;
 
   /// Fire one scene-time or posture eval through the shared tools-vs-text
   /// negotiation (or straight text when the tools door isn't wired).
@@ -176,6 +192,7 @@ class SceneTimeEvaluator {
     bool postureOnly = false,
     bool skipClockAdvance = false,
     bool skipTodayEval = false,
+    bool sceneMovesAllowed = true,
   }) async {
     // Realism context, and therefore skipped entirely in timeOnly mode.
     final emotionCtx = !timeOnly && getCharacterEmotion().isNotEmpty
@@ -232,28 +249,76 @@ class SceneTimeEvaluator {
     }
 
     final newDayCorroborated = newDayCorroboration.hasMatch(recent);
+
+    // Snapshot the offer ONCE per call: the ids the model may answer
+    // with are exactly the ids that were in front of it. A Setting that
+    // changes mid-call can never validate against a stale list.
+    final sceneOffer = (sceneMovesAllowed && !postureOnly)
+        ? getScenePlaceOffer?.call()
+        : null;
+    final scenePlaceOn = sceneOffer != null && sceneOffer.isNotEmpty;
+    void maybeOfferSceneMove(String text) {
+      if (!scenePlaceOn) return;
+      final said = _extractScenePlace(text);
+      if (said == null) return;
+      if (said.toLowerCase() == 'new') {
+        // Slice 7: only a NAMED arrival qualifies; the pair rides out
+        // to the mint dialog, which is where the tap happens.
+        final name = judgedStringField(text, 'new_place_name')?.trim() ?? '';
+        final desc =
+            judgedStringField(text, 'new_place_descriptor')?.trim() ?? '';
+        if (name.isEmpty) {
+          debugPrint(
+            '[Realism:Scene] scene_place "new" without a name — ignored '
+            '(unnamed side streets never qualify)',
+          );
+          return;
+        }
+        onNewPlace?.call(name, desc);
+        return;
+      }
+      if (onScenePlace == null) return;
+      for (final p in sceneOffer) {
+        if (p.id.toLowerCase() == said.toLowerCase()) {
+          onScenePlace!(p.id);
+          return;
+        }
+      }
+      // A name that is not an offered id is exactly a hallucinated move:
+      // same treatment as absent. Logged for the smoke to grep.
+      debugPrint(
+        '[Realism:Scene] scene_place "$said" is not an offered id — ignored',
+      );
+    }
+
     void logSuppressedNewDay() => debugPrint(
       '[Realism:Time] new_day=true suppressed — no sleep/wake language '
       'in the recent exchange (hallucination guard)',
     );
 
-    // A multi-day jump the reply narrates in words the skip regex cannot
-    // read: lived off-screen, like a skip. Otherwise the clamped minutes.
+    // A jump of hours or days the reply narrates is lived off-screen, like
+    // a skip; a night the judge also called wakes the bodies rested.
+    // Otherwise the clamped minutes.
     Future<void> applyVerdict(String text) async {
-      final days = _extractDays(text);
-      if (days > 0 && _daysCorroboration.hasMatch(recent)) {
-        await applier.applyJudgedDays(days);
+      final saidNewDay = extractJsonBool(text, 'new_day') ?? false;
+      final jump = ReplyJump.read(text, recent);
+      if (jump != null) {
+        await applier.applyReplyJump(
+          jump,
+          slept: saidNewDay && newDayCorroborated,
+        );
         // This eval was the turn's one clock authority; nothing to hand on.
         state.oocSkipMovedClockThisTurn = false;
+        maybeOfferSceneMove(text);
         return;
       }
-      final saidNewDay = extractJsonBool(text, 'new_day') ?? false;
       if (saidNewDay && !newDayCorroborated) logSuppressedNewDay();
       await applier.applyElapsed(
         minutes: _extractMinutes(text),
         newDay: saidNewDay && newDayCorroborated,
         continuousInstant: _extractContinuousInstant(text, extractJsonBool),
       );
+      maybeOfferSceneMove(text);
     }
 
     // One clock authority per turn (chip/clock parity): when an OOC or
@@ -291,6 +356,24 @@ class SceneTimeEvaluator {
 
     // One minutes_elapsed / new_day rubric, engine on or off.
     final plannerToday = getPlannerEnabled?.call() ?? false;
+    // Rules stay 1-5-6 in order whichever optional ones are on.
+    final sceneRuleNumber = plannerToday ? 6 : 5;
+    // Built out-of-line: Dart forbids nesting single-quoted strings inside
+    // a single-quoted interpolation, and this rule carries both quote
+    // kinds (a numbered rule wrapping double-quoted place ids).
+    var sceneRule = '';
+    if (scenePlaceOn) {
+      final ids = sceneOffer.map((p) => '"${p.id}" (${p.label})').join(', ');
+      sceneRule =
+          '$sceneRuleNumber. "scene_place": where the reply LEAVES the '
+          'scene. Answer "same" unless the narration actually ARRIVES at '
+          'one of these places: $ids. Answer "new" (plus "new_place_name" '
+          'with its exact name and a one-line "new_place_descriptor") '
+          'only when they arrive at a NAMED place NOT in that list — an '
+          'unnamed side street is "same". A plan to go somewhere, or a '
+          'mention of it, is "same". The characters must BE there by the '
+          'end of the reply.\n';
+    }
     final timeRules =
         '1. "minutes_elapsed": how many in-story minutes passed during the completed reply that was JUST written (integer, 1-${StoryClock.maxMinutesPerTurn} for a finished spoken exchange). '
         'This sets the clock the NEXT speaker will be told. '
@@ -300,9 +383,11 @@ class SceneTimeEvaluator {
         'A completed spoken reply is never a continuous instant. When true, minutes_elapsed is ignored and the clock stays still.\n'
         '3. "new_day": true ONLY if the conversation explicitly transitioned to the next day (slept, woke up, scene break). false otherwise. '
         'Merely MENTIONING yesterday, tomorrow, or another day does NOT count — the characters must actually cross a night.\n'
-        '4. "days_elapsed": ONLY when the reply just written explicitly narrates a jump of one or more whole days ("a week later", "three days passed"), the number of days skipped (1-365). Otherwise 0. Mentioning a date or a plan is not a jump.\n'
+        '4. "days_elapsed": ONLY when the reply just written explicitly narrates a jump of one or more whole days ("a week later", "three days passed"), the number of days skipped (1-365). Otherwise 0. Mentioning a date or a plan is not a jump. With a jump, "lands_at": the time of day it lands at if the reply says (dawn, morning, late_morning, afternoon, evening, night, or 24-hour HH:MM), else blank. '
+        '"hours_elapsed": ONLY when the reply explicitly narrates a jump of hours, not days ("six hours later", "a few hours pass"), the whole hours skipped (1-23). Otherwise 0.\n'
         '${plannerToday ? '5. "today_sentence": one sentence of what they are doing or planning today. '
-                  'Empty or "none" abandons the current hold. Omit to keep it.\n' : ''}';
+                  'Empty or "none" abandons the current hold. Omit to keep it.\n' : ''}'
+        '$sceneRule';
 
     // One time prompt. Engine-on adds scene framing; timeOnly asks bare.
     String buildPrompt({required bool toolsMode}) =>
@@ -313,7 +398,7 @@ class SceneTimeEvaluator {
         'Current story time: ${state.displayClock} on ${state.narrativeWeekday}, Day ${state.dayCount}.\n\n'
         '$timeRules\n'
         'Recent conversation:\n$recent\n\n'
-        '${toolsMode ? 'Report by calling the $kSceneTimeTool tool with "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "minutes_elapsed", "continuous_instant", "new_day", and "days_elapsed"${plannerToday ? ' and "today_sentence"' : ''}. '
+        '${toolsMode ? 'Report by calling the $kSceneTimeTool tool with "minutes_elapsed", "continuous_instant", "new_day", "days_elapsed", and "hours_elapsed"${plannerToday ? ' and "today_sentence"' : ''}${scenePlaceOn ? ', "scene_place", "new_place_name" and "new_place_descriptor"' : ''}. Use ONLY the tool — no plain-text reply.' : 'Respond with ONLY a flat JSON object containing "minutes_elapsed", "continuous_instant", "new_day", "days_elapsed", and "hours_elapsed"${plannerToday ? ' and "today_sentence"' : ''}${scenePlaceOn ? ', "scene_place", "new_place_name" and "new_place_descriptor"' : ''}. '
                   'Do NOT use markdown code blocks — return raw JSON only.'}';
 
     try {
@@ -334,6 +419,7 @@ class SceneTimeEvaluator {
             '[Realism:Time] OOC skip owns this turn — eval clock '
             'movement suppressed',
           );
+          maybeOfferSceneMove(text);
         } else {
           await applyVerdict(text);
         }

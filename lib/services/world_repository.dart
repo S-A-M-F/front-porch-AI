@@ -8,7 +8,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -21,6 +20,8 @@ import 'package:front_porch_ai/services/character_repository.dart';
 import 'package:front_porch_ai/services/chat/chat.dart';
 import 'package:front_porch_ai/services/group_chat_repository.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
+import 'package:front_porch_ai/services/world_envelopes.dart';
 import 'package:front_porch_ai/services/world_store/world_store.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
@@ -119,67 +120,6 @@ class WorldRepository extends ChangeNotifier {
     }
   }
 
-  model.World _fromRow(World row) {
-    Lorebook lorebook;
-    if (row.lorebook != null) {
-      try {
-        lorebook = Lorebook.fromJson(jsonDecode(row.lorebook!));
-      } catch (_) {
-        lorebook = Lorebook(entries: []);
-      }
-    } else {
-      lorebook = Lorebook(entries: []);
-    }
-    return model.World(
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      lorebook: lorebook,
-      linkedCharacterName: row.linkedCharacterName,
-      linkedCharacterId: row.linkedCharacterId,
-      coverImage: row.coverImage,
-      sourceId: row.sourceId,
-      formatVersion: row.formatVersion,
-      biomeId: row.biomeId,
-      biomeJson: row.biomeJson,
-      injectDescription: row.injectDescription,
-      climateEnabled: row.climateEnabled,
-      placeTraits: _tryDecodeMap(row.placeTraits),
-    );
-  }
-
-  /// Defensive JSON-map decode for the place_traits column (null/garbage →
-  /// null → all-default traits).
-  static Map<String, dynamic>? _tryDecodeMap(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return null;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    } catch (_) {}
-    return null;
-  }
-
-  WorldsCompanion _toCompanion(model.World world) {
-    return WorldsCompanion(
-      id: Value(world.id),
-      name: Value(world.name),
-      description: Value(world.description),
-      lorebook: Value(jsonEncode(world.lorebook.toJson())),
-      linkedCharacterName: Value(world.linkedCharacterName),
-      linkedCharacterId: Value(world.linkedCharacterId),
-      coverImage: Value(world.coverImage),
-      sourceId: Value(world.sourceId),
-      formatVersion: Value(world.formatVersion),
-      biomeId: Value(world.biomeId),
-      biomeJson: Value(world.biomeJson),
-      injectDescription: Value(world.injectDescription),
-      climateEnabled: Value(world.climateEnabled),
-      placeTraits: Value(
-        world.placeTraits.isEmpty ? null : jsonEncode(world.placeTraits),
-      ),
-    );
-  }
-
   Future<void> loadWorlds() async {
     _isLoading = true;
     notifyListeners();
@@ -188,10 +128,11 @@ class WorldRepository extends ChangeNotifier {
       final dbWorlds = await _db.getAllWorlds();
       _worlds
         ..clear()
-        ..addAll(dbWorlds.map(_fromRow));
+        ..addAll(dbWorlds.map(worldFromRow));
       _resolveAvatarPaths(_worlds);
       // One-time: drop legacy "Aerin's Lorebook" clones so Worlds = places.
       await _purge.maybePurge();
+      await repairBarePlaceSettings(this, _db);
     } catch (e) {
       debugPrint('Error loading worlds: $e');
     } finally {
@@ -211,7 +152,7 @@ class WorldRepository extends ChangeNotifier {
       throw StateError('A world named "$trimmed" already exists.');
     }
     world.name = trimmed;
-    await _db.updateWorld(_toCompanion(world));
+    await _db.updateWorld(worldToCompanion(world));
     notifyListeners();
   }
 
@@ -243,9 +184,24 @@ class WorldRepository extends ChangeNotifier {
     )) {
       world.description = '';
     }
+    // Locations: the parent must exist and must not be the world itself or
+    // one of its descendants. Checked against the database, not the cache —
+    // the cache can still be loading, and a swallowed bad parent would
+    // strand every room under it.
+    if (world.parentWorldId == null || world.parentWorldId!.isEmpty) {
+      world.parentWorldId = null;
+    } else {
+      final rows = await _db.getAllWorlds();
+      final rejection = parentRejection(
+        worldId: world.id,
+        parentId: world.parentWorldId,
+        parents: {for (final r in rows) r.id: r.parentWorldId},
+      );
+      if (rejection != null) throw StateError(rejection);
+    }
     final existing = await _db.getWorldById(world.id);
     if (existing != null) {
-      await _db.updateWorld(_toCompanion(world));
+      await _db.updateWorld(worldToCompanion(world));
     } else {
       world.name = world.name.trim();
       // Name collision on create → auto-rename (Keep both).
@@ -255,7 +211,7 @@ class WorldRepository extends ChangeNotifier {
         final names = {for (final w in await _db.getAllWorlds()) w.name};
         world.name = uniqueWorldName(world.name, names.contains);
       }
-      await _db.insertWorld(_toCompanion(world));
+      await _db.insertWorld(worldToCompanion(world));
     }
 
     final index = _worlds.indexWhere((w) => w.id == world.id);
@@ -270,11 +226,60 @@ class WorldRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteWorld(model.World world) async {
-    await _db.deleteWorldById(world.id);
-    await _db.deleteChatWorldLinksForWorld(world.id);
-    _worlds.removeWhere((w) => w.id == world.id);
+  /// Deleting a world deletes every place inside it (any depth) along with
+  /// their chat attachments. Returns how many places went with it, so the
+  /// UI can say so.
+  Future<int> deleteWorld(model.World world) async {
+    final inside = placesInside(world, _worlds, worldById);
+    await _db.deleteWorldTree([world.id, for (final p in inside) p.id]);
+    final gone = {world.id, for (final p in inside) p.id};
+    _worlds.removeWhere((w) => gone.contains(w.id));
     notifyListeners();
+    return inside.length;
+  }
+
+  /// Location chain leaf-first (`[self, parent, … root]`) through the
+  /// loaded cache; empty for an unknown ref. Roots return themselves alone,
+  /// so every pre-v61 chat resolves exactly as before.
+  List<model.World> chainFor(String idOrName) {
+    final leaf = resolveWorld(idOrName);
+    if (leaf == null) return const [];
+    return worldChain(leaf, worldById);
+  }
+
+  /// The nearest climate-enabled ancestor (or the place itself) — the one
+  /// whose weather, biome and traits the chain reads. Null ⇒ the whole
+  /// chain is lore-only, or its top-level world has weather off, and this
+  /// chat's weather stays off.
+  model.World? climateAuthorFor(String idOrName) =>
+      climateAuthorOf(chainFor(idOrName));
+
+  /// Where a chat starts when [idOrName] is attached as its Setting: the
+  /// world's starred place, else the world itself; null for an unknown ref.
+  /// Attach paths only. A scene move to the world itself (breadcrumb,
+  /// accepted suggestion) lands on the world, never on its star.
+  model.World? startingPlaceFor(String idOrName) {
+    final world = resolveWorld(idOrName);
+    return world == null ? null : startingPlaceOf(world, worldById);
+  }
+
+  /// Star [placeId] as where chats attached to [world] start; null clears
+  /// it. Refuses a place outside [world], and puts the old star back if the
+  /// save fails so the cache never shows a star the database lacks.
+  Future<void> setDefaultPlace(model.World world, String? placeId) async {
+    final place = placeId == null ? null : worldById(placeId);
+    if (placeId != null &&
+        (place == null || !isPlaceInside(place, world, worldById))) {
+      throw StateError(kWorldDefaultPlaceOutside);
+    }
+    final prior = world.defaultPlaceId;
+    world.defaultPlaceId = placeId;
+    try {
+      await saveWorld(world);
+    } catch (_) {
+      world.defaultPlaceId = prior;
+      rethrow;
+    }
   }
 
   /// Import .fpworld or bare lorebook from a file. See [importWorldJson].
@@ -297,6 +302,10 @@ class WorldRepository extends ChangeNotifier {
     // Fresh local identity; remember provenance.
     world.sourceId ??= world.id.isNotEmpty ? world.id : null;
     world.id = _uuid.v4();
+    // A parent id from the sender's library means nothing here; the
+    // envelope's ROOT is always imported as a root. Children that ride
+    // the `locations` array get re-parented by structure below.
+    world.parentWorldId = null;
     // A file with no name imports as "Imported World" (uniqueWorldName), so
     // saveWorld's blank-name refusal never blocks an import.
     world.name = uniqueWorldName(
@@ -315,22 +324,31 @@ class WorldRepository extends ChangeNotifier {
       }
     }
 
+    // The sender's star names the sender's id; it is re-pointed at the
+    // imported copy of that place once the locations have fresh ids.
+    final senderStar = world.defaultPlaceId;
+    world.defaultPlaceId = null;
     await saveWorld(world);
+    final ids = <String, String>{};
+    await _envelopes.importLocations(package.locations, world.id, 1, ids: ids);
+    final star = senderStar == null ? null : ids[senderStar];
+    if (star != null) await setDefaultPlace(world, star);
     return world;
   }
+
+  /// The codec that shapes export envelopes and re-homes imported
+  /// `locations` arrays (slice 5). It reads the live cache through this
+  /// repository's public surface and never stores anything itself, so
+  /// the save law and the DB stay owned here alone.
+  late final WorldEnvelopeCodec _envelopes = WorldEnvelopeCodec(this);
 
   /// The ONE .fpworld envelope builder (file export AND Stoop upload): embeds
   /// the resolved biome so importers get climate without built-ins, plus place
   /// traits, lore, and the cover image already carried by [model.World].
-  Map<String, dynamic> fpWorldJson(model.World world) {
-    final biome = world.climateEnabled
-        ? Biome.resolve(
-            biomeId: world.biomeId,
-            biomeJson: world.biomeJson,
-          ).toJson()
-        : null;
-    return encodeFpWorld(world: world, biome: biome);
-  }
+  ///
+  /// The envelope is always a ROOT's and carries its whole tree, even when
+  /// [world] is a place inside it. Shaping lives in [WorldEnvelopeCodec].
+  Map<String, dynamic> fpWorldJson(model.World world) => _envelopes.tree(world);
 
   /// Export as .fpworld (full place package). Prefer this over ST-only.
   Future<void> exportFpWorld(model.World world, String outputPath) async {
@@ -356,6 +374,20 @@ class WorldRepository extends ChangeNotifier {
 
   void notify() => notifyListeners();
 
+  // A load still in flight at teardown must not notify a disposed repo.
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
   Future<List<String>> getChatWorldIds(String chatId) =>
       _attachments.chatWorldIds(chatId);
 
@@ -376,8 +408,11 @@ class WorldRepository extends ChangeNotifier {
     loreIds: loreIds,
   );
 
-  Future<void> setChatWorlds(String chatId, List<String> worldIds) =>
-      _attachments.setFlat(chatId, worldIds);
+  Future<void> setChatWorlds(
+    String chatId,
+    List<String> worldIds, {
+    bool startAtStar = true,
+  }) => _attachments.setFlat(chatId, worldIds, startAtStar: startAtStar);
 
   /// Record that a chat's world attachments are settled without changing them.
   Future<void> markChatWorldsDecided(String chatId) =>
@@ -419,17 +454,26 @@ class WorldRepository extends ChangeNotifier {
 
   /// Copy template world refs (group template ids or character world names)
   /// onto a new chat (session). Refs may be UUIDs or names; unresolved refs
-  /// are dropped with a debug note.
+  /// are dropped with a debug note. A world with a starred place starts the
+  /// chat there; a fork passes [startAtStar] false to stay where it was.
   Future<void> applyTemplateWorldsToChat(
     String chatId,
-    List<String> templateWorldIds,
-  ) => _attachments.applyTemplate(chatId, templateWorldIds);
+    List<String> templateWorldIds, {
+    bool startAtStar = true,
+  }) => _attachments.applyTemplate(
+    chatId,
+    templateWorldIds,
+    startAtStar: startAtStar,
+  );
 
   Future<void> setChatBiome({
     required String chatId,
     required int dayCount,
     required Biome biome,
   }) => _attachments.setBiome(chatId: chatId, dayCount: dayCount, biome: biome);
+
+  Future<void> copyChatBiomeSpans(String fromChatId, String toChatId) =>
+      _attachments.copyBiomeSpans(fromChatId, toChatId);
 
   /// Raw span rows for [BiomeSchedule] hydrate (ordered by day ASC).
   Future<List<({int effectiveFromDay, String biomeJson})>> getChatBiomeSpanRows(

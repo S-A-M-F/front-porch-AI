@@ -48,6 +48,21 @@ class HFQuantRow extends StatelessWidget {
   /// Callback when the user confirms a download of this file.
   final ValueChanged<HFModelFile> onDownload;
 
+  /// Shown instead of [HFModelFile.filename] (a split quant's name and its
+  /// part count, say).
+  final String? title;
+
+  /// The largest quant that fits this machine at its context size.
+  final bool bestFit;
+
+  /// Set when the quant cannot be downloaded (an incomplete upload); the
+  /// button is replaced by a marker with this as its tooltip.
+  final String? unavailableReason;
+
+  /// Fires on download progress ticks. While [downloadTask] is set, only the
+  /// progress bar and status line rebuild on a tick.
+  final Listenable? progressTicks;
+
   const HFQuantRow({
     super.key,
     required this.file,
@@ -56,6 +71,10 @@ class HFQuantRow extends StatelessWidget {
     this.downloadTask,
     this.isDownloaded = false,
     required this.onDownload,
+    this.title,
+    this.bestFit = false,
+    this.unavailableReason,
+    this.progressTicks,
   });
 
   @override
@@ -118,15 +137,25 @@ class HFQuantRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  file.filename,
-                  style: TextStyle(
-                    color: AppColors.textPrimary(context),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title ?? file.filename,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (bestFit) ...[
+                      const SizedBox(width: 6),
+                      _bestFitChip(context),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
 
@@ -173,25 +202,14 @@ class HFQuantRow extends StatelessWidget {
                 ),
 
                 // Download progress if active
-                if (downloadTask != null) ...[
-                  const SizedBox(height: 6),
-                  LinearProgressIndicator(
-                    value: downloadTask!.progress,
-                    minHeight: 3,
-                    backgroundColor: InkColors.trackOf(context),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _getFitStatusColor(context, fitStatus),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    downloadTask!.statusString,
-                    style: TextStyle(
-                      color: AppColors.textTertiary(context),
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
+                if (downloadTask != null)
+                  progressTicks == null
+                      ? _buildProgress(context, fitStatus)
+                      : ListenableBuilder(
+                          listenable: progressTicks!,
+                          builder: (context, _) =>
+                              _buildProgress(context, fitStatus),
+                        ),
               ],
             ),
           ),
@@ -204,7 +222,63 @@ class HFQuantRow extends StatelessWidget {
     );
   }
 
+  Widget _bestFitChip(BuildContext context) {
+    final green = ModelColors.greenOf(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: green.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: green.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        'Best fit',
+        style: TextStyle(
+          color: green,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgress(BuildContext context, VramFitStatus? fitStatus) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          value: downloadTask!.progress,
+          minHeight: 3,
+          backgroundColor: InkColors.trackOf(context),
+          valueColor: AlwaysStoppedAnimation<Color>(
+            _getFitStatusColor(context, fitStatus),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          downloadTask!.statusString,
+          style: TextStyle(
+            color: AppColors.textTertiary(context),
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildActionButton(BuildContext context, VramFitStatus? fitStatus) {
+    if (unavailableReason != null && !isDownloaded && downloadTask == null) {
+      return Tooltip(
+        message: unavailableReason!,
+        child: Icon(
+          Icons.block_rounded,
+          color: AppColors.iconSecondary(context),
+          size: 20,
+          semanticLabel: unavailableReason,
+        ),
+      );
+    }
     if (isDownloaded) {
       return Icon(
         Icons.check_circle_rounded,

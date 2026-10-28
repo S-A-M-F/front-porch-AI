@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/models/models.dart';
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/services/world_chain.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 import '../../widgets/chat_turn_builder.dart';
@@ -41,17 +42,25 @@ class ChatPlacesPanel extends StatelessWidget {
           for (final id in loreIds)
             if (worlds.resolveWorld(id) != null) worlds.resolveWorld(id)!,
         ];
-        final climateAuthors = primaryWorldAllowsClimate(primary);
+        // The Setting's chain author owns climate (locations slice 2): a
+        // location inherits from the nearest climate-enabled ancestor, and
+        // the custom option is the AUTHOR's book, keyed world:<author-id>.
+        final climateAuthor = primary == null
+            ? null
+            : worlds.climateAuthorFor(primary.id);
+        final climateAuthors = climateAuthor != null;
+        final weatherOffRoot = primary == null
+            ? null
+            : weatherOffRootOf(worlds.chainFor(primary.id));
         final activeClimate = chat.activeChatBiome;
         final customOptions = <(String, World, Biome)>[
           if (climateAuthors &&
-              primary != null &&
-              primary.biomeJson != null &&
-              Biome.tryParse(primary.biomeJson) != null)
+              climateAuthor.biomeJson != null &&
+              Biome.tryParse(climateAuthor.biomeJson) != null)
             (
-              'world:${primary.id}',
-              primary,
-              Biome.tryParse(primary.biomeJson)!,
+              'world:${climateAuthor.id}',
+              climateAuthor,
+              Biome.tryParse(climateAuthor.biomeJson)!,
             ),
         ];
         final optionValues = {for (final (v, _, _) in customOptions) v};
@@ -115,6 +124,7 @@ class ChatPlacesPanel extends StatelessWidget {
                 chat: chat,
                 world: primary,
                 loreIds: loreIds,
+                worlds: worlds,
               ),
 
             const SizedBox(height: 12),
@@ -131,7 +141,10 @@ class ChatPlacesPanel extends StatelessWidget {
               ),
             ] else if (!climateAuthors) ...[
               Text(
-                'This setting is lore-only — no weather.',
+                weatherOffRoot == null
+                    ? 'This setting is lore-only — no weather.'
+                    : 'Weather is off for ${weatherOffRoot.name}, so this '
+                          'place has none.',
                 style: TextStyle(
                   fontSize: 11,
                   color: AppColors.textTertiary(context),
@@ -147,6 +160,32 @@ class ChatPlacesPanel extends StatelessWidget {
                   color: AppColors.textSecondary(context),
                 ),
               ),
+              // Name the author when the Setting itself does not own one
+              // (locations slice 3, mockup p3: "Weather from Bletchfield").
+              if (climateAuthor.id != primary.id) ...[
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_outlined,
+                      size: 13,
+                      color: AppColors.textTertiary(context),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Weather from ${climateAuthor.name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: AppColors.textTertiary(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
                 // ignore: deprecated_member_use
@@ -307,6 +346,9 @@ class ChatPlacesPanel extends StatelessWidget {
                     chat: chat,
                     primaryId: primaryId,
                     loreIds: loreIds,
+                    insideName: w.parentWorldId == null
+                        ? null
+                        : worlds.worldById(w.parentWorldId!)?.name,
                   );
                 },
               ),

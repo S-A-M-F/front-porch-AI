@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/ui/dialogs/dialogs.dart';
 import 'package:front_porch_ai/ui/theme/theme.dart';
+import 'world_dialog_wording.dart';
 import 'world_edit_draft.dart';
 
 /// Lorebook section of the create/edit World dialog: header + From
@@ -32,10 +33,12 @@ class WorldLorebookSection extends StatelessWidget {
     super.key,
     required this.draft,
     required this.setDialogState,
+    this.wording = const WorldDialogWording(isCreate: true),
   });
 
   final WorldEditDraft draft;
   final StateSetter setDialogState;
+  final WorldDialogWording wording;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +68,7 @@ class WorldLorebookSection extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Lorebook Entries (${draft.editingEntries.length})',
+                    wording.loreTitle(draft.editingEntries.length),
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -120,6 +123,32 @@ class WorldLorebookSection extends StatelessWidget {
             ),
           ),
 
+          if (wording.inheritedLoreLine != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Row(
+                key: const Key('world-inherited-lore'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.menu_book_outlined,
+                    size: 16,
+                    color: AppColors.formAccentOf(context),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      wording.inheritedLoreLine!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Entries list
           if (draft.editingEntries.isEmpty)
             Padding(
@@ -142,12 +171,12 @@ class WorldLorebookSection extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'No lorebook entries yet',
+                      wording.loreEmptyTitle,
                       style: TextStyle(color: AppColors.textSecondary(context)),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Add entries to define world lore that will be injected into conversations',
+                      wording.loreEmptyBody,
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textTertiary(context),

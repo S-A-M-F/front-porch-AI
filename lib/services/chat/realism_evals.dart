@@ -378,12 +378,14 @@ class RealismEvals {
     bool postureOnly = false,
     bool skipClockAdvance = false,
     bool skipTodayEval = false,
+    bool sceneMovesAllowed = true,
   }) => _calls.evaluatePhysicalStateCall(
     onChunk: onChunk,
     timeOnly: timeOnly,
     postureOnly: postureOnly,
     skipClockAdvance: skipClockAdvance,
     skipTodayEval: skipTodayEval,
+    sceneMovesAllowed: sceneMovesAllowed,
   );
 
   Future<void> evaluateNarrativeCall({void Function(String)? onChunk}) =>

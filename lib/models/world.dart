@@ -96,6 +96,17 @@ class World {
   /// worlds keep the weather machine plugged in.
   bool climateEnabled;
 
+  /// v61 — set when this place is a Location inside another world
+  /// (docs/design/locations-within-worlds.md). Null = root; every world was a
+  /// root before the column existed. Climate, prose and lore resolve by
+  /// walking parents through [WorldRepository.chainFor]; the repository
+  /// refuses unknown parents and cycles at save time.
+  String? parentWorldId;
+
+  /// Convenience for UI and facade code: a world with a parent is a place
+  /// inside one, everything else is a root.
+  bool get isLocation => parentWorldId != null;
+
   /// Raw place-traits map (one future-proof field: unknown keys survive a
   /// round-trip so older apps never strip newer traits — mixed-fleet rule).
   /// Read through the typed getters; write through the setters.
@@ -113,6 +124,42 @@ class World {
       ? placeTraits.remove('gravity')
       : placeTraits['gravity'] = v.name;
 
+  /// Provenance marker for places the model minted from narration
+  /// (locations slice 7 writes it; the library's model-made filter and
+  /// bulk delete read it from slice 3 on). Rides the flexible
+  /// [placeTraits] map so it never needs a migration and survives
+  /// round-trips in newer builds.
+  bool get isModelMade => placeTraits['madeBy']?.toString() == 'model';
+
+  /// The place inside this world where a chat starts when the world is
+  /// attached as its Setting (the star in the Worlds library). Null = chats
+  /// start in the world itself. Rides [placeTraits] like [isModelMade], so
+  /// it needs no migration and a climate-off world keeps it. Read it through
+  /// `startingPlaceOf`, which ignores an id that no longer names a place
+  /// inside this world, so a move or delete never needs a cleanup pass.
+  String? get defaultPlaceId {
+    final id = placeTraits['defaultPlace']?.toString() ?? '';
+    return id.isEmpty ? null : id;
+  }
+
+  set defaultPlaceId(String? id) {
+    if (id == null || id.isEmpty) {
+      placeTraits.remove('defaultPlace');
+    } else {
+      placeTraits['defaultPlace'] = id;
+    }
+  }
+
+  /// The character this world was built from (World from Character), or
+  /// null. Provenance only: nothing is linked, so renaming or deleting the
+  /// character leaves the world alone.
+  String? get sourceCharacterName {
+    final source = placeTraits['source'];
+    if (source is! Map || source['kind'] != 'character') return null;
+    final name = source['name']?.toString().trim() ?? '';
+    return name.isEmpty ? null : name;
+  }
+
   World({
     String? id,
     required this.name,
@@ -128,6 +175,7 @@ class World {
     this.avatarPath,
     this.injectDescription = true,
     this.climateEnabled = true,
+    this.parentWorldId,
     Map<String, dynamic>? placeTraits,
   }) : id = id ?? const Uuid().v4(),
        placeTraits = placeTraits ?? {};
@@ -149,6 +197,8 @@ class World {
       if (avatarPath != null) 'avatar_path': avatarPath,
       'inject_description': injectDescription,
       'climate_enabled': climateEnabled,
+      if (parentWorldId != null) 'parent_world_id': parentWorldId,
+      if (defaultPlaceId != null) 'default_place_id': defaultPlaceId,
       if (climateEnabled && placeTraits.isNotEmpty) 'place_traits': placeTraits,
     };
   }
@@ -167,7 +217,7 @@ class World {
       lorebook = Lorebook.fromJson(json);
     }
 
-    return World(
+    final world = World(
       id: json['id']?.toString(),
       name: name,
       description: description,
@@ -196,6 +246,9 @@ class World {
           json['injectDescription'] as bool? ??
           true,
       climateEnabled: climateEnabled,
+      parentWorldId:
+          json['parent_world_id']?.toString() ??
+          json['parentWorldId']?.toString(),
       placeTraits: climateEnabled
           ? json['place_traits'] is Map
                 ? Map<String, dynamic>.from(json['place_traits'] as Map)
@@ -204,6 +257,13 @@ class World {
                 : null
           : null,
     );
+    // Top-level key wins over a copy inside place_traits, and survives a
+    // climate-off world, whose place_traits are dropped above.
+    final star =
+        json['default_place_id']?.toString() ??
+        json['defaultPlaceId']?.toString();
+    if (star != null) world.defaultPlaceId = star;
+    return world;
   }
 }
 

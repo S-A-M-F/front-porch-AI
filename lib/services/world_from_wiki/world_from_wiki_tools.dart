@@ -4,6 +4,7 @@
 import 'package:front_porch_ai/services/chat/weather_biomes.dart';
 import 'package:front_porch_ai/services/llm_service.dart';
 import 'package:front_porch_ai/services/world_from_wiki/world_craft_mechanics.dart';
+import 'package:front_porch_ai/services/world_from_wiki/world_from_wiki_places_tools.dart';
 
 const String kWorldLoreEntryToolName = 'write_lorebook_entry';
 const String kWorldLoreBatchToolName = 'write_lorebook_entries';
@@ -19,14 +20,34 @@ const int kWorldWriteBatchSize = 8;
 const int kWorldLoreContentMin = 160;
 const int kWorldLoreContentMax = 330;
 
+/// Keys an entry keeps. Past this a model is listing every noun in the
+/// article (Kimi gave Gotei 13 eleven, 'Shinigami' and 'captains' among
+/// them), and each extra key is a trigger on any sentence.
+const int kWorldLoreKeysMax = 8;
+
 const String kWorldClimateToolName = 'write_world_climate';
 
 const String kWorldScoutPrompt =
-    'Cast list not table of contents. Merge numbered chapters / drafts / '
-    'images into one card when they are the same subject. 20–40 cards. '
-    'Role era/hub/leaf/crown. Optional inclusion group slug from this book. '
-    'they/them. Do not invent climate. Do not use another setting\'s '
-    'faction names.';
+    'Build a WORLD, not a cast list and not a table of contents. Merge '
+    'numbered chapters / drafts / images into one card when they are the '
+    'same subject. Shaped like a setting bible: ONE era card '
+    'for the premise\'s time (role era, kind event); the places (kind '
+    'place: realms, cities, fortresses, districts); the factions and '
+    'organizations (kind faction); the events and timeline of the premise '
+    '(kind event); the powers, races, items and terms a scene needs (kind '
+    'concept / race / item); and LAST the people who define the premise '
+    '(kind person) — at most a third of the shelf, each written as they are '
+    'in the premise\'s time. Role: era for the one era card, hub for places '
+    'and factions that pull detail, crown for a peak figure or relic in a '
+    'group, leaf for everything else. Set kind on every card. Optional '
+    'inclusion group slug from this book. they/them. Do not invent climate. '
+    'Do not use another setting\'s faction names. If index lines show '
+    '[tags], the tags name places, nations, peoples, factions and page '
+    'types: propose up to $kWorldScoutPlaceMax places they imply (nested '
+    'with parentName where one lies inside another), give every place its '
+    'own hub card plus 2–5 cards of its own people, factions and smaller '
+    'places where the index has them, and set each card\'s place to where '
+    'it belongs. With no tags, send no places and no card places.';
 
 /// Scout: one shelf of cards from index titles. Tools-only.
 List<Map<String, dynamic>> worldScoutToolSchema() {
@@ -36,13 +57,24 @@ List<Map<String, dynamic>> worldScoutToolSchema() {
       'function': {
         'name': kWorldScoutToolName,
         'description':
-            'Propose 20–40 lorebook cards for this wiki. Cast list, not a '
-            'table of contents. Merge numbered chapters, drafts, and image '
-            'pages of the same subject into one card. Roles: era, hub, leaf, '
-            'crown. Optional group is an inclusion slug from THIS book only.',
+            'Propose 20–40 lorebook cards for this wiki, and — when the index '
+            'carries tags or categories — the places they imply, so cards '
+            'can each name one place. A world shelf: its era, places, '
+            'factions, events and powers first, people last and few. Merge '
+            'numbered chapters, drafts, and image pages of the same subject '
+            'into one card. Roles: era, hub, leaf, crown. Optional group is '
+            'an inclusion slug from THIS book only.',
         'parameters': {
           'type': 'object',
           'properties': {
+            'places': {
+              'type': 'array',
+              'description':
+                  'Optional (slice 8). Up to $kWorldScoutPlaceMax places the '
+                  'tags/categories name, nested with parentName. Cards then '
+                  'set place to one of these names.',
+              'items': worldPlaceItemSchema(),
+            },
             'cards': {
               'type': 'array',
               'description': 'Proposed cards, 20 to 40.',
@@ -79,8 +111,23 @@ List<Map<String, dynamic>> worldScoutToolSchema() {
                         'Optional inclusion group slug from this book '
                         '(a faith, a street, a guild). Not a borrowed setting.',
                   },
+                  'place': {
+                    'type': 'string',
+                    'description':
+                        'Slice 8: name of one entry from the places list, '
+                        'or empty for the world root. A card belongs to '
+                        'exactly one place.',
+                  },
+                  'kind': {
+                    'type': 'string',
+                    'enum': kWorldCardKinds,
+                    'description':
+                        'What the card is about. A world shelf is mostly '
+                        'places, factions, events and concepts; people are '
+                        'at most a third of it.',
+                  },
                 },
-                'required': ['name', 'role', 'sourceTitles'],
+                'required': ['name', 'role', 'sourceTitles', 'kind'],
               },
             },
           },
@@ -210,7 +257,7 @@ WorldLoreWrite? parseWorldLoreToolCall(Map<String, dynamic> args) {
   final content = clipLoreContent(args['content']?.toString() ?? '');
   if (content.isEmpty) return null;
   final name = args['name']?.toString().trim() ?? '';
-  final keys = _keysOf(args['keys']);
+  final keys = _keysOf(args['keys']).take(kWorldLoreKeysMax).toList();
   return WorldLoreWrite(
     name: name.isEmpty ? 'Untitled' : name,
     keys: keys,
@@ -280,6 +327,16 @@ WorldClimateWrite? parseWorldClimateCalls(List<LlmToolCall> calls) {
   return null;
 }
 
+/// A source title as the model wrote it, minus the "[tags]" the index line
+/// carried: gemma-4 copied "Quincy Blood War [Events, Fights]" back for
+/// every card and all 34 missed the catalog.
+String worldScoutBareTitle(String raw) {
+  final t = raw.trim();
+  final open = t.lastIndexOf(' [');
+  if (open > 0 && t.endsWith(']')) return t.substring(0, open).trim();
+  return t;
+}
+
 /// Parse scout tool calls into proposed cards. Drops unknown roles, empty
 /// names, and (when [catalog] is set) cards whose sources miss the index.
 /// Matched sources keep the catalog's original title casing so later
@@ -287,6 +344,8 @@ WorldClimateWrite? parseWorldClimateCalls(List<LlmToolCall> calls) {
 List<WorldProposedCard> parseWorldScoutToolCalls(
   List<LlmToolCall> calls, {
   Iterable<String>? catalog,
+  int max = kWorldScoutCardMax,
+  bool keepUnsourced = false,
 }) {
   final byLower = catalog == null
       ? null
@@ -298,13 +357,23 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
     for (final item in _cardMaps(call.arguments)) {
       final parsed = WorldProposedCard.tryParse(item);
       if (parsed == null) continue;
-      var sources = parsed.sourceTitles;
+      var sources = [
+        for (final t in parsed.sourceTitles) worldScoutBareTitle(t),
+      ];
+      var invented = false;
       if (byLower != null) {
-        sources = [
+        final matched = [
           for (final t in sources)
             if (byLower[t.toLowerCase()] != null) byLower[t.toLowerCase()]!,
         ];
-        if (sources.isEmpty) continue;
+        if (matched.isEmpty) {
+          // Creative mode keeps a card the index does not know, marked
+          // so the Shelf shows it unsigned; every other run drops it.
+          if (!keepUnsourced) continue;
+          invented = true;
+        } else {
+          sources = matched;
+        }
       }
       final key = parsed.name.toLowerCase();
       if (!seen.add(key)) continue;
@@ -315,9 +384,12 @@ List<WorldProposedCard> parseWorldScoutToolCalls(
           role: parsed.role,
           sourceTitles: sources.take(3).toList(),
           group: parsed.group,
+          place: parsed.place,
+          kind: parsed.kind,
+          invented: invented,
         ),
       );
-      if (out.length >= kWorldScoutCardMax) return out;
+      if (out.length >= max) return out;
     }
   }
   return out;
@@ -358,10 +430,16 @@ List<String> _keysOf(dynamic raw) {
 }
 
 /// Collapse whitespace and cut at a sentence near [kWorldLoreContentMax].
+/// A sentence that ends just past the cap is kept whole: "…unable to
+/// speak with their Zanpak" is worse than a card seventy characters long.
+const int kWorldLoreContentSlack = 70;
+
 String clipLoreContent(String raw) {
-  final s = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+  final s = worldTwoSentences(raw.trim().replaceAll(RegExp(r'\s+'), ' '));
   if (s.length <= kWorldLoreContentMax) return s;
-  final cut = s.substring(0, kWorldLoreContentMax);
+  final reach = kWorldLoreContentMax + kWorldLoreContentSlack;
+  if (s.length <= reach) return s;
+  final cut = s.substring(0, reach);
   var at = cut.lastIndexOf('. ');
   final bang = cut.lastIndexOf('! ');
   final q = cut.lastIndexOf('? ');
@@ -371,6 +449,17 @@ String clipLoreContent(String raw) {
     return cut.substring(0, at + 1).trim();
   }
   return cut.trim();
+}
+
+/// The first two sentences when a third follows and the two already make
+/// a card: the reviewer used to send "three sentences; condense" back to
+/// the model, a whole call for a cut Dart can make.
+String worldTwoSentences(String s) {
+  final ends = RegExp(r'(?<=[.!?])\s+(?=[A-Z"“(])');
+  final parts = s.split(ends);
+  if (parts.length <= 2) return s;
+  final two = '${parts[0]} ${parts[1]}'.trim();
+  return two.length >= kWorldLoreContentMin ? two : s;
 }
 
 bool wikiTitleLooksClimate(String title) {

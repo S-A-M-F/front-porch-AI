@@ -52,11 +52,27 @@ final _junkExt = [
 ];
 
 /// One searchable tiddler. [text] is already plain (no HTML dump).
+///
+/// [tags] are the TW5 `tags` field, kept verbatim minus system (`$:/`)
+/// entries. Slice 8 (design §9): tags are the ONLY signal that places
+/// exist on a wiki like Neokosmos — nations live there, never as pages —
+/// so the studio catalog must not drop them. Chat search ignores them.
 class TiddlyTiddler {
-  const TiddlyTiddler({required this.title, required this.text});
+  const TiddlyTiddler({
+    required this.title,
+    required this.text,
+    this.tags = const [],
+  });
 
   final String title;
   final String text;
+  final List<String> tags;
+
+  /// Tags lower-cased once for matching; empty for an untagged page.
+  List<String> get tagKeys => [
+    for (final t in tags)
+      if (!t.startsWith(r'$:/')) t.trim().toLowerCase(),
+  ];
 
   String get textHead {
     if (text.length <= kTiddlyTextHeadChars) return text;
@@ -142,7 +158,9 @@ TiddlyIndex? parseTiddlyStoreHtml(String html) {
       final text = _plainTiddlerText(raw['text']?.toString() ?? '', type);
       if (title.isEmpty) continue;
       if (!seen.add(title.toLowerCase())) continue;
-      kept.add(TiddlyTiddler(title: title, text: text));
+      kept.add(
+        TiddlyTiddler(title: title, text: text, tags: _tiddlerTags(raw)),
+      );
     }
   }
   if (!foundStore) return null;
@@ -151,6 +169,21 @@ TiddlyIndex? parseTiddlyStoreHtml(String html) {
     skippedSystem: skippedSystem,
     parsedCount: parsedCount,
   );
+}
+
+/// TW5 stores `tags` as a JSON array, but hand-edited tiddlers and
+/// older exports use one space-free string. Accept both; junk is no
+/// tags, never a throw (the catalog must not die on one bad page).
+List<String> _tiddlerTags(Map raw) {
+  final dynamic v = raw['tags'];
+  if (v is List) {
+    return [
+      for (final t in v)
+        if (t?.toString().trim() case final s? when s.isNotEmpty) s,
+    ];
+  }
+  final one = v?.toString().trim() ?? '';
+  return one.isEmpty ? const [] : [one];
 }
 
 List<TiddlyTiddler> searchTiddlyIndex(

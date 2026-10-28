@@ -29,9 +29,15 @@
 # unless both variables are set, so the default run and CI are unaffected.
 #     KOBOLD_LIVE_BIN=/path/to/koboldcpp KOBOLD_LIVE_MODEL=/path/to/small.gguf \
 #       flutter test --tags kobold_live
+#
+# The `wiki_live` tag runs World from Wiki end to end against a real wiki and
+# a real model (the engine both surfaces use) and writes the world it made to
+# FPAI_LIVE_OUT for a human to judge. Skips unless FPAI_LIVE_API_URL,
+# FPAI_LIVE_MODEL and FPAI_LIVE_WIKI are set; see the test file's header.
 tags:
   golden:
   perf:
   live:
   stoop_live:
   kobold_live:
+  wiki_live:

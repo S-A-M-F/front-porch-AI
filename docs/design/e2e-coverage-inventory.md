@@ -39,7 +39,7 @@ Update this file when you add or retire a suite.
 | `suggested_action_composer_test` | Suggest actions: a pill tap fills the message box (no send); holding it sends |
 | `swipe_fork_cancel_test` | Swipe chevrons, cancel-mid-regen put-back, fork branch |
 | `web_server_test` | PWA shell, anon 401, setup→cookie→state over real HTTP |
-| `web_ui/browser_test` | **Web UI in real browsers** (Playwright, WebKit phone + Chromium desktop) against the booted app: `web_ui/e2e/sweep.spec.ts` taps every safe control on every screen (fails on covered / tap-through controls, dialogs a finger can't close, phone sideways scroll, broken pictures, console errors, failing `/api`); `web_ui/e2e/journeys.spec.ts` signs in, chats, edits (#330), regenerates + swipes, continues, deletes, switches chats, persists a setting, and checks a fresh greeting fills in `{{char}}` / `{{user}}`. Own CI job `web-e2e` (not in the e2e-smoke matrix — lives in a subdirectory). `FPAI_E2E_HOLD=1` keeps the sandboxed app serving for `npm run e2e` iteration. |
+| `web_ui/browser_test` | **Web UI in real browsers** (Playwright, WebKit phone + Chromium desktop) against the booted app: `web_ui/e2e/sweep.spec.ts` taps every safe control on every screen (fails on covered / tap-through controls, dialogs a finger can't close, phone sideways scroll, broken pictures, console errors, failing `/api`); `web_ui/e2e/journeys.spec.ts` signs in, chats, edits (#330), regenerates + swipes, continues, deletes, switches chats, persists a setting, checks that a fresh greeting fills in `{{char}}` / `{{user}}`, and adds a starter world (root plus places) from the Places page's Starter worlds picker. Own CI job `web-e2e` (not in the e2e-smoke matrix — lives in a subdirectory). `FPAI_E2E_HOLD=1` keeps the sandboxed app serving for `npm run e2e` iteration. |
 | `story_time_test` | Story clock advances + survives reload |
 | `backup_restore_test` | Create → restore → services rebound |
 | `persona_folder_test` | Persona form + session; folder create/move/open |
@@ -49,6 +49,7 @@ Update this file when you add or retire a suite.
 | `lorebook_chat_test` | This Chat lore entry → triggers → injection |
 | `lorebook_import_test` | Import path |
 | `worlds_management_test` | New World + Places attach |
+| `world_starting_place_test` | Star a place in the Worlds library → "Chats start at" on the world card; a character carrying the world starts its new chat there; attaching the world in the Places panel lands on the place (weather still from the world). Web twin: `web_ui/e2e/starting-place.spec.ts` (also: New world will not save until it names its starting place) |
 | `climate_editor_test` | Climate editor |
 | `journal_review_test` | Review-first park → banner → apply |
 | `growth_rings_test` | Growth switch → pass → ring + receipt jump |

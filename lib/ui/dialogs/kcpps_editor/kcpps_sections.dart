@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:front_porch_ai/services/kobold/kobold.dart';
+import 'package:front_porch_ai/ui/settings/widgets/widgets.dart';
 import 'package:front_porch_ai/ui/theme/app_colors.dart';
 
 import 'kcpps_batch_timing.dart';
@@ -232,10 +233,14 @@ class KcppsSpeedSection extends StatelessWidget {
           key: const ValueKey('kcpps-flash-attention'),
           value: c.config.flashAttention,
           label: 'Flash attention (faster, less memory)',
-          onChanged: c.flashAttentionRuns && !compressed
+          onChanged: c.flashAttentionAllowed && !compressed
               ? (v) => c.edit((d) => d.copyWith(flashAttention: v))
               : null,
         ),
+        if (c.flashAttentionRisky)
+          const FlashAttentionCrashWarning(
+            key: ValueKey('kcpps-flash-attention-crash-warning'),
+          ),
         if (note != null)
           Text(note, style: keText(context, size: 12, color: faint))
         else if (compressed)

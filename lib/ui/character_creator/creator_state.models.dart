@@ -65,7 +65,11 @@ class CreatorBackendModels {
     } catch (e) {
       debugPrint('CreatorState: Failed to load models: $e');
       state.isLoadingModels = false;
-      state.selectedModelId = llmProvider.openRouterService.modelName;
+      // A catalog that would not load is no reason to drop the user's pick;
+      // only an empty step falls back to chat's model.
+      if (state.selectedModelId.isEmpty) {
+        state.selectedModelId = llmProvider.openRouterService.modelName;
+      }
       state.notify();
     }
   }

@@ -338,34 +338,26 @@ class SetupStep extends StatelessWidget {
                       context,
                       listen: false,
                     );
-                    final storage = Provider.of<StorageService>(
-                      context,
-                      listen: false,
-                    );
-
                     if (state.availableModels.isEmpty) {
                       await state.loadAvailableModels(llm);
                     }
 
                     if (context.mounted && state.availableModels.isNotEmpty) {
-                      showModelSearchDialog(
+                      // The pick is this step's alone. It used to be written
+                      // as chat's model, and that switch made chat test the
+                      // model at once, which on oMLX or LM Studio loads it;
+                      // the wizard's Next is what asks the picked model.
+                      showGenericModelSearchDialog<RemoteModelInfo>(
                         context,
-                        storage,
                         state.availableModels.cast<RemoteModelInfo>(),
+                        title: 'Select Model',
+                        getTitle: (m) => m.name,
+                        getSubtitle: (m) => m.id,
+                        onSelected: (m) {
+                          state.selectedModelId = m.id;
+                          state.notify();
+                        },
                       );
-                      Future.delayed(const Duration(milliseconds: 350), () {
-                        if (context.mounted) {
-                          final s = Provider.of<StorageService>(
-                            context,
-                            listen: false,
-                          );
-                          if (s.backendSettings.remoteModelName.isNotEmpty) {
-                            state.selectedModelId =
-                                s.backendSettings.remoteModelName;
-                            state.notify();
-                          }
-                        }
-                      });
                     }
                   },
                   borderRadius: BorderRadius.circular(10),

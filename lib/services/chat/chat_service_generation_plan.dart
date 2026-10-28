@@ -101,9 +101,28 @@ extension ChatServiceGenerationPlan on ChatService {
       // name carrying brackets/newlines can't break the [rule] framing.
       final safeUser = t.userName.replaceAll(RegExp(r'[\n\r\[\]]'), ' ').trim();
       final ruleUser = safeUser.isEmpty ? 'the user' : safeUser;
-      t.suffix =
-          "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for $ruleUser or from $ruleUser's point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require $ruleUser content.]\n" +
-          padContinuePartial(partial);
+      // A group names the speaker and bans the whole rest of the cast, not
+      // just the user (who is not in a directed scene at all).
+      if (_activeGroup != null) {
+        final speaker = t.speakingCharacter.name;
+        t.suffix =
+            groupContinueRule(
+              speakerName: speaker,
+              others: groupTurnOthers(
+                otherMemberNames: [
+                  for (final ch in _groupCharacters)
+                    if (ch.name != speaker) ch.name,
+                ],
+                userName: t.userName,
+                observerMode: _observerMode,
+              ),
+            ) +
+            padContinuePartial(partial);
+      } else {
+        t.suffix =
+            "\n[CRITICAL RULE: The text below is an incomplete response from the *current speaker only*. You MUST ONLY generate more text that continues *this exact response* in the speaker's voice, style, and perspective. NEVER write any dialogue, actions, thoughts, narration, or descriptions for $ruleUser or from $ruleUser's point of view. NEVER add new speaker labels or switch characters. Only append to the text below. Stop if it would require $ruleUser content.]\n" +
+            padContinuePartial(partial);
+      }
     }
 
     // ── Macro resolution pass ──
@@ -157,6 +176,17 @@ extension ChatServiceGenerationPlan on ChatService {
         section: 'postHistory',
       );
     }
+    // The Author's Note (and the per-character, entrance, director and
+    // guest notes appended to it) was the one user-written block that
+    // skipped this pass: a `{{char}}` typed into the note reached the
+    // model as braces.
+    if (t.authorNoteBlock.isNotEmpty) {
+      t.authorNoteBlock = _macroResolver.resolve(
+        t.authorNoteBlock,
+        macroCtx,
+        section: 'authorNote',
+      );
+    }
 
     // Ensure the popped message is always restored, even if prompt assembly throws
     try {
@@ -203,15 +233,16 @@ extension ChatServiceGenerationPlan on ChatService {
           ? ''
           : _macroResolver.resolve(rawRealism, macroCtx, section: 'realism');
 
-      // Living Worlds — setting prose from Primary ONLY (budget-capped).
-      // Lore attachments contribute lorebook entries, not room description.
+      // Living Worlds — setting prose from the Setting's chain, leaf first
+      // (locations slice 2): the place's own prose wins the 600-char budget
+      // and the town fills what is left. A root alone is exactly [root], so
+      // every pre-locations chat injects byte-identically. Lore attachments
+      // contribute lorebook entries, not room description.
       final primaryId = _chatPlaceSlots.primaryId;
-      final primaryWorld = primaryId == null
-          ? null
-          : _worldRepository.resolveWorld(primaryId);
-      final rawWorld = buildWorldInjection(
-        primaryWorld == null ? const <World>[] : [primaryWorld],
-      );
+      final settingChain = primaryId == null
+          ? const <World>[]
+          : _worldRepository.chainFor(primaryId);
+      final rawWorld = buildWorldInjection(settingChain);
       final worldBlock = rawWorld.isEmpty
           ? ''
           : _macroResolver.resolve(rawWorld, macroCtx, section: 'world');

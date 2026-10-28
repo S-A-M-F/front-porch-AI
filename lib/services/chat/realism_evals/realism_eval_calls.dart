@@ -309,6 +309,7 @@ class RealismEvalCalls {
     bool postureOnly = false,
     bool skipClockAdvance = false,
     bool skipTodayEval = false,
+    bool sceneMovesAllowed = true,
   }) async {
     if (!timeOnly) {
       if (!evals.getRealismEnabled()) return;
@@ -355,6 +356,7 @@ class RealismEvalCalls {
       postureOnly: postureOnly,
       skipClockAdvance: skipClockAdvance,
       skipTodayEval: skipTodayEval,
+      sceneMovesAllowed: sceneMovesAllowed,
     );
   }
 

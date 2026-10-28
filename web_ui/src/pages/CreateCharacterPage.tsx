@@ -16,7 +16,7 @@ import { PersonaSeedNote, usePersonaSeed } from '../components/library/PersonaCo
 import { LoreEntriesEditor, type LoreEntry } from '../components/LoreEntriesEditor';
 import { AltGreetingsEditor } from '../components/AltGreetingsEditor';
 import { RealismFormSection } from '../components/realism/RealismFormSection';
-import { useAdultThemes } from '../components/realism/useAdultThemes';
+import { useAdultFlags } from '../components/realism/useAdultThemes';
 import { usePassageOfTime } from '../components/realism/usePassageOfTime';
 import { NeedsFormSection } from '../components/realism/NeedsFormSection';
 import { type RealismValues, REALISM_DEFAULTS, compactGreetingPairs, inventoryToChips } from '../components/realism/realismTypes';
@@ -54,7 +54,7 @@ const EMPTY: Draft = {
 };
 
 export function CreateCharacterPage() {
-  const adultThemes = useAdultThemes();
+  const { adult: adultThemes, afterglow } = useAdultFlags();
   const clockOn = usePassageOfTime();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -192,7 +192,7 @@ export function CreateCharacterPage() {
 
         {step === 4 && (
           <>
-            <RealismFormSection v={d} set={patch} showIntimate={adultThemes} showChargenSuggestion />
+            <RealismFormSection v={d} set={patch} showIntimate={adultThemes} afterglowOn={afterglow} showChargenSuggestion />
             {d.realismEnabled && <NeedsFormSection v={d} set={patch} clockOn={clockOn} />}
           </>
         )}

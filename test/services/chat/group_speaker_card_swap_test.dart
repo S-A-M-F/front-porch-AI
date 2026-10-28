@@ -230,4 +230,98 @@ void main() {
     expect(w.system, isNot(contains('ZINNA_PERSONA_MARKER')));
     expect(w.system, isNot(contains('SENJUMARU_PERSONA_MARKER')));
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  group('turn card (layout B)', () {
+    Future<void> bootPorch({String groupPrompt = ''}) async {
+      await db.insertGroup(
+        GroupsCompanion.insert(id: 'grp-porch', name: 'Porch'),
+      );
+      await db.insertGroupMember(
+        GroupMembersCompanion.insert(
+          id: 'mem-ayla',
+          groupId: 'grp-porch',
+          name: 'Ayla',
+          personality: const Value('Ayla is warm.'),
+          mesExample: const Value(
+            '<START>\n{{user}}: Hi.\n{{char}}: AYLA_EXAMPLE_MARKER',
+          ),
+          systemPrompt: const Value('AYLA_CARD_PROMPT_MARKER'),
+          postHistoryInstructions: const Value('AYLA_POST_HISTORY_MARKER'),
+          avatarFilename: const Value('ayla.png'),
+          frontPorchExtensions: const Value(_off),
+        ),
+      );
+      await db.insertGroupMember(
+        GroupMembersCompanion.insert(
+          id: 'mem-misty',
+          groupId: 'grp-porch',
+          name: 'Misty',
+          personality: const Value('Misty loves stray cats.'),
+          avatarFilename: const Value('misty.png'),
+          frontPorchExtensions: const Value(
+            '{"version":"2.5","realism_engine":{"tier":"lite"}}',
+          ),
+        ),
+      );
+      await chat.setActiveGroup(
+        GroupChat(
+          id: 'grp-porch',
+          name: 'Porch',
+          scenario: 'PORCH_SCENE_MARKER a summer evening',
+          systemPrompt: groupPrompt,
+        ),
+        groupRepo: GroupChatRepository(storage, db),
+      );
+    }
+
+    test('the card carries framed examples and every instruction', () async {
+      await bootPorch();
+      chat.setNextCharacter(member('Ayla'));
+      await chat.sendMessage('Evening, Ayla.');
+      final w = _wire(backend);
+      expect('<START>'.allMatches(w.user), hasLength(1));
+      expect(w.user, contains('(example only, not part of this scene)'));
+      expect(w.user, contains('AYLA_EXAMPLE_MARKER'));
+      expect(w.user, contains('[Instructions for Ayla]'));
+      expect(w.user, contains('AYLA_CARD_PROMPT_MARKER'));
+      expect(w.user, contains('AYLA_POST_HISTORY_MARKER'));
+      expect(w.system, isNot(contains('AYLA_CARD_PROMPT_MARKER')));
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test(
+      'a visitor keeps the shared scene and is marked in the cast',
+      () async {
+        await bootPorch();
+        chat.setNextCharacter(member('Misty'));
+        await chat.sendMessage('Misty, is that your cat?');
+        final w = _wire(backend);
+        expect(w.user, contains('PORCH_SCENE_MARKER'));
+        expect(w.user, contains('SCENE GUEST TURN. You are Misty'));
+        expect(w.system, contains('Misty (visitor)'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test('a custom group prompt replaces only the style', () async {
+      await bootPorch(groupPrompt: 'CUSTOM_STYLE_MARKER');
+      chat.setNextCharacter(member('Ayla'));
+      await chat.sendMessage('Evening.');
+      final w = _wire(backend);
+      expect(w.system, startsWith('CUSTOM_STYLE_MARKER'));
+      expect(w.system, contains('[Group scene]'));
+      expect(w.system, isNot(contains('[Director Mode]')));
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
+    test('group impersonate keeps the reply head, not the card', () async {
+      await bootPorch();
+      chat.setNextCharacter(member('Ayla'));
+      await chat.sendMessage('Evening.');
+      await chat.impersonateUser(onToken: (_) {});
+      final w = _wire(backend);
+      expect(w.system, contains('[Group scene]'));
+      expect(w.system, isNot(contains('AYLA_CARD_PROMPT_MARKER')));
+      expect(w.system, isNot(contains('The card below')));
+      expect(w.user, contains('PORCH_SCENE_MARKER'));
+    }, timeout: const Timeout(Duration(minutes: 2)));
+  });
 }

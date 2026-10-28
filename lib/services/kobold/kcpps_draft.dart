@@ -156,7 +156,9 @@ class KcppsDraft {
   /// [rocmFlashAttentionFailed] as in Settings; [architecture] the model's.
   /// [hasSlidingWindow]: the model has one. Elsewhere [slidingWindow] does
   /// nothing and would still cost fast forward, so it is not written (as
-  /// the app's own settings do, see [koboldAppConfig]).
+  /// the app's own settings do, see [koboldAppConfig]). Flash attention
+  /// ticked is the say-so for a pairing that crashed in testing
+  /// ([koboldFlashAttentionRisky]); unticked, it runs without.
   KoboldLaunchConfig toConfig({
     bool recurrent = false,
     bool rocm = false,
@@ -185,6 +187,7 @@ class KcppsDraft {
       flashAttention: flashAttention,
       rocm: rocm,
       rocmFlashAttentionFailed: rocmFlashAttentionFailed,
+      flashAttentionRiskAccepted: flashAttention,
       manualLayers: manual ? gpuLayers : null,
       moeCpuLayers: manual ? moeCpuLayers : 0,
       mmq: mmq,

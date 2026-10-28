@@ -48,17 +48,20 @@ String? worldFromWikiToolsCopy(WorldToolsGate gate, {bool onPhone = false}) {
           'first. ${onPhone ? 'Start it on the Models page' : 'Press Start Backend above'} '
           '(or connect your online provider), and the check runs by itself.';
     case WorldToolsGate.notChecked:
-      return "This model hasn't been checked for tools yet. Press Check now "
-          'and it takes a few seconds.';
+      return "This model hasn't been checked for tools yet. Next checks it "
+          'first (on a local server that loads the model), or press Check '
+          'now.';
     case WorldToolsGate.failed:
       return 'This model was tested and didn\'t answer the tool-calling check '
-          'correctly, so it can\'t be used for World from Wiki. Pick a '
-          'different model (for example Qwen 3 or Gemma 4) and it will be '
-          'tested again.';
+          'correctly, so it can\'t be used for World from Wiki. Next (or '
+          'Check now) asks it again; if it still answers in words, pick a '
+          'different model (for example Qwen 3 or Gemma 4).';
   }
 }
 
 /// Whether the locked state offers a button that asks the model again (the
-/// same test as a tap on the Tool calling pill).
+/// same test as a tap on the Tool calling pill). A failed verdict is asked
+/// again too: a model answered in prose once (mid-load on oMLX, say) should
+/// not lock the wizard until the user changes models.
 bool worldFromWikiToolsCanRetest(WorldToolsGate gate) =>
-    gate == WorldToolsGate.notChecked;
+    gate == WorldToolsGate.notChecked || gate == WorldToolsGate.failed;

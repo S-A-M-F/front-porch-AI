@@ -1,0 +1,223 @@
+// Copyright (C) 2026 Front Porch AI
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// The starting-place star in the Worlds library: a place inside a world
+// gets a star like the canonical-avatar star in the portrait gallery. One
+// tap makes it where chats attached to the world start (the world's places
+// panel then says "Chats start at <place>"), starring another place moves
+// the star, and the starred place stays starred when tapped: every world
+// keeps a starting place. The seed and
+// attach behaviour behind the star is pinned in world_repository_test and
+// the world_starting_place E2E. Header AnimationController.repeat() —
+// bounded pumps only, never pumpAndSettle.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+import 'package:front_porch_ai/models/lorebook.dart';
+import 'package:front_porch_ai/models/world.dart' as model;
+import 'package:front_porch_ai/services/services.dart';
+import 'package:front_porch_ai/ui/pages/world_management_page.dart';
+import 'package:front_porch_ai/ui/pages/worlds/worlds.dart';
+
+import '../../golden/support/fakes.dart';
+
+/// Records each star write and applies it the way the repository does, so
+/// the page repaints from the cache like it would in the app.
+class _StarWorlds extends FakeWorldRepository {
+  _StarWorlds(super.worlds);
+
+  final writes = <String?>[];
+
+  @override
+  Future<void> setDefaultPlace(model.World world, String? placeId) async {
+    writes.add(placeId);
+    world.defaultPlaceId = placeId;
+    notifyListeners();
+  }
+
+  final deleted = <String>[];
+
+  @override
+  Future<int> deleteWorld(model.World world) async {
+    deleted.add(world.id);
+    return 0;
+  }
+}
+
+model.World _world(String id, {String? parent, bool climate = false}) =>
+    model.World(
+      id: id,
+      name: id,
+      description: '$id prose.',
+      lorebook: Lorebook(entries: []),
+      climateEnabled: climate,
+      parentWorldId: parent,
+    );
+
+Future<void> _pumpLibrary(WidgetTester tester, _StarWorlds worlds) async {
+  tester.view.physicalSize = const Size(1280, 2000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(worlds.dispose);
+  await tester.pumpWidget(
+    ChangeNotifierProvider<WorldRepository>.value(
+      value: worlds,
+      child: MaterialApp(
+        theme: ThemeData(useMaterial3: true, fontFamily: 'Roboto'),
+        home: const WorldManagementPage(),
+      ),
+    ),
+  );
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.pump(const Duration(milliseconds: 50));
+}
+
+Future<void> _openPlaces(WidgetTester tester, String worldId) async {
+  await tester.tap(find.byKey(Key('places-chip-$worldId')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
+}
+
+Future<void> _tapStar(WidgetTester tester, String placeId) async {
+  final star = find.byKey(Key('place-star-$placeId'));
+  await tester.ensureVisible(star);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.tap(star);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
+}
+
+void main() {
+  testWidgets('starring a place names it on the world card; starring another '
+      'moves the star; tapping the starred one keeps it', (tester) async {
+    final worlds = _StarWorlds([
+      _world('Bletchfield', climate: true),
+      _world('Tea Rooms', parent: 'Bletchfield'),
+      _world('Town Hall', parent: 'Bletchfield'),
+    ]);
+    await _pumpLibrary(tester, worlds);
+    // Places live in their world's panel, closed until the card opens it.
+    await _openPlaces(tester, 'Bletchfield');
+
+    expect(
+      find.text('Star a place below: chats start there'),
+      findsOneWidget,
+      reason: 'a world with places and no start asks for one',
+    );
+    expect(find.byKey(const Key('place-star-Tea Rooms')), findsOneWidget);
+    expect(
+      find.byKey(const Key('place-star-Bletchfield')),
+      findsNothing,
+      reason: 'the world itself has no star; only places inside it do',
+    );
+
+    await _tapStar(tester, 'Tea Rooms');
+    expect(worlds.writes, ['Tea Rooms']);
+    expect(find.text('Chats start at Tea Rooms'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('place-star-Tea Rooms')),
+        matching: find.byIcon(Icons.star_rounded),
+      ),
+      findsOneWidget,
+      reason: 'the starred place shows a filled star',
+    );
+
+    await _tapStar(tester, 'Town Hall');
+    expect(worlds.writes.last, 'Town Hall');
+    expect(find.text('Chats start at Town Hall'), findsOneWidget);
+    expect(find.text('Chats start at Tea Rooms'), findsNothing);
+
+    await _tapStar(tester, 'Town Hall');
+    expect(worlds.writes, [
+      'Tea Rooms',
+      'Town Hall',
+    ], reason: 'a world always keeps a starting place: no clear');
+    expect(find.text('Chats start at Town Hall'), findsOneWidget);
+  });
+
+  testWidgets('only worlds get cards: places are rows in the panel their '
+      'world opens, never cards, and a place has no Export', (tester) async {
+    final worlds = _StarWorlds([
+      _world('Bletchfield', climate: true),
+      _world('Town Hall', parent: 'Bletchfield'),
+      _world('Back Room', parent: 'Town Hall'),
+      _world('Red Dust Station'),
+    ]);
+    await _pumpLibrary(tester, worlds);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('worlds-count-chip')),
+        matching: find.text('2 worlds'),
+      ),
+      findsOneWidget,
+      reason: 'the header counts worlds, not the places inside them',
+    );
+    expect(find.text('Worlds (2)'), findsOneWidget);
+    expect(find.byType(WorldPlaceCard), findsNWidgets(2));
+    expect(
+      find.byType(WorldPlaceRow),
+      findsNothing,
+      reason: 'a world keeps its places folded away until opened',
+    );
+    expect(find.text('2 places'), findsOneWidget);
+
+    await _openPlaces(tester, 'Bletchfield');
+    expect(find.byType(WorldPlaceCard), findsNWidgets(2));
+    expect(find.byKey(const Key('place-row-Town Hall')), findsOneWidget);
+    expect(find.byKey(const Key('place-row-Back Room')), findsOneWidget);
+    // Town › building › room: the room is at the cap.
+    expect(find.byKey(const Key('place-add-inside-Town Hall')), findsOneWidget);
+    expect(find.byKey(const Key('place-add-inside-Back Room')), findsNothing);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('place-row-Town Hall')),
+        matching: find.byIcon(Icons.more_vert),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Move to…'), findsOneWidget);
+    expect(find.textContaining('Export'), findsNothing);
+  });
+
+  testWidgets('deleting a world warns that every place inside it goes too', (
+    tester,
+  ) async {
+    final worlds = _StarWorlds([
+      _world('Bletchfield', climate: true),
+      _world('Town Hall', parent: 'Bletchfield'),
+      _world('Back Room', parent: 'Town Hall'),
+      _world('Red Dust Station'),
+    ]);
+    await _pumpLibrary(tester, worlds);
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(WorldPlaceCard, 'Bletchfield'),
+        matching: find.byIcon(Icons.more_vert),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Delete'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Delete World?'), findsOneWidget);
+    expect(
+      find.textContaining('The 2 places inside it will be deleted too.'),
+      findsOneWidget,
+      reason: 'the count covers the whole tree, the room included',
+    );
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Delete'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(worlds.deleted, ['Bletchfield']);
+  });
+}

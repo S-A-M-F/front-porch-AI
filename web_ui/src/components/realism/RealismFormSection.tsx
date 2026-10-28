@@ -3,7 +3,7 @@
 //
 // Shared Realism Engine configuration form — the web mirror of the Flutter
 // realism_form_section.dart. Drives the starting relationship/emotion/time
-// seeds, the optional NSFW-cooldown / chaos / verifier features and the initial
+// seeds, the Afterglow recovery profile, chaos / verifier features and the initial
 // task. Reused by the character create wizard and the character edit page so
 // both author identical seeds. Needs Simulation is a sibling section
 // (NeedsFormSection) rendered alongside this one.
@@ -52,6 +52,7 @@ export function RealismFormSection({
   v,
   set,
   showIntimate = false,
+  afterglowOn = false,
   showChargenSuggestion = false,
 }: {
   v: RealismValues;
@@ -59,6 +60,8 @@ export function RealismFormSection({
   /// The install's 18+ master switch, mirroring desktop: the intimate pair is
   /// absent (not disabled) unless the user opted into 18+ themes.
   showIntimate?: boolean;
+  /// Porch Life Afterglow, live (useAdultFlags). Shows the Recovery block.
+  afterglowOn?: boolean;
   /// The create wizard only: suggests a recovery preset from the authored
   /// intimacy notes, confirmed by the author, never applied silently.
   showChargenSuggestion?: boolean;
@@ -165,16 +168,10 @@ export function RealismFormSection({
           {/* ── Optional features ── */}
           <h4 className="realism-head">Optional features</h4>
           <div className="card realism-card">
-            <ToggleRow
-              label="Afterglow (intimacy pacing)"
-              hint="Realistic arousal / refractory mechanics"
-              value={v.nsfwCooldownEnabled}
-              onChange={(b) => set({ nsfwCooldownEnabled: b })}
-            />
-            {/* Recovery block (recovery overhaul PR 2) — only when Afterglow
-                and 18+ are both on, as the mockup draws it. The minutes
-                slider is always shown; moving it selects Custom. */}
-            {v.nsfwCooldownEnabled && showIntimate && (
+            {/* Recovery block (recovery overhaul PR 2) — only when Porch Life
+                Afterglow is on (it counts only with 18+ on). No per-card
+                Afterglow switch: Porch Life is the one gate. */}
+            {showIntimate && afterglowOn && (
               <RecoveryBlock v={v} set={set} showChargenSuggestion={showChargenSuggestion} />
             )}
             <ToggleRow

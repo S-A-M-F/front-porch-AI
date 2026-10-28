@@ -188,4 +188,52 @@ void main() {
       );
     },
   );
+
+  group('HuggingFace token', () {
+    test('saving one without a password is refused', () async {
+      final res = await post({'hfToken': 'hf_stolen'});
+      expect(res.statusCode, 401);
+      expect(storage.backendSettings.hf.hasToken, isFalse);
+    });
+
+    test('with step-up it saves, and GET says only that one exists', () async {
+      final wrote = await post({
+        'hfToken': 'hf_keep_secret',
+        'currentPassword': 'password123',
+      });
+      expect(wrote.statusCode, 200);
+      expect(storage.backendSettings.hf.token, 'hf_keep_secret');
+
+      final body =
+          jsonDecode(await (await get()).readAsString())
+              as Map<String, dynamic>;
+      expect(body['hasHfToken'], isTrue);
+      expect(jsonEncode(body), isNot(contains('hf_keep_secret')));
+    });
+
+    test('clearing it needs no password', () async {
+      await storage.backendSettings.hf.setToken('hf_old');
+      final res = await post({'hfTokenClear': true});
+      expect(res.statusCode, 200);
+      expect(storage.backendSettings.hf.hasToken, isFalse);
+    });
+
+    test('it is offered only to the HuggingFace host', () async {
+      await storage.backendSettings.hf.setToken('hf_scoped');
+      expect(
+        storage.backendSettings.hf.headersFor(
+          Uri.parse('https://huggingface.co/api/models'),
+          'huggingface.co',
+        ),
+        {'Authorization': 'Bearer hf_scoped'},
+      );
+      expect(
+        storage.backendSettings.hf.headersFor(
+          Uri.parse('https://us.aws.cdn.hf.co/xet-bridge-us/abc'),
+          'huggingface.co',
+        ),
+        isEmpty,
+      );
+    });
+  });
 }

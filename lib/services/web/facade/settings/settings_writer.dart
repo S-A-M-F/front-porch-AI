@@ -27,6 +27,7 @@ import 'package:front_porch_ai/services/services.dart';
 import 'package:front_porch_ai/services/web/facade/settings/settings_backend_names.dart';
 import 'package:front_porch_ai/services/web/facade/settings/settings_reasoning.dart';
 import 'package:front_porch_ai/services/web/facade/settings_worker.dart';
+import 'package:front_porch_ai/ui/theme/appearance_options.dart';
 
 /// Applies a web Settings POST body to storage and the live backend.
 class SettingsWriter {
@@ -90,6 +91,30 @@ class SettingsWriter {
     // General → Dark Mode, the desktop's own switch.
     final darkMode = body['darkMode'];
     if (darkMode is bool) await _storage.uiSettings.setIsDark(darkMode);
+
+    // Appearance → Ambient scene. Only a key this build knows is written.
+    final ambient = body['ambientScene'];
+    if (ambient is String && AmbientScene.values.any((v) => v.key == ambient)) {
+      await _storage.appearance.setAmbientScene(AmbientScene.fromKey(ambient));
+    }
+    final pauseEffects = body['pauseEffectsWhileGenerating'];
+    if (pauseEffects is bool) {
+      await _storage.appearance.setPauseEffectsWhileGenerating(pauseEffects);
+    }
+    final sceneSound = body['sceneSound'];
+    if (sceneSound is bool) await _storage.appearance.setSceneSound(sceneSound);
+    // A number; the setter holds it to 0..1.
+    final sceneVolume = body['sceneSoundVolume'];
+    if (sceneVolume is num && sceneVolume.isFinite) {
+      await _storage.appearance.setSceneSoundVolume(sceneVolume.toDouble());
+    }
+    // Bubble Opacity, held to the desktop slider's 0.1..1 range.
+    final opacity = body['bubbleOpacity'];
+    if (opacity is num && opacity.isFinite) {
+      await _storage.uiSettings.setBubbleOpacity(
+        opacity.toDouble().clamp(0.1, 1.0),
+      );
+    }
 
     final follow = body['followStreamingReplies'];
     if (follow is bool) {
@@ -203,6 +228,11 @@ class SettingsWriter {
       if (guests is bool) {
         await _storage.realismSettings.setSceneGuestDetectionEnabled(guests);
       }
+      // Slice 6: 'sceneSuggestionsEnabled' from the PWA Porch Life row.
+      final sceneSug = realism['sceneSuggestionsEnabled'];
+      if (sceneSug is bool) {
+        await _storage.realismSettings.setSceneSuggestionsEnabled(sceneSug);
+      }
       final objs = realism['objectivesEnabled'];
       if (objs is bool) {
         await _storage.realismSettings.setObjectivesEnabled(objs);
@@ -281,6 +311,14 @@ class SettingsWriter {
     if (apiKey != null && apiKey.isNotEmpty) {
       await b.setRemoteApiKey(apiKey);
       remoteChanged = true;
+    }
+    // The HuggingFace token: like the API key, never read back; an empty
+    // value is ignored and `hfTokenClear` removes it.
+    final hfToken = body['hfToken']?.toString().trim();
+    if (hfToken != null && hfToken.isNotEmpty) {
+      await _storage.backendSettings.hf.setToken(hfToken);
+    } else if (body['hfTokenClear'] == true) {
+      await _storage.backendSettings.hf.setToken('');
     }
 
     final ctx = body['contextSize'];
@@ -376,6 +414,24 @@ class SettingsWriter {
       await g.setAdditionalSystemPrompt(
         body['additionalSystemPrompt'] as String,
       );
+    }
+    if (body['groupSystemPrompt'] is String) {
+      await PromptSlot.group.writeText(
+        _storage,
+        body['groupSystemPrompt'] as String,
+      );
+    }
+    // A slot's saved-prompt pick; null, '' or a name no longer in the pool
+    // (deleted from another slot or tab) lets go of it.
+    final pool = userSavedPrompts(_storage.presetSettings.savedPrompts);
+    for (final (key, slot) in const [
+      ('systemPromptName', PromptSlot.oneToOne),
+      ('groupSystemPromptName', PromptSlot.group),
+    ]) {
+      if (!body.containsKey(key)) continue;
+      final name = body[key];
+      final kept = name is String && pool.any((p) => p['name'] == name);
+      await slot.writeSavedName(_storage, kept ? name : null);
     }
     if (body['additionalPostHistoryInstructions'] is String) {
       await g.setAdditionalPostHistoryInstructions(

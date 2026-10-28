@@ -21,12 +21,45 @@ import 'package:front_porch_ai/ui/pages/repository/stoop_pick_step.dart';
 import 'package:front_porch_ai/ui/pages/repository/stoop_world_share.dart';
 import 'package:front_porch_ai/utils/utils.dart';
 
+/// Review #599 (Stoop disclosure): uploading a place shares its ROOT and
+/// the branch down to it — the envelope says more than the card title
+/// does. The wizard must tell the author, in one line, what the card
+/// actually carries. Returns null when there is nothing extra to say.
+
+String? stoopWorldShareNote(
+  Map<String, dynamic> envelope, {
+  required bool ridesUpstream,
+}) {
+  int count(List list) => list.fold<int>(
+    0,
+    (n, item) =>
+        n +
+        1 +
+        (item is Map && item['locations'] is List
+            ? count(item['locations'] as List)
+            : 0),
+  );
+  final places = count(envelope['locations'] as List? ?? const []);
+  if (ridesUpstream) {
+    final rootName = envelope['name']?.toString() ?? 'its world';
+    return 'Shared inside its world "$rootName" — $places place(s) ride '
+        'along the branch.';
+  }
+  if (places > 0) {
+    return 'This card carries the whole tree: $places place(s) inside.';
+  }
+  return null;
+}
+
 /// Upload wizard step 3 — review + publish. Exactly one of [selectedCard],
 /// [selectedGroup], [selectedWorld] is set. Text fields arrive trimmed.
 class StoopUploadReviewStep extends StatelessWidget {
   final CharacterCard? selectedCard;
   final GroupChat? selectedGroup;
   final World? selectedWorld;
+  // Review #599: one line under the summary saying which world tree and
+  // how many places the card actually carries (null: nothing extra).
+  final String? shareNote;
   final StoopCompleteness? completeness;
   final String name;
   final String summary;
@@ -41,6 +74,7 @@ class StoopUploadReviewStep extends StatelessWidget {
     required this.selectedCard,
     required this.selectedGroup,
     required this.selectedWorld,
+    this.shareNote,
     required this.completeness,
     required this.name,
     required this.summary,
@@ -101,6 +135,16 @@ class StoopUploadReviewStep extends StatelessWidget {
                   Text(name, style: stoopDisplay(context, size: 21)),
                   const SizedBox(height: 4),
                   Text(summary, style: TextStyle(color: stoopCream2(context))),
+                  if (shareNote != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      shareNote!,
+                      style: TextStyle(
+                        color: stoopFaint(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                   if (originalCreator.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(

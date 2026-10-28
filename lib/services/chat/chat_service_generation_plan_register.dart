@@ -125,6 +125,19 @@ extension ChatServiceGenerationPlanRegister on ChatService {
     // that move was chasing is bought in words by the state_frame section
     // below. Full numbers: the kStateZoneSectionIds doc and §6.1/§8d of
     // docs/design/prompt-state-injection.md.
+    // The after-lookup lines (search, user tools) are gated per turn kind,
+    // so on the head they rewrote byte one between a send and a Continue.
+    // Here they are re-read with the rest of the tail, outside the state
+    // zone (the frame names app notes; these are character instructions).
+    // Same viewer row as before: they were part of the system prompt text.
+    plan.add(id: 'tool_rules', label: 'System Prompt', text: t.toolRulesBlock);
+    // Group only (empty in 1:1): the speaker's card, ahead of the state
+    // zone. The turn's notes stay at the author_note seat below.
+    plan.add(
+      id: 'speaker_card',
+      label: 'Speaker Card',
+      text: t.speakerCardBlock,
+    );
     plan.add(id: 'state_frame', label: 'State Frame', text: '');
     plan.add(id: 'summary', label: 'Summary', text: t.summaryBlock);
     plan.add(id: 'journal', label: 'Journal', text: t.journalBlock);
@@ -138,11 +151,6 @@ extension ChatServiceGenerationPlanRegister on ChatService {
       id: 'author_note',
       label: 'Author\'s Note',
       text: t.authorNoteBlock,
-    );
-    plan.add(
-      id: 'speaker_card',
-      label: 'Speaker Card',
-      text: t.speakerCardBlock,
     );
     plan.add(id: 'lore.an_bottom', label: 'Lorebook', text: t.loreAnBottom);
     plan.add(

@@ -35,9 +35,11 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart' show ChangeNotifier, Uint8List;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:front_porch_ai/database/database.dart'
@@ -51,6 +53,8 @@ import 'package:front_porch_ai/services/expression_pack_qc.dart'
 import 'package:front_porch_ai/services/image_gen_service.dart';
 import 'package:front_porch_ai/services/storage_service.dart';
 import 'package:front_porch_ai/ui/avatar_creation/avatar_creation_controller.dart';
+import 'package:front_porch_ai/ui/avatar_creation/portrait_preview.dart';
+import 'package:front_porch_ai/ui/avatar_creation/portrait_section.dart';
 
 void _setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
@@ -591,6 +595,72 @@ void main() {
       expect(c.ctaLabel, 'Generate 8 expressions');
       expect(c.canRun, isTrue);
       c.dispose();
+    });
+  });
+
+  group('the generated portrait preview (issue #602)', () {
+    testWidgets('clicking the saved portrait opens it full size', (
+      tester,
+    ) async {
+      final c = controller();
+      addTearDown(c.dispose);
+      expect(c.source, PortraitSource.generate);
+      final bytes = _realPng();
+      c.portraitBytes = bytes;
+      final zoomed = <Uint8List>[];
+      await tester.pumpWidget(
+        ChangeNotifierProvider<StorageService>.value(
+          value: storage,
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: PortraitSection(
+                  controller: c,
+                  onZoom: (_, b) => zoomed.add(b),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final preview = find.byKey(const ValueKey('portrait-preview'));
+      expect(preview, findsOneWidget);
+      expect(find.text('Click to zoom in'), findsOneWidget);
+      await tester.tap(preview);
+      await tester.pump();
+      expect(zoomed, [bytes]);
+    });
+
+    testWidgets('a narrow column stacks the caption under a smaller '
+        'thumbnail instead of overflowing', (tester) async {
+      final zoomed = <Uint8List>[];
+      final bytes = _realPng();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 90,
+                child: PortraitPreview(
+                  bytes: bytes,
+                  onZoom: (_, b) => zoomed.add(b),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final preview = find.byKey(const ValueKey('portrait-preview'));
+      expect(tester.getSize(preview).width, 90);
+      expect(
+        tester.getTopLeft(find.text('Saved & set as the card image.')).dy,
+        greaterThan(tester.getBottomLeft(preview).dy),
+      );
+      await tester.tap(preview);
+      expect(zoomed, [bytes]);
     });
   });
 }

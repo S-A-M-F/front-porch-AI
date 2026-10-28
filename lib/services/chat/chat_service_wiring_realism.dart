@@ -65,6 +65,28 @@ extension ChatServiceWiringRealism on ChatService {
       getPorchLifePassageOfTime: () =>
           _storageService.realismSettings.passageOfTimeDefault,
       getPlannerEnabled: () => _storageService.realismSettings.plannerEnabled,
+      // Slice 6: which places the judge may suggest — the reach law and
+      // labels live in buildScenePlaceOffer (scene_place_offer.dart).
+      getScenePlaceOffer: () => buildScenePlaceOffer(
+        enabled: _storageService.realismSettings.sceneSuggestionsEnabled,
+        primaryId: chatPrimaryWorldId,
+        repo: _worldRepository,
+        isDeclined: _sceneMoves.isDeclined,
+      ),
+      onScenePlace: (id) {
+        debugPrint('[Realism:Scene] suggested move pending: $id');
+        flagSuggestedPlaceMove(id);
+      },
+      // Slice 7: the 'new' arrival — the same tap-to-confirm law. An
+      // ignored name is refused HERE, before the flag, so a dismissed
+      // side street never re-dialogs this chat (design §3).
+      onNewPlace: (name, descriptor) {
+        if (_sceneMoves.mints.isIgnored(name)) {
+          debugPrint('[Realism:Mint] "$name" is ignored in this chat');
+          return;
+        }
+        flagSuggestedPlaceMint(name, descriptor);
+      },
       onTodayEval: (line) {
         _recordTodayPointerOp();
         if (line.isEmpty) {
@@ -285,6 +307,7 @@ extension ChatServiceWiringRealism on ChatService {
       setGroupValue: (charId, key, v) =>
           _groupStore.memberForWrite(charId).setValue(key, v),
       isClockRunning: () => _clockRunning,
+      afterglowOn: () => _storageService.realismSettings.afterglowEnabled,
     );
   }
 
