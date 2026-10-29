@@ -40,6 +40,9 @@ import 'package:front_porch_ai/services/story/story.dart';
 import 'package:front_porch_ai/services/web/facade/story_facade.dart';
 import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_context.dart';
 import 'package:front_porch_ai/services/web/facade/chat_tools/chat_tools_scene.dart';
+import 'package:front_porch_ai/services/web/facade/story_snapshot_builder.dart';
+
+import '../../golden/support/fakes.dart';
 
 void _setupPathProviderMock() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
@@ -212,6 +215,118 @@ void main() {
     expect(await facade.refreshWorld(id), {'ok': false, 'copied': 0});
     expect(await facade.refreshWorld('no-such-story'), isNull);
   });
+
+  // Stories from group chats (docs/design/stories-from-group-chats.md §1):
+  // a web save of a story from a group chat gets the members' cards from
+  // the group's own rows, in roster order, with the roles the client sent;
+  // the client's card text is never trusted.
+  test(
+    'a save from the web snapshots the group members from their rows',
+    () async {
+      final storage = StorageService();
+      final pipeline = StoryPipelineService(
+        repo,
+        _MuteLlm(),
+        MemoryService(EmbeddingService(storage), storage, db),
+        db,
+      );
+      final guarded = StoryFacade(
+        repo,
+        pipeline,
+        null,
+        snapshotBuilder: StorySnapshotBuilder(
+          FakeCharacterRepository([CharacterCard(dbId: 'lib-1', name: 'Wren')]),
+          FakeUserPersonaService(),
+        ),
+      );
+      await db.insertGroup(GroupsCompanion.insert(id: 'g-crew', name: 'Crew'));
+      for (final (id, name, blurb) in [
+        ('m-mira', 'Mira', 'A keeper.'),
+        ('m-dov', 'Dov', 'A sailor.'),
+        ('m-ash', 'Ash', 'A cook.'),
+      ]) {
+        await db.insertGroupMember(
+          GroupMembersCompanion.insert(
+            id: id,
+            groupId: 'g-crew',
+            name: name,
+            description: Value(blurb),
+          ),
+        );
+      }
+      final created = await guarded.create('Crew');
+      final id = created['id'] as String;
+      final json = repo.getById(id)!.toJson()
+        ..['use_chat_history'] = true
+        ..['chat_group_id'] = 'g-crew'
+        ..['chat_group_name'] = 'Crew'
+        ..['chat_history_session_ids'] = ['s-crew']
+        ..['chat_history_character_ids'] = ['m-mira', 'm-dov', 'm-ash', 'lib-1']
+        ..['character_roles'] = {'m-dov': 'Protagonist'}
+        ..['character_card_snapshots'] = [
+          {'id': 'm-mira', 'name': 'Mira', 'description': 'FORGED'},
+        ];
+      expect(await guarded.save(id, json), isTrue);
+
+      final saved = repo.getById(id)!;
+      expect(saved.chatGroupId, 'g-crew');
+      expect(saved.characterCardSnapshots.map((s) => s['name']), [
+        'Mira',
+        'Dov',
+        'Ash',
+        'Wren',
+      ]);
+      expect(saved.characterCardSnapshots.map((s) => s['description']), [
+        'A keeper.',
+        'A sailor.',
+        'A cook.',
+        '',
+      ]);
+      expect(saved.characterCardSnapshots.map((s) => s['role']), [
+        'Supporting',
+        'Protagonist',
+        'Supporting',
+        'Supporting',
+      ]);
+      expect(saved.characterCardSnapshots.map((s) => s['id']), [
+        'm-mira',
+        'm-dov',
+        'm-ash',
+        'lib-1',
+      ]);
+
+      // A later save (a dashboard edit carries no role map) after Ash left
+      // the group, and again after the group is deleted: the cast is the
+      // one the story was made with, from the server's own snapshots.
+      final later = Map<String, dynamic>.of(json)..remove('character_roles');
+      await db.deleteGroupMember('m-ash');
+      expect(await guarded.save(id, later), isTrue);
+      await db.deleteGroupById('g-crew');
+      expect(await guarded.save(id, later), isTrue);
+
+      final kept = repo.getById(id)!;
+      expect(kept.chatGroupName, 'Crew');
+      expect(kept.characterCardSnapshots.map((s) => s['name']), [
+        'Mira',
+        'Dov',
+        'Ash',
+        'Wren',
+      ]);
+      expect(kept.characterCardSnapshots.map((s) => s['description']), [
+        'A keeper.',
+        'A sailor.',
+        'A cook.',
+        '',
+      ]);
+      expect(kept.characterCardSnapshots.map((s) => s['role']), [
+        'Supporting',
+        'Protagonist',
+        'Supporting',
+        'Supporting',
+      ]);
+    },
+  );
+
   test('a story made from a chat set in a room names the world, not the '
       'room, through the real chat path', () async {
     final storage = StorageService();
